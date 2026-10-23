@@ -1,0 +1,21 @@
+node_modules/
+dist/
+data/
+*.sqlite
+*.sqlite-journal
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+coverage/
+.tsbuildinfo
+apps/web/dist/
+harness-factory/
+# oracle：本地留作对账尺子，不许进 heron 的提交（构建不读它、CI 不跑它、代码不 import 它）
+reference/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+

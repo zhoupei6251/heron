@@ -1,0 +1,23 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "capabilities/*"
+
+# pnpm 12 的工程设置只从本文件读：同样的键写进 .npmrc 实测不生效（临时工程验证过）。
+# autoInstallPeers=false：缺的 peer 就让 pnpm 报错，不许它替我们补一份没进 package.json 的版本。
+# engineStrict 与根 package.json 的 engines 配套：Node < 24 要在安装期就停，而不是运行时才炸。
+autoInstallPeers: false
+engineStrict: true
+strictPeerDependencies: false
+# pnpm 12 默认在每次 run 脚本前核对并同步依赖；部署镜像故意带 devDeps（tsx 跑 TS），
+# NODE_ENV=production 下这条核对会尝试裁剪，运行用户又没有 node_modules 的写权限。
+# 依赖只在 install 时变，脚本执行期不该再动它。
+verifyDepsBeforeRun: false
+
+# pnpm 11 起 onlyBuiltDependencies 被 allowBuilds 取代（值为 true 才允许跑生命周期脚本）。
+# T8 删掉 SQLite 层后只剩 esbuild 需要构建；T10 的导入工具若再引 SQLite 驱动，在这里显式放行。
+allowBuilds:
+  esbuild: true
+
+minimumReleaseAgeExclude:
+  - "@electric-sql/pglite@0.5.11"

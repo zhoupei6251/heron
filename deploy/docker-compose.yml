@@ -1,0 +1,108 @@
+name: heron
+
+# 起法（在项目根，不是在这个目录）：
+#   cp .env.example .env                       # 填 POSTGRES_PASSWORD 与 HERON_JWT_SECRET（都不带默认值）
+#   docker compose -f deploy/docker-compose.yml --env-file .env build
+#   docker compose -f deploy/docker-compose.yml --env-file .env up -d
+#   pnpm db:seed-owner                         # 建第一个 owner：全局守卫之后，没账号谁也进不来
+#
+# --env-file 是必需的：compose 默认只在「compose 文件所在目录」找 .env，
+# 而仓库的 .env 在根上——同一个部署只该有一份 env。
+#
+# 迁移由 api 进程自己跑（apps/api/src/db/pg.ts）：drizzle 的 migrator 不加咨询锁，
+# 两个进程同时迁移就是竞争建表，所以本案规定 api 是唯一的迁移方。
+#
+# 拓扑：db（Postgres 18）+ api（同时静态托管 apps/web/dist，所以没有第四个服务）+ worker。
+# 业务表与身份表都在 Postgres；heron_data 卷只剩成片与诊断产物（api 读、worker 写）。
+# worker 自己**不迁移**：它等 schema 就位（packages/db 的 waitForSchema），所以 compose 里
+# 用 api 的 healthcheck 当闸，而不是让两个进程各自跑一遍 migrator。
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  # 两个服务同一镜像、同一 tag：build 只做一次，第二次直接命中。
+  image: heron:local
+  restart: unless-stopped
+  volumes:
+    # 与 api 同一个卷：成片要能被 api 直接读出来给前端。
+    # 卷属主继承 Dockerfile 里 /data 的 chown（命名卷首次挂载时拷贝挂载点的属主）。
+    - heron_data:/data
+  environment:
+    HERON_HOME: /data
+    # 口令含 URL 保留字符时得先百分号编码：postgres.js 按 RFC 3986 解析，不替你转义。
+    DATABASE_URL: postgres://${POSTGRES_USER:-heron}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-heron}
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    # 18 是硬要求不是偏好：测试用的 pglite 实测报 PostgreSQL 18.6，
+    # 主版本对齐才叫「测的就是生产行为」。
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-heron}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?口令必须在 .env 里给，镜像和本文件都不带默认口令}
+      POSTGRES_DB: ${POSTGRES_DB:-heron}
+    volumes:
+      # postgres:18 起数据目录变成 /var/lib/postgresql/<主版本>/docker，
+      # 官方要求把卷挂在上一级；挂到旧地址 /var/lib/postgresql/data 会被 entrypoint 拒绝启动。
+      - pg_data:/var/lib/postgresql
+    # 只绑回环：开发机上的 psql 连得上，公网扫不到。真要外部访问是你自己改这一行。
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    <<: *app
+    command: ["pnpm", "--filter", "@heron/api", "start"]
+    ports:
+      - "${API_BIND:-127.0.0.1}:${API_PORT:-3000}:3000"
+    environment:
+      HERON_HOME: /data
+      PORT: "3000"
+      # 容器内必须绑 0.0.0.0：绑 127.0.0.1 时宿主映射进来的连接会被 reset，
+      # 而容器自己的 healthcheck（也走 loopback）照样是绿的——这个错没有任何探针能报。
+      # 对外暴露面由下面的 ports 127.0.0.1 收口，容器内不用再收一层。
+      HOST: "0.0.0.0"
+      DATABASE_URL: postgres://${POSTGRES_USER:-heron}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-heron}
+      # 会话签名密钥同样不带默认值：没填就拒绝起（与 POSTGRES_PASSWORD 一条规矩）。
+      # worker 不需要它——它不认人，只认库。
+      HERON_JWT_SECRET: ${HERON_JWT_SECRET:?会话签名密钥必须在 .env 里给，镜像和本文件都不带默认值}
+      # 默认 0：这台机器很可能就是 http://127.0.0.1 上自己用。挂 TLS 时改成 1。
+      HERON_COOKIE_SECURE: ${HERON_COOKIE_SECURE:-0}
+    healthcheck:
+      # /api/health 是 @Public 的真探针（库 + 前端产物）。用 node 自带的 fetch，
+      # 镜像里不必为一条探针再装 curl。start_period 留给迁移与 web/dist 检查。
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: ["pnpm", "--filter", "@heron/worker", "start"]
+    # 浅合并会覆盖锚点里的 depends_on，所以 db 这一条要在这里再写一遍。
+    # worker 等 api 健康而不是只等 db 起来：表是 api 跑迁移建出来的，连上太早只会报 relation 不存在。
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  heron_data:

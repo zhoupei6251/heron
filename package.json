@@ -1,0 +1,42 @@
+{
+  "name": "heron",
+  "private": true,
+  "version": "0.0.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=12.0.0"
+  },
+  "packageManager": "pnpm@12.14.0",
+  "scripts": {
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test",
+    "web:dev": "pnpm --filter @heron/web dev",
+    "web:build": "pnpm --filter @heron/web build",
+    "api:dev": "pnpm --filter @heron/api dev",
+    "api:dev:pglite": "pnpm --filter @heron/api dev:pglite",
+    "db:seed-owner": "pnpm --filter @heron/api seed-owner",
+    "db:import-sqlite": "tsx packages/db/src/tools/migrate-sqlite.cli.ts",
+    "worker:dev": "pnpm --filter @heron/worker dev",
+    "p0": "pnpm --filter @heron/worker p0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.0.0",
+    "eslint": "10.13.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-vue": "10.11.1",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "5.0.5",
+    "vue-eslint-parser": "10.4.1"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "paths": {
+      "@heron/capability-news": ["../../capabilities/news/src/index.ts"],
+      "@heron/contracts": ["../../packages/contracts/src/index.ts"],
+      "@heron/db": ["../../packages/db/src/index.ts"],
+      "@heron/domain": ["../../packages/domain/src/index.ts"]
+    }
+  },
+  "include": ["src", "vitest.config.ts"]
+}

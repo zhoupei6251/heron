@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+      }
+      #stage {
+        width: 1080px;
+        height: 1920px;
+        position: relative;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <script type="module">
+      const params = new URLSearchParams(location.search);
+      const compId = params.get("comp");
+      if (!compId) throw new Error("host.html 缺少 ?comp=<pack 名>");
+
+      const target = document.getElementById("stage");
+      if (!target) throw new Error("host.html 缺少 #stage");
+
+      const mod = await import(`./vue/${compId}.js`);
+      if (typeof mod.mount !== "function") {
+        throw new Error("组件产物没有导出 mount()，检查 preserveEntrySignatures: " + compId);
+      }
+
+      const vars = JSON.parse(params.get("vars") || "{}");
+      await mod.mount(target, compId, { vars });
+      window.__heron_ready = true;
+    </script>
+  </body>
+</html>

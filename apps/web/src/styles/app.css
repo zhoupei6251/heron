@@ -1,0 +1,20 @@
+/*
+ * 不写 `@import "tailwindcss"`：它会带进 preflight（基底重置），
+ * 盖掉 Element Plus 的组件基底样式。这里只取 theme 与 utilities，
+ * 且不放进 @layer —— EP 的样式是无层的，同层才能保证工具类可覆盖。
+ */
+@import "tailwindcss/theme.css";
+@import "tailwindcss/utilities.css";
+
+@source "../pages/**/*.{ts,vue}";
+@source "../components/**/*.{ts,vue}";
+
+:root {
+  --heron-bg: #f6f7f9;
+}
+
+body {
+  margin: 0;
+  background: var(--heron-bg);
+  font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+}

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "paths": {
+      "@heron/capability-news": ["./src/index.ts"],
+      "@heron/contracts": ["../../packages/contracts/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

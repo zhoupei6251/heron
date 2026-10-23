@@ -1,0 +1,329 @@
+import { randomUUID } from "node:crypto";
+
+import { sql } from "drizzle-orm";
+import { afterEach, describe, expect, it } from "vitest";
+import type { Role } from "@heron/contracts";
+
+import {
+  TABLES_TENANT_ROOT,
+  TABLES_WITH_TENANT,
+  TABLES_WITHOUT_TENANT,
+  aigcPosture,
+  candidates,
+  confirmations,
+  DEFAULT_TENANT_ID,
+  migrate,
+  openDb,
+  settings,
+  taskEvents,
+  tasks,
+  tenants,
+  usageRecords,
+  users,
+  type Db,
+} from "./index";
+
+const AT = "2026-10-22T00:00:00.000Z";
+const TENANT_B = "00000000-0000-4000-8000-000000000002";
+
+describe("schema v3（多租户）", () => {
+  let db: Db | null = null;
+
+  afterEach(async () => {
+    if (db) await db.close();
+    db = null;
+  });
+
+  async function freshDb(): Promise<Db> {
+    const opened = openDb("memory");
+    db = opened;
+    await migrate(opened);
+    await opened.insert(tenants).values([
+      {
+        id: DEFAULT_TENANT_ID,
+        name: "默认租户",
+        slug: "default",
+        suspendedAt: null,
+        createdAt: AT,
+      },
+      { id: TENANT_B, name: "第二租户", slug: "second", suspendedAt: null, createdAt: AT },
+    ]);
+    return opened;
+  }
+
+  /** drizzle 把驱动错误包成 Failed query，真正的 SQLSTATE 文案在 cause 上。 */
+  async function rejection(run: () => Promise<unknown>): Promise<string> {
+    try {
+      await run();
+    } catch (e) {
+      const err = e as { message: string; cause?: { message?: string } };
+      return `${err.message} ${err.cause?.message ?? ""}`;
+    }
+    throw new Error("期望被数据库拒掉，结果写进去了");
+  }
+
+  async function realTables(d: Db): Promise<string[]> {
+    const raw = (await d.execute(
+      sql`SELECT table_name FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
+    )) as unknown as { rows: { table_name: string }[] };
+    // migrator 自己建的那张记账表不属于 heron，比对时排除，不然「覆盖率」这条断言永远红
+    return raw.rows.map((r) => r.table_name).filter((n) => n !== "__drizzle_migrations");
+  }
+
+  it("三张清单正好覆盖库里的表：漏一张就是漏一道租户墙", async () => {
+    const d = await freshDb();
+    const listed = [...TABLES_WITH_TENANT, ...TABLES_WITHOUT_TENANT, ...TABLES_TENANT_ROOT];
+    expect((await realTables(d)).sort()).toEqual([...listed].sort());
+  });
+
+  it("列了租户的表真的带 tenant_id 这一列", async () => {
+    const d = await freshDb();
+    for (const table of TABLES_WITH_TENANT) {
+      const raw = (await d.execute(
+        sql`SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = ${table}`,
+      )) as unknown as { rows: { column_name: string }[] };
+      expect(
+        raw.rows.map((c) => c.column_name),
+        `${table} 缺 tenant_id`,
+      ).toContain("tenant_id");
+    }
+  });
+
+  it("租户 slug 也只留一种规范形：登录第一个查询就按它找人", async () => {
+    const d = await freshDb();
+    // 与 ck_users_email_lower 成对：写入方（createTenant）会先归一，
+    // 这条断言验的是**归一没做也不会写进去**——否则 B 台可以自称 "Acme"，登录就分不出是谁。
+    expect(
+      await rejection(() =>
+        d.insert(tenants).values({
+          id: randomUUID(),
+          name: "大写 slug",
+          slug: "Acme",
+          suspendedAt: null,
+          createdAt: AT,
+        }),
+      ),
+    ).toMatch(/ck_tenants_slug_lower/);
+  });
+
+  it("去重键是租户内的事实：同 norm_key 跨租户可并存，同租户不可", async () => {
+    const d = await freshDb();
+    const row = (tenantId: string) => ({
+      id: randomUUID(),
+      tenantId,
+      title: "同一条热点",
+      summary: "",
+      normKey: "同一条热点",
+      sourceId: null,
+      heat: 10,
+      rankPeak: null,
+      hits: 1,
+      status: "candidate" as const,
+      firstSeenAt: AT,
+      lastSeenAt: AT,
+      createdAt: AT,
+      updatedAt: AT,
+    });
+    await d.insert(candidates).values(row(DEFAULT_TENANT_ID));
+    await d.insert(candidates).values(row(TENANT_B));
+    expect(await rejection(() => d.insert(candidates).values(row(DEFAULT_TENANT_ID)))).toMatch(
+      /u_candidates_tenant_norm/,
+    );
+  });
+
+  it("settings 主键是 (tenant_id, key)：同 key 跨租户各存一份", async () => {
+    const d = await freshDb();
+    await d.insert(settings).values([
+      { tenantId: DEFAULT_TENANT_ID, key: "retention_days", value: "30", updatedAt: AT },
+      { tenantId: TENANT_B, key: "retention_days", value: "7", updatedAt: AT },
+    ]);
+    expect(
+      await rejection(() =>
+        d.insert(settings).values({
+          tenantId: DEFAULT_TENANT_ID,
+          key: "retention_days",
+          value: "99",
+          updatedAt: AT,
+        }),
+      ),
+    ).toMatch(/settings_tenant_id_key_pk/);
+  });
+
+  /** 建一个库里的人，返回 id。set_by / confirmed_by 都是 uuid 外键，自由文本的「谁」回不来了。 */
+  async function seedUser(d: Db, tenantId: string, email: string, role: Role): Promise<string> {
+    const id = randomUUID();
+    await d.insert(users).values({
+      id,
+      tenantId,
+      email,
+      displayName: "测试用户",
+      passwordHash: "!synthetic-not-loginable",
+      role,
+      disabledAt: null,
+      createdAt: AT,
+      updatedAt: AT,
+    });
+    return id;
+  }
+
+  it("每个租户最多一条现行 AIGC 姿态（partial unique 取代 SQLite 的 open_flag 补丁）", async () => {
+    const d = await freshDb();
+    const ownerA = await seedUser(d, DEFAULT_TENANT_ID, "a@example.com", "admin");
+    const ownerB = await seedUser(d, TENANT_B, "b@example.com", "admin");
+    const row = (tenantId: string, setBy: string) => ({
+      id: randomUUID(),
+      tenantId,
+      renderMode: "full",
+      declaration: "required",
+      note: "",
+      setBy,
+      sinceAt: AT,
+      revertedAt: null,
+    });
+    await d.insert(aigcPosture).values(row(DEFAULT_TENANT_ID, ownerA));
+    await d.insert(aigcPosture).values(row(TENANT_B, ownerB));
+    expect(
+      await rejection(() => d.insert(aigcPosture).values(row(DEFAULT_TENANT_ID, ownerA))),
+    ).toMatch(/u_aigc_posture_single_current/);
+
+    // 回退旧的之后可以再立一条现行：reverted_at 一填，那行就退出唯一约束的范围
+    await d
+      .update(aigcPosture)
+      .set({ revertedAt: AT })
+      .where(sql`${aigcPosture.tenantId} = ${DEFAULT_TENANT_ID}`);
+    await d.insert(aigcPosture).values(row(DEFAULT_TENANT_ID, ownerA));
+  });
+
+  it("确认人必须是库里的人：自由文本的 confirmer 回不来了", async () => {
+    const d = await freshDb();
+    const confirmer = await seedUser(d, DEFAULT_TENANT_ID, "zhoupei@example.com", "reviewer");
+    await d.insert(tasks).values({
+      id: randomUUID(),
+      tenantId: DEFAULT_TENANT_ID,
+      capability: "news",
+      candidateId: null,
+      stage: "review",
+      leaseOwner: null,
+      heartbeat: null,
+      attempts: 0,
+      claimedBy: null,
+      claimedAt: null,
+      errorReason: null,
+      createdAt: AT,
+      updatedAt: AT,
+    });
+
+    const base = {
+      id: randomUUID(),
+      tenantId: DEFAULT_TENANT_ID,
+      taskId: (await d.select({ id: tasks.id }).from(tasks))[0]!.id,
+      renderVersion: 1,
+      contactSheetFingerprint: "sha256:abc",
+      confirmedAt: AT,
+    };
+    expect(
+      await rejection(() => d.insert(confirmations).values({ ...base, confirmedBy: randomUUID() })),
+    ).toMatch(/confirmations_confirmed_by_users_id_fk/);
+
+    // 旧库那种自由文本（"p0"）连列都进不去：uuid 列拒掉它，不靠口头约定
+    expect(
+      await rejection(() => d.insert(confirmations).values({ ...base, confirmedBy: "p0" })),
+    ).toMatch(/invalid input syntax for type uuid/);
+
+    // 对上库里那个人才写得进去——确认人这一列现在只能是真实的人
+    await d.insert(confirmations).values({ ...base, confirmedBy: confirmer });
+    expect(await d.select({ id: confirmations.id }).from(confirmations)).toHaveLength(1);
+
+    // 大写邮箱进不了库：规范形只留一种，登录查询不许猜大小写
+    expect(
+      await rejection(() =>
+        d.insert(users).values({
+          id: randomUUID(),
+          tenantId: DEFAULT_TENANT_ID,
+          email: "Boss@Example.com",
+          displayName: "坏形状",
+          passwordHash: "!synthetic",
+          role: "viewer",
+          disabledAt: null,
+          createdAt: AT,
+          updatedAt: AT,
+        }),
+      ),
+    ).toMatch(/ck_users_email_lower/);
+
+    // 退役的角色名同样进不了库：名单只有 contracts 那一份，存储层不认旧写法
+    const staleRole: string = "editor";
+    expect(
+      await rejection(() =>
+        d.insert(users).values({
+          id: randomUUID(),
+          tenantId: DEFAULT_TENANT_ID,
+          email: "stale@example.com",
+          displayName: "旧角色",
+          passwordHash: "!synthetic",
+          role: staleRole as Role,
+          disabledAt: null,
+          createdAt: AT,
+          updatedAt: AT,
+        }),
+      ),
+    ).toMatch(/ck_users_role_known/);
+  });
+
+  it("用量台账的 kind 与 unit 必须配对：配错是记账事故，不靠 code review 拦", async () => {
+    const d = await freshDb();
+    await d.insert(usageRecords).values({
+      tenantId: DEFAULT_TENANT_ID,
+      taskId: null,
+      kind: "render_seconds",
+      quantity: "61.4",
+      unit: "seconds",
+      detail: {},
+      recordedAt: AT,
+    });
+    expect(
+      await rejection(() =>
+        d.insert(usageRecords).values({
+          tenantId: DEFAULT_TENANT_ID,
+          taskId: null,
+          kind: "render_seconds",
+          quantity: "61.4",
+          unit: "count",
+          detail: {},
+          recordedAt: AT,
+        }),
+      ),
+    ).toMatch(/ck_usage_records_kind_unit_pair/);
+  });
+
+  it("task_events 靠父表 FK 继承租户，自己不存 tenant_id；删任务时台账跟着走", async () => {
+    const d = await freshDb();
+    const taskId = randomUUID();
+    await d.insert(tasks).values({
+      id: taskId,
+      tenantId: DEFAULT_TENANT_ID,
+      capability: "news",
+      candidateId: null,
+      stage: "claimed",
+      leaseOwner: null,
+      heartbeat: null,
+      attempts: 0,
+      claimedBy: null,
+      claimedAt: null,
+      errorReason: null,
+      createdAt: AT,
+      updatedAt: AT,
+    });
+    await d.insert(taskEvents).values({
+      taskId,
+      fromStage: "candidate",
+      toStage: "claimed",
+      reason: "认领人 p0-script",
+      createdAt: AT,
+    });
+    await d.delete(tasks).where(sql`${tasks.id} = ${taskId}`);
+    expect(await d.select({ id: taskEvents.id }).from(taskEvents)).toEqual([]);
+  });
+});

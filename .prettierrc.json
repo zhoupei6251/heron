@@ -1,0 +1,14 @@
+{
+  "printWidth": 100,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "arrowParens": "always",
+  "endOfLine": "auto",
+  "overrides": [
+    {
+      "files": ["*.vue"],
+      "options": { "singleAttributePerLine": false }
+    }
+  ]
+}
