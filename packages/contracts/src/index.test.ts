@@ -164,14 +164,20 @@ describe("UsageRecordSchema", () => {
 });
 
 describe("JwtPayloadSchema", () => {
-  const payload = { sub: USER, tid: TENANT, role: "reviewer" };
+  const payload = { sub: USER, tid: TENANT, role: "reviewer", ver: 0 };
 
-  it("三个字段都是必需的：守卫拿它们开租户上下文，缺一个都不许往下走", () => {
+  it("身份与会话版本都是必需的：旧 token 必须重新登录", () => {
     expect(JwtPayloadSchema.parse(payload)).toEqual(payload);
-    for (const key of ["sub", "tid", "role"] as const) {
+    for (const key of ["sub", "tid", "role", "ver"] as const) {
       const missing = { ...payload };
       delete missing[key];
       expect(JwtPayloadSchema.safeParse(missing).success, `少了 ${key} 也过`).toBe(false);
+    }
+  });
+
+  it("版本必须是非负整数，不能缺省或从字符串强转", () => {
+    for (const ver of [-1, 1.5, "0", null, undefined]) {
+      expect(JwtPayloadSchema.safeParse({ ...payload, ver }).success).toBe(false);
     }
   });
 
@@ -189,7 +195,7 @@ describe("JwtPayloadSchema", () => {
 
   it("多带的字段被剥掉而不是报错：老 token 里捎了 email 也解得出身份，但 email 不会流到下游", () => {
     const parsed = JwtPayloadSchema.parse({ ...payload, email: "zhoupei@example.com" });
-    expect(Object.keys(parsed).sort()).toEqual(["role", "sub", "tid"]);
+    expect(Object.keys(parsed).sort()).toEqual(["role", "sub", "tid", "ver"]);
   });
 });
 

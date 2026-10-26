@@ -21,3 +21,6 @@ export * from "./schema/index";
 export * from "./tasks";
 export * from "./tenants";
 export * from "./usage";
+export * from "./management";
+// Narrow platform operations only; withAdmin remains private to its deep module.
+export * from "./platform";

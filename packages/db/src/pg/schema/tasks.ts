@@ -57,6 +57,7 @@ export const feedSources = pgTable(
     name: text("name").notNull(),
     url: text("url").notNull(),
     frequencySec: integer("frequency_sec").notNull().default(900),
+    enabled: boolean("enabled").notNull().default(true),
     lastFetchAt: text("last_fetch_at"),
     createdAt: text("created_at").notNull(),
   },

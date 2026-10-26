@@ -1,6 +1,10 @@
 # heron
 
-一台自己部署的机器上的新闻视频生产线：定时收热榜 → 人认领 → 写稿 / 核查 / 渲染全自动 → 人在网页点确认 → 服务端发布。
+自主部署的多租户新闻视频工作室，以人工确认连接选题、生产、审片与发布。
+
+**当前可用：** 工作空间与独立平台控制台、成员与角色管理、任务与审片界面、用量和审计、Postgres 行级隔离、Docker Compose 部署。
+
+**仍在建设：** 自动采集调度、模型生成、真实渲染与发布平台接入、计费。演示任务不会调用外部发布平台；生产门禁未就绪时，不应把演示流程视为可用于真实发布的生产线。
 
 规格书在 `docs/plans/`：
 
@@ -23,7 +27,7 @@ pnpm p0                     # 不启动任何进程：开内存 pglite，跑一�
 
 前端热更新用 `pnpm web:dev`（5173，`/api` 代理到 3000）。
 
-计划 T6 之后 api 带全局会话守卫，所以本机跑之前要先把库和第一个账号备出来：
+API 默认要求登录。本机连接 Postgres 前，需要先启动数据库并创建初始工作空间所有者：
 
 ```bash
 docker compose -f deploy/docker-compose.yml --env-file .env up -d db
@@ -31,8 +35,38 @@ docker compose -f deploy/docker-compose.yml --env-file .env up -d db
 pnpm db:seed-owner
 ```
 
-**已知的过渡状态**：登录页要等计划 T9，而守卫已经生效——界面打得开，但 `/api/tasks` 一律 401。
-现在唯一的入口是 `curl -c - -X POST localhost:3000/api/auth/login -d '{"tenant":"default","email":"…","password":"…"}'`。
+在 `/login` 使用工作空间标识、邮箱与密码登录。平台运营入口为 `/platform/login`，它使用独立的平台账号，不接受工作空间所有者身份。
+
+要创建初始平台管理员，显式配置 `HERON_PLATFORM_EMAIL`、`HERON_PLATFORM_PASSWORD`（12–128 位）和可选的 `HERON_PLATFORM_NAME`，再运行 `pnpm db:seed-platform`。引导命令不会重置已有账号的密码，完成后应移除引导密码配置。
+
+### 不连接业务数据库的界面开发
+
+在本地环境提供一次性的 `HERON_DEMO_PASSWORD`（12–128 位，无内置默认值），然后使用两个终端：
+
+```bash
+# 终端 1：完整 API 路由，数据库使用内存 PGlite
+PORT=3101 pnpm api:dev:pglite
+# 终端 2：Vite，仅代理到上述开发 API
+HERON_DEV_API_URL=http://127.0.0.1:3101 pnpm web:dev
+```
+
+演示工作空间标识为 `default`，账号为 `owner@example.com`、`reviewer@example.com`、`viewer@example.com`；独立平台账号为 `platform@example.com`。密码均使用你显式提供的演示密码。重启 API 后数据清空；此方式不启动 worker，也不进行真实发布。环境加载逻辑仍与普通开发相同，演示环境不要使用生产密钥。
+
+### 前端与控制台
+
+只有 **一个 Vue 前端应用**，共用组件、主题和构建产物，通过独立会话区分两个后台：
+
+| 入口     | 功能                                                                                         |
+| -------- | -------------------------------------------------------------------------------------------- |
+| 工作空间 | 概览、候选、生产、审片、发布记录、成片库、成员、权限、数据源配置、设置、用量、审计、个人安全 |
+| 平台运营 | 概览、租户开通/停用/恢复、全局用量、平台审计、服务健康                                       |
+
+视频版式在 `apps/web/src/entries/` 单独构建，不是第三套管理后台。
+
+- 顶栏支持明亮、深色、跟随系统三种配色；偏好保存在当前浏览器，不存储任何登录凭证。
+- `Ctrl+K` / `⌘K` 打开快捷导航，按页面名称、分组或路径搜索；方向键选择，Enter 进入，Esc 关闭。快捷导航不会跨越当前控制台的身份范围。
+- 表格、抽屉和审片工作台适配窄屏；动画尊重系统的减少动态效果设置。
+- 用量统计不是账单，健康检查不是外部发布服务的可用性证明；数据源配置保存不代表自动采集已经执行。
 
 ## 命令
 
@@ -45,6 +79,7 @@ pnpm db:seed-owner
 | `pnpm test`                    | vitest：domain 判定 + db 约束 + api 会话 + worker 流水线（review 停/人确认/发布幂等） |
 | `pnpm web:build`               | 两次 vite 构建：应用与版式包分开出                                                    |
 | `pnpm db:seed-owner`           | 建第一个租户与 owner（幂等；已存在的账号不改口令）                                    |
+| `pnpm db:seed-platform`        | 创建独立平台管理员（显式密码；不修改已有账号）                                        |
 | `pnpm p0`                      | P0 出口判据：空 capability 也能跑完一条假任务                                         |
 | `pnpm api:dev:pglite`          | 浏览器验证用开发台：真 API 路由 + 内存 pglite（需 `HERON_DEMO_PASSWORD`；重启即清空） |
 
@@ -80,10 +115,9 @@ worker 里那三道是显式占位放行，台账会写明「占位放行：尺�
 
 ## 数据
 
-只有一条数据面：**Postgres + Drizzle + RLS**（`@heron/db/pg`）。租户隔离由 `withTenant` 的
-`SET LOCAL ROLE heron_app` + `set_config('app.tenant_id', …)` 单点保证；特权通道（`withAdmin` /
-`heron_owner` / `BYPASSRLS`）只有跨租户调度的 `apps/worker/src/scheduler.ts` 能按深路径 import，
-eslint 的 `no-restricted-imports` 挡住别处「偷偷拿特权连接」。包根（`@heron/db`）只剩路径、时间、
+只有一条数据面：**Postgres + Drizzle + RLS**（`@heron/db/pg`）。租户业务通过 `withTenant` 的
+`SET LOCAL ROLE heron_app` + `set_config('app.tenant_id', …)` 隔离；平台管理、身份引导和跨租户调度使用
+受控的特权仓储入口，不向客户端开放任意 SQL 或任意租户绕过能力。包根（`@heron/db`）只保留路径、时间、
 指纹与设置键，不 import 驱动也不开库。
 
 成片与诊断产物在 `${HERON_HOME:-data}/videos/<task-id>/`（DB 只存路径与指纹）；
@@ -129,8 +163,9 @@ pnpm db:seed-owner                                                    # 在宿�
 ## 安全边界（硬约束）
 
 - `reference/` 是 oracle：heron 代码不 import 它，构建不读它，CI 不跑它。
-- 会话只在 httpOnly cookie 里，响应体与 token 都不带口令哈希；载荷只有 `sub`/`tid`/`role`，
-  而守卫每次请求都回库复查「人还在、没停用、租户没停租」——已签发的票在 12 小时 TTL 内可以被库里一列作废。
+- 会话只在 HttpOnly cookie 里，响应体与 token 都不带口令哈希。租户与平台使用独立 cookie 和 JWT audience；
+  守卫每次请求都复查启用状态与 `sessionVersion`。修改密码、角色、停用或退出会使旧会话失效，不依赖等待 JWT 到期。
+- 同源写请求校验 `Origin` 与服务端看到的协议/Host；反向代理必须保留 Host，公网部署必须配置 HTTPS 与安全 cookie。
 - 抖音登录态在 `~/.heron/state/douyin/`，仓库与 DB 都不存 cookie 本体；DB 只存路径 + sha256 指纹，
   指纹不匹配就红，**绝不静默用一份来源不明的旧登录态去发东西**。
 - 模型密钥只走环境变量，调用集中在一个 client 模块里。

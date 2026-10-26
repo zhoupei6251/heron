@@ -9,12 +9,24 @@ export const useTasksStore = defineStore("tasks", () => {
   const tasks = ref<Task[]>([]);
   const error = ref<string | null>(null);
   const connected = ref(false);
+  let generation = 0;
+
+  function clear(): void {
+    generation += 1;
+    tasks.value = [];
+    error.value = null;
+    connected.value = false;
+  }
 
   async function refresh(): Promise<void> {
+    const current = generation;
     try {
-      tasks.value = (await tasksApi.list()).tasks;
+      const result = await tasksApi.list();
+      if (current !== generation) return;
+      tasks.value = result.tasks;
       error.value = null;
     } catch (cause) {
+      if (current !== generation) return;
       error.value = `读取任务列表失败：${String(cause)}`;
     }
   }
@@ -39,5 +51,5 @@ export const useTasksStore = defineStore("tasks", () => {
     connected.value = value;
   }
 
-  return { tasks, error, connected, refresh, applyEvent, setConnected };
+  return { tasks, error, connected, refresh, applyEvent, setConnected, clear };
 });

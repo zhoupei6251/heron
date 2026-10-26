@@ -1,5 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import cookieParser from "cookie-parser";
+import type { Request, Response, NextFunction } from "express";
+import { cookieSecure } from "./config/runtime";
 
 /**
  * 进程外的这一层（URL 前缀 + cookie 解析 + 安全响应头）单独成函数，是为了让它**可测**：
@@ -31,6 +33,31 @@ export function applyTransport(app: INestApplication): void {
     contentSecurityPolicy: { reportOnly: true },
     xFrameOptions: { action: "deny" },
     referrerPolicy: { policy: "same-origin" },
+  });
+  // Host must be preserved by the same-origin reverse proxy. Never trust arbitrary
+  // X-Forwarded-Host, and do not enable blanket CORS. CLI without Origin remains supported.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && req.headers.origin !== undefined) {
+      const origin = req.headers.origin;
+      const parsed = URL.canParse(origin) ? new URL(origin) : null;
+      // Secure cookies declare the public HTTPS deployment, even behind TLS termination.
+      // Otherwise use Express's protocol (trust proxy is not enabled), never forwarded headers.
+      const expected = `${cookieSecure() ? "https" : req.protocol}://${req.headers.host ?? ""}`;
+      const expectedOrigin = URL.canParse(expected) ? new URL(expected).origin : null;
+      if (
+        !parsed ||
+        !["https:", "http:"].includes(parsed.protocol) ||
+        parsed.origin !== origin ||
+        parsed.origin !== expectedOrigin
+      ) {
+        res
+          .status(403)
+          .json({ statusCode: 403, message: "请求来源与当前站点不一致", error: "Forbidden" });
+        return;
+      }
+    }
+    next();
   });
   // 必须在守卫之前：JwtStrategy 的抽取器读的是 req.cookies，而那是这个中间件填的
   app.use(cookieParser());

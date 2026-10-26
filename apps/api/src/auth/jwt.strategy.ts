@@ -4,7 +4,7 @@ import { Strategy } from "passport-jwt";
 
 import type { AuthUser, JwtPayload } from "@heron/contracts";
 
-import { SESSION_COOKIE, jwtSecret } from "../config/runtime";
+import { SESSION_COOKIE, TENANT_AUDIENCE, jwtSecret } from "../config/runtime";
 import { AuthService } from "./auth.service";
 
 /**
@@ -27,6 +27,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(@Inject(AuthService) private readonly auth: AuthService) {
     super({
       jwtFromRequest: extractSessionCookie,
+      audience: TENANT_AUDIENCE,
       // 没有默认密钥：构造发生在启动期，没配 HERON_JWT_SECRET 就死在这里（见 runtime.ts）
       secretOrKey: jwtSecret(),
       // 不写 maxAge。计划里那一版抄了它，但实测 passport-jwt 4.0.1 的 lib/ 里没有这个选项
@@ -40,7 +41,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * 返回 null 就是 401——Passport 把「没有用户」当失败，不需要这里抛异常。
    * 判据全在 AuthService.userFor：这里只是把策略接到那次回库复查上。
    */
-  async validate(payload: JwtPayload): Promise<AuthUser | null> {
+  async validate(payload: JwtPayload & { aud?: unknown }): Promise<AuthUser | null> {
+    if (payload.aud !== TENANT_AUDIENCE) return null;
     return this.auth.userFor(payload);
   }
 }

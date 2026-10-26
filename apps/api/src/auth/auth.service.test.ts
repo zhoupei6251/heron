@@ -10,12 +10,31 @@ import {
   openDb,
   setTenantSuspended,
   withTenant,
+  findTenantBySlug,
+  createPlatformOperator,
+  changeTenantStatus,
+  getUserById,
+  changePassword,
+  updateMember,
 } from "@heron/db/pg";
 import { hashPassword } from "@heron/domain";
 import { JwtService } from "@nestjs/jwt";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthService } from "./auth.service";
+
+// Keep real database operations; intercept only the two transaction boundaries under test.
+vi.mock("@heron/db/pg", async (importOriginal) => {
+  const actual = await importOriginal<{
+    findTenantBySlug: typeof findTenantBySlug;
+    withTenant: typeof withTenant;
+  }>();
+  return {
+    ...actual,
+    findTenantBySlug: vi.fn(actual.findTenantBySlug),
+    withTenant: vi.fn(actual.withTenant),
+  };
+});
 
 /**
  * 只测判据，不发 HTTP：登录的对错、载荷的形状、租户边界，全在 service 一层。
@@ -53,6 +72,7 @@ describe("AuthService.login", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await db.close();
   });
 
@@ -100,6 +120,92 @@ describe("AuthService.login", () => {
     expect(await service.login(SLUG_A, EMAIL, PASSWORD)).toBeNull();
   });
 
+  it("rejects a stale active tenant preread and cannot revive its login after resume", async () => {
+    await seedUser(DEFAULT_TENANT_ID);
+    const operator = await createPlatformOperator(db, {
+      email: "platform@example.com",
+      displayName: "Platform",
+      passwordHash: "unusable:test",
+    });
+    const before = await service.login(SLUG_A, EMAIL, PASSWORD);
+    const find = vi.mocked(findTenantBySlug).getMockImplementation()!;
+    vi.mocked(findTenantBySlug).mockImplementationOnce(async (...args) => {
+      const stale = await find(...args);
+      await changeTenantStatus(db, operator.id, DEFAULT_TENANT_ID, true);
+      return stale;
+    });
+    const during = await service.login(SLUG_A, EMAIL, PASSWORD);
+    await changeTenantStatus(db, operator.id, DEFAULT_TENANT_ID, false);
+    const jwt = new JwtService({ secret: TEST_SECRET });
+    expect(await service.userFor(jwt.decode((during ?? before)!.token))).toBeNull();
+    expect(during).toBeNull();
+    expect(await service.login(SLUG_A, EMAIL, PASSWORD)).not.toBeNull();
+  });
+
+  it.each(["password", "disable", "role"] as const)(
+    "serializes login signing with concurrent %s invalidation",
+    async (mutation) => {
+      const userId = await seedUser(DEFAULT_TENANT_ID);
+      const ownerId = await withTenant(db, DEFAULT_TENANT_ID, (t) =>
+        createUser(t, {
+          email: "owner@example.com",
+          displayName: "Owner",
+          role: "owner",
+          passwordHash: "unusable:test",
+        }),
+      );
+      const jwt = new JwtService({ secret: TEST_SECRET });
+      service = new AuthService(db, jwt);
+      let signalEntered!: () => void;
+      let releaseSigning!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        signalEntered = resolve;
+      });
+      const release = new Promise<void>((resolve) => {
+        releaseSigning = resolve;
+      });
+      const order: string[] = [];
+      const transact = vi.mocked(withTenant).getMockImplementation()!;
+      vi.mocked(withTenant).mockImplementationOnce(async (...args) => {
+        const result = await transact(...args);
+        order.push("login-committed");
+        return result;
+      });
+      const sign = jwt.signAsync.bind(jwt);
+      vi.spyOn(jwt, "signAsync").mockImplementationOnce(async (payload, options) => {
+        signalEntered();
+        await release;
+        order.push("signed");
+        return sign(payload, options);
+      });
+      const login = service.login(SLUG_A, EMAIL, PASSWORD);
+      await entered;
+      const invalidate = withTenant(db, DEFAULT_TENANT_ID, async (t) => {
+        if (mutation === "password") {
+          const user = await getUserById(t, userId);
+          await changePassword(t, userId, user!.passwordHash, hashPassword("replacement-password"));
+        } else {
+          await updateMember(
+            t,
+            ownerId,
+            userId,
+            mutation === "disable" ? { disabled: true } : { role: "viewer" },
+          );
+        }
+        order.push("invalidated");
+      });
+      releaseSigning();
+      const signed = await login;
+      await invalidate;
+      if (mutation === "disable")
+        await withTenant(db, DEFAULT_TENANT_ID, (t) =>
+          updateMember(t, ownerId, userId, { disabled: false }),
+        );
+      expect(order).toEqual(["signed", "login-committed", "invalidated"]);
+      expect(await service.userFor(jwt.decode(signed!.token))).toBeNull();
+    },
+  );
+
   it("未知的工作空间没有账号可言", async () => {
     await seedUser(DEFAULT_TENANT_ID);
     expect(await service.login("gamma", EMAIL, PASSWORD)).toBeNull();
@@ -111,15 +217,21 @@ describe("AuthService.login", () => {
     expect(await service.login(" acme ", EMAIL, PASSWORD)).toBeTruthy();
   });
 
-  it("载荷只有 sub / tid / role：改名与换邮箱都不该让已签发的 token 失效", async () => {
+  it("载荷带必需版本与租户 audience，但不带邮箱或凭据", async () => {
     const userId = await seedUser(DEFAULT_TENANT_ID);
     const signed = await service.login(SLUG_A, EMAIL, PASSWORD);
     expect(signed).not.toBeNull();
     const payload = new JwtService({ secret: TEST_SECRET }).decode<Record<string, unknown>>(
       signed?.token as string,
     );
-    expect(Object.keys(payload).sort()).toEqual(["exp", "iat", "role", "sub", "tid"]);
-    expect(payload).toMatchObject({ sub: userId, tid: DEFAULT_TENANT_ID, role: "reviewer" });
+    expect(Object.keys(payload).sort()).toEqual(["aud", "exp", "iat", "role", "sub", "tid", "ver"]);
+    expect(payload).toMatchObject({
+      sub: userId,
+      tid: DEFAULT_TENANT_ID,
+      role: "reviewer",
+      ver: 0,
+      aud: "heron-tenant",
+    });
     // 邮箱与口令哈希不进 token：它们是会在库里改的字段，改一次就得重签一遍是白付的债
     expect(JSON.stringify(payload)).not.toContain("example.com");
     expect(JSON.stringify(payload)).not.toContain("scrypt");
@@ -138,7 +250,7 @@ describe("AuthService.login", () => {
   describe("userFor（守卫每次请求的库内复查）", () => {
     it("token 说你有身份，库说你还有没有", async () => {
       const userId = await seedUser(DEFAULT_TENANT_ID);
-      const payload = { sub: userId, tid: DEFAULT_TENANT_ID, role: "reviewer" as const };
+      const payload = { sub: userId, tid: DEFAULT_TENANT_ID, role: "reviewer" as const, ver: 0 };
       expect(await service.userFor(payload)).toEqual({
         id: userId,
         tenantId: DEFAULT_TENANT_ID,
@@ -155,18 +267,25 @@ describe("AuthService.login", () => {
 
     it("别的租户的 user id 配不上这个 tid：载荷里的租户不是可信来源", async () => {
       const userId = await seedUser(DEFAULT_TENANT_ID);
-      expect(await service.userFor({ sub: userId, tid: TENANT_B, role: "reviewer" })).toBeNull();
+      expect(
+        await service.userFor({ sub: userId, tid: TENANT_B, role: "reviewer", ver: 0 }),
+      ).toBeNull();
     });
 
     it("库里已经没有这个人也返回 null（token 不会随着删号而失效，靠这次复查兜住）", async () => {
       expect(
-        await service.userFor({ sub: randomUUID(), tid: DEFAULT_TENANT_ID, role: "viewer" }),
+        await service.userFor({
+          sub: randomUUID(),
+          tid: DEFAULT_TENANT_ID,
+          role: "viewer",
+          ver: 0,
+        }),
       ).toBeNull();
     });
 
     it("登进来之后才停租：已签发的会话立刻失效，不然「关在门外」只管进门", async () => {
       const userId = await seedUser(DEFAULT_TENANT_ID);
-      const payload = { sub: userId, tid: DEFAULT_TENANT_ID, role: "reviewer" as const };
+      const payload = { sub: userId, tid: DEFAULT_TENANT_ID, role: "reviewer" as const, ver: 0 };
       expect(await service.userFor(payload)).not.toBeNull();
 
       await setTenantSuspended(db, DEFAULT_TENANT_ID, AT);

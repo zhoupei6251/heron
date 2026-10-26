@@ -26,6 +26,7 @@ export class TasksController {
   }
 
   @Post()
+  @RequireAction("task.claim")
   create(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(CreateFakeTaskInputSchema)) input: CreateFakeTaskInput,

@@ -92,15 +92,20 @@ export async function setTenantSuspended(
  * 停租要立刻生效，只能靠守卫每次请求回库问这一句——「停租的租户整个关在门外」
  * 若只管登录，等于把已经登进来的人留在门里。
  */
-export async function getActiveTenant(tdb: TenantDb): Promise<{
+export async function getActiveTenant(
+  tdb: TenantDb,
+  options: { forUpdate?: boolean } = {},
+): Promise<{
   id: string;
   name: string;
   slug: string;
 } | null> {
-  const rows = await tdb.db
+  const query = tdb.db
     .select({ id: tenants.id, name: tenants.name, slug: tenants.slug })
     .from(tenants)
     .where(and(eq(tenants.id, tdb.tenantId), isNull(tenants.suspendedAt)))
     .limit(1);
+  // Login uses the same workspace lock as identity changes and suspension, before reading users.
+  const rows = await (options.forUpdate ? query.for("update") : query);
   return rows[0] ?? null;
 }

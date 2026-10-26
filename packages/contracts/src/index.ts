@@ -124,7 +124,8 @@ export const AuthUserSchema = z.object({
 export type AuthUser = z.infer<typeof AuthUserSchema>;
 
 /**
- * 已签发会话的载荷。三个字段都是「不会轻易变」的：改名、换邮箱都不必重签 token，
+ * 已签发会话的载荷。身份字段稳定；ver 用于撤销会话，缺少版本的旧 token 必须重新登录。
+ * 改名、换邮箱都不必重签 token，
  * 所以 email 与 password_hash 一步都不许进来（进了就等于每次改名都要撤销重发）。
  *
  * sub / tid 在这里就判 uuid：守卫拿 tid 开租户上下文，非 uuid 连 set_config 之后的
@@ -134,6 +135,7 @@ export const JwtPayloadSchema = z.object({
   sub: z.string().uuid(),
   tid: z.string().uuid(),
   role: z.enum(ROLES),
+  ver: z.number().int().nonnegative(),
 });
 
 export type JwtPayload = z.infer<typeof JwtPayloadSchema>;
@@ -274,3 +276,215 @@ export const CapabilityManifestSchema = z.object({
 });
 
 export type CapabilityManifest = z.infer<typeof CapabilityManifestSchema>;
+
+// Console DTOs extend the existing tenant and task contracts.
+export const PageQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  q: z.string().trim().max(200).default(""),
+});
+export type PageQuery = z.infer<typeof PageQuerySchema>;
+export interface Page<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+const ConsoleEmailSchema = z.string().trim().toLowerCase().max(254).pipe(z.email());
+const DisplayNameSchema = z.string().trim().min(1).max(80);
+const WorkspaceNameSchema = z.string().trim().min(1).max(100);
+const NewPasswordSchema = z.string().min(MIN_PASSWORD_LENGTH).max(128);
+
+export const MemberSchema = z.object({
+  id: z.uuid(),
+  email: z.email(),
+  displayName: z.string(),
+  role: z.enum(ROLES),
+  disabledAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type Member = z.infer<typeof MemberSchema>;
+export const CreateMemberBodySchema = z.object({
+  email: ConsoleEmailSchema,
+  displayName: DisplayNameSchema,
+  password: NewPasswordSchema,
+  role: z.enum(ROLES),
+});
+export type CreateMemberBody = z.infer<typeof CreateMemberBodySchema>;
+export const UpdateMemberBodySchema = z
+  .object({
+    displayName: DisplayNameSchema.optional(),
+    role: z.enum(ROLES).optional(),
+    disabled: z.boolean().optional(),
+  })
+  .refine((v) => Object.values(v).some((value) => value !== undefined), {
+    message: "At least one member field is required",
+  });
+export type UpdateMemberBody = z.infer<typeof UpdateMemberBodySchema>;
+export const ProfileBodySchema = z.object({ displayName: DisplayNameSchema });
+export type ProfileBody = z.infer<typeof ProfileBodySchema>;
+export const PasswordBodySchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: NewPasswordSchema,
+});
+export type PasswordBody = z.infer<typeof PasswordBodySchema>;
+export const WorkspaceBodySchema = z.object({ name: WorkspaceNameSchema });
+export type WorkspaceBody = z.infer<typeof WorkspaceBodySchema>;
+
+export const FeedSourceBodySchema = z.object({
+  name: WorkspaceNameSchema,
+  url: z
+    .string()
+    .trim()
+    .max(2048)
+    .url()
+    .refine(
+      (value) => {
+        if (!URL.canParse(value)) return false;
+        const url = new URL(value);
+        return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+      },
+      { message: "Feed URL must use HTTP(S) without credentials" },
+    ),
+  frequencySec: z.number().int().min(60).max(86400),
+  enabled: z.boolean().default(true),
+});
+export type FeedSourceBody = z.infer<typeof FeedSourceBodySchema>;
+export const FeedSourceSchema = FeedSourceBodySchema.extend({
+  id: z.uuid(),
+  lastFetchAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type FeedSource = z.infer<typeof FeedSourceSchema>;
+
+export const PlatformLoginBodySchema = z.object({
+  email: ConsoleEmailSchema,
+  password: z.string().min(1).max(128),
+});
+export type PlatformLoginBody = z.infer<typeof PlatformLoginBodySchema>;
+export const PlatformUserSchema = z.object({
+  id: z.uuid(),
+  email: z.email(),
+  displayName: z.string(),
+});
+export type PlatformUser = z.infer<typeof PlatformUserSchema>;
+export const CreateTenantBodySchema = z.object({
+  name: WorkspaceNameSchema,
+  slug: z
+    .string()
+    .min(3)
+    .max(63)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  ownerEmail: ConsoleEmailSchema,
+  ownerDisplayName: DisplayNameSchema,
+  ownerPassword: NewPasswordSchema,
+});
+export type CreateTenantBody = z.infer<typeof CreateTenantBodySchema>;
+export const TenantStatusBodySchema = z.object({ suspended: z.boolean() });
+export type TenantStatusBody = z.infer<typeof TenantStatusBodySchema>;
+export const PlatformTenantSchema = TenantSchema.extend({
+  userCount: z.number().int().nonnegative(),
+  taskCount: z.number().int().nonnegative(),
+});
+export type PlatformTenant = z.infer<typeof PlatformTenantSchema>;
+
+export const CandidateSchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  summary: z.string(),
+  sourceId: z.uuid().nullable(),
+  sourceName: z.string().nullable(),
+  heat: z.number(),
+  rankPeak: z.number().nullable(),
+  hits: z.number().int(),
+  status: z.enum(CANDIDATE_STATUSES),
+  firstSeenAt: z.string(),
+  lastSeenAt: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type Candidate = z.infer<typeof CandidateSchema>;
+export const TaskSummarySchema = TaskSchema.omit({ leaseOwner: true, heartbeat: true }).extend({
+  title: z.string().nullable(),
+});
+export type TaskSummary = z.infer<typeof TaskSummarySchema>;
+
+export const WorkspaceOverviewSchema = z.object({
+  candidates: z.number().int().nonnegative(),
+  tasks: z.number().int().nonnegative(),
+  review: z.number().int().nonnegative(),
+  published: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  members: z.number().int().nonnegative(),
+  recentTasks: z.array(TaskSummarySchema),
+});
+export type WorkspaceOverview = z.infer<typeof WorkspaceOverviewSchema>;
+
+/** Public metadata only. A browser supplies taskId + kind, never a server path. */
+export const ARTIFACT_KINDS = ["mp4", "contact-sheet", "aigc-sidecar"] as const;
+export const ArtifactKindSchema = z.enum(ARTIFACT_KINDS);
+export type ArtifactKind = z.infer<typeof ArtifactKindSchema>;
+export const AssetSchema = z.object({
+  id: z.uuid(),
+  taskId: z.uuid(),
+  title: z.string().nullable(),
+  version: z.number().int().positive(),
+  pack: z.string(),
+  fingerprint: z.string(),
+  mp4Sha256: z.string().nullable(),
+  mp4Bytes: z.number().nullable(),
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+  fps: z.number().nullable(),
+  durationMs: z.number().nullable(),
+  hasMp4: z.boolean(),
+  hasContactSheet: z.boolean(),
+  hasAigcSidecar: z.boolean(),
+  createdAt: z.string(),
+});
+export type Asset = z.infer<typeof AssetSchema>;
+export const PublishSummarySchema = z.object({
+  id: z.uuid(),
+  taskId: z.uuid(),
+  renderId: z.uuid(),
+  title: z.string().nullable(),
+  renderVersion: z.number().int().positive(),
+  platform: z.string(),
+  status: z.enum(PUBLISH_STATUSES),
+  declaration: z.string(),
+  postUrl: z.string().nullable(),
+  verifiedAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type PublishSummary = z.infer<typeof PublishSummarySchema>;
+export const UsageSummarySchema = z.object({
+  kind: z.string(),
+  unit: z.string(),
+  quantity: z.string().regex(/^\d+(\.\d+)?$/),
+});
+export type UsageSummary = z.infer<typeof UsageSummarySchema>;
+export const PlatformUsageSummarySchema = UsageSummarySchema.extend({
+  tenantId: z.uuid(),
+  tenantName: z.string(),
+});
+export type PlatformUsageSummary = z.infer<typeof PlatformUsageSummarySchema>;
+export const AuditLogSchema = z.object({
+  id: z.uuid(),
+  actorId: z.uuid().nullable(),
+  actorName: z.string().nullable(),
+  action: z.string(),
+  targetId: z.string().nullable(),
+  detail: z.record(z.string(), z.unknown()),
+  createdAt: z.string(),
+});
+export type AuditLog = z.infer<typeof AuditLogSchema>;
+export const PlatformAuditLogSchema = AuditLogSchema.omit({
+  actorId: true,
+  actorName: true,
+}).extend({
+  operatorId: z.uuid().nullable(),
+  operatorName: z.string().nullable(),
+});
+export type PlatformAuditLog = z.infer<typeof PlatformAuditLogSchema>;

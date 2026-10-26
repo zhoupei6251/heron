@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { check, integer, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { ROLES, type Role } from "@heron/contracts";
 
 import { inEnum } from "./enums";
@@ -20,6 +20,7 @@ export const users = pgTable(
     displayName: text("display_name").notNull(),
     // 合成 actor（p0、未来的定时抓取）带 "!" 前缀，永远不可登录——见计划 T5 与 domain/password.ts
     passwordHash: text("password_hash").notNull(),
+    sessionVersion: integer("session_version").notNull().default(0),
     role: text("role").$type<Role>().notNull().default("viewer"),
     disabledAt: text("disabled_at"),
     createdAt: text("created_at").notNull(),

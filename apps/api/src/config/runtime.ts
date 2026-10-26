@@ -24,11 +24,14 @@ export function apiHost(): string {
  * 两边各写一遍字符串，将来一处改了另一处没改，症状是「所有人都登不进来」而代码看起来全对。
  */
 export const SESSION_COOKIE = "heron_session";
+export const TENANT_AUDIENCE = "heron-tenant";
+export const PLATFORM_COOKIE = "heron_platform_session";
+export const PLATFORM_AUDIENCE = "heron-platform";
+export function platformCookieOptions(): CookieOptions {
+  return { ...sessionCookieOptions(), path: "/api/platform" };
+}
 
-/**
- * 会话寿命。JWT 发出去就撤销不掉，所以 TTL 是「停号/停租多久真正生效」的唯一控制杆：
- * 守卫每次请求都回库复查（见 AuthService.userFor），这条 TTL 只是复查漏网时的上限。
- */
+// TTL limits token lifetime; per-request sessionVersion checks revoke sessions immediately.
 export const SESSION_TTL = "12h";
 
 const MIN_SECRET_LENGTH = 32;
@@ -73,13 +76,7 @@ export function cookieSecure(): boolean {
   throw new Error(`HERON_COOKIE_SECURE 只认 0 或 1，现在是 "${raw}"：猜错方向的代价是会话走明文。`);
 }
 
-/**
- * 会话 cookie 的属性。三个键各有理由，少一个都不是「收紧一点」而是换了个安全模型：
- * - HttpOnly：脚本读不到会话，XSS 就拿不走通行证（响应体里也不会再出现一次 token）。
- * - SameSite=Lax：跨站的 POST 带不上这个 cookie，等于免掉了 CSRF token；GET 导航仍然带。
- *   选 Strict 会砍掉从通知邮件点进来的正常导航，那是产品问题不是安全问题。
- * - 不给 maxAge / Expires：关掉浏览器就登出，长期有效交给 JWT 自己的 exp。
- */
+// SameSite supplements Origin validation; HttpOnly does not prevent XSS from issuing requests.
 export function sessionCookieOptions(): CookieOptions {
   return {
     httpOnly: true,

@@ -1,13 +1,14 @@
 import "reflect-metadata";
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { Test } from "@nestjs/testing";
 
 import {
   createCandidate,
-  createTask,
+  createPlatformOperator,
   createTenant,
+  tasks,
   createUser,
   migrate,
   openDb,
@@ -31,8 +32,8 @@ import { applyTransport } from "../transport";
  */
 async function main(): Promise<void> {
   const password = process.env.HERON_DEMO_PASSWORD ?? "";
-  if (password.length < 12) {
-    throw new Error("HERON_DEMO_PASSWORD 必须给且至少 12 位：演示账号的口令不写默认值。");
+  if (password.length < 12 || password.length > 128) {
+    throw new Error("HERON_DEMO_PASSWORD 必须给且为 12–128 位：演示账号的口令不写默认值。");
   }
   process.env.HERON_JWT_SECRET ??= randomBytes(32).toString("hex");
 
@@ -51,10 +52,37 @@ async function main(): Promise<void> {
     );
   }
 
-  for (const title of ["台风“巴威”路径更新", "城市夜跑路线调整"]) {
+  await createPlatformOperator(db, {
+    email: "platform@example.com",
+    displayName: "演示平台管理员",
+    passwordHash: hashPassword(password),
+  });
+
+  // Deliberately missing render files: the review UI must show its unavailable state.
+  // These are labelled fixtures, not evidence of successful production or publishing.
+  for (const [stage, title] of [
+    ["candidate", "【演示数据】候选新闻样本"],
+    ["review", "【演示数据】待审核样本（尚无渲染产物）"],
+    ["failed", "【演示数据】失败诊断样本"],
+  ] as const) {
     await withTenant(db, tenantId, async (t) => {
-      const candidateId = await createCandidate(t, { title, summary: "", heat: 0 });
-      await createTask(t, { capability: "p0-fake", candidateId });
+      const candidateId = await createCandidate(t, {
+        title,
+        summary: "仅供界面验收，不是真实新闻或发布记录",
+        heat: 0,
+      });
+      const at = new Date().toISOString();
+      await t.db.insert(tasks).values({
+        id: randomUUID(),
+        tenantId,
+        capability: "p0-fake",
+        candidateId,
+        stage,
+        errorReason:
+          stage === "failed" ? "演示诊断：未运行渲染器，未生成成片；没有调用外部发布平台" : null,
+        createdAt: at,
+        updatedAt: at,
+      });
     });
   }
 
@@ -69,7 +97,10 @@ async function main(): Promise<void> {
   console.log(`heron 开发台（内存 pglite）：http://127.0.0.1:${String(API_PORT)}`);
   console.log(`工作空间：default（演示工作空间）`);
   for (const [email, role] of accounts) console.log(`  ${role.padEnd(8)} ${email}`);
-  console.log("数据只在内存里：重启即清空；演示口令来自 HERON_DEMO_PASSWORD。");
+  console.log("独立平台控制台：platform@example.com（仅此内存演示使用相同的显式演示口令）");
+  console.log(
+    "数据只在内存里：重启即清空；演示口令来自 HERON_DEMO_PASSWORD；不启动 worker 或外部发布。",
+  );
 
   const stop = (): void => {
     void app.close().then(() => process.exit(0));

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 
 import { desc, sql } from "drizzle-orm";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DEFAULT_TENANT_ID, migrate, openDb, tenants, type Db } from "./index";
@@ -63,6 +65,50 @@ describe("pg 驱动与迁移", () => {
 
     const rows = await db.select({ id: tenants.id }).from(tenants);
     expect(rows).toHaveLength(1);
+  });
+
+  it("0000 已有数据只追加 0001：默认列回填，旧数据与迁移记账保持", async () => {
+    db = openDb("memory");
+    const migrations = readMigrationFiles({ migrationsFolder: join(__dirname, "../../drizzle") });
+    const baseline = migrations[0]!;
+    // Reproduce the already-migrated live baseline without editing 0000 or a live DB.
+    for (const statement of baseline.sql) await db.execute(sql.raw(statement));
+    await db.execute(sql`CREATE SCHEMA drizzle`);
+    await db.execute(
+      sql`CREATE TABLE drizzle.__drizzle_migrations (id serial PRIMARY KEY, hash text NOT NULL, created_at bigint)`,
+    );
+    await db.execute(
+      sql`INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES (${baseline.hash}, ${baseline.folderMillis})`,
+    );
+    const tenantId = randomUUID();
+    const userId = randomUUID();
+    const feedId = randomUUID();
+    const at = "2026-10-22T00:00:00.000Z";
+    await db.execute(
+      sql`INSERT INTO tenants (id, name, slug, created_at) VALUES (${tenantId}, 'Existing', 'existing', ${at})`,
+    );
+    await db.execute(
+      sql`INSERT INTO users (id, tenant_id, email, display_name, password_hash, role, created_at, updated_at) VALUES (${userId}, ${tenantId}, 'old@example.com', 'Old', '!old', 'owner', ${at}, ${at})`,
+    );
+    await db.execute(
+      sql`INSERT INTO feed_sources (id, tenant_id, name, url, created_at) VALUES (${feedId}, ${tenantId}, 'Old feed', 'https://example.com', ${at})`,
+    );
+    await migrate(db);
+    await migrate(db);
+    expect(
+      (
+        await db.execute(
+          sql`SELECT display_name, password_hash, session_version FROM users WHERE id = ${userId}`,
+        )
+      ).rows,
+    ).toEqual([{ display_name: "Old", password_hash: "!old", session_version: 0 }]);
+    expect(
+      (await db.execute(sql`SELECT name, enabled FROM feed_sources WHERE id = ${feedId}`)).rows,
+    ).toEqual([{ name: "Old feed", enabled: true }]);
+    expect(
+      (await db.execute(sql`SELECT hash FROM drizzle.__drizzle_migrations ORDER BY created_at`))
+        .rows,
+    ).toEqual(migrations.map((m) => ({ hash: m.hash })));
   });
 
   it("slug 唯一：同 slug 的第二行被数据库拒掉", async () => {

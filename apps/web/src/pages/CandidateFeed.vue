@@ -1,77 +1,190 @@
 <script setup lang="ts">
-import { ElButton, ElInput, ElMessage, ElTag } from "element-plus";
-import { ref } from "vue";
-
-import type { Stage, Task } from "@heron/contracts";
-
+import type { Candidate, CandidateStatus } from "@heron/contracts";
+import { can } from "@heron/domain";
+import { Plus } from "@element-plus/icons-vue";
+import {
+  ElAlert,
+  ElButton,
+  ElDialog,
+  ElDrawer,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElMessage,
+  ElTable,
+  ElTableColumn,
+  ElTag,
+} from "element-plus";
+import { computed, onMounted, reactive, ref } from "vue";
+import { RouterLink } from "vue-router";
 import { tasksApi } from "../api";
-import { useTasksStore } from "../stores/tasks";
-
-const store = useTasksStore();
-const title = ref("台风“巴威”路径更新");
-const busy = ref(false);
-
-function stageType(stage: Stage): "success" | "danger" | "info" | "warning" {
-  if (stage === "published") return "success";
-  if (stage === "failed") return "danger";
-  if (stage === "candidate") return "info";
-  return "warning";
-}
-
-async function createTask(): Promise<void> {
-  busy.value = true;
+import { errorMessage } from "../api/http";
+import ListPanel from "../components/ListPanel.vue";
+import { usePagedList } from "../composables/usePagedList";
+import { dateTime } from "../format";
+import { useAuthStore } from "../stores/auth";
+const auth = useAuthStore();
+const allowed = computed(() => !!auth.user && can(auth.user.role, "task.claim"));
+const list = reactive(usePagedList<Candidate>("/manage/candidates"));
+const dialog = ref(false);
+const title = ref("");
+const saving = ref(false);
+const error = ref<string | null>(null);
+const selected = ref<Candidate | null>(null);
+const drawer = ref(false);
+const statuses: Record<CandidateStatus, string> = {
+  candidate: "待选题",
+  selected: "已选题",
+  drafted: "已成稿",
+  rendered: "已成片",
+  published: "已发布",
+  rejected: "已退回",
+};
+async function createTask() {
+  if (!title.value.trim()) {
+    error.value = "请输入选题标题。";
+    return;
+  }
+  saving.value = true;
+  error.value = null;
   try {
-    await tasksApi.create({ capability: "p0-fake", title: title.value });
-    await store.refresh();
-    ElMessage.success("候选已建立，未花渲染配额");
+    await tasksApi.create({ capability: "p0-fake", title: title.value.trim() });
+    dialog.value = false;
+    title.value = "";
+    ElMessage.success("演示选题已创建，可前往生产任务认领");
+    await list.load();
   } catch (cause) {
-    ElMessage.error(String(cause));
+    error.value = errorMessage(cause);
   } finally {
-    busy.value = false;
+    saving.value = false;
   }
 }
-
-async function claim(task: Task): Promise<void> {
-  busy.value = true;
-  try {
-    await tasksApi.claim(task.id);
-    await store.refresh();
-  } catch (cause) {
-    ElMessage.error(String(cause));
-  } finally {
-    busy.value = false;
-  }
+function inspect(row: Candidate) {
+  selected.value = row;
+  drawer.value = true;
 }
+onMounted(list.load);
 </script>
-
 <template>
-  <section class="max-w-4xl">
-    <h2 class="mb-3 text-base font-semibold">候选流</h2>
-    <p class="mb-4 text-sm text-neutral-600">此页不花钱：无稿、无渲染。认领才进生产。</p>
-
-    <div class="mb-5 flex gap-2">
-      <ElInput v-model="title" placeholder="候选标题" class="w-96" />
-      <ElButton type="primary" :loading="busy" @click="createTask">建一条假候选（P0）</ElButton>
-    </div>
-
-    <ul class="space-y-2">
-      <li
-        v-for="task in store.tasks"
-        :key="task.id"
-        class="flex items-center gap-3 rounded border border-neutral-200 bg-white px-3 py-2"
-      >
-        <ElTag :type="stageType(task.stage)">{{ task.stage }}</ElTag>
-        <span class="truncate">{{ task.capability }} · {{ task.id.slice(0, 8) }}</span>
+  <section>
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">Content / discovery</span>
+        <h1>候选管理</h1>
+        <p class="page-description">先发现值得讲的新闻，再决定投入生产。</p>
+      </div>
+      <div class="page-actions">
         <ElButton
-          v-if="task.stage === 'candidate'"
-          size="small"
-          :disabled="busy"
-          @click="claim(task)"
+          :icon="Plus"
+          :disabled="!allowed"
+          @click="
+            dialog = true;
+            error = null;
+          "
+          >新建演示选题</ElButton
         >
-          认领
-        </ElButton>
-      </li>
-    </ul>
-    <p v-if="store.tasks.length === 0" class="text-sm text-neutral-500">暂无候选。</p>
+      </div>
+    </header>
+    <ListPanel
+      v-model:query="list.query"
+      v-model:page="list.page"
+      v-model:page-size="list.pageSize"
+      :total="list.total"
+      :loading="list.loading"
+      :error="list.error"
+      placeholder="搜索选题标题"
+      @search="list.search"
+      @refresh="list.load"
+    >
+      <ElTable
+        :data="list.items"
+        row-key="id"
+        empty-text="候选库还是空的。可新建演示选题体验流程，自动采集尚未接通。"
+      >
+        <ElTableColumn label="选题" min-width="340"
+          ><template #default="{ row }"
+            ><ElButton
+              link
+              type="primary"
+              style="white-space: normal; text-align: left; height: auto"
+              @click="inspect(row as Candidate)"
+              >{{ row.title }}</ElButton
+            >
+            <div class="cell-subtitle">{{ row.sourceName ?? "手动录入 / 演示" }}</div></template
+          ></ElTableColumn
+        >
+        <ElTableColumn label="热度" width="100"
+          ><template #default="{ row }"
+            ><span class="mono">{{ row.heat }}</span></template
+          ></ElTableColumn
+        >
+        <ElTableColumn label="状态" width="120"
+          ><template #default="{ row }"
+            ><ElTag type="info">{{ statuses[row.status as CandidateStatus] }}</ElTag></template
+          ></ElTableColumn
+        >
+        <ElTableColumn label="最近出现" min-width="170"
+          ><template #default="{ row }">{{ dateTime(row.lastSeenAt) }}</template></ElTableColumn
+        >
+        <ElTableColumn label="操作" width="120" fixed="right"
+          ><template #default="{ row }"
+            ><ElButton link type="primary" @click="inspect(row as Candidate)"
+              >查看选题</ElButton
+            ></template
+          ></ElTableColumn
+        >
+      </ElTable>
+    </ListPanel>
+    <ElDialog
+      v-model="dialog"
+      title="新建演示选题"
+      width="min(480px, 92vw)"
+      :close-on-click-modal="!saving"
+      :close-on-press-escape="!saving"
+      :show-close="!saving"
+      ><ElAlert
+        title="此入口使用 P0 演示能力，不调用真实生成模型或真实发布平台。"
+        type="info"
+        :closable="false"
+        class="page-alert"
+      /><ElAlert
+        v-if="error"
+        :title="error"
+        type="error"
+        :closable="false"
+        class="page-alert"
+      /><ElForm label-position="top" @submit.prevent="createTask"
+        ><ElFormItem label="选题标题" for="candidate-title" required
+          ><ElInput
+            id="candidate-title"
+            v-model="title"
+            maxlength="200"
+            placeholder="输入要演示的新闻标题"
+        /></ElFormItem>
+        <div class="form-actions">
+          <ElButton type="primary" native-type="submit" :loading="saving">创建演示选题</ElButton
+          ><ElButton :disabled="saving" @click="dialog = false">取消</ElButton>
+        </div></ElForm
+      ></ElDialog
+    >
+    <ElDrawer v-model="drawer" title="选题详情" size="560px"
+      ><template v-if="selected"
+        ><ElTag type="info">{{ statuses[selected.status] }}</ElTag>
+        <h2 style="margin-top: 18px">{{ selected.title }}</h2>
+        <p class="page-description" style="white-space: pre-wrap">
+          {{ selected.summary || "暂无摘要" }}
+        </p>
+        <p class="form-hint" style="margin-top: 24px">
+          来源：{{ selected.sourceName ?? "手动录入 / 演示" }}<br />首次出现：{{
+            dateTime(selected.firstSeenAt)
+          }}<br />出现次数：{{ selected.hits }}
+        </p>
+        <div class="form-actions">
+          <RouterLink :to="{ path: '/production', query: { q: selected.title } }"
+            ><ElButton type="primary">查看关联生产任务</ElButton></RouterLink
+          >
+        </div></template
+      ></ElDrawer
+    >
   </section>
 </template>

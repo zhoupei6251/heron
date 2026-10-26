@@ -1,6 +1,15 @@
-import { Body, Controller, Get, Inject, Post, Res, UnauthorizedException } from "@nestjs/common";
-import type { AuthUser, LoginBody } from "@heron/contracts";
-import { LoginBodySchema } from "@heron/contracts";
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Patch,
+  Post,
+  Res,
+  UnauthorizedException,
+} from "@nestjs/common";
+import type { AuthUser, LoginBody, ProfileBody, PasswordBody } from "@heron/contracts";
+import { LoginBodySchema, ProfileBodySchema, PasswordBodySchema } from "@heron/contracts";
 import type { Response } from "express";
 
 import { SESSION_COOKIE, sessionCookieOptions } from "../config/runtime";
@@ -42,5 +51,34 @@ export class AuthController {
   @Get("me")
   me(@CurrentUser() user: AuthUser): AuthUser {
     return user;
+  }
+
+  @Post("logout")
+  async logout(
+    @CurrentUser() user: AuthUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ ok: true }> {
+    await this.auth.logout(user);
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
+    return { ok: true };
+  }
+
+  @Patch("profile")
+  profile(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(ProfileBodySchema)) body: ProfileBody,
+  ): Promise<AuthUser> {
+    return this.auth.profile(user, body);
+  }
+
+  @Post("password")
+  async password(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(PasswordBodySchema)) body: PasswordBody,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ ok: true }> {
+    await this.auth.password(user, body);
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
+    return { ok: true };
   }
 }

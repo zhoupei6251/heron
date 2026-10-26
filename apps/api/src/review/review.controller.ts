@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Post } from "@nestjs/common";
 import {
   ConfirmBodySchema,
   type AuthUser,
@@ -30,7 +30,7 @@ export class ReviewController {
   @RequireAction("review.confirm")
   confirm(
     @CurrentUser() user: AuthUser,
-    @Param("taskId") taskId: string,
+    @Param("taskId", new ParseUUIDPipe()) taskId: string,
     @Body(new ZodValidationPipe(ConfirmBodySchema)) body: ConfirmBody,
   ): Promise<Task> {
     return this.reviews.confirm(user, taskId, body);

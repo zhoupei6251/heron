@@ -2,7 +2,12 @@ import { sql } from "drizzle-orm";
 
 import { OWNER_ROLE } from "./admin";
 import type { Db } from "./driver";
-import { TABLES_WITHOUT_TENANT, TABLES_TENANT_ROOT, TABLES_WITH_TENANT } from "./schema/index";
+import {
+  TABLES_PLATFORM,
+  TABLES_WITHOUT_TENANT,
+  TABLES_TENANT_ROOT,
+  TABLES_WITH_TENANT,
+} from "./schema/index";
 
 /** 会话级租户变量名。只有 withTenant 写它，policy 读它。 */
 export const SET_TENANT_GUC = "app.tenant_id";
@@ -49,13 +54,55 @@ export async function applyRls(db: Db): Promise<void> {
         END $do$`,
   );
   for (const role of [APP_ROLE, OWNER_ROLE]) {
-    const grantee = sql.identifier(role);
-    await db.execute(sql`GRANT USAGE ON SCHEMA public TO ${grantee}`);
-    await db.execute(
-      sql`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${grantee}`,
-    );
-    await db.execute(sql`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${grantee}`);
+    await db.execute(sql`GRANT USAGE ON SCHEMA public TO ${sql.identifier(role)}`);
   }
+  await db.execute(
+    sql`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO heron_owner`,
+  );
+  await db.execute(sql`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO heron_owner`);
+  // Remove historical blanket grants before granting only the tenant realm. This also
+  // denies future platform identity sequences; platform tables themselves use UUIDs.
+  await db.execute(sql`REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM heron_app`);
+  for (const table of TABLES_PLATFORM) {
+    await db.execute(sql`REVOKE ALL ON TABLE ${sql.identifier(table)} FROM heron_app, PUBLIC`);
+  }
+  for (const table of [...TABLES_WITH_TENANT, ...TABLES_TENANT_ROOT, ...TABLES_WITHOUT_TENANT]) {
+    await db.execute(
+      sql`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE ${sql.identifier(table)} TO heron_app`,
+    );
+  }
+  await db.execute(sql`REVOKE ALL ON audit_logs, platform_audit_logs FROM heron_owner, PUBLIC`);
+  await db.execute(sql`GRANT SELECT, INSERT ON audit_logs, platform_audit_logs TO heron_owner`);
+  await db.execute(sql`REVOKE ALL ON audit_logs FROM heron_app`);
+  await db.execute(sql`GRANT SELECT, INSERT ON audit_logs TO heron_app`);
+  // FK actions and TRUNCATE CASCADE must not erase history or attribution indirectly.
+  // Runtime identities are soft-disabled; replay this after all blanket/historical grants.
+  await db.execute(
+    sql`REVOKE DELETE, TRUNCATE ON users, tenants, platform_operators FROM heron_app, heron_owner, PUBLIC`,
+  );
+  // Grant only sequences owned by a tenant table, never by a platform table.
+  await db.execute(sql`DO $do$ DECLARE s record; BEGIN
+    FOR s IN SELECT ns.nspname, c.relname FROM pg_class c
+      JOIN pg_namespace ns ON ns.oid = c.relnamespace
+      JOIN pg_depend d ON d.objid = c.oid AND d.deptype IN ('a', 'i')
+      JOIN pg_class t ON t.oid = d.refobjid
+      WHERE c.relkind = 'S' AND ns.nspname = 'public'
+        AND t.relname IN (${sql.join(
+          [...TABLES_WITH_TENANT, ...TABLES_WITHOUT_TENANT].map((t) => sql.raw(`'${t}'`)),
+          sql`, `,
+        )})
+    LOOP EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %I.%I TO heron_app', s.nspname, s.relname); END LOOP;
+    FOR s IN SELECT ns.nspname, c.relname FROM pg_class c
+      JOIN pg_namespace ns ON ns.oid = c.relnamespace
+      JOIN pg_depend d ON d.objid = c.oid AND d.deptype IN ('a', 'i')
+      JOIN pg_class t ON t.oid = d.refobjid
+      WHERE c.relkind = 'S' AND ns.nspname = 'public'
+        AND t.relname IN (${sql.join(
+          TABLES_PLATFORM.map((t) => sql.raw(`'${t}'`)),
+          sql`, `,
+        )})
+    LOOP EXECUTE format('REVOKE ALL ON SEQUENCE %I.%I FROM heron_app, PUBLIC', s.nspname, s.relname); END LOOP;
+  END $do$`);
   // 登录角色要能 SET LOCAL ROLE 到 heron_owner。超级用户本来就能，这条是为「登录角色非超管」的收紧部署准备的
   await db.execute(sql`GRANT ${sql.identifier(OWNER_ROLE)} TO CURRENT_USER`);
 

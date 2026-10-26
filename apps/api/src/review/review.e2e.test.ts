@@ -19,9 +19,13 @@ import {
   openDb,
   tasks,
   withTenant,
+  listCandidates,
+  setTenantSuspended,
+  updateMember,
 } from "@heron/db/pg";
 import { hashPassword } from "@heron/domain";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { AuthService } from "../auth/auth.service";
 
 import { AppModule } from "../app.module";
 import { SESSION_COOKIE } from "../config/runtime";
@@ -161,6 +165,99 @@ describe("人工确认（真 socket）", () => {
     else process.env.HERON_JWT_SECRET = originalSecret;
     // PgConnection 的销毁钩子关 pglite：e2e 里 app.close() 就是「容器关闭即释放连接」那次实测
     await app.close();
+  });
+
+  it.each([
+    ["create", "suspend"],
+    ["create", "disable"],
+    ["create", "demote"],
+    ["claim", "suspend"],
+    ["claim", "disable"],
+    ["claim", "demote"],
+    ["confirm", "suspend"],
+    ["confirm", "disable"],
+    ["confirm", "demote"],
+  ])("rechecks %s after a guard snapshot races with %s", async (action, mutation) => {
+    const { tenantId, slug, reviewerId } = await newTenant();
+    const taskId =
+      action === "confirm"
+        ? await seedReviewTask(tenantId, reviewerId, "Authorization race")
+        : (
+            await withTenant(db, tenantId, (t) =>
+              createTask(t, { capability: "news", candidateId: null }),
+            )
+          ).id;
+    const ownerId = await withTenant(db, tenantId, (t) =>
+      createUser(t, {
+        email: "owner@example.com",
+        displayName: "Owner",
+        role: "owner",
+        passwordHash: "unusable:test",
+      }),
+    );
+    const token = await login(slug, REVIEWER);
+    const snapshot = () =>
+      withTenant(db, tenantId, async (t) => ({
+        tasks: await listTasks(t),
+        candidates: await listCandidates(t),
+        gates: await listGateResults(t, taskId),
+      }));
+    const before = await snapshot();
+    const auth = app.get(AuthService);
+    const userFor = auth.userFor.bind(auth);
+    const guard = vi.spyOn(auth, "userFor").mockImplementationOnce(async (payload) => {
+      const stale = await userFor(payload);
+      expect(stale?.id).toBe(reviewerId);
+      if (mutation === "suspend") await setTenantSuspended(db, tenantId, new Date().toISOString());
+      else
+        await withTenant(db, tenantId, (t) =>
+          updateMember(
+            t,
+            ownerId,
+            reviewerId,
+            mutation === "disable" ? { disabled: true } : { role: "viewer" },
+          ),
+        );
+      return stale;
+    });
+    try {
+      const path =
+        action === "create"
+          ? "/tasks"
+          : action === "claim"
+            ? `/tasks/${taskId}/claim`
+            : `/reviews/${taskId}/confirm`;
+      const res = await post(
+        path,
+        token,
+        action === "create"
+          ? { capability: "news", title: "Must not create" }
+          : { contactSheetFingerprint: SHEET_FP },
+      );
+      expect(res.status).toBe(403);
+      expect(await res.text()).not.toMatch(/SELECT|INSERT|UPDATE|password_hash/);
+      expect(await snapshot()).toEqual(before);
+    } finally {
+      guard.mockRestore();
+    }
+  });
+
+  it("does not disclose SQL from claim failures and permits current authorized writers", async () => {
+    const { slug } = await newTenant();
+    const token = await login(slug, REVIEWER);
+    const invalid = await post("/tasks/not-a-uuid/claim", token, {});
+    expect(invalid.status).toBe(400);
+    expect(await invalid.text()).not.toMatch(/select|params:|uuid|password_hash/i);
+    const created = await post("/tasks", token, { capability: "news", title: "Current writer" });
+    expect(created.status).toBe(201);
+    const task = await json(created);
+    const claimed = await post(`/tasks/${String(task.id)}/claim`, token, {});
+    expect(claimed.status).toBe(201);
+    expect(await json(claimed)).toMatchObject({ stage: "claimed" });
+    expect(
+      (await post("/tasks", await login(slug, VIEWER), { capability: "news", title: "Read only" }))
+        .status,
+    ).toBe(403);
   });
 
   it("viewer 点确认：403 说得出缺哪个角色，任务一动不动", async () => {

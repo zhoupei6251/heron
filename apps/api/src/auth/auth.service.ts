@@ -1,18 +1,29 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 
-import { JwtPayloadSchema, type AuthUser, type JwtPayload, type Role } from "@heron/contracts";
+import {
+  JwtPayloadSchema,
+  type AuthUser,
+  type JwtPayload,
+  type Role,
+  type ProfileBody,
+  type PasswordBody,
+} from "@heron/contracts";
 import {
   type Db,
   findTenantBySlug,
   getActiveTenant,
   getUserByEmail,
   getUserById,
+  updateProfile,
+  changePassword,
+  revokeUserSessions,
   withTenant,
 } from "@heron/db/pg";
 import { hashPassword, verifyPassword } from "@heron/domain";
 
 import { PG_DB } from "../db/pg";
+import { TENANT_AUDIENCE } from "../config/runtime";
 
 /** 登录成功的确切产物：token 进 cookie，user 进响应体。除此之外不发第二份身份。 */
 export interface SignedIn {
@@ -82,14 +93,50 @@ export class AuthService {
       verifyPassword(password, TIMING_EQUALIZER_HASH);
       return null;
     }
-    const user = await withTenant(this.db, ref.id, (t) => getUserByEmail(t, email));
-    const passwordOk = verifyPassword(password, user?.passwordHash ?? TIMING_EQUALIZER_HASH);
-    if (!user || !passwordOk || user.disabledAt !== null) return null;
+    return withTenant(this.db, ref.id, async (t) => {
+      // The slug lookup only locates the workspace. Recheck and hold its identity lock
+      // through signing; suspension, password and role changes serialize on this row.
+      const tenant = await getActiveTenant(t, { forUpdate: true });
+      const user = tenant ? await getUserByEmail(t, email) : null;
+      const passwordOk = verifyPassword(password, user?.passwordHash ?? TIMING_EQUALIZER_HASH);
+      if (!tenant || !user || !passwordOk || user.disabledAt !== null) return null;
 
-    // tid 由这里查库后签进去：客户端报的是 slug，它永远说不出自己属于哪个租户 uuid
-    const payload: JwtPayload = { sub: user.id, tid: user.tenantId, role: user.role };
-    const token = await this.jwt.signAsync(payload);
-    return { token, user: toAuthUser(user, ref) };
+      // tid comes from the locked database snapshot, never from a client-supplied UUID.
+      const payload: JwtPayload = {
+        sub: user.id,
+        tid: user.tenantId,
+        role: user.role,
+        ver: user.sessionVersion,
+      };
+      const token = await this.jwt.signAsync(payload, { audience: TENANT_AUDIENCE });
+      return { token, user: toAuthUser(user, tenant) };
+    });
+  }
+
+  logout(user: AuthUser): Promise<number> {
+    return withTenant(this.db, user.tenantId, (t) => revokeUserSessions(t, user.id));
+  }
+
+  profile(user: AuthUser, input: ProfileBody): Promise<AuthUser> {
+    return withTenant(this.db, user.tenantId, async (t) => {
+      const member = await updateProfile(t, user.id, input);
+      const tenant = await getActiveTenant(t);
+      if (!tenant) throw new UnauthorizedException("工作空间不可用，请重新登录");
+      return toAuthUser({ ...member, tenantId: user.tenantId }, tenant);
+    });
+  }
+
+  async password(user: AuthUser, input: PasswordBody): Promise<void> {
+    const current = await withTenant(this.db, user.tenantId, (t) => getUserById(t, user.id));
+    const valid = verifyPassword(
+      input.currentPassword,
+      current?.passwordHash ?? TIMING_EQUALIZER_HASH,
+    );
+    if (!current || !valid) throw new BadRequestException("当前口令不正确");
+    const nextHash = hashPassword(input.newPassword);
+    await withTenant(this.db, user.tenantId, (t) =>
+      changePassword(t, user.id, current.passwordHash, nextHash),
+    );
   }
 
   /**
@@ -100,14 +147,14 @@ export class AuthService {
   async userFor(payload: unknown): Promise<AuthUser | null> {
     const parsed = JwtPayloadSchema.safeParse(payload);
     if (!parsed.success) return null;
-    const { sub, tid } = parsed.data;
+    const { sub, tid, ver } = parsed.data;
     return withTenant(this.db, tid, async (t) => {
       // 租户先判：停租的租户里每一个人都该立刻失效，
       // 不然「停租的租户整个关在门外」只挡住了进门的人，没挡住已经登进来的人。
       const tenant = await getActiveTenant(t);
       if (!tenant) return null;
       const user = await getUserById(t, sub);
-      if (!user || user.disabledAt !== null) return null;
+      if (!user || user.disabledAt !== null || user.sessionVersion !== ver) return null;
       return toAuthUser(user, tenant);
     });
   }

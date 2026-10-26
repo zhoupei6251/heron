@@ -10,6 +10,8 @@ import {
   hasPublishedTaskForCandidate,
   listTasks,
   markFailed,
+  ManagementError,
+  requireActiveActor,
   withTenant,
 } from "@heron/db/pg";
 import { dedupeVerdict, formatErrorReason, normKey } from "@heron/domain";
@@ -37,6 +39,7 @@ export class TasksService {
   create(user: AuthUser, input: { capability: string; title: string }): Promise<Task> {
     const key = normKey(input.title);
     return withTenant(this.db, user.tenantId, async (t) => {
+      await requireActiveActor(t, user.id, "task.claim");
       const existing = await findCandidateByNormKey(t, key);
       const verdict: GateVerdict = dedupeVerdict({
         normKey: key,
@@ -62,11 +65,13 @@ export class TasksService {
    */
   async claim(user: AuthUser, taskId: string): Promise<Task> {
     try {
-      return await withTenant(this.db, user.tenantId, (t) => claimByHuman(t, taskId, user.id));
+      return await withTenant(this.db, user.tenantId, async (t) => {
+        await requireActiveActor(t, user.id, "task.claim");
+        return claimByHuman(t, taskId, user.id);
+      });
     } catch (cause) {
-      throw new BadRequestException(
-        `认领失败：${cause instanceof Error ? cause.message : String(cause)}`,
-      );
+      if (cause instanceof ManagementError) throw cause;
+      throw new BadRequestException("认领失败：任务不存在、状态已变化或操作人不可用，请刷新后重试");
     }
   }
 }

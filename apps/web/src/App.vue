@@ -1,17 +1,25 @@
 <script setup lang="ts">
-import { RouterView } from "vue-router";
+import { ElConfigProvider } from "element-plus";
+import zhCn from "element-plus/es/locale/lang/zh-cn";
+import { RouterView, useRoute } from "vue-router";
 
 import AppShell from "./components/AppShell.vue";
+import PlatformShell from "./components/PlatformShell.vue";
 import { useAuthStore } from "./stores/auth";
+import { usePlatformAuthStore } from "./stores/platform-auth";
+import { useAppearanceStore } from "./stores/appearance";
 
-/**
- * 只有两种壳：登录页（无导航）与登录后的 AppShell。
- * 守卫保证不会出现「没身份却渲染 AppShell」——这里只负责选一种。
- */
+useAppearanceStore();
 const auth = useAuthStore();
+const platformAuth = usePlatformAuthStore();
+const route = useRoute();
 </script>
 
 <template>
-  <AppShell v-if="auth.user" />
-  <RouterView v-else />
+  <ElConfigProvider :locale="zhCn">
+    <RouterView v-if="route.meta.public" />
+    <PlatformShell v-else-if="route.meta.platform && platformAuth.user" />
+    <AppShell v-else-if="!route.meta.platform && auth.user" />
+    <RouterView v-else />
+  </ElConfigProvider>
 </template>

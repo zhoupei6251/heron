@@ -1,6 +1,13 @@
 import { BadRequestException, ConflictException, Inject, Injectable } from "@nestjs/common";
 import type { AuthUser, ReviewItem, Task } from "@heron/contracts";
-import { type Db, confirmByHuman, listReviewQueue, withTenant } from "@heron/db/pg";
+import {
+  type Db,
+  confirmByHuman,
+  listReviewQueue,
+  ManagementError,
+  requireActiveActor,
+  withTenant,
+} from "@heron/db/pg";
 import { GateRefusalError } from "@heron/domain";
 
 import { PG_DB } from "../db/pg";
@@ -15,8 +22,19 @@ export class ReviewService {
   // @Inject 不能省成裸类型：tsx 不执行 emitDecoratorMetadata，隐式注入在启动期才炸。
   constructor(@Inject(PG_DB) private readonly db: Db) {}
 
-  pending(user: AuthUser): Promise<ReviewItem[]> {
-    return withTenant(this.db, user.tenantId, (t) => listReviewQueue(t));
+  async pending(user: AuthUser): Promise<ReviewItem[]> {
+    const rows = await withTenant(this.db, user.tenantId, (t) => listReviewQueue(t));
+    return rows.map((row) => ({
+      ...row,
+      contactSheetPath:
+        row.contactSheetPath && row.renderVersion
+          ? `/api/manage/artifacts/${row.taskId}/contact-sheet?version=${String(row.renderVersion)}`
+          : null,
+      mp4Path:
+        row.mp4Path && row.renderVersion
+          ? `/api/manage/artifacts/${row.taskId}/mp4?version=${String(row.renderVersion)}`
+          : null,
+    }));
   }
 
   async confirm(
@@ -33,6 +51,7 @@ export class ReviewService {
     let outcome: Outcome;
     try {
       outcome = await withTenant(this.db, user.tenantId, async (t): Promise<Outcome> => {
+        await requireActiveActor(t, user.id, "review.confirm");
         try {
           return {
             ok: true,
@@ -52,10 +71,9 @@ export class ReviewService {
         }
       });
     } catch (cause) {
-      // 非闸拒（任务不存在、状态机不许、人已停用）没有要留的痕，回滚之后再翻成 400
-      throw new BadRequestException(
-        `确认失败：${cause instanceof Error ? cause.message : String(cause)}`,
-      );
+      if (cause instanceof ManagementError) throw cause;
+      // Do not expose SQL or filesystem paths from unexpected repository errors.
+      throw new BadRequestException("确认失败：任务不存在、状态已变化或操作人不可用，请刷新后重试");
     }
     // 闸拒要把原因原文带回界面（规格书：失败必须报原因），409 与 400 都带 message
     if (!outcome.ok) throw new ConflictException(outcome.message);

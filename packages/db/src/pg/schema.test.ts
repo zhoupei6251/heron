@@ -1,10 +1,15 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
+import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { sql } from "drizzle-orm";
+import * as schema from "./schema/index";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Role } from "@heron/contracts";
 
 import {
+  TABLES_PLATFORM,
   TABLES_TENANT_ROOT,
   TABLES_WITH_TENANT,
   TABLES_WITHOUT_TENANT,
@@ -71,10 +76,28 @@ describe("schema v3（多租户）", () => {
     return raw.rows.map((r) => r.table_name).filter((n) => n !== "__drizzle_migrations");
   }
 
-  it("三张清单正好覆盖库里的表：漏一张就是漏一道租户墙", async () => {
+  it("四张互斥清单正好覆盖库里的表，平台表不混入租户子表", async () => {
     const d = await freshDb();
-    const listed = [...TABLES_WITH_TENANT, ...TABLES_WITHOUT_TENANT, ...TABLES_TENANT_ROOT];
+    const listed = [
+      ...TABLES_WITH_TENANT,
+      ...TABLES_WITHOUT_TENANT,
+      ...TABLES_TENANT_ROOT,
+      ...TABLES_PLATFORM,
+    ];
+    expect(new Set(listed).size).toBe(listed.length);
     expect((await realTables(d)).sort()).toEqual([...listed].sort());
+  });
+
+  it("0001 快照与当前 schema 一致，下一次生成不会重复建表", async () => {
+    const snapshot: unknown = JSON.parse(
+      await readFile(join(__dirname, "../../drizzle/meta/0001_snapshot.json"), "utf8"),
+    );
+    expect(
+      await generateMigration(
+        snapshot as Parameters<typeof generateMigration>[0],
+        generateDrizzleJson(schema),
+      ),
+    ).toEqual([]);
   });
 
   it("列了租户的表真的带 tenant_id 这一列", async () => {

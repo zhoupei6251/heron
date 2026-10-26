@@ -21,6 +21,7 @@
     "api:dev": "pnpm --filter @heron/api dev",
     "api:dev:pglite": "pnpm --filter @heron/api dev:pglite",
     "db:seed-owner": "pnpm --filter @heron/api seed-owner",
+    "db:seed-platform": "pnpm --filter @heron/api seed-platform",
     "db:import-sqlite": "tsx packages/db/src/tools/migrate-sqlite.cli.ts",
     "worker:dev": "pnpm --filter @heron/worker dev",
     "p0": "pnpm --filter @heron/worker p0"

@@ -1,5 +1,11 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_FILTER, APP_GUARD } from "@nestjs/core";
+import { VIDEOS_DIR } from "@heron/db";
+import { PgModule } from "./db/pg";
+import { ManageController } from "./manage.controller";
+import { ArtifactService, ARTIFACT_ROOT } from "./artifact.service";
+import { PlatformModule } from "./platform.module";
+import { ApiExceptionFilter } from "./common/api-exception.filter";
 
 import { AuthModule } from "./auth/auth.module";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
@@ -18,6 +24,8 @@ import { TasksModule } from "./tasks/tasks.module";
  */
 @Module({
   imports: [
+    PgModule,
+    PlatformModule,
     AuthModule,
     TasksModule,
     ReviewModule,
@@ -26,7 +34,11 @@ import { TasksModule } from "./tasks/tasks.module";
     EventsModule,
     HealthModule,
   ],
+  controllers: [ManageController],
   providers: [
+    ArtifactService,
+    { provide: ARTIFACT_ROOT, useValue: VIDEOS_DIR },
+    { provide: APP_FILTER, useClass: ApiExceptionFilter },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

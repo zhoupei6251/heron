@@ -7,6 +7,7 @@
     "dev:pglite": "tsx src/dev/pglite-server.ts",
     "start": "tsx src/main.ts",
     "seed-owner": "tsx src/db/seed-owner.ts",
+    "seed-platform": "tsx src/db/seed-platform.cli.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests"
   },

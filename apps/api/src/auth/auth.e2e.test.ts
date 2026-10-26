@@ -211,6 +211,8 @@ describe("认证传输（真 socket）", () => {
       sub: "11111111-1111-4111-8111-111111111111",
       tid: "00000000-0000-4000-8000-000000000001",
       role: "owner",
+      ver: 0,
+      aud: "heron-tenant",
     });
     expect((await get("/auth/me", forged)).status).toBe(401);
   });

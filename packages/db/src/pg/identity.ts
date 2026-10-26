@@ -26,7 +26,7 @@ export async function createUser(tdb: TenantDb, input: NewUser): Promise<string>
   await tdb.db.insert(users).values({
     id,
     tenantId: tdb.tenantId,
-    email: input.email.toLowerCase(),
+    email: input.email.trim().toLowerCase(),
     displayName: input.displayName,
     passwordHash: input.passwordHash,
     role: input.role ?? "viewer",
@@ -72,6 +72,7 @@ export interface PgUser {
   displayName: string;
   role: Role;
   passwordHash: string;
+  sessionVersion: number;
   disabledAt: string | null;
 }
 
@@ -82,6 +83,7 @@ const USER_COLUMNS = {
   displayName: users.displayName,
   role: users.role,
   passwordHash: users.passwordHash,
+  sessionVersion: users.sessionVersion,
   disabledAt: users.disabledAt,
 };
 
@@ -90,7 +92,7 @@ export async function getUserByEmail(tdb: TenantDb, email: string): Promise<PgUs
   const rows = await tdb.db
     .select(USER_COLUMNS)
     .from(users)
-    .where(and(eq(users.tenantId, tdb.tenantId), eq(users.email, email.toLowerCase())))
+    .where(and(eq(users.tenantId, tdb.tenantId), eq(users.email, email.trim().toLowerCase())))
     .limit(1);
   return rows[0] ?? null;
 }

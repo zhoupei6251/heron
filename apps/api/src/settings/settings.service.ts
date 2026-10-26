@@ -1,6 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { AuthUser } from "@heron/contracts";
-import { type Db, getRetentionDays, setRetentionDays, withTenant } from "@heron/db/pg";
+import { type Db, getRetentionDays, setAuditedRetention, withTenant } from "@heron/db/pg";
 
 import { PG_DB } from "../db/pg";
 
@@ -19,9 +19,6 @@ export class SettingsService {
 
   /** 入参已被 RetentionBodySchema 校验过（正整数、上限 3650），这里不再兜第二层。 */
   async setRetention(user: AuthUser, days: number): Promise<number> {
-    return withTenant(this.db, user.tenantId, async (t) => {
-      await setRetentionDays(t, days);
-      return getRetentionDays(t);
-    });
+    return withTenant(this.db, user.tenantId, (t) => setAuditedRetention(t, user.id, days));
   }
 }
