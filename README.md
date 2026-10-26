@@ -187,6 +187,9 @@ pnpm db:seed-owner                                                    # 在宿�
   改回上一个版本号——除 `latest` 外再按 `v${build_number}` 留一条规则，不然 `latest` 只有一个版本可回。
 - 个人版构建超时 30 分钟。`.npmrc` 没配国内源，`pnpm install` 走 registry.npmjs.org；真嫌慢就加
   `registry=https://registry.npmmirror.com` 一行——lockfile 只存 integrity、不存 tarball 地址，换源不用重生成它。
+- 拉取失败时**不要**顺手 `docker compose up -d`：服务里有 `build:`，compose 会退到本地构建并把
+  仓库地址打上 tag，于是「跑的是仓库里的哪一版」这件事就再也问不出来了。脚本里 `pull` 在 `up` 前面，
+  拉不到就停手（实测报错：`pull access denied ... or may require 'docker login'`）。
 
 ## 安全边界（硬约束）
 
