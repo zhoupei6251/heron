@@ -16,8 +16,11 @@ verifyDepsBeforeRun: false
 
 # pnpm 11 起 onlyBuiltDependencies 被 allowBuilds 取代（值为 true 才允许跑生命周期脚本）。
 # T8 删掉 SQLite 层后只剩 esbuild 需要构建；T10 的导入工具若再引 SQLite 驱动，在这里显式放行。
+# msgpackr-extract 显式写 false：它只是给 BullMQ 的载荷解包提速的原生扩展，纯 JS 回落在仓库外
+# 那份也能跑；放行反而要求构建机有编译工具链，而 pnpm 对「未表态」的构建脚本直接报错退出。
 allowBuilds:
   esbuild: true
+  msgpackr-extract: false
 
 minimumReleaseAgeExclude:
   - "@electric-sql/pglite@0.5.11"

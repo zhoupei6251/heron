@@ -30,10 +30,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       audience: TENANT_AUDIENCE,
       // 没有默认密钥：构造发生在启动期，没配 HERON_JWT_SECRET 就死在这里（见 runtime.ts）
       secretOrKey: jwtSecret(),
+      // passport-jwt 4.0.1 自己不给 algorithms 默认值，它只是把这个选项原样交给 jsonwebtoken；
+      // 字符串密钥下 jsonwebtoken 默认放行 HS256/HS384/HS512——同一把密钥签的 HS384 票
+      // 会被当成有效会话。所以这里必须写死 HS256，别把「默认只认一种」当成事实。
+      algorithms: ["HS256"],
       // 不写 maxAge。计划里那一版抄了它，但实测 passport-jwt 4.0.1 的 lib/ 里没有这个选项
       // （grep 零命中），写了就是「一条看着像期限、其实什么都不做」的配置——最贵的那种假防线。
       // 会话上限只有一个来源：签名时的 expiresIn 写进 exp，验签时由 jsonwebtoken 判。
-      // 不写 algorithms：passport-jwt 默认只认 HS256。显式写开它反而是在给 alg 混淆攻击让路。
     });
   }
 

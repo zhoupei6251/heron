@@ -6,8 +6,8 @@
     "dev": "tsx watch src/main.ts",
     "dev:pglite": "tsx src/dev/pglite-server.ts",
     "start": "tsx src/main.ts",
-    "seed-owner": "tsx src/db/seed-owner.ts",
-    "seed-platform": "tsx src/db/seed-platform.cli.ts",
+    "seed-owner": "tsx src/tools/seed-owner.ts",
+    "seed-platform": "tsx src/tools/seed-platform.cli.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests"
   },
@@ -16,6 +16,7 @@
     "@heron/contracts": "workspace:*",
     "@heron/db": "workspace:*",
     "@heron/domain": "workspace:*",
+    "@heron/redis": "workspace:*",
     "@nestjs/common": "12.2.0",
     "@nestjs/core": "12.2.0",
     "@nestjs/jwt": "12.0.3",

@@ -1,18 +1,17 @@
-import type { AuthUser } from "@heron/contracts";
+import type { AuthUser, ConsoleSession } from "@heron/contracts";
 import { UnauthorizedException } from "@nestjs/common";
 import type { Response } from "express";
 import { describe, expect, it, vi } from "vitest";
 
 import { AuthController } from "./auth.controller";
-import type { AuthService, SignedIn } from "./auth.service";
+import type { AuthService } from "./auth.service";
+import type { ConsoleAuthService } from "./console-auth.service";
 
 /**
- * 控制器只管两件事：把 token 放进 cookie、把身份放进响应。判据在 service，验签在守卫。
+ * 控制器只管两件事：把 token 放进 cookie、把会话表放进响应。判据在 service，验签在守卫。
  * 这里盯的是**cookie 的属性**——传输层的安全全部落在这几个键上，写错一个就没有 HttpOnly 了。
  * e2e（auth.e2e.test.ts）看的是同一组属性落到真 Set-Cookie 头上，两边不重复：
  * `HERON_COOKIE_SECURE=1` 那一支只有在这里测得出，环境变量在进程起来之后就固定了。
- * `@Public` 是否在 login 上也不在这里测：e2e 里「无 cookie 也能 201」是同一个性质的强证——
- * 元数据读对了不代表守卫真的放行，反过来才是要防的事故。
  */
 
 const USER: AuthUser = {
@@ -24,20 +23,36 @@ const USER: AuthUser = {
   displayName: "周佩",
   role: "reviewer",
 };
+const SESSION: ConsoleSession = {
+  kind: "tenant",
+  user: USER,
+  roles: ["reviewer"],
+  permissions: ["task.claim", "review.confirm", "usage.read"],
+  menus: [],
+};
 const BODY = { tenant: "acme", email: USER.email, password: "correct-horse-battery" };
 
 function makeController(login: unknown) {
   const cookie = vi.fn();
-  const controller = new AuthController({ login } as unknown as AuthService);
-  return { controller, cookie, res: { cookie } as unknown as Response };
+  const clearCookie = vi.fn();
+  const controller = new AuthController(
+    { login } as unknown as ConsoleAuthService,
+    {} as unknown as AuthService,
+  );
+  return {
+    controller,
+    cookie,
+    clearCookie,
+    res: { cookie, clearCookie } as unknown as Response,
+  };
 }
 
 describe("POST /api/auth/login", () => {
-  it("成功：token 进 HttpOnly 的会话 cookie，响应体里只有身份", async () => {
-    const signed: SignedIn = { token: "jwt-token", user: USER };
-    const { controller, cookie, res } = makeController(() => Promise.resolve(signed));
+  it("成功：token 进 HttpOnly 的会话 cookie，响应体里只有会话表", async () => {
+    const signed = { token: "jwt-token", session: SESSION };
+    const { controller, cookie, clearCookie, res } = makeController(() => Promise.resolve(signed));
 
-    await expect(controller.login(BODY, res)).resolves.toEqual(USER);
+    await expect(controller.login(BODY, res)).resolves.toEqual(SESSION);
 
     const [name, value, options] = cookie.mock.calls[0] as unknown as [
       string,
@@ -55,12 +70,16 @@ describe("POST /api/auth/login", () => {
     expect(options.maxAge).toBeUndefined();
     expect(options.expires).toBeUndefined();
     expect(options.secure).toBe(false);
+    // 旧的独立平台 cookie 必须当场作废，否则旧票还有一条旁路
+    expect(clearCookie.mock.calls[0]?.[0]).toBe("heron_platform_session");
+    // clearCookie 的签名是 (name, options)，没有 value 那一位
+    expect(clearCookie.mock.calls[0]?.[1]).toMatchObject({ path: "/api/platform" });
   });
 
   it("HERON_COOKIE_SECURE=1 时 cookie 带 Secure：TLS 部署上不许走明文", async () => {
     process.env.HERON_COOKIE_SECURE = "1";
     try {
-      const signed: SignedIn = { token: "jwt-token", user: USER };
+      const signed = { token: "jwt-token", session: SESSION };
       const { controller, cookie, res } = makeController(() => Promise.resolve(signed));
       await controller.login(BODY, res);
       const options = cookie.mock.calls[0]?.[2] as { secure?: boolean };
@@ -71,9 +90,10 @@ describe("POST /api/auth/login", () => {
   });
 
   it("口令错：401 + 统一文案，且一个 cookie 都不下发", async () => {
-    const { controller, cookie, res } = makeController(() => Promise.resolve(null));
+    const { controller, cookie, clearCookie, res } = makeController(() => Promise.resolve(null));
     await expect(controller.login(BODY, res)).rejects.toBeInstanceOf(UnauthorizedException);
     expect(cookie).not.toHaveBeenCalled();
+    expect(clearCookie).not.toHaveBeenCalled();
     // 「用户不存在」与「口令错」必须是同一句话，否则响应就成了「这个邮箱注册过」的证词
     const error = (await controller.login(BODY, res).catch((e: unknown) => e)) as {
       response?: { message?: string };
@@ -83,8 +103,8 @@ describe("POST /api/auth/login", () => {
 });
 
 describe("GET /api/auth/me", () => {
-  it("把守卫解出来的身份原样交回，界面据此渲染角色", () => {
+  it("把守卫解出来的会话原样交回，界面据此渲染角色与菜单", () => {
     const { controller } = makeController(() => Promise.resolve(null));
-    expect(controller.me(USER)).toEqual(USER);
+    expect(controller.me(SESSION)).toEqual(SESSION);
   });
 });

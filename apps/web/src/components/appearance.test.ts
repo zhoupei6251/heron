@@ -3,6 +3,29 @@ import { createApp, nextTick, type Component } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ConsoleFrame from "./ConsoleFrame.vue";
+import { consoleAccess } from "@heron/domain";
+import type { AuthUser, ConsoleSession } from "@heron/contracts";
+import { useAuthStore } from "../stores/auth";
+
+const USER: AuthUser = {
+  id: "11111111-1111-4111-8111-111111111111",
+  tenantId: "00000000-0000-4000-8000-000000000001",
+  tenantName: "Workspace",
+  tenantSlug: "acme",
+  email: "owner@example.com",
+  displayName: "Owner",
+  role: "owner",
+};
+const tenantSession = (): ConsoleSession => ({
+  kind: "tenant",
+  user: USER,
+  ...consoleAccess(USER.role),
+});
+const platformSession = (): ConsoleSession => ({
+  kind: "platform",
+  user: { id: USER.id, email: USER.email, displayName: USER.displayName },
+  ...consoleAccess("platform"),
+});
 
 const cleanups: (() => void)[] = [];
 let media: EventTarget & { matches: boolean };
@@ -15,15 +38,10 @@ async function mount(platform = false) {
   await router.push("/overview");
   const root = document.createElement("div");
   document.body.append(root);
-  const app = createApp(ConsoleFrame as Component, {
-    platform,
-    workspace: "Workspace",
-    name: "Owner",
-    role: "所有者",
-    signingOut: false,
-  })
+  const app = createApp(ConsoleFrame as Component, { signingOut: false })
     .use(pinia)
     .use(router);
+  useAuthStore(pinia).session = platform ? platformSession() : tenantSession();
   app.mount(root);
   const dispose = () => {
     app.unmount();

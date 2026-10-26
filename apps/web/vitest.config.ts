@@ -7,5 +7,7 @@ import { alias } from "./vite.shared.ts";
 export default defineConfig({
   plugins: [vue()],
   resolve: { alias },
-  test: { environment: "jsdom" },
+  // 与 packages/db 同一条理由：整包并行跑时默认 5s 会被 CPU 抢用压线，
+  // 出现「单独跑绿、整包跑红」的假失败。放宽只影响失败的上限，不拖慢通过的用例。
+  test: { environment: "jsdom", testTimeout: 30_000 },
 });

@@ -25,7 +25,7 @@ import { hashPassword, verifyPassword } from "@heron/domain";
 import { PG_DB } from "../db/pg";
 import { TENANT_AUDIENCE } from "../config/runtime";
 
-/** 登录成功的确切产物：token 进 cookie，user 进响应体。除此之外不发第二份身份。 */
+/** Tenant authentication result; the console facade adds access metadata, never another actor. */
 export interface SignedIn {
   token: string;
   user: AuthUser;
@@ -137,6 +137,28 @@ export class AuthService {
     await withTenant(this.db, user.tenantId, (t) =>
       changePassword(t, user.id, current.passwordHash, nextHash),
     );
+  }
+
+  /**
+   * 统一登录入口的租户分支：先验签（audience + 算法都是硬条件），再走 userFor 的库内复查。
+   *
+   * 两种 actor 各签各的 audience，所以平台 token 在这里必然验不过——
+   * 不需要先猜「这张票是谁的」，也就不存在把平台身份映射成租户身份的那一步。
+   */
+  async userForToken(token: string): Promise<AuthUser | null> {
+    let payload: unknown;
+    try {
+      payload = await this.jwt.verifyAsync(token, {
+        audience: TENANT_AUDIENCE,
+        algorithms: ["HS256"],
+      });
+    } catch {
+      return null;
+    }
+    // jsonwebtoken 的 audience 判据接受「数组里包含期望值」，这里再钉一次单值：
+    // 一张同时声明两个 audience 的票存在解释分歧，统一入口必须明确拒掉，而不是猜它属于谁。
+    if ((payload as { aud?: unknown }).aud !== TENANT_AUDIENCE) return null;
+    return this.userFor(payload);
   }
 
   /**

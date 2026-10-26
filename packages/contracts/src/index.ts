@@ -90,17 +90,17 @@ export type Task = z.infer<typeof TaskSchema>;
 /** 口令强度：太短的直接在边界拒，不进哈希层（一次 scrypt 约 50–100ms，别让垃圾输入白烧 CPU）。 */
 export const MIN_PASSWORD_LENGTH = 12;
 
-/**
- * 登录表单。
- * `tenant` 是工作空间 slug：邮箱只在租户内唯一（u_users_tenant_email，T2 的决定），
- * 所以「谁在登录」这句话必须有第二个坐标。它由客户端填（人知道自己家在哪），
- * 但 tid 由服务端查库后签进 token——客户端永远说不出自己属于哪个租户。
- * 邮箱在这里规范化，因为 ck_users_email_lower 只认小写。
- */
+// 空 tenant 只查平台账号；租户邮箱不是全局身份，不能跨租户猜测或合并。
 export const LoginBodySchema = z.object({
-  tenant: z.string().min(1),
-  email: z.email().toLowerCase(),
-  password: z.string().min(MIN_PASSWORD_LENGTH),
+  tenant: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(63)
+    .regex(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*)?$/)
+    .default(""),
+  email: z.string().trim().toLowerCase().max(254).pipe(z.email()),
+  password: z.string().min(MIN_PASSWORD_LENGTH).max(128),
 });
 
 export type LoginBody = z.infer<typeof LoginBodySchema>;
@@ -369,6 +369,46 @@ export const PlatformUserSchema = z.object({
   displayName: z.string(),
 });
 export type PlatformUser = z.infer<typeof PlatformUserSchema>;
+
+export const CONSOLE_MENU_IDS = [
+  "overview",
+  "candidates",
+  "production",
+  "review",
+  "publish",
+  "library",
+  "members",
+  "roles",
+  "feeds",
+  "settings",
+  "usage",
+  "audit",
+  "profile",
+  "platform-overview",
+  "tenants",
+  "platform-usage",
+  "platform-audit",
+  "health",
+] as const;
+export const ConsoleMenuSchema = z.object({
+  id: z.enum(CONSOLE_MENU_IDS),
+  path: z.string().regex(/^\/(?!\/)[a-z/-]+$/),
+  label: z.string().min(1),
+  group: z.string().min(1),
+});
+export type ConsoleMenu = z.infer<typeof ConsoleMenuSchema>;
+export const ConsoleAccessSchema = z.object({
+  roles: z.array(z.string()),
+  permissions: z.array(z.string()),
+  menus: z.array(ConsoleMenuSchema),
+});
+export type ConsoleAccess = z.infer<typeof ConsoleAccessSchema>;
+export const ConsoleSessionSchema = z.discriminatedUnion("kind", [
+  ConsoleAccessSchema.extend({ kind: z.literal("tenant"), user: AuthUserSchema }),
+  ConsoleAccessSchema.extend({ kind: z.literal("platform"), user: PlatformUserSchema }),
+]);
+export type ConsoleSession = z.infer<typeof ConsoleSessionSchema>;
+
 export const CreateTenantBodySchema = z.object({
   name: WorkspaceNameSchema,
   slug: z

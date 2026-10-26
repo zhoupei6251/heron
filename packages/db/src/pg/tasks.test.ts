@@ -15,6 +15,7 @@ import {
   candidates,
   claimByHuman,
   claimNextTask,
+  claimTaskById,
   confirmByHuman,
   confirmationMatches,
   createCandidate,
@@ -290,6 +291,47 @@ describe("pg 仓储层（异步 + 双通道）", () => {
     const reclaimed = await withAdmin(db, (a) => claimNextTask(a, OWNER, 60));
     expect(reclaimed?.tenantId).toBe(TENANT_A);
     expect(reclaimed?.task).toMatchObject({ id: ref.taskId, stage: "approved" });
+  });
+
+  it("按 id 领活：领到的是点名的这一条，不是池子里最早的那条", async () => {
+    const ref = await claimedTask();
+    await withTenant(db, TENANT_A, (t) => releaseLease(t, ref.taskId, ref.owner));
+    const laterId = await withTenant(db, TENANT_A, async (t) => {
+      const userId = await createUser(t, {
+        email: `late-${randomUUID()}@example.com`,
+        displayName: "晚认领的人",
+        passwordHash: PASSWORD_HASH,
+        role: "reviewer",
+      });
+      const candidateId = await createCandidate(t, { title: "晚一条", summary: "", heat: 1 });
+      const task = await createTask(t, { capability: "news", candidateId });
+      await claimByHuman(t, task.id, userId);
+      return task.id;
+    });
+
+    // 池子里更早的可领活是 ref：点名领 laterId 就必须拿到 laterId，否则队列的 job 等于白推
+    const claimed = await withAdmin(db, (a) => claimTaskById(a, laterId, OWNER, 60));
+    expect(claimed?.task).toMatchObject({ id: laterId, leaseOwner: OWNER });
+    expect(claimed?.tenantId).toBe(TENANT_A);
+    // 同一秒再点一次：有效租约在别人名下，领不到，也就不会渲染两遍
+    expect(await withAdmin(db, (a) => claimTaskById(a, laterId, OWNER, 60))).toBeNull();
+    // 别的 id 不被连带锁住：ref 没租约、stage 可领，仍然在池子里
+    expect(await readTask(ref)).toMatchObject({ stage: "claimed", leaseOwner: null });
+    // 队列里躺着一条库里已经没有的 job（任务被删），领不到就算完，不许抛
+    expect(await withAdmin(db, (a) => claimTaskById(a, randomUUID(), OWNER, 60))).toBeNull();
+  });
+
+  it("按 id 也越不过人的闸：还没人认领的领不到", async () => {
+    const unclaimed = await withTenant(db, TENANT_A, async (t) => {
+      const cid = await createCandidate(t, { title: "还没人认领", summary: "", heat: 1 });
+      return (await createTask(t, { capability: "news", candidateId: cid })).id;
+    });
+    // N5「认领才生产」：candidate 不是活，队列推得再快也不许 worker 替人认领
+    expect(await withAdmin(db, (a) => claimTaskById(a, unclaimed, OWNER, 60))).toBeNull();
+    expect(await withTenant(db, TENANT_A, (t) => getTask(t, unclaimed))).toMatchObject({
+      stage: "candidate",
+      leaseOwner: null,
+    });
   });
 
   it("闸拒绝时结构化理由进 gate_results，拼好的文案进 error_reason", async () => {

@@ -13,7 +13,9 @@
     "@heron/capability-news": "workspace:*",
     "@heron/contracts": "workspace:*",
     "@heron/db": "workspace:*",
-    "@heron/domain": "workspace:*"
+    "@heron/domain": "workspace:*",
+    "@heron/redis": "workspace:*",
+    "bullmq": "^6.4.2"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

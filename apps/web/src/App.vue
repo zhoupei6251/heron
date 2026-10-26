@@ -4,22 +4,18 @@ import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { RouterView, useRoute } from "vue-router";
 
 import AppShell from "./components/AppShell.vue";
-import PlatformShell from "./components/PlatformShell.vue";
-import { useAuthStore } from "./stores/auth";
-import { usePlatformAuthStore } from "./stores/platform-auth";
 import { useAppearanceStore } from "./stores/appearance";
+import { useAuthStore } from "./stores/auth";
 
 useAppearanceStore();
 const auth = useAuthStore();
-const platformAuth = usePlatformAuthStore();
 const route = useRoute();
 </script>
 
 <template>
   <ElConfigProvider :locale="zhCn">
-    <RouterView v-if="route.meta.public" />
-    <PlatformShell v-else-if="route.meta.platform && platformAuth.user" />
-    <AppShell v-else-if="!route.meta.platform && auth.user" />
-    <RouterView v-else />
+    <!-- 登录页与 404 不带外壳；其余页面在有会话时共用同一个控制台布局。 -->
+    <RouterView v-if="route.meta.public || !auth.session" />
+    <AppShell v-else />
   </ElConfigProvider>
 </template>

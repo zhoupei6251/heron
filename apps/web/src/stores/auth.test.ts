@@ -2,13 +2,12 @@ import { createPinia, setActivePinia } from "pinia";
 import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AuthUser } from "@heron/contracts";
-import { can, requiredRoleFor } from "@heron/domain";
+import type { AuthUser, ConsoleSession, Role } from "@heron/contracts";
+import { can, consoleAccess, requiredRoleFor } from "@heron/domain";
 
 import { request, setUnauthorizedHandler } from "../api/http";
 import { installAuthGuards, safeRedirect } from "../router/guards";
 import { useAuthStore } from "./auth";
-import { usePlatformAuthStore } from "./platform-auth";
 import { useTasksStore } from "./tasks";
 
 /**
@@ -27,6 +26,16 @@ const USER: AuthUser = {
   role: "viewer",
 };
 
+const tenantSession = (role: Role = "viewer"): ConsoleSession => ({
+  kind: "tenant",
+  user: { ...USER, role },
+  ...consoleAccess(role),
+});
+const platformSession = (): ConsoleSession => ({
+  kind: "platform",
+  user: { id: USER.id, email: USER.email, displayName: USER.displayName },
+  ...consoleAccess("platform"),
+});
 const Blank = { template: "<div />" };
 
 /** 用内存 history 与空组件：这里验的是守卫与 401 接线，不是页面长什么样。 */
@@ -34,13 +43,10 @@ function makeRouter(): Router {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: "/", redirect: "/candidates" },
-      { path: "/candidates", component: Blank },
-      { path: "/review", component: Blank },
       { path: "/login", component: Blank, meta: { public: true } },
-      { path: "/platform", component: Blank, meta: { platform: true } },
-      { path: "/platform/tenants", component: Blank, meta: { platform: true } },
-      { path: "/platform/login", component: Blank, meta: { platform: true, public: true } },
+      { path: "/platform/login", redirect: "/login" },
+      { path: "/not-found", component: Blank, meta: { public: true } },
+      { path: "/:pathMatch(.*)*", component: Blank, meta: { public: true } },
     ],
   });
   installAuthGuards(router);
@@ -63,12 +69,12 @@ afterEach(() => {
 });
 
 describe("会话边界", () => {
-  it("平台接口失效只通知平台会话，不误退租户账号", async () => {
+  it("平台接口失效通知唯一会话", async () => {
     answer401();
     const handler = vi.fn();
     setUnauthorizedHandler(handler);
     await expect(request("/platform/tenants")).rejects.toMatchObject({ status: 401 });
-    expect(handler).toHaveBeenCalledWith("platform");
+    expect(handler).toHaveBeenCalledWith();
   });
 
   it("登录失败不触发全局跳转，以免覆盖表单错误", async () => {
@@ -83,7 +89,7 @@ describe("会话边界", () => {
     const router = makeRouter();
     answer401();
     const auth = useAuthStore();
-    auth.user = USER;
+    auth.session = tenantSession();
     await router.push("/review");
     expect(router.currentRoute.value.path).toBe("/review");
 
@@ -100,9 +106,70 @@ describe("会话边界", () => {
     expect(router.currentRoute.value.path).toBe("/login");
     expect(useAuthStore().user).toBeNull();
   });
+
+  it("根路径在未登录时去登录页，不露出 404", async () => {
+    const router = makeRouter();
+    answer401();
+    await router.push("/");
+    expect(router.currentRoute.value.path).toBe("/login");
+  });
+
+  it("已登录时直接打开 /login 会回到本人首页", async () => {
+    const router = makeRouter();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(tenantSession())));
+    await router.push("/login");
+    expect(router.currentRoute.value.path).toBe("/overview");
+  });
 });
 
-describe("双后台路由", () => {
+describe("后端菜单驱动统一路由", () => {
+  it.each(["owner", "admin", "reviewer", "operator", "viewer"] as const)(
+    "只注册 %s 收到的菜单",
+    async (role) => {
+      const router = makeRouter();
+      const auth = useAuthStore();
+      auth.session = tenantSession(role);
+      await router.push("/");
+      expect(router.currentRoute.value.path).toBe("/overview");
+      expect(router.hasRoute("members")).toBe(role === "owner");
+      for (const id of ["feeds", "settings", "audit"]) {
+        expect(router.hasRoute(id)).toBe(role === "owner" || role === "admin");
+      }
+      for (const menu of auth.session.menus) {
+        await router.push(menu.path);
+        expect(router.currentRoute.value.path).toBe(menu.path);
+      }
+      if (role !== "owner") {
+        await router.push("/members");
+        expect(router.currentRoute.value.path).toBe("/not-found");
+      }
+    },
+  );
+
+  it("不按本地角色补菜单，拒绝伪路径与跨身份菜单，变更会话后移除旧路由", async () => {
+    const router = makeRouter();
+    const auth = useAuthStore();
+    auth.session = {
+      ...tenantSession("owner"),
+      menus: [
+        { id: "review", path: "/review", label: "后端审片", group: "授权" },
+        { id: "members", path: "/evil", label: "错误映射", group: "授权" },
+        ...platformSession().menus,
+      ],
+    };
+    await router.push("/");
+    expect(router.currentRoute.value.path).toBe("/review");
+    expect(auth.menus.map((menu) => menu.path)).toEqual(["/review"]);
+    expect(router.hasRoute("members")).toBe(false);
+    expect(router.hasRoute("tenants")).toBe(false);
+    auth.session = platformSession();
+    expect(router.hasRoute("review")).toBe(false);
+    await router.push("/platform/tenants");
+    expect(router.currentRoute.value.path).toBe("/platform/tenants");
+    expect(auth.user).toBeNull();
+    auth.clear();
+    expect(router.hasRoute("tenants")).toBe(false);
+  });
   it("退出后迟到的任务请求不会把上个租户的数据放回缓存", async () => {
     let resolveResponse!: (response: Response) => void;
     vi.stubGlobal(
@@ -112,6 +179,7 @@ describe("双后台路由", () => {
           resolveResponse = resolve;
         }),
     );
+    useAuthStore().session = tenantSession();
     const tasks = useTasksStore();
     const pending = tasks.refresh();
     tasks.clear();
@@ -123,32 +191,40 @@ describe("双后台路由", () => {
   it("租户 owner 不能凭租户身份进入平台后台", async () => {
     answer401();
     const router = makeRouter();
-    useAuthStore().user = { ...USER, role: "owner" };
+    useAuthStore().session = tenantSession("owner");
     await router.push("/platform/tenants");
-    expect(router.currentRoute.value.path).toBe("/platform/login");
+    expect(router.currentRoute.value.path).toBe("/not-found");
     expect(useAuthStore().user?.id).toBe(USER.id);
   });
 
-  it("平台会话过期不清除同时存在的租户会话", async () => {
+  it("平台会话过期清除唯一身份并回到统一登录", async () => {
     answer401();
     const router = makeRouter();
-    useAuthStore().user = USER;
-    usePlatformAuthStore().user = { id: USER.id, email: USER.email, displayName: "平台管理员" };
+    useAuthStore().session = platformSession();
     await router.push("/platform/tenants");
-    expect(router.currentRoute.value.path).toBe("/platform/tenants");
     await expect(request("/platform/tenants")).rejects.toMatchObject({ status: 401 });
-    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe("/platform/login"));
-    expect(usePlatformAuthStore().user).toBeNull();
-    expect(useAuthStore().user?.id).toBe(USER.id);
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe("/login"));
+    expect(useAuthStore().session).toBeNull();
   });
 
-  it("登录跳转限制在对应后台内，拒绝外站与跨后台地址", () => {
-    expect(safeRedirect("//outside.invalid", "tenant")).toBe("/");
-    expect(safeRedirect("/\\\\outside.invalid", "tenant")).toBe("/");
-    expect(safeRedirect("/platform/tenants", "tenant")).toBe("/");
-    expect(safeRedirect("/review?task=123", "tenant")).toBe("/review?task=123");
-    expect(safeRedirect("/review", "platform")).toBe("/platform");
-    expect(safeRedirect("/platform/tenants", "platform")).toBe("/platform/tenants");
+  it("登录跳转只接受本身份已授权的注册路径", () => {
+    for (const invalid of [
+      "//outside.invalid",
+      "/\\\\outside.invalid",
+      "/platform/tenants",
+      "/members",
+      "/unknown",
+      "/login",
+      "/review/../members",
+      "/%72eview",
+      "/review\n",
+    ]) {
+      expect(safeRedirect(invalid, tenantSession())).toBe("/overview");
+    }
+    expect(safeRedirect("/review?task=123#sheet", tenantSession())).toBe("/review?task=123#sheet");
+    expect(safeRedirect("/review", platformSession())).toBe("/platform");
+    expect(safeRedirect("/platform/tenants", platformSession())).toBe("/platform/tenants");
+    expect(safeRedirect("/review", { ...tenantSession(), menus: [] })).toBe("/not-found");
   });
 });
 
@@ -164,14 +240,15 @@ const credentials = { tenant: "acme", email: USER.email, password: "password-lon
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 
 describe.each(["tenant", "platform"] as const)("%s session interleavings", (scope) => {
-  const store = () => (scope === "tenant" ? useAuthStore() : usePlatformAuthStore());
+  const store = () => useAuthStore();
+  const session = () => (scope === "tenant" ? tenantSession() : platformSession());
   const path = scope === "tenant" ? "/tasks" : "/platform/tenants";
 
   it("ignores an old request's 401 after a new login, but still rejects it", async () => {
     const old = deferred<Response>();
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockReturnValueOnce(old.promise).mockResolvedValueOnce(response(USER)),
+      vi.fn().mockReturnValueOnce(old.promise).mockResolvedValueOnce(response(session())),
     );
     const handler = vi.fn(() => store().clear());
     setUnauthorizedHandler(handler);
@@ -180,7 +257,7 @@ describe.each(["tenant", "platform"] as const)("%s session interleavings", (scop
     old.resolve(response({}, 401));
     expect(await pending).toMatchObject({ status: 401 });
     expect(handler).not.toHaveBeenCalled();
-    expect(store().user?.id).toBe(USER.id);
+    expect(store().session?.user?.id).toBe(USER.id);
   });
 
   it("does not let a request sent during login invalidate the completed session", async () => {
@@ -194,25 +271,27 @@ describe.each(["tenant", "platform"] as const)("%s session interleavings", (scop
     setUnauthorizedHandler(handler);
     const signingIn = store().login(credentials);
     const pending = request(path).catch((cause: unknown) => cause);
-    login.resolve(response(USER));
+    login.resolve(response(session()));
     await signingIn;
     old.resolve(response({}, 401));
     await pending;
     expect(handler).not.toHaveBeenCalled();
-    expect(store().user?.id).toBe(USER.id);
+    expect(store().session?.user?.id).toBe(USER.id);
   });
 
   it.each([200, 401, 500])("ignores stale me completion (%s) after login", async (status) => {
     const old = deferred<Response>();
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockReturnValueOnce(old.promise).mockResolvedValueOnce(response(USER)),
+      vi.fn().mockReturnValueOnce(old.promise).mockResolvedValueOnce(response(session())),
     );
     const pending = store().fetchMe();
     await store().login(credentials);
-    old.resolve(response({ ...USER, displayName: "old" }, status));
+    old.resolve(
+      response({ ...session(), user: { ...session().user, displayName: "old" } }, status),
+    );
     await pending;
-    expect(store().user?.displayName).toBe(USER.displayName);
+    expect(store().session?.user?.displayName).toBe(USER.displayName);
     expect(store().error).toBeNull();
   });
 
@@ -225,14 +304,14 @@ describe.each(["tenant", "platform"] as const)("%s session interleavings", (scop
     store().clear();
     const next = store().fetchMe();
     expect(fetch).toHaveBeenCalledTimes(2);
-    old.resolve(response({ ...USER, displayName: "old" }));
+    old.resolve(response({ ...session(), user: { ...session().user, displayName: "old" } }));
     await pending;
-    expect(store().user).toBeNull();
+    expect(store().session).toBeNull();
     const shared = store().fetchMe();
     expect(fetch).toHaveBeenCalledTimes(2);
-    current.resolve(response(USER));
+    current.resolve(response(session()));
     await Promise.all([next, shared]);
-    expect(store().user?.displayName).toBe(USER.displayName);
+    expect(store().session?.user?.displayName).toBe(USER.displayName);
   });
 
   it.each([200, 401])("stale login (%s) cannot change identity, busy or error", async (status) => {
@@ -247,14 +326,19 @@ describe.each(["tenant", "platform"] as const)("%s session interleavings", (scop
       .catch((cause: unknown) => cause);
     store().clear();
     const next = store().login(credentials);
-    old.resolve(response({ ...USER, displayName: "old", message: "old failure" }, status));
+    old.resolve(
+      response(
+        { ...session(), user: { ...session().user, displayName: "old" }, message: "old failure" },
+        status,
+      ),
+    );
     await pending;
-    expect(store().user).toBeNull();
+    expect(store().session).toBeNull();
     expect(store().busy).toBe(true);
     expect(store().error).toBeNull();
-    current.resolve(response(USER));
+    current.resolve(response(session()));
     await next;
-    expect(store().user?.displayName).toBe(USER.displayName);
+    expect(store().session?.user?.displayName).toBe(USER.displayName);
     expect(store().busy).toBe(false);
   });
 
@@ -262,29 +346,31 @@ describe.each(["tenant", "platform"] as const)("%s session interleavings", (scop
     const old = deferred<Response>();
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockReturnValueOnce(old.promise).mockResolvedValueOnce(response(USER)),
+      vi.fn().mockReturnValueOnce(old.promise).mockResolvedValueOnce(response(session())),
     );
-    store().user = USER;
+    store().session = session();
     const pending = store().logout();
     await store().login(credentials);
     old.resolve(response({ ok: true }));
     await pending;
-    expect(store().user?.id).toBe(USER.id);
+    expect(store().session?.user?.id).toBe(USER.id);
   });
 
-  it("another realm's login does not suppress this realm's current 401", async () => {
+  it("a cross-kind login invalidates the previous kind's 401", async () => {
     const old = deferred<Response>();
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockReturnValueOnce(old.promise).mockResolvedValueOnce(response(USER)),
+      vi.fn().mockReturnValueOnce(old.promise).mockResolvedValueOnce(response(session())),
     );
     const handler = vi.fn();
     setUnauthorizedHandler(handler);
     const pending = request(path).catch((cause: unknown) => cause);
-    await (scope === "tenant" ? usePlatformAuthStore() : useAuthStore()).login(credentials);
+    store().session = scope === "tenant" ? platformSession() : tenantSession();
+    await store().login(credentials);
     old.resolve(response({}, 401));
     await pending;
-    expect(handler).toHaveBeenCalledWith(scope);
+    expect(handler).not.toHaveBeenCalled();
+    expect(store().session?.kind).toBe(scope);
   });
 });
 

@@ -3,9 +3,13 @@ import { JwtModule } from "@nestjs/jwt";
 
 import { SESSION_TTL, jwtSecret } from "../config/runtime";
 import { PgModule } from "../db/pg";
+import { PlatformModule } from "../platform/platform.module";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
+import { ConsoleAuthService } from "./console-auth.service";
+import { ConsoleSessionGuard } from "./console-session.guard";
 import { JwtStrategy } from "./jwt.strategy";
+import { LoginThrottleService } from "./login-throttle.service";
 
 /**
  * 认证这一层的全部接线。
@@ -21,12 +25,20 @@ import { JwtStrategy } from "./jwt.strategy";
 @Module({
   imports: [
     PgModule,
+    // 统一入口同时要问两边的账号表；平台模块只导出服务，不导出它的登录路由。
+    PlatformModule,
     JwtModule.registerAsync({
       useFactory: () => ({ secret: jwtSecret(), signOptions: { expiresIn: SESSION_TTL } }),
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    ConsoleAuthService,
+    ConsoleSessionGuard,
+    JwtStrategy,
+    LoginThrottleService,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

@@ -6,6 +6,7 @@ export interface HealthReport {
   node: string;
   db: { ok: boolean; detail: string };
   webDist: { ok: boolean; detail: string };
+  redis: { configured: boolean; ok: boolean; detail: string };
   publish: { open: boolean; blockers: string[] };
 }
 
@@ -24,6 +25,9 @@ export async function loadHealth(): Promise<HealthReport> {
           typeof body.db.detail === "string" &&
           typeof body.webDist?.ok === "boolean" &&
           typeof body.webDist.detail === "string" &&
+          typeof body.redis?.configured === "boolean" &&
+          typeof body.redis.ok === "boolean" &&
+          typeof body.redis.detail === "string" &&
           typeof body.publish?.open === "boolean" &&
           Array.isArray(body.publish.blockers) &&
           body.publish.blockers.every((item) => typeof item === "string")

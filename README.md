@@ -2,7 +2,7 @@
 
 自主部署的多租户新闻视频工作室，以人工确认连接选题、生产、审片与发布。
 
-**当前可用：** 工作空间与独立平台控制台、成员与角色管理、任务与审片界面、用量和审计、Postgres 行级隔离、Docker Compose 部署。
+**当前可用：** 统一登录与权限菜单、工作空间与平台管理、成员与角色管理、任务与审片界面、用量和审计、Postgres 行级隔离、Docker Compose 部署。
 
 **仍在建设：** 自动采集调度、模型生成、真实渲染与发布平台接入、计费。演示任务不会调用外部发布平台；生产门禁未就绪时，不应把演示流程视为可用于真实发布的生产线。
 
@@ -35,7 +35,7 @@ docker compose -f deploy/docker-compose.yml --env-file .env up -d db
 pnpm db:seed-owner
 ```
 
-在 `/login` 使用工作空间标识、邮箱与密码登录。平台运营入口为 `/platform/login`，它使用独立的平台账号，不接受工作空间所有者身份。
+所有账号都在 `/login` 登录：工作空间成员填写工作空间标识、邮箱与密码；平台管理员将工作空间留空。登录后按服务端返回的角色、权限与菜单进入首页，不需要选择控制台。相同邮箱不代表相同账号，系统不会跨工作空间尝试登录，也不会把工作空间所有者自动提升为平台管理员。
 
 要创建初始平台管理员，显式配置 `HERON_PLATFORM_EMAIL`、`HERON_PLATFORM_PASSWORD`（12–128 位）和可选的 `HERON_PLATFORM_NAME`，再运行 `pnpm db:seed-platform`。引导命令不会重置已有账号的密码，完成后应移除引导密码配置。
 
@@ -54,17 +54,19 @@ HERON_DEV_API_URL=http://127.0.0.1:3101 pnpm web:dev
 
 ### 前端与控制台
 
-只有 **一个 Vue 前端应用**，共用组件、主题和构建产物，通过独立会话区分两个后台：
+只有 **一个 Vue 前端应用、一套登录与会话、一套管理布局**。参考 plus-ui 的用户信息与权限路由模式，服务端返回当前账号的 `roles`、`permissions` 和 `menus`；前端只从本地组件白名单注册允许的页面，侧栏和快捷导航共用这份菜单。
 
 | 入口     | 功能                                                                                         |
 | -------- | -------------------------------------------------------------------------------------------- |
 | 工作空间 | 概览、候选、生产、审片、发布记录、成片库、成员、权限、数据源配置、设置、用量、审计、个人安全 |
 | 平台运营 | 概览、租户开通/停用/恢复、全局用量、平台审计、服务健康                                       |
 
+成员管理只对工作空间所有者开放，数据源、设置和审计要求管理员及以上。页面可见性与操作权限分别控制：例如只读成员可看审片队列，但不能确认。平台账号不因此获得租户内容操作权限；服务端仍独立鉴权并执行 RLS，隐藏菜单不替代安全检查。
+
 视频版式在 `apps/web/src/entries/` 单独构建，不是第三套管理后台。
 
 - 顶栏支持明亮、深色、跟随系统三种配色；偏好保存在当前浏览器，不存储任何登录凭证。
-- `Ctrl+K` / `⌘K` 打开快捷导航，按页面名称、分组或路径搜索；方向键选择，Enter 进入，Esc 关闭。快捷导航不会跨越当前控制台的身份范围。
+- `Ctrl+K` / `⌘K` 打开快捷导航，按页面名称、分组或路径搜索；方向键选择，Enter 进入，Esc 关闭。快捷导航只显示当前账号获准访问的页面。
 - 表格、抽屉和审片工作台适配窄屏；动画尊重系统的减少动态效果设置。
 - 用量统计不是账单，健康检查不是外部发布服务的可用性证明；数据源配置保存不代表自动采集已经执行。
 
@@ -160,10 +162,36 @@ pnpm db:seed-owner                                                    # 在宿�
 - 多租户改造前留下的 SQLite 开发库用 `pnpm db:import-sqlite` 一次性导入：目标租户必须没有业务行，
   成功后旧库改名为 `<source>.pre-multi-tenant`（不删，便于对账）；合成 actor 不可登录。
 
+### 自动构建与发版（阿里云 ACR）
+
+镜像仓库 `registry.cn-shanghai.aliyuncs.com/heron_docker/heron`（ACR 个人版，cn-shanghai）。
+链路是 **push → ACR 云端构建 → 宿主 cron 拉取重建**，人只在第一次动手：
+
+1. 控制台（一次性，只有账号能做）：实例 → 仓库管理 → 代码源 → 绑定 GitHub；
+   仓库的构建规则加两条——分支 `main` → 版本 `latest`、分支 `dev` → 版本 `dev`，
+   构建上下文目录 `.`、Dockerfile 文件名 `Dockerfile`，并打开「代码变更自动构建」；
+   「访问凭证」里设一个**固定密码**（不是阿里云登录密码）。
+2. 宿主（一次性）：`docker login registry.cn-shanghai.aliyuncs.com`——凭据落 `~/.docker/config.json`，cron 才拿得到。
+3. 部署 `.env` 加一行：`HERON_IMAGE=registry.cn-shanghai.aliyuncs.com/heron_docker/heron:latest`。
+4. cron 每 5 分钟跑一次 `deploy/pull-latest.sh`：
+
+```
+*/5 * * * * HERON_DEPLOY_DIR=/docker/heron bash /docker/heron/src/deploy/pull-latest.sh >> /docker/heron/data/pull-latest.log 2>&1
+```
+
+- compose 里镜像写成 `${HERON_IMAGE:-heron:local}`：设了就是只拉不建，没设还是本地 build——
+  **不接仓库的自部署者照样起**，ACR 因此是加速器不是前提（与 Redis 同一条规矩）。
+- `dev` 是日常开发分支，`main` 才是发版线：ACR 不跑测试，推上去就构建、构建完就被拉走，
+  所以 `main` 只接住过了 `pnpm check` 的提交。想把这台机器切成开发线，把 `HERON_IMAGE` 换成 `:dev`。
+- 发版是「换容器」不是「原地更新」：新容器起不来，旧的一直服务到它起来为止。回滚就是把 `HERON_IMAGE`
+  改回上一个版本号——除 `latest` 外再按 `v${build_number}` 留一条规则，不然 `latest` 只有一个版本可回。
+- 个人版构建超时 30 分钟。`.npmrc` 没配国内源，`pnpm install` 走 registry.npmjs.org；真嫌慢就加
+  `registry=https://registry.npmmirror.com` 一行——lockfile 只存 integrity、不存 tarball 地址，换源不用重生成它。
+
 ## 安全边界（硬约束）
 
 - `reference/` 是 oracle：heron 代码不 import 它，构建不读它，CI 不跑它。
-- 会话只在 HttpOnly cookie 里，响应体与 token 都不带口令哈希。租户与平台使用独立 cookie 和 JWT audience；
+- 会话只在同一个 HttpOnly cookie 里，响应体与 token 都不带口令哈希。一次会话只对应一个账号；租户与平台保留不同 JWT audience、账号记录及后端权限边界，不按邮箱合并。旧平台 cookie 不再用于认证。
   守卫每次请求都复查启用状态与 `sessionVersion`。修改密码、角色、停用或退出会使旧会话失效，不依赖等待 JWT 到期。
 - 同源写请求校验 `Origin` 与服务端看到的协议/Host；反向代理必须保留 Host，公网部署必须配置 HTTPS 与安全 cookie。
 - 抖音登录态在 `~/.heron/state/douyin/`，仓库与 DB 都不存 cookie 本体；DB 只存路径 + sha256 指纹，
@@ -174,8 +202,9 @@ pnpm db:seed-owner                                                    # 在宿�
 ## 不做
 
 微服务（拆库不等于拆服务，仍是 api + worker 两个进程）· Next.js/Nuxt（会把前端与版式拆成两套世界观）·
-serverless（V8 isolate 没有子进程与 ffmpeg/Chromium）· 无人值守自动直发 · 队列中间件（Redis/BullMQ
-等计划 2 再定，现在进程内 + DB 租约是够的）。
+serverless（V8 isolate 没有子进程与 ffmpeg/Chromium）· 无人值守自动直发。
 
 翻过的案：Postgres、Docker、多租户原本都在这份否决名单里，2026-10-22 按「往 SaaS 主流形态做」重议后
 改为落地——决策、代价与顺序见 [docs/plans/2026-10-22-saas-multi-tenant-plan-1.md](docs/plans/2026-10-22-saas-multi-tenant-plan-1.md)。
+队列中间件（Redis + BullMQ）同批翻案，但只让它当派发：job 里只有一个 taskId，状态机、租约、尝试次数
+与闸痕全在 Postgres 的 tasks 表；REDIS_URL 不配时 worker 退回自己轮询，Redis 因此不是前提。

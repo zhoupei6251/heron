@@ -37,24 +37,10 @@ describe("LoginBodySchema", () => {
     expect(parsed.email).toBe("boss@example.com");
   });
 
-  it("第二个坐标是必需的，但大小写与空格留给数据层去规范化", () => {
-    // 空 slug 进不来：那等于让「找不到租户」和「租户是空串」共用一条查询
-    expect(
-      LoginBodySchema.safeParse({
-        tenant: "",
-        email: "boss@example.com",
-        password: "x".repeat(MIN_PASSWORD_LENGTH),
-      }).success,
-    ).toBe(false);
-    // ACME / 带空格 都收：slug 的 lower+trim 由 ck_tenants_slug_lower 与 findTenantBySlug 负责，
-    // 契约在这儿抢先改写过一遍，界面上回填的输入就会和库里对不上
-    expect(
-      LoginBodySchema.safeParse({
-        tenant: " ACME ",
-        email: "boss@example.com",
-        password: "x".repeat(MIN_PASSWORD_LENGTH),
-      }).success,
-    ).toBe(true);
+  it("空工作空间用于平台登录，租户编码在边界规范化", () => {
+    const credentials = { email: "boss@example.com", password: "x".repeat(MIN_PASSWORD_LENGTH) };
+    expect(LoginBodySchema.parse(credentials).tenant).toBe("");
+    expect(LoginBodySchema.parse({ ...credentials, tenant: " ACME " }).tenant).toBe("acme");
   });
 
   it("差一个字符的口令被拒：短的直接不进哈希层", () => {

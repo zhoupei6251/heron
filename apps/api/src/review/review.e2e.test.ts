@@ -30,6 +30,7 @@ import { AuthService } from "../auth/auth.service";
 import { AppModule } from "../app.module";
 import { SESSION_COOKIE } from "../config/runtime";
 import { PG_DB } from "../db/pg";
+import { TaskQueueService, QUEUE } from "../redis/redis.module";
 import { applyTransport } from "../transport";
 
 /**
@@ -153,6 +154,10 @@ describe("人工确认（真 socket）", () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PG_DB)
       .useValue(db)
+      // 队列在测试里恒为 null：e2e 只管「有没有投、投的是哪个 id」，不该真去连某个 Redis
+      // （开发机上 REDIS_URL 很可能是配着的，测试投一条就是一条外溢副作用）。
+      .overrideProvider(QUEUE)
+      .useValue(null)
       .compile();
     app = moduleRef.createNestApplication({ logger: false });
     applyTransport(app);
@@ -334,5 +339,50 @@ describe("人工确认（真 socket）", () => {
 
     const pending = await get("/reviews/pending", reviewer);
     expect((await json(pending)).reviews).toEqual([]);
+  });
+
+  /**
+   * 派发只挂在人的两个动作上。这条断言盯的是接线本身：删掉服务里那行 push 就得红。
+   * 队列在测试里是 null，push 走的是「未配置就什么都不做」那条早退分支——
+   * 要验的是「有没有被调用、带的是哪个 id」，不是投递成没成功。
+   */
+  it("认领与确认把 taskId 推给队列，创建与被拒的确认不推", async () => {
+    const push = vi.spyOn(app.get(TaskQueueService), "push");
+    const pushed = () => push.mock.calls.map(([id]) => id);
+
+    const first = await newTenant();
+    const reviewer = await login(first.slug, REVIEWER);
+    const created = await post("/tasks", reviewer, { capability: "news", title: "建一条候选" });
+    const taskId = String((await json(created)).id);
+    expect(pushed()).toEqual([]);
+
+    expect((await post(`/tasks/${taskId}/claim`, reviewer, {})).status).toBe(201);
+    expect(pushed()).toEqual([taskId]);
+
+    // 每条 review 态任务各占一个租户：seedReviewTask 的夹具要求租户里只有一条任务，
+    // 而指纹对不上的那次确认会把任务判成 failed，同一租户里没法再确认第二次。
+    const stale = await newTenant();
+    const staleId = await seedReviewTask(stale.tenantId, stale.reviewerId, "被拒的确认不该派活");
+    expect(
+      (
+        await post(`/reviews/${staleId}/confirm`, await login(stale.slug, REVIEWER), {
+          contactSheetFingerprint: STALE_FP,
+        })
+      ).status,
+    ).toBe(409);
+    expect(pushed()).toEqual([taskId]);
+
+    const ok = await newTenant();
+    const okId = await seedReviewTask(ok.tenantId, ok.reviewerId, "确认放行才派活");
+    expect(
+      (
+        await post(`/reviews/${okId}/confirm`, await login(ok.slug, REVIEWER), {
+          contactSheetFingerprint: SHEET_FP,
+        })
+      ).status,
+    ).toBe(201);
+    expect(pushed()).toEqual([taskId, okId]);
+
+    push.mockRestore();
   });
 });

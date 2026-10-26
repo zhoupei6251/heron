@@ -2,60 +2,33 @@ import { createRouter, createWebHistory } from "vue-router";
 
 import { installAuthGuards } from "./guards";
 
+/**
+ * 静态路由只剩「入口」和「兜底」；业务页面按登录后下发的菜单动态注册。
+ * 这样「菜单里没有的页面」不是被藏起来，而是根本不存在，直接访问会落到 404。
+ */
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/overview" },
-    { path: "/overview", component: () => import("../pages/OverviewView.vue") },
-    { path: "/login", component: () => import("../pages/LoginView.vue"), meta: { public: true } },
     {
-      path: "/platform/login",
+      path: "/login",
+      name: "login",
       component: () => import("../pages/LoginView.vue"),
-      meta: { public: true, platform: true },
+      meta: { public: true },
     },
-    { path: "/candidates", component: () => import("../pages/CandidateFeed.vue") },
-    { path: "/production", component: () => import("../pages/Production.vue") },
-    { path: "/review", component: () => import("../pages/Review.vue") },
-    { path: "/publish", component: () => import("../pages/Publish.vue") },
-    { path: "/library", component: () => import("../pages/LibraryView.vue") },
-    { path: "/members", component: () => import("../pages/MembersView.vue") },
-    { path: "/roles", component: () => import("../pages/RolesView.vue") },
-    { path: "/feeds", component: () => import("../pages/FeedsView.vue") },
-    { path: "/settings", component: () => import("../pages/Settings.vue") },
-    { path: "/usage", component: () => import("../pages/UsageView.vue") },
-    { path: "/audit", component: () => import("../pages/AuditView.vue") },
-    { path: "/profile", component: () => import("../pages/ProfileView.vue") },
+    // 旧的平台登录地址保留一个转址，书签不会打到 404。
+    { path: "/platform/login", redirect: "/login" },
     {
-      path: "/platform",
-      component: () => import("../pages/PlatformOverviewView.vue"),
-      meta: { platform: true },
-    },
-    {
-      path: "/platform/tenants",
-      component: () => import("../pages/PlatformTenantsView.vue"),
-      meta: { platform: true },
-    },
-    {
-      path: "/platform/usage",
-      component: () => import("../pages/UsageView.vue"),
-      meta: { platform: true },
-    },
-    {
-      path: "/platform/audit",
-      component: () => import("../pages/AuditView.vue"),
-      meta: { platform: true },
-    },
-    {
-      path: "/platform/health",
-      component: () => import("../pages/PlatformHealthView.vue"),
-      meta: { platform: true },
-    },
-    {
-      path: "/platform/:pathMatch(.*)*",
+      path: "/not-found",
+      name: "not-found",
       component: () => import("../pages/NotFoundView.vue"),
-      meta: { platform: true },
+      meta: { public: true },
     },
-    { path: "/:pathMatch(.*)*", component: () => import("../pages/NotFoundView.vue") },
+    {
+      path: "/:pathMatch(.*)*",
+      name: "unmatched",
+      component: () => import("../pages/NotFoundView.vue"),
+      meta: { public: true },
+    },
   ],
 });
 

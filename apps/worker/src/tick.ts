@@ -1,9 +1,9 @@
-import { type Db, markFailed, withTenant } from "@heron/db/pg";
+import { type ClaimedTask, type Db, markFailed, withTenant } from "@heron/db/pg";
 import { GateRefusalError } from "@heron/domain";
 
 import { OWNER } from "./config";
 import { walkTask, type WalkTrace } from "./pipeline";
-import { claimNext } from "./scheduler";
+import { claimById, claimNext } from "./scheduler";
 
 type WalkOutcome =
   | { readonly ok: true; readonly trace: WalkTrace }
@@ -23,6 +23,21 @@ function describe(cause: unknown): string {
 export async function tick(db: Db): Promise<string | null> {
   const claimed = await claimNext(db);
   if (!claimed) return null;
+  return walk(db, claimed);
+}
+
+/**
+ * 队列投来的 taskId 走这条路：按 id 领，判据与领「最早一条」完全相同。
+ * 领不到（已被别人的租约占着、还停在等人的状态）就什么都不做——
+ * 队列重复投递、队列与兜底轮询同时跑，都只是多一次空转，不会渲染第二遍。
+ */
+export async function runTask(db: Db, taskId: string): Promise<string | null> {
+  const claimed = await claimById(db, taskId);
+  if (!claimed) return null;
+  return walk(db, claimed);
+}
+
+async function walk(db: Db, claimed: ClaimedTask): Promise<string> {
   const { task, tenantId } = claimed;
   const label = task.id.slice(0, 8);
 

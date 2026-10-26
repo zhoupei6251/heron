@@ -7,6 +7,7 @@ const degraded = {
   node: "v24.22.1",
   db: { ok: true, detail: "connected" },
   webDist: { ok: false, detail: "missing build" },
+  redis: { configured: false, ok: true, detail: "REDIS_URL 未配置" },
   publish: { open: false, blockers: ["review required"] },
 };
 afterEach(() => vi.unstubAllGlobals());

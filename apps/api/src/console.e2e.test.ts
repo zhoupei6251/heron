@@ -17,6 +17,7 @@ import {
   tasks,
 } from "@heron/db/pg";
 import { randomUUID } from "node:crypto";
+import { ConsoleSessionSchema } from "@heron/contracts";
 import { hashPassword } from "@heron/domain";
 import { AppModule } from "./app.module";
 import { PG_DB } from "./db/pg";
@@ -51,6 +52,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
   let admin: string;
   let viewer: string;
   let platform: string;
+  let platformId: string;
   const originalSecret = process.env.HERON_JWT_SECRET;
 
   const request = (path: string, cookie = "", method = "GET", body?: unknown, headers = {}) =>
@@ -65,17 +67,48 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     expect(res.status).toBe(201);
     return res.headers.getSetCookie()[0]!.split(";")[0]!;
   }
+  function expectLegacyCleared(res: Response) {
+    const legacy = res.headers
+      .getSetCookie()
+      .find((value) => value.startsWith("heron_platform_session="));
+    expect(legacy).toContain("heron_platform_session=;");
+    expect(legacy).toContain("Path=/api/platform;");
+    expect(legacy).toContain("Expires=Thu, 01 Jan 1970");
+  }
   async function platformLogin() {
-    const res = await request("/platform/auth/login", "", "POST", {
+    const res = await request("/auth/login", "", "POST", {
       email: "platform@example.com",
       password: PASSWORD,
     });
     expect(res.status).toBe(201);
-    const body = await data(res);
-    expect(Object.keys(body).sort()).toEqual(["displayName", "email", "id"]);
-    expect(res.headers.getSetCookie()[0]).toContain("Path=/api/platform");
-    expect(res.headers.getSetCookie()[0]).toContain("HttpOnly");
-    return res.headers.getSetCookie()[0]!.split(";")[0]!;
+    const body = ConsoleSessionSchema.parse(await data(res));
+    expect(Object.keys(body).sort()).toEqual(["kind", "menus", "permissions", "roles", "user"]);
+    expect(body.kind).toBe("platform");
+    expect(Object.keys(body.user).sort()).toEqual(["displayName", "email", "id"]);
+    expect(body.roles).toEqual(["platform"]);
+    expect(body.permissions).toEqual([
+      "platform.tenants.manage",
+      "platform.usage.read",
+      "platform.audit.read",
+      "platform.health.read",
+    ]);
+    expect(body.menus.map((menu) => menu.id)).toEqual([
+      "platform-overview",
+      "tenants",
+      "platform-usage",
+      "platform-audit",
+      "health",
+    ]);
+    const cookie = res.headers.getSetCookie()[0]!;
+    expect(cookie).toMatch(/^heron_session=/);
+    expect(cookie).toContain("Path=/;");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).not.toMatch(/Expires|Max-Age/);
+    expectLegacyCleared(res);
+    const pair = cookie.split(";")[0]!;
+    expect(await data(await request("/auth/me", pair))).toEqual(body);
+    return pair;
   }
 
   beforeAll(async () => {
@@ -100,15 +133,30 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
         email: "owner@example.com",
         displayName: "Other",
         role: "owner",
-        passwordHash: hashPassword(PASSWORD),
+        passwordHash: hashPassword("beta-owner-password"),
       });
+      for (const role of ["reviewer", "operator"] as const) {
+        await createUser(t, {
+          email: `${role}@example.com`,
+          displayName: role,
+          role,
+          passwordHash: hashPassword(PASSWORD),
+        });
+      }
       foreignFeed = (await createFeedSource(t, foreignUser, feed)).id;
       await createTask(t, { capability: "demo", candidateId: null });
     });
+    platformId = (
+      await createPlatformOperator(db, {
+        email: "platform@example.com",
+        displayName: "平台",
+        passwordHash: hashPassword(PASSWORD),
+      })
+    ).id;
     await createPlatformOperator(db, {
-      email: "platform@example.com",
-      displayName: "平台",
-      passwordHash: hashPassword(PASSWORD),
+      email: "owner@example.com",
+      displayName: "Separate platform identity",
+      passwordHash: hashPassword("platform-owner-password"),
     });
     const module = await Test.createTestingModule({
       imports: [AppModule],
@@ -266,8 +314,14 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
       ).status,
     ).toBe(401);
     const fresh = await login("new@example.com", "alpha", "a-new-console-password");
-    expect(await data(await request("/auth/logout", fresh, "POST"))).toEqual({ ok: true });
+    const sibling = await login("new@example.com", "alpha", "a-new-console-password");
+    const logout = await request("/auth/logout", fresh, "POST");
+    expect(await data(logout)).toEqual({ ok: true });
+    expect(logout.headers.getSetCookie()[0]).toContain("heron_session=;");
+    expect(logout.headers.getSetCookie()[0]).toContain("Path=/;");
+    expectLegacyCleared(logout);
     expect((await request("/auth/me", fresh)).status).toBe(401);
+    expect((await request("/auth/me", sibling)).status).toBe(401);
   });
 
   it("compares full Origins, supports secure TLS termination and never trusts forwarded headers", async () => {
@@ -323,8 +377,148 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     }
   });
 
-  it("requires independent platform authentication, strict audiences/version, even with cookie swaps", async () => {
-    for (const path of ["auth/me", "tenants", "usage", "audit", "health"]) {
+  it.each([
+    [
+      "owner",
+      "alpha",
+      ["task.claim", "review.confirm", "settings.write", "aigc.set", "user.manage", "usage.read"],
+      ["members", "feeds", "settings", "audit"],
+    ],
+    [
+      "admin",
+      "alpha",
+      ["task.claim", "review.confirm", "settings.write", "aigc.set", "usage.read"],
+      ["feeds", "settings", "audit"],
+    ],
+    ["reviewer", "beta", ["task.claim", "review.confirm", "usage.read"], []],
+    ["operator", "beta", ["task.claim", "usage.read"], []],
+    ["viewer", "alpha", ["usage.read"], []],
+  ] as const)(
+    "returns only %s access and safe menu metadata from login and me",
+    async (role, tenant, permissions, privilegedMenus) => {
+      const res = await request("/auth/login", "heron_platform_session=legacy", "POST", {
+        tenant: ` ${tenant.toUpperCase()} `,
+        email: ` ${role.toUpperCase()}@EXAMPLE.COM `,
+        password: PASSWORD,
+      });
+      expect(res.status).toBe(201);
+      const session = ConsoleSessionSchema.parse(await data(res));
+      expect(session).toMatchObject({
+        kind: "tenant",
+        user: { email: `${role}@example.com`, role, tenantSlug: tenant },
+      });
+      expect(session.roles).toEqual([role]);
+      expect(session.permissions).toEqual(permissions);
+      expect(session.menus.map((menu) => menu.id).sort()).toEqual(
+        [
+          "overview",
+          "candidates",
+          "production",
+          "review",
+          "publish",
+          "library",
+          "roles",
+          "usage",
+          "profile",
+          ...privilegedMenus,
+        ].sort(),
+      );
+      for (const menu of session.menus) {
+        expect(Object.keys(menu).sort()).toEqual(["group", "id", "label", "path"]);
+        expect(menu.path).toBe(`/${menu.id}`);
+      }
+      expectLegacyCleared(res);
+      const cookie = res.headers.getSetCookie()[0]!.split(";")[0]!;
+      expect(await data(await request("/auth/me", cookie))).toEqual(session);
+      expect(JSON.stringify(session)).not.toMatch(/scrypt|passwordHash|sessionVersion|token/);
+    },
+  );
+
+  it("never merges same-email actors or falls back across workspaces and realms", async () => {
+    const identities = [];
+    for (const [tenant, password, kind, id] of [
+      ["alpha", PASSWORD, "tenant", ownerId],
+      ["beta", "beta-owner-password", "tenant", foreignUser],
+      ["", "platform-owner-password", "platform", undefined],
+    ] as const) {
+      const res = await request("/auth/login", "", "POST", {
+        tenant,
+        email: "owner@example.com",
+        password,
+      });
+      expect(res.status).toBe(201);
+      const session = ConsoleSessionSchema.parse(await data(res));
+      expect(session.kind).toBe(kind);
+      if (id) expect(session.user.id).toBe(id);
+      identities.push(session.user.id);
+    }
+    expect(new Set(identities).size).toBe(3);
+    for (const [tenant, email, password] of [
+      ["alpha", "owner@example.com", "platform-owner-password"],
+      ["beta", "owner@example.com", PASSWORD],
+      ["missing", "owner@example.com", PASSWORD],
+      ["missing", "platform@example.com", PASSWORD],
+      ["alpha", "platform@example.com", PASSWORD],
+      ["", "owner@example.com", PASSWORD],
+      [undefined, "owner@example.com", PASSWORD],
+      ["   ", "admin@example.com", PASSWORD],
+    ]) {
+      const res = await request("/auth/login", "", "POST", { tenant, email, password });
+      expect(res.status).toBe(401);
+      expect((await data(res)).message).toBe("邮箱或口令不正确");
+      expect(res.headers.getSetCookie()).toEqual([]);
+    }
+    for (const tenant of ["", "   ", undefined]) {
+      expect(
+        (
+          await request("/auth/login", "", "POST", {
+            tenant,
+            email: " PLATFORM@EXAMPLE.COM ",
+            password: PASSWORD,
+          })
+        ).status,
+      ).toBe(201);
+    }
+  });
+
+  it("validates the unified login boundary for both realms before authentication", async () => {
+    for (const tenant of ["alpha", ""]) {
+      for (const password of ["short", "x".repeat(129)]) {
+        expect(
+          (
+            await request("/auth/login", "", "POST", {
+              tenant,
+              email: "owner@example.com",
+              password,
+            })
+          ).status,
+        ).toBe(400);
+      }
+      expect(
+        (
+          await request("/auth/login", "", "POST", {
+            tenant,
+            email: "not-email",
+            password: PASSWORD,
+          })
+        ).status,
+      ).toBe(400);
+    }
+    for (const tenant of [null, "bad/workspace", "a".repeat(64)]) {
+      expect(
+        (
+          await request("/auth/login", "", "POST", {
+            tenant,
+            email: "owner@example.com",
+            password: PASSWORD,
+          })
+        ).status,
+      ).toBe(400);
+    }
+  });
+
+  it("keeps realm guards separate after unified login, including tenant mutations and human review", async () => {
+    for (const path of ["tenants", "usage", "audit", "health"]) {
       expect((await request(`/platform/${path}`)).status).toBe(401);
       expect((await request(`/platform/${path}`, owner)).status).toBe(401);
     }
@@ -340,12 +534,11 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
       (await request(`/platform/tenants/${tenantId}/status`, owner, "PATCH", { suspended: true }))
         .status,
     ).toBe(401);
-    expect((await request("/platform/auth/logout", owner, "POST")).status).toBe(401);
     platform = await platformLogin();
     expect(
       (
         await request(
-          "/platform/auth/login",
+          "/auth/login",
           "",
           "POST",
           { email: "platform@example.com", password: PASSWORD },
@@ -353,49 +546,138 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
         )
       ).status,
     ).toBe(403);
-    expect((await request("/platform/auth/me", platform)).status).toBe(200);
-    expect((await request("/auth/me", platform)).status).toBe(401);
-    expect((await request("/manage/tasks", platform)).status).toBe(401);
+    expect((await request("/auth/me", platform)).status).toBe(200);
+    for (const path of ["/manage/tasks", "/tasks", "/reviews/pending", "/settings"]) {
+      expect((await request(path, platform)).status).toBe(401);
+    }
+    expect((await request("/auth/profile", platform, "PATCH", { displayName: "No" })).status).toBe(
+      401,
+    );
     expect(
-      (await request("/auth/me", platform.replace("heron_platform_session=", "heron_session=")))
-        .status,
+      (
+        await request("/auth/password", platform, "POST", {
+          currentPassword: PASSWORD,
+          newPassword: "replacement-password",
+        })
+      ).status,
     ).toBe(401);
     expect(
       (
-        await request(
-          "/platform/auth/me",
-          owner.replace("heron_session=", "heron_platform_session="),
-        )
+        await request("/manage/members", platform, "POST", {
+          email: "forbidden@example.com",
+          displayName: "No",
+          password: PASSWORD,
+          role: "owner",
+        })
       ).status,
     ).toBe(401);
-    const jwt = new JwtService({ secret: SECRET });
-    for (const payload of [
-      { sub: ownerId, tid: tenantId, role: "owner", aud: "heron-tenant" },
-      { sub: ownerId, tid: tenantId, role: "owner", ver: 0 },
-      { sub: ownerId, tid: tenantId, role: "owner", ver: 0, aud: "heron-platform" },
-    ]) {
-      expect(
-        (await request("/auth/me", `heron_session=${await jwt.signAsync(payload)}`)).status,
-      ).toBe(401);
-    }
-    const invalid = await request("/platform/auth/login", "", "POST", {
+    expect(
+      (
+        await request(`/reviews/${randomUUID()}/confirm`, platform, "POST", {
+          contactSheetFingerprint: "fp",
+        })
+      ).status,
+    ).toBe(401);
+    const invalid = await request("/auth/login", "", "POST", {
       email: "platform@example.com",
-      password: "wrong",
+      password: "wrong-platform-password",
     });
-    const absent = await request("/platform/auth/login", "", "POST", {
+    const absent = await request("/auth/login", "", "POST", {
       email: "missing@example.com",
       password: PASSWORD,
     });
     expect(invalid.status).toBe(401);
+    expect(absent.status).toBe(401);
     expect(await data(invalid)).toEqual(await data(absent));
-    expect(
-      (
-        await request("/platform/auth/login", "", "POST", {
-          email: "owner@example.com",
-          password: PASSWORD,
-        })
-      ).status,
-    ).toBe(401);
+  });
+
+  it("removes the independent platform auth endpoints rather than aliasing them", async () => {
+    for (const cookie of ["", owner, platform]) {
+      for (const [path, method] of [
+        ["login", "POST"],
+        ["me", "GET"],
+        ["logout", "POST"],
+      ] as const) {
+        expect(
+          (
+            await request(
+              `/platform/auth/${path}`,
+              cookie,
+              method,
+              method === "POST"
+                ? {
+                    email: "platform@example.com",
+                    password: PASSWORD,
+                  }
+                : undefined,
+            )
+          ).status,
+        ).toBe(404);
+      }
+    }
+    expect((await request("/auth/me", platform)).status).toBe(200);
+  });
+
+  it("ignores the legacy cookie, even when it names a different actor beside the unified cookie", async () => {
+    const legacyPlatform = platform.replace("heron_session=", "heron_platform_session=");
+    const legacyTenant = owner.replace("heron_session=", "heron_platform_session=");
+    for (const cookie of [legacyPlatform, legacyTenant]) {
+      for (const path of ["/auth/me", "/platform/tenants", "/manage/tasks"]) {
+        expect((await request(path, cookie)).status).toBe(401);
+      }
+      expect((await request("/auth/logout", cookie, "POST")).status).toBe(401);
+    }
+    const tenantCookie = `${legacyPlatform}; ${owner}`;
+    expect(await data(await request("/auth/me", tenantCookie))).toMatchObject({
+      kind: "tenant",
+      user: { id: ownerId },
+    });
+    expect((await request("/platform/tenants", tenantCookie)).status).toBe(401);
+    const platformCookie = `${legacyTenant}; ${platform}`;
+    expect(await data(await request("/auth/me", platformCookie))).toMatchObject({
+      kind: "platform",
+    });
+    expect((await request("/manage/tasks", platformCookie)).status).toBe(401);
+  });
+
+  it("rejects forged, expired, wrong-algorithm, ambiguous-audience and stale sessions before exposing access", async () => {
+    const jwt = new JwtService({ secret: SECRET });
+    for (const [actor, audience, route] of [
+      [{ sub: ownerId, tid: tenantId, role: "owner", ver: 0 }, "heron-tenant", "/manage/tasks"],
+      [{ sub: platformId, ver: 0 }, "heron-platform", "/platform/tenants"],
+    ] as const) {
+      const payload = { ...actor, aud: audience };
+      const unversioned = Object.fromEntries(
+        Object.entries(payload).filter(([key]) => key !== "ver"),
+      );
+      const badTokens = [
+        await new JwtService({
+          secret: "different-test-signing-key-at-least-32-characters",
+        }).signAsync(payload),
+        await jwt.signAsync(payload, { algorithm: "HS384" }),
+        await jwt.signAsync({ ...payload, exp: 1 }),
+        await jwt.signAsync({ ...actor, aud: "other" }),
+        await jwt.signAsync({ ...actor, aud: ["heron-tenant", "heron-platform"] }),
+        await jwt.signAsync(actor),
+        await jwt.signAsync(unversioned),
+        await jwt.signAsync({ ...payload, ver: 100 }),
+        "not-a-jwt",
+      ];
+      for (const token of badTokens) {
+        const cookie = `heron_session=${token}`;
+        expect((await request("/auth/me", cookie)).status).toBe(401);
+        expect((await request("/auth/logout", cookie, "POST")).status).toBe(401);
+        expect((await request(route, cookie)).status).toBe(401);
+      }
+    }
+    const swapped = await jwt.signAsync({
+      sub: ownerId,
+      tid: tenantId,
+      role: "owner",
+      ver: 0,
+      aud: "heron-platform",
+    });
+    expect((await request("/auth/me", `heron_session=${swapped}`)).status).toBe(401);
   });
 
   it("atomically provisions tenant+owner, suspends immediately, and records only safe platform audit", async () => {
@@ -438,10 +720,16 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     const health = await request("/platform/health", platform);
     expect([200, 503]).toContain(health.status);
     expect((await data(health)).publish).toMatchObject({ open: false });
-    const logout = await request("/platform/auth/logout", platform, "POST");
+    const secondSession = await platformLogin();
+    const logout = await request("/auth/logout", platform, "POST");
     expect(await data(logout)).toEqual({ ok: true });
-    expect(logout.headers.getSetCookie()[0]).toContain("Path=/api/platform");
-    expect((await request("/platform/tenants", platform)).status).toBe(401);
+    expect(logout.headers.getSetCookie()[0]).toContain("heron_session=;");
+    expect(logout.headers.getSetCookie()[0]).toContain("Path=/;");
+    expectLegacyCleared(logout);
+    for (const cookie of [platform, secondSession]) {
+      expect((await request("/auth/me", cookie)).status).toBe(401);
+      expect((await request("/platform/tenants", cookie)).status).toBe(401);
+    }
     expect((await request("/auth/me", owner)).status).toBe(200);
   });
 
@@ -519,14 +807,16 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
       { sub: payload.sub, ver: payload.ver, aud: "heron-tenant" },
       { sub: payload.sub, ver: payload.ver + 1, aud: "heron-platform" },
     ]) {
-      const cookie = `heron_platform_session=${await jwt.signAsync(bad)}`;
-      expect((await request("/platform/auth/me", cookie)).status).toBe(401);
+      const cookie = `heron_session=${await jwt.signAsync(bad)}`;
+      expect((await request("/auth/me", cookie)).status).toBe(401);
+      expect((await request("/platform/tenants", cookie)).status).toBe(401);
     }
-    // This fixture has exactly one operator; update the fixture table, never a live database.
+    // Only the isolated fixture operators are disabled, never a live database.
     await db.update(platformOperators).set({ disabledAt: new Date().toISOString() });
-    for (const path of ["auth/me", "tenants", "usage", "audit", "health"])
+    expect((await request("/auth/me", opCookie)).status).toBe(401);
+    for (const path of ["tenants", "usage", "audit", "health"])
       expect((await request(`/platform/${path}`, opCookie)).status).toBe(401);
-    const disabledLogin = await request("/platform/auth/login", "", "POST", {
+    const disabledLogin = await request("/auth/login", "", "POST", {
       email: "platform@example.com",
       password: PASSWORD,
     });

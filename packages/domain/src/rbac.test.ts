@@ -1,9 +1,45 @@
 import { ROLES } from "@heron/contracts";
 import { describe, expect, it } from "vitest";
 
-import { ACTIONS, can, isAction, requiredRoleFor } from "./rbac";
+import { ACTIONS, can, consoleAccess, isAction, requiredRoleFor } from "./rbac";
 
 describe("RBAC 纯函数", () => {
+  it("returns only authorized workspace navigation and action permissions", () => {
+    const viewer = consoleAccess("viewer");
+    expect(viewer.permissions).toEqual(["usage.read"]);
+    expect(viewer.menus.map((menu) => menu.id)).toEqual([
+      "overview",
+      "candidates",
+      "production",
+      "review",
+      "publish",
+      "library",
+      "roles",
+      "usage",
+      "profile",
+    ]);
+    expect(consoleAccess("admin").menus.map((menu) => menu.id)).toContain("settings");
+    expect(consoleAccess("admin").menus.map((menu) => menu.id)).not.toContain("members");
+    expect(consoleAccess("owner").menus.map((menu) => menu.id)).toContain("members");
+    expect(consoleAccess("owner").menus.some((menu) => menu.path.startsWith("/platform"))).toBe(
+      false,
+    );
+  });
+
+  it("never grants tenant actions or content routes to the platform role", () => {
+    const access = consoleAccess("platform");
+    expect(access.roles).toEqual(["platform"]);
+    expect(access.menus.map((menu) => menu.id)).toEqual([
+      "platform-overview",
+      "tenants",
+      "platform-usage",
+      "platform-audit",
+      "health",
+    ]);
+    expect(access.permissions).not.toContain("review.confirm");
+    expect(access.permissions).not.toContain("user.manage");
+  });
+
   /**
    * RANK 是从 ROLES 的**数组顺序**推出来的（从大到小），所以这条断言不是重复名单，
    * 是钉住推导依据：谁改顺序就得在这里红一次，知道自己动了什么。

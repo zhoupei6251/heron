@@ -140,8 +140,15 @@ describe("认证传输（真 socket）", () => {
     });
     expect(res.status).toBe(201);
     const body = await json(res);
-    // 键名点齐：多一个键就是 token 或口令哈希漏进了响应体
-    expect(Object.keys(body).sort()).toEqual([
+    expect(Object.keys(body).sort()).toEqual(["kind", "menus", "permissions", "roles", "user"]);
+    expect(body).toMatchObject({
+      kind: "tenant",
+      roles: ["reviewer"],
+      permissions: ["task.claim", "review.confirm", "usage.read"],
+    });
+    const user = body.user as Record<string, unknown>;
+    // 身份仍然是安全 DTO；会话 token、口令哈希和版本都不进响应体。
+    expect(Object.keys(user).sort()).toEqual([
       "displayName",
       "email",
       "id",
@@ -150,15 +157,15 @@ describe("认证传输（真 socket）", () => {
       "tenantName",
       "tenantSlug",
     ]);
-    expect(body).toMatchObject({
+    expect(user).toMatchObject({
       email: REVIEWER,
       displayName: REVIEWER,
       role: "reviewer",
       tenantName: "A 台",
       tenantSlug: SLUG.toLowerCase(),
     });
-    expect(typeof body.id).toBe("string");
-    expect(typeof body.tenantId).toBe("string");
+    expect(typeof user.id).toBe("string");
+    expect(typeof user.tenantId).toBe("string");
 
     const cookie = res.headers.getSetCookie()[0] ?? "";
     expect(cookie).toContain(`${SESSION_COOKIE}=`);
@@ -182,6 +189,22 @@ describe("认证传输（真 socket）", () => {
     expect(res.headers.getSetCookie()).toEqual([]);
   });
 
+  it("同一邮箱连续失败到阈值：此后 429，不再验口令；别的邮箱不受牵连", async () => {
+    const attempt = (email: string) =>
+      fetch(`${base}/api/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tenant: SLUG, email, password: "wrong-horse-battery" }),
+      });
+    for (let i = 0; i < 5; i += 1) {
+      expect((await attempt("throttle@example.com")).status).toBe(401);
+    }
+    const blocked = await attempt("throttle@example.com");
+    expect(blocked.status).toBe(429);
+    expect(String((await json(blocked)).message)).toContain("15 分钟");
+    expect((await attempt("not-throttled@example.com")).status).toBe(401);
+  });
+
   it("没有会话：/auth/me 与既有的 /tasks 都是 401，只有 @Public 的进得来", async () => {
     expect((await get("/auth/me")).status).toBe(401);
     // 全局守卫挡住业务路由时压根没进 handler，所以这一步也不会去碰 SQLite
@@ -194,7 +217,12 @@ describe("认证传输（真 socket）", () => {
     expect(token).not.toBeNull();
     const res = await get("/auth/me", token as string);
     expect(res.status).toBe(200);
-    expect(await json(res)).toMatchObject({ email: REVIEWER, role: "reviewer" });
+    expect(await json(res)).toMatchObject({
+      kind: "tenant",
+      user: { email: REVIEWER, role: "reviewer" },
+      roles: ["reviewer"],
+      permissions: ["task.claim", "review.confirm", "usage.read"],
+    });
   });
 
   it("权限表真的在挡：viewer 403，reviewer 200", async () => {

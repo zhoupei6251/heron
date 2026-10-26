@@ -10,7 +10,8 @@
       "@heron/contracts": ["../../packages/contracts/src/index.ts"],
       "@heron/db": ["../../packages/db/src/index.ts"],
       "@heron/db/pg": ["../../packages/db/src/pg/index.ts"],
-      "@heron/domain": ["../../packages/domain/src/index.ts"]
+      "@heron/domain": ["../../packages/domain/src/index.ts"],
+      "@heron/redis": ["../../packages/redis/src/index.ts"]
     }
   },
   "include": ["src"]

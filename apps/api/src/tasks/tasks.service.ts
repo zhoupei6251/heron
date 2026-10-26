@@ -17,6 +17,7 @@ import {
 import { dedupeVerdict, formatErrorReason, normKey } from "@heron/domain";
 
 import { PG_DB } from "../db/pg";
+import { TaskQueueService } from "../redis/redis.module";
 
 /**
  * 任务读写（pg 数据面）。每个请求先由会话定租户：withTenant 的那句 set_config 是
@@ -26,7 +27,10 @@ import { PG_DB } from "../db/pg";
 @Injectable()
 export class TasksService {
   // @Inject 不能省成裸类型：tsx 不执行 emitDecoratorMetadata，隐式注入在启动期才炸。
-  constructor(@Inject(PG_DB) private readonly db: Db) {}
+  constructor(
+    @Inject(PG_DB) private readonly db: Db,
+    @Inject(TaskQueueService) private readonly queue: TaskQueueService,
+  ) {}
 
   list(user: AuthUser): Promise<Task[]> {
     return withTenant(this.db, user.tenantId, (t) => listTasks(t));
@@ -62,10 +66,14 @@ export class TasksService {
   /**
    * 人认领。认领人就是会话里的人（user.id）——请求体里谁写什么算谁的时代在 T7 结束：
    * claimed_by 是 uuid 外键，指到的是回库查过归属的那个真人。
+   *
+   * 投递排在事务之后：认领这件事已经写进 Postgres 了才推队列，
+   * 反过来的话 worker 可能先领到一条还没被认领的活，白跑一趟还得等兜底轮询。
    */
   async claim(user: AuthUser, taskId: string): Promise<Task> {
+    let task: Task;
     try {
-      return await withTenant(this.db, user.tenantId, async (t) => {
+      task = await withTenant(this.db, user.tenantId, async (t) => {
         await requireActiveActor(t, user.id, "task.claim");
         return claimByHuman(t, taskId, user.id);
       });
@@ -73,5 +81,7 @@ export class TasksService {
       if (cause instanceof ManagementError) throw cause;
       throw new BadRequestException("认领失败：任务不存在、状态已变化或操作人不可用，请刷新后重试");
     }
+    await this.queue.push(task.id);
+    return task;
   }
 }

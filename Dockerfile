@@ -24,6 +24,7 @@ COPY apps/web/package.json apps/web/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/db/package.json packages/db/
 COPY packages/domain/package.json packages/domain/
+COPY packages/redis/package.json packages/redis/
 COPY capabilities/news/package.json capabilities/news/
 
 RUN pnpm install --frozen-lockfile

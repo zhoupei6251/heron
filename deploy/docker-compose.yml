@@ -12,8 +12,11 @@ name: heron
 # 迁移由 api 进程自己跑（apps/api/src/db/pg.ts）：drizzle 的 migrator 不加咨询锁，
 # 两个进程同时迁移就是竞争建表，所以本案规定 api 是唯一的迁移方。
 #
-# 拓扑：db（Postgres 18）+ api（同时静态托管 apps/web/dist，所以没有第四个服务）+ worker。
-# 业务表与身份表都在 Postgres；heron_data 卷只剩成片与诊断产物（api 读、worker 写）。
+# 拓扑：db（Postgres 18）+ redis（派发队列与临时态）+ api（同时静态托管 apps/web/dist，
+# 所以没有第四个服务）+ worker。业务表与身份表都在 Postgres；heron_data 卷只剩成片与诊断产物
+# （api 读、worker 写）。Redis 只做派发：状态机、租约、尝试次数与闸痕全在 tasks 表，
+# job 里只有一个 taskId，worker 领活仍按 Postgres 的判据。它在应用层是可选的
+# （REDIS_URL 缺席即关闭，worker 退回轮询），只有走这份 compose 时默认开着。
 # worker 自己**不迁移**：它等 schema 就位（packages/db 的 waitForSchema），所以 compose 里
 # 用 api 的 healthcheck 当闸，而不是让两个进程各自跑一遍 migrator。
 
@@ -22,16 +25,24 @@ x-app: &app
     context: ..
     dockerfile: Dockerfile
   # 两个服务同一镜像、同一 tag：build 只做一次，第二次直接命中。
-  image: heron:local
+  # 指到镜像仓库（HERON_IMAGE=registry.../heron:latest）时这条 build 就只是后备：
+  # 镜像拉得到就绝不本地构建，拉不到才退回自己 build——自部署者不需要仓库照样起。
+  image: ${HERON_IMAGE:-heron:local}
   restart: unless-stopped
   volumes:
     # 与 api 同一个卷：成片要能被 api 直接读出来给前端。
     # 卷属主继承 Dockerfile 里 /data 的 chown（命名卷首次挂载时拷贝挂载点的属主）。
-    - heron_data:/data
+    # 三个卷源都可用环境变量换成宿主目录（带 / 的值 compose 按 bind mount 处理），
+    # 缺省是命名卷：自部署者不用自己 chown。
+    - ${HERON_APP_VOLUME:-heron_data}:/data
   environment:
     HERON_HOME: /data
     # 口令含 URL 保留字符时得先百分号编码：postgres.js 按 RFC 3986 解析，不替你转义。
     DATABASE_URL: postgres://${POSTGRES_USER:-heron}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-heron}
+    # api 与 worker 都要它：前者投递，后者消费。容器内走服务名；
+    # 宿主进程用 .env 里的 127.0.0.1 那条。故意不写 depends_on: redis——
+    # 应用层它是可选的，先起 api 也没关系，ioredis 会重连。
+    REDIS_URL: redis://:${REDIS_PASSWORD:?口令必须在 .env 里给，镜像和本文件都不带默认口令}@redis:6379
   depends_on:
     db:
       condition: service_healthy
@@ -49,12 +60,41 @@ services:
     volumes:
       # postgres:18 起数据目录变成 /var/lib/postgresql/<主版本>/docker，
       # 官方要求把卷挂在上一级；挂到旧地址 /var/lib/postgresql/data 会被 entrypoint 拒绝启动。
-      - pg_data:/var/lib/postgresql
+      - ${HERON_PG_VOLUME:-pg_data}:/var/lib/postgresql
     # 只绑回环：开发机上的 psql 连得上，公网扫不到。真要外部访问是你自己改这一行。
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    # 8.x 是许可原因不是新鲜度：7.x 是 RSALv2/SSPL，8.x 回到 AGPLv3。
+    # 只用标准协议，将来换 Valkey（BSD）改一行镜像名即可。
+    image: redis:8-alpine
+    restart: unless-stopped
+    # AOF 必须开：以后会有「只落 Redis、不落库」的数据，没有 AOF 重启就没了。
+    # 真出现那类数据时，备份口径也要从「只备份 Postgres」扩到「也备份 Redis」。
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "${REDIS_PASSWORD:?口令必须在 .env 里给，镜像和本文件都不带默认口令}",
+      ]
+    environment:
+      # 只给 healthcheck 用；requirepass 已经在 command 里显式给了。
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?口令必须在 .env 里给，镜像和本文件都不带默认口令}
+    volumes:
+      - ${HERON_REDIS_VOLUME:-redis_data}:/data
+    # 同 db：只绑回环，开发机的 redis-cli 连得上，公网扫不到。
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG']
       interval: 5s
       timeout: 3s
       retries: 12
@@ -72,6 +112,9 @@ services:
       # 对外暴露面由下面的 ports 127.0.0.1 收口，容器内不用再收一层。
       HOST: "0.0.0.0"
       DATABASE_URL: postgres://${POSTGRES_USER:-heron}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-heron}
+      # api 块自己重写了一遍 environment（compose 的合并键不做深合并），
+      # 所以锚点里的 REDIS_URL 在这里也得再写一次：漏掉就是「网页点了认领但 worker 收不到」。
+      REDIS_URL: redis://:${REDIS_PASSWORD:?口令必须在 .env 里给，镜像和本文件都不带默认口令}@redis:6379
       # 会话签名密钥同样不带默认值：没填就拒绝起（与 POSTGRES_PASSWORD 一条规矩）。
       # worker 不需要它——它不认人，只认库。
       HERON_JWT_SECRET: ${HERON_JWT_SECRET:?会话签名密钥必须在 .env 里给，镜像和本文件都不带默认值}
@@ -105,4 +148,5 @@ services:
 
 volumes:
   pg_data:
+  redis_data:
   heron_data:

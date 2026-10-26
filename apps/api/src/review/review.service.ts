@@ -11,6 +11,7 @@ import {
 import { GateRefusalError } from "@heron/domain";
 
 import { PG_DB } from "../db/pg";
+import { TaskQueueService } from "../redis/redis.module";
 
 /**
  * 人工确认这一侧的服务：队列给 reviewer 看，确认把任务送进 approved。
@@ -20,7 +21,10 @@ import { PG_DB } from "../db/pg";
 @Injectable()
 export class ReviewService {
   // @Inject 不能省成裸类型：tsx 不执行 emitDecoratorMetadata，隐式注入在启动期才炸。
-  constructor(@Inject(PG_DB) private readonly db: Db) {}
+  constructor(
+    @Inject(PG_DB) private readonly db: Db,
+    @Inject(TaskQueueService) private readonly queue: TaskQueueService,
+  ) {}
 
   async pending(user: AuthUser): Promise<ReviewItem[]> {
     const rows = await withTenant(this.db, user.tenantId, (t) => listReviewQueue(t));
@@ -77,6 +81,8 @@ export class ReviewService {
     }
     // 闸拒要把原因原文带回界面（规格书：失败必须报原因），409 与 400 都带 message
     if (!outcome.ok) throw new ConflictException(outcome.message);
+    // 确认已落库才推队列：approved 是可领状态，worker 领得到就说明这笔账真的写上了
+    await this.queue.push(outcome.task.id);
     return outcome.task;
   }
 }

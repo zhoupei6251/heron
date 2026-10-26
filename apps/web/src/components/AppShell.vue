@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ElAlert } from "element-plus";
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { RouterView, useRouter } from "vue-router";
 
 import { errorMessage } from "../api/http";
-import { roleLabel } from "../auth/roles";
 import { useTaskStream } from "../composables/useTaskStream";
 import { useAuthStore } from "../stores/auth";
 import { useTasksStore } from "../stores/tasks";
@@ -15,14 +14,24 @@ const tasks = useTasksStore();
 const router = useRouter();
 const signingOut = ref(false);
 const error = ref("");
+const tenant = computed(() => auth.session?.kind === "tenant");
 
-useTaskStream({
-  onEvent: (event) => tasks.applyEvent(event),
-  onStatus: (connected) => tasks.setConnected(connected),
-});
-onMounted(() => {
-  void tasks.refresh();
-});
+// 平台身份没有任务队列可推；租户身份退出后也要把缓存清掉，别把上个租户的数据留给下一个。
+useTaskStream(
+  {
+    onEvent: (event) => tasks.applyEvent(event),
+    onStatus: (connected) => tasks.setConnected(connected),
+  },
+  tenant,
+);
+watch(
+  tenant,
+  (value) => {
+    if (value) void tasks.refresh();
+    else tasks.clear();
+  },
+  { immediate: true },
+);
 onUnmounted(() => tasks.clear());
 
 async function logout(): Promise<void> {
@@ -31,7 +40,7 @@ async function logout(): Promise<void> {
   error.value = "";
   try {
     await auth.logout();
-    if (auth.user || auth.busy || router.currentRoute.value !== route) return;
+    if (auth.session || auth.busy || router.currentRoute.value !== route) return;
     tasks.clear();
     await router.replace("/login");
   } catch (cause) {
@@ -44,10 +53,7 @@ async function logout(): Promise<void> {
 
 <template>
   <ConsoleFrame
-    v-if="auth.user"
-    :workspace="auth.user.tenantName"
-    :name="auth.user.displayName"
-    :role="roleLabel(auth.user.role)"
+    v-if="auth.session"
     :connected="tasks.connected"
     :signing-out="signingOut"
     @logout="logout"

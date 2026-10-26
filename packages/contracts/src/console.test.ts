@@ -16,6 +16,26 @@ const tenant = {
 };
 
 describe("console contracts", () => {
+  it("normalizes a single login without guessing a tenant or accepting invalid workspace codes", () => {
+    expect(c.LoginBodySchema.parse({ email: member.email, password: member.password })).toEqual({
+      tenant: "",
+      email: "boss@example.com",
+      password: member.password,
+    });
+    expect(
+      c.LoginBodySchema.parse({ tenant: " alpha ", email: member.email, password: member.password })
+        .tenant,
+    ).toBe("alpha");
+    for (const value of ["a/b", "a".repeat(64), "-", null]) {
+      expect(
+        c.LoginBodySchema.safeParse({
+          tenant: value,
+          email: member.email,
+          password: member.password,
+        }).success,
+      ).toBe(false);
+    }
+  });
   it("exports bounded pagination with normalized search", () => {
     expect(c.PageQuerySchema).toBeDefined();
     expect(c.PageQuerySchema.parse({})).toEqual({ page: 1, pageSize: 20, q: "" });

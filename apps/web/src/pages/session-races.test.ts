@@ -1,4 +1,5 @@
-import type { AuthUser, ReviewItem } from "@heron/contracts";
+import type { AuthUser, ConsoleSession, ReviewItem } from "@heron/contracts";
+import { consoleAccess } from "@heron/domain";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick, type Component } from "vue";
@@ -7,14 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setUnauthorizedHandler } from "../api/http";
 import AppShell from "../components/AppShell.vue";
-import PlatformShell from "../components/PlatformShell.vue";
 import { useAuthStore } from "../stores/auth";
-import { usePlatformAuthStore } from "../stores/platform-auth";
 import LoginView from "./LoginView.vue";
-import Production from "./Production.vue";
-import ProfileView from "./ProfileView.vue";
-import Review from "./Review.vue";
-import Settings from "./Settings.vue";
+import Production from "./console/Production.vue";
+import ProfileView from "./console/ProfileView.vue";
+import Review from "./console/Review.vue";
+import Settings from "./console/Settings.vue";
 
 const user: AuthUser = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -25,6 +24,16 @@ const user: AuthUser = {
   displayName: "Original owner",
   role: "owner",
 };
+const tenantSession = (identity = user): ConsoleSession => ({
+  kind: "tenant",
+  user: { ...identity },
+  ...consoleAccess(identity.role),
+});
+const platformSession = (): ConsoleSession => ({
+  kind: "platform",
+  user: { id: user.id, email: user.email, displayName: "Platform operator" },
+  ...consoleAccess("platform"),
+});
 const credentials = { tenant: "acme", email: user.email, password: "password-long-enough" };
 const gates = { open: true, blockers: [], locations: [] };
 // Element Plus types intersect the prompt object with Action; confirm resolves an Action.
@@ -50,9 +59,7 @@ async function mount(component: unknown, path: string, platform = false) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const auth = useAuthStore(pinia);
-  const platformAuth = usePlatformAuthStore(pinia);
-  auth.user = { ...user };
-  if (platform) platformAuth.user = { ...user };
+  auth.session = platform ? platformSession() : tenantSession();
   const blank = { template: "<div />" };
   const router = createRouter({
     history: createMemoryHistory(),
@@ -78,7 +85,7 @@ async function mount(component: unknown, path: string, platform = false) {
     root.remove();
   };
   cleanups.push(unmount);
-  return { app, root, router, unmount, auth, platformAuth };
+  return { app, root, router, unmount, auth };
 }
 function input(root: HTMLElement, selector: string, value: string) {
   const element = root.querySelector<HTMLInputElement>(selector)!;
@@ -139,16 +146,17 @@ describe.each(["tenant", "platform"])("%s logout navigation ownership", (scope) 
       "fetch",
       vi.fn((path: string) => {
         if (path.endsWith("/logout")) return pending.promise;
-        if (path.endsWith("/login")) return Promise.resolve(json(user));
+        if (path.endsWith("/login"))
+          return Promise.resolve(json(scope === "tenant" ? tenantSession() : platformSession()));
         return Promise.resolve(json({ tasks: [] }));
       }),
     );
     const view = await mount(
-      scope === "tenant" ? AppShell : PlatformShell,
+      AppShell,
       scope === "tenant" ? "/overview" : "/platform",
       scope === "platform",
     );
-    const auth = scope === "tenant" ? view.auth : view.platformAuth;
+    const auth = view.auth;
     view.root.querySelector<HTMLButtonElement>("button[aria-label='退出登录']")!.click();
     if (change === "session") await auth.login(credentials);
     else if (change === "route") await view.router.push("/unrelated");
@@ -156,9 +164,7 @@ describe.each(["tenant", "platform"])("%s logout navigation ownership", (scope) 
     pending.resolve(json({ ok: true }));
     await flush();
     if (change === "none") {
-      expect(view.router.currentRoute.value.path).toBe(
-        scope === "tenant" ? "/login" : "/platform/login",
-      );
+      expect(view.router.currentRoute.value.path).toBe("/login");
       expect(auth.user).toBeNull();
     } else expect(replace).not.toHaveBeenCalled();
   });
@@ -166,7 +172,7 @@ describe.each(["tenant", "platform"])("%s logout navigation ownership", (scope) 
 
 describe("login completion ownership", () => {
   it.each([200, 401])(
-    "does not redirect or erase the other audience's form (%s)",
+    "does not redirect or erase a changed workspace's form (%s)",
     async (status) => {
       const pending = deferred<Response>();
       vi.stubGlobal("fetch", vi.fn().mockReturnValue(pending.promise));
@@ -175,17 +181,19 @@ describe("login completion ownership", () => {
       input(view.root, "#login-email", user.email);
       input(view.root, "#login-password", credentials.password);
       submit(view.root);
-      await view.router.push("/platform/login");
+      input(view.root, "#login-tenant", "other-workspace");
+      await nextTick();
+      expect(view.root.querySelector<HTMLInputElement>("#login-password")!.value).toBe("");
       input(view.root, "#login-email", "platform@example.com");
       input(view.root, "#login-password", "other-form-password");
       const replace = vi.spyOn(view.router, "replace");
-      pending.resolve(json(user, status));
+      pending.resolve(json(tenantSession(), status));
       await flush();
       expect(replace).not.toHaveBeenCalled();
       expect(view.root.querySelector<HTMLInputElement>("#login-password")!.value).toBe(
         "other-form-password",
       );
-      expect(usePlatformAuthStore().user).toBeNull();
+      expect(view.auth.session).toBeNull();
     },
   );
 
@@ -198,7 +206,7 @@ describe("login completion ownership", () => {
     input(view.root, "#login-password", credentials.password);
     submit(view.root);
     await view.router.push("/login?redirect=/production");
-    pending.resolve(json(user));
+    pending.resolve(json(tenantSession()));
     await vi.waitFor(() => expect(view.router.currentRoute.value.path).toBe("/review"));
   });
 
@@ -212,7 +220,7 @@ describe("login completion ownership", () => {
     submit(view.root);
     const replace = vi.spyOn(view.router, "replace");
     view.unmount();
-    pending.resolve(json(user));
+    pending.resolve(json(tenantSession()));
     await flush();
     expect(replace).not.toHaveBeenCalled();
   });
@@ -228,7 +236,7 @@ describe("account mutation ownership", () => {
         vi
           .fn()
           .mockReturnValueOnce(pending.promise)
-          .mockResolvedValueOnce(json({ ...user, displayName: "New session" })),
+          .mockResolvedValueOnce(json(tenantSession({ ...user, displayName: "New session" }))),
       );
       const view = await mount(ProfileView, "/profile");
       input(view.root, "#profile-name", "Old request");
@@ -247,7 +255,10 @@ describe("account mutation ownership", () => {
     "password completion cannot logout or navigate after %s changes",
     async (change) => {
       const pending = deferred<Response>();
-      const fetch = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValueOnce(json(user));
+      const fetch = vi
+        .fn()
+        .mockReturnValueOnce(pending.promise)
+        .mockResolvedValueOnce(json(tenantSession()));
       vi.stubGlobal("fetch", fetch);
       const view = await mount(ProfileView, "/profile");
       input(view.root, "#current-password", credentials.password);
@@ -289,7 +300,7 @@ describe("account mutation ownership", () => {
       if (path === "/api/manage/workspace")
         return Promise.resolve(json({ name: "Old tenant", slug: "acme" }));
       if (path === "/api/auth/login")
-        return Promise.resolve(json({ ...user, tenantName: "New tenant" }));
+        return Promise.resolve(json(tenantSession({ ...user, tenantName: "New tenant" })));
       return Promise.resolve(json({ ...gates, retentionDays: 30 }));
     });
     vi.stubGlobal("fetch", fetch);

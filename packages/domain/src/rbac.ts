@@ -1,4 +1,4 @@
-import { ROLES, type Role } from "@heron/contracts";
+import { ROLES, type ConsoleAccess, type ConsoleMenu, type Role } from "@heron/contracts";
 
 /**
  * 判据是纯函数：api 用来挡住请求，web 用来置灰按钮并显示「需要 reviewer 及以上」，
@@ -53,4 +53,55 @@ export function can(role: Role, action: Action): boolean {
 /** 界面置灰时那句人话的主语：给最低角色，而不是给一句写死的文案。 */
 export function requiredRoleFor(action: Action): Role {
   return MIN_ROLE[action];
+}
+
+const TENANT_MENUS: (ConsoleMenu & { action?: Action })[] = [
+  { id: "overview", path: "/overview", label: "工作概览", group: "内容工作室" },
+  { id: "candidates", path: "/candidates", label: "候选管理", group: "内容工作室" },
+  { id: "production", path: "/production", label: "生产任务", group: "内容工作室" },
+  { id: "review", path: "/review", label: "审片工作台", group: "内容工作室" },
+  { id: "publish", path: "/publish", label: "发布记录", group: "内容工作室" },
+  { id: "library", path: "/library", label: "成片库", group: "内容工作室" },
+  { id: "members", path: "/members", label: "成员管理", group: "工作空间", action: "user.manage" },
+  { id: "roles", path: "/roles", label: "角色与权限", group: "工作空间" },
+  { id: "feeds", path: "/feeds", label: "数据源配置", group: "工作空间", action: "settings.write" },
+  {
+    id: "settings",
+    path: "/settings",
+    label: "工作空间设置",
+    group: "工作空间",
+    action: "settings.write",
+  },
+  { id: "usage", path: "/usage", label: "用量统计", group: "安全与治理", action: "usage.read" },
+  { id: "audit", path: "/audit", label: "操作审计", group: "安全与治理", action: "settings.write" },
+  { id: "profile", path: "/profile", label: "个人与安全", group: "安全与治理" },
+];
+const PLATFORM_MENUS: ConsoleMenu[] = [
+  { id: "platform-overview", path: "/platform", label: "运营概览", group: "平台管理" },
+  { id: "tenants", path: "/platform/tenants", label: "租户管理", group: "平台管理" },
+  { id: "platform-usage", path: "/platform/usage", label: "全局用量", group: "平台管理" },
+  { id: "platform-audit", path: "/platform/audit", label: "平台审计", group: "平台管理" },
+  { id: "health", path: "/platform/health", label: "服务健康", group: "平台管理" },
+];
+
+export function consoleAccess(role: Role | "platform"): ConsoleAccess {
+  if (role === "platform") {
+    return {
+      roles: [role],
+      permissions: [
+        "platform.tenants.manage",
+        "platform.usage.read",
+        "platform.audit.read",
+        "platform.health.read",
+      ],
+      menus: PLATFORM_MENUS.map((menu) => ({ ...menu })),
+    };
+  }
+  return {
+    roles: [role],
+    permissions: ACTIONS.filter((action) => can(role, action)),
+    menus: TENANT_MENUS.filter((menu) => !menu.action || can(role, menu.action)).map(
+      ({ id, path, label, group }) => ({ id, path, label, group }),
+    ),
+  };
 }

@@ -510,6 +510,43 @@ export async function claimNextTask(
 }
 
 /**
+ * 按 id 领一条活（BullMQ 的 job 带着 taskId 来）。判据与 claimNextTask 一字不差，
+ * 只是把「最早的一条」换成「这一条」——同一把 FOR UPDATE SKIP LOCKED + 同一份排除表，
+ * 所以队列重复推、队列与兜底轮询同时跑，都不会把一条任务渲染两遍。
+ */
+export async function claimTaskById(
+  admin: AdminDb,
+  taskId: string,
+  owner: string,
+  leaseTtlSec: number,
+): Promise<ClaimedTask | null> {
+  const rows = await admin.db
+    .select()
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.id, taskId),
+        notInArray(tasks.stage, CLAIMABLE_EXCLUDED),
+        or(isNull(tasks.leaseOwner), lt(tasks.heartbeat, leaseCutoff(leaseTtlSec))),
+      ),
+    )
+    .limit(1)
+    .for("update", { of: [tasks], skipLocked: true });
+  const row = rows[0];
+  if (!row) return null;
+
+  const at = nowIso();
+  await admin.db
+    .update(tasks)
+    .set({ leaseOwner: owner, heartbeat: at, updatedAt: at })
+    .where(eq(tasks.id, row.id));
+  return {
+    task: toTask({ ...row, leaseOwner: owner, heartbeat: at, updatedAt: at }),
+    tenantId: row.tenantId,
+  };
+}
+
+/**
  * 放掉租约：worker 走到 review 就停，人点确认前这条活不该被任何进程视为「有人正在做」。
  * 必须真的释放而不是留着等过期——过期会被 recoverExpiredLeases 当成失败计数，
  * 一条好好等人的任务三次心跳之后就变成 failed，那是把「等人」误判成「进程死了」。
