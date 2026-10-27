@@ -50,7 +50,7 @@ export class AuthController {
   /**
    * 成功：token 只进 cookie，响应体里只有会话表（身份 + 角色 + 权限 + 菜单）——
    * 界面读的是这张表，而会话一旦进了 JS 能读到的地方（响应体、localStorage），XSS 就能拿走它。
-   * 失败：统一一句「邮箱或口令不正确」。多一个字就是在替撞库脚本确认邮箱。
+   * 失败：统一一句「账号或口令不正确」。多一个字就是在替撞库脚本确认账号存在。
    */
   @Public()
   @Post("login")
@@ -59,7 +59,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<ConsoleSession> {
     const signed = await this.console.login(body);
-    if (!signed) throw new UnauthorizedException("邮箱或口令不正确");
+    if (!signed) throw new UnauthorizedException("账号或口令不正确");
     res.cookie(SESSION_COOKIE, signed.token, sessionCookieOptions());
     // 旧平台 cookie（独立入口那一版）立即作废：留着它等于给旧 token 留一条旁路。
     res.clearCookie(PLATFORM_COOKIE, platformCookieOptions());

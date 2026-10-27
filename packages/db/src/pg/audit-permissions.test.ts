@@ -32,7 +32,7 @@ describe("append-only audit privileges", () => {
       }),
     );
     const operator = await createPlatformOperator(db, {
-      email: "operator@example.com",
+      username: "operator",
       displayName: "Operator",
       passwordHash: "unusable:test",
     });

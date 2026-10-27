@@ -34,15 +34,15 @@ export class ConsoleAuthService {
   ) {}
 
   async login(input: LoginBody): Promise<{ token: string; session: ConsoleSession } | null> {
-    // 限流只看「工作空间码 + 邮箱」两样，验口令之前就拦：撞库脚本连 scrypt 都不该跑到。
-    await this.throttle.assertAllowed(input.tenant, input.email);
+    // 限流只看「工作空间码 + 账号」两样，验口令之前就拦：撞库脚本连 scrypt 都不该跑到。
+    await this.throttle.assertAllowed(input.tenant, input.identifier);
     if (input.tenant === "") {
-      const signed = await this.platform.login(input.email, input.password);
-      await this.throttle.settle(input.tenant, input.email, Boolean(signed));
+      const signed = await this.platform.login(input.identifier, input.password);
+      await this.throttle.settle(input.tenant, input.identifier, Boolean(signed));
       return signed ? { token: signed.token, session: platformSession(signed.user) } : null;
     }
-    const signed = await this.tenants.login(input.tenant, input.email, input.password);
-    await this.throttle.settle(input.tenant, input.email, Boolean(signed));
+    const signed = await this.tenants.login(input.tenant, input.identifier, input.password);
+    await this.throttle.settle(input.tenant, input.identifier, Boolean(signed));
     return signed ? { token: signed.token, session: tenantSession(signed.user) } : null;
   }
 

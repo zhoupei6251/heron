@@ -62,8 +62,8 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   const data = async (res: Response) => (await res.json()) as Record<string, unknown>;
-  async function login(email: string, tenant = "alpha", password = PASSWORD) {
-    const res = await request("/auth/login", "", "POST", { tenant, email, password });
+  async function login(identifier: string, tenant = "alpha", password = PASSWORD) {
+    const res = await request("/auth/login", "", "POST", { tenant, identifier, password });
     expect(res.status).toBe(201);
     return res.headers.getSetCookie()[0]!.split(";")[0]!;
   }
@@ -77,14 +77,14 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
   }
   async function platformLogin() {
     const res = await request("/auth/login", "", "POST", {
-      email: "platform@example.com",
+      identifier: "platform",
       password: PASSWORD,
     });
     expect(res.status).toBe(201);
     const body = ConsoleSessionSchema.parse(await data(res));
     expect(Object.keys(body).sort()).toEqual(["kind", "menus", "permissions", "roles", "user"]);
     expect(body.kind).toBe("platform");
-    expect(Object.keys(body.user).sort()).toEqual(["displayName", "email", "id"]);
+    expect(Object.keys(body.user).sort()).toEqual(["displayName", "id", "username"]);
     expect(body.roles).toEqual(["platform"]);
     expect(body.permissions).toEqual([
       "platform.tenants.manage",
@@ -148,13 +148,13 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     });
     platformId = (
       await createPlatformOperator(db, {
-        email: "platform@example.com",
+        username: "platform",
         displayName: "平台",
         passwordHash: hashPassword(PASSWORD),
       })
     ).id;
     await createPlatformOperator(db, {
-      email: "owner@example.com",
+      username: "owner",
       displayName: "Separate platform identity",
       passwordHash: hashPassword("platform-owner-password"),
     });
@@ -332,7 +332,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
       (
         await request("/auth/login", "", "POST", {
           tenant: "alpha",
-          email: "new@example.com",
+          identifier: "new@example.com",
           password: PASSWORD,
         })
       ).status,
@@ -349,7 +349,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
   });
 
   it("compares full Origins, supports secure TLS termination and never trusts forwarded headers", async () => {
-    const body = { tenant: "alpha", email: "owner@example.com", password: PASSWORD };
+    const body = { tenant: "alpha", identifier: "owner@example.com", password: PASSWORD };
     const secure = process.env.HERON_COOKIE_SECURE;
     try {
       process.env.HERON_COOKIE_SECURE = "0";
@@ -422,7 +422,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     async (role, tenant, permissions, privilegedMenus) => {
       const res = await request("/auth/login", "heron_platform_session=legacy", "POST", {
         tenant: ` ${tenant.toUpperCase()} `,
-        email: ` ${role.toUpperCase()}@EXAMPLE.COM `,
+        identifier: ` ${role.toUpperCase()}@EXAMPLE.COM `,
         password: PASSWORD,
       });
       expect(res.status).toBe(201);
@@ -458,18 +458,14 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     },
   );
 
-  it("never merges same-email actors or falls back across workspaces and realms", async () => {
+  it("never merges same-name actors or falls back across workspaces and realms", async () => {
     const identities = [];
-    for (const [tenant, password, kind, id] of [
-      ["alpha", PASSWORD, "tenant", ownerId],
-      ["beta", "beta-owner-password", "tenant", foreignUser],
-      ["", "platform-owner-password", "platform", undefined],
+    for (const [tenant, identifier, password, kind, id] of [
+      ["alpha", "owner@example.com", PASSWORD, "tenant", ownerId],
+      ["beta", "owner@example.com", "beta-owner-password", "tenant", foreignUser],
+      ["", "owner", "platform-owner-password", "platform", undefined],
     ] as const) {
-      const res = await request("/auth/login", "", "POST", {
-        tenant,
-        email: "owner@example.com",
-        password,
-      });
+      const res = await request("/auth/login", "", "POST", { tenant, identifier, password });
       expect(res.status).toBe(201);
       const session = ConsoleSessionSchema.parse(await data(res));
       expect(session.kind).toBe(kind);
@@ -477,19 +473,17 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
       identities.push(session.user.id);
     }
     expect(new Set(identities).size).toBe(3);
-    for (const [tenant, email, password] of [
+    for (const [tenant, identifier, password] of [
       ["alpha", "owner@example.com", "platform-owner-password"],
       ["beta", "owner@example.com", PASSWORD],
       ["missing", "owner@example.com", PASSWORD],
       ["missing", "platform@example.com", PASSWORD],
       ["alpha", "platform@example.com", PASSWORD],
-      ["", "owner@example.com", PASSWORD],
-      [undefined, "owner@example.com", PASSWORD],
-      ["   ", "admin@example.com", PASSWORD],
+      ["", "owner", PASSWORD],
     ]) {
-      const res = await request("/auth/login", "", "POST", { tenant, email, password });
+      const res = await request("/auth/login", "", "POST", { tenant, identifier, password });
       expect(res.status).toBe(401);
-      expect((await data(res)).message).toBe("邮箱或口令不正确");
+      expect((await data(res)).message).toBe("账号或口令不正确");
       expect(res.headers.getSetCookie()).toEqual([]);
     }
     for (const tenant of ["", "   ", undefined]) {
@@ -497,11 +491,23 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
         (
           await request("/auth/login", "", "POST", {
             tenant,
-            email: " PLATFORM@EXAMPLE.COM ",
+            identifier: " PLATFORM ",
             password: PASSWORD,
           })
         ).status,
       ).toBe(201);
+    }
+    // 平台分支只认用户名：邮箱形状的字符串在边界就拒，不会退到租户表里再试一次
+    for (const tenant of ["", "   ", undefined]) {
+      expect(
+        (
+          await request("/auth/login", "", "POST", {
+            tenant,
+            identifier: "platform@example.com",
+            password: PASSWORD,
+          })
+        ).status,
+      ).toBe(400);
     }
   });
 
@@ -512,20 +518,21 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
           (
             await request("/auth/login", "", "POST", {
               tenant,
-              email: "owner@example.com",
+              identifier: "owner@example.com",
               password,
             })
           ).status,
         ).toBe(400);
       }
+    }
+    for (const [tenant, identifier] of [
+      ["alpha", "not-email"],
+      ["", "admin@example.com"],
+      ["", "ad/min"],
+    ]) {
       expect(
-        (
-          await request("/auth/login", "", "POST", {
-            tenant,
-            email: "not-email",
-            password: PASSWORD,
-          })
-        ).status,
+        (await request("/auth/login", "", "POST", { tenant, identifier, password: PASSWORD }))
+          .status,
       ).toBe(400);
     }
     for (const tenant of [null, "bad/workspace", "a".repeat(64)]) {
@@ -533,7 +540,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
         (
           await request("/auth/login", "", "POST", {
             tenant,
-            email: "owner@example.com",
+            identifier: "owner@example.com",
             password: PASSWORD,
           })
         ).status,
@@ -565,7 +572,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
           "/auth/login",
           "",
           "POST",
-          { email: "platform@example.com", password: PASSWORD },
+          { identifier: "platform", password: PASSWORD },
           { origin: "https://attacker.example" },
         )
       ).status,
@@ -603,11 +610,11 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
       ).status,
     ).toBe(401);
     const invalid = await request("/auth/login", "", "POST", {
-      email: "platform@example.com",
+      identifier: "platform",
       password: "wrong-platform-password",
     });
     const absent = await request("/auth/login", "", "POST", {
-      email: "missing@example.com",
+      identifier: "missing",
       password: PASSWORD,
     });
     expect(invalid.status).toBe(401);
@@ -630,7 +637,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
               method,
               method === "POST"
                 ? {
-                    email: "platform@example.com",
+                    identifier: "platform",
                     password: PASSWORD,
                   }
                 : undefined,
@@ -841,10 +848,10 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     for (const path of ["tenants", "usage", "audit", "health"])
       expect((await request(`/platform/${path}`, opCookie)).status).toBe(401);
     const disabledLogin = await request("/auth/login", "", "POST", {
-      email: "platform@example.com",
+      identifier: "platform",
       password: PASSWORD,
     });
     expect(disabledLogin.status).toBe(401);
-    expect((await data(disabledLogin)).message).toBe("邮箱或口令不正确");
+    expect((await data(disabledLogin)).message).toBe("账号或口令不正确");
   });
 });

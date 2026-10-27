@@ -36,7 +36,7 @@ export const platformOperators = pgTable(
   "platform_operators",
   {
     id: uuid("id").primaryKey(),
-    email: text("email").notNull(),
+    username: text("username").notNull(),
     displayName: text("display_name").notNull(),
     passwordHash: text("password_hash").notNull(),
     sessionVersion: integer("session_version").notNull().default(0),
@@ -44,8 +44,11 @@ export const platformOperators = pgTable(
     createdAt: text("created_at").notNull(),
   },
   (t) => [
-    uniqueIndex("u_platform_operators_email").on(t.email),
-    check("ck_platform_operators_email_normalized", sql`${t.email} = lower(btrim(${t.email}))`),
+    uniqueIndex("u_platform_operators_username").on(t.username),
+    check(
+      "ck_platform_operators_username_normalized",
+      sql`${t.username} = lower(btrim(${t.username}))`,
+    ),
   ],
 );
 

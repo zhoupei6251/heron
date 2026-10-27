@@ -35,9 +35,9 @@ docker compose -f deploy/docker-compose.yml --env-file .env up -d db
 pnpm db:seed-owner
 ```
 
-所有账号都在 `/login` 登录：工作空间成员填写工作空间标识、邮箱与密码；平台管理员将工作空间留空。登录后按服务端返回的角色、权限与菜单进入首页，不需要选择控制台。相同邮箱不代表相同账号，系统不会跨工作空间尝试登录，也不会把工作空间所有者自动提升为平台管理员。
+所有账号都在 `/login` 登录：工作空间成员填写工作空间标识、邮箱与密码；平台管理员将工作空间留空，用用户名与密码登录。登录后按服务端返回的角色、权限与菜单进入首页，不需要选择控制台。相同邮箱不代表相同账号，系统不会跨工作空间尝试登录，也不会把工作空间所有者自动提升为平台管理员。
 
-要创建初始平台管理员，显式配置 `HERON_PLATFORM_EMAIL`、`HERON_PLATFORM_PASSWORD`（10–128 位）和可选的 `HERON_PLATFORM_NAME`，再运行 `pnpm db:seed-platform`。引导命令不会重置已有账号的密码，完成后应移除引导密码配置。
+要创建初始平台管理员，显式配置 `HERON_PLATFORM_PASSWORD`（10–128 位），按需覆盖 `HERON_PLATFORM_USERNAME`（默认 `admin`）与 `HERON_PLATFORM_NAME`，再运行 `pnpm db:seed-platform`。引导命令不会重置已有账号的密码，完成后应移除引导密码配置。
 
 ### 不连接业务数据库的界面开发
 
@@ -50,7 +50,7 @@ PORT=3101 pnpm api:dev:pglite
 HERON_DEV_API_URL=http://127.0.0.1:3101 pnpm web:dev
 ```
 
-演示工作空间标识为 `default`，账号为 `owner@example.com`、`reviewer@example.com`、`viewer@example.com`；独立平台账号为 `platform@example.com`。密码均使用你显式提供的演示密码。重启 API 后数据清空；此方式不启动 worker，也不进行真实发布。环境加载逻辑仍与普通开发相同，演示环境不要使用生产密钥。
+演示工作空间标识为 `default`，账号为 `owner@example.com`、`reviewer@example.com`、`viewer@example.com`；独立平台账号的用户名为 `platform`。密码均使用你显式提供的演示密码。重启 API 后数据清空；此方式不启动 worker，也不进行真实发布。环境加载逻辑仍与普通开发相同，演示环境不要使用生产密钥。
 
 ### 前端与控制台
 
@@ -220,7 +220,7 @@ cron 不继承登录 shell 的 PATH，所以写死一份：这台机器上 `dock
 ## 安全边界（硬约束）
 
 - `reference/` 是 oracle：heron 代码不 import 它，构建不读它，CI 不跑它。
-- 会话只在同一个 HttpOnly cookie 里，响应体与 token 都不带口令哈希。一次会话只对应一个账号；租户与平台保留不同 JWT audience、账号记录及后端权限边界，不按邮箱合并。旧平台 cookie 不再用于认证。
+- 会话只在同一个 HttpOnly cookie 里，响应体与 token 都不带口令哈希。一次会话只对应一个账号；租户与平台保留不同 JWT audience、账号记录及后端权限边界，不跨身份域合并。旧平台 cookie 不再用于认证。
   守卫每次请求都复查启用状态与 `sessionVersion`。修改密码、角色、停用或退出会使旧会话失效，不依赖等待 JWT 到期。
 - 同源写请求校验 `Origin` 与服务端看到的协议/Host；反向代理必须保留 Host，公网部署必须配置 HTTPS 与安全 cookie。
 - 抖音登录态在 `~/.heron/state/douyin/`，仓库与 DB 都不存 cookie 本体；DB 只存路径 + sha256 指纹，

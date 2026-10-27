@@ -35,7 +35,7 @@ export interface PgPlatformOperator extends PlatformUser {
   createdAt: string;
 }
 export interface NewPlatformOperator {
-  email: string;
+  username: string;
   displayName: string;
   passwordHash: string;
 }
@@ -43,15 +43,15 @@ export type ProvisionTenantInput = Omit<CreateTenantBody, "ownerPassword"> & {
   ownerPasswordHash: string;
 };
 
-export async function findPlatformOperatorByEmail(
+export async function findPlatformOperatorByUsername(
   db: Db,
-  email: string,
+  username: string,
 ): Promise<PgPlatformOperator | null> {
   return withAdmin(db, async (a) => {
     const [row] = await a.db
       .select()
       .from(platformOperators)
-      .where(eq(platformOperators.email, email.trim().toLowerCase()))
+      .where(eq(platformOperators.username, username.trim().toLowerCase()))
       .limit(1);
     return row ?? null;
   });
@@ -75,15 +75,19 @@ export async function createPlatformOperator(
   db: Db,
   input: NewPlatformOperator,
 ): Promise<PlatformUser> {
-  const { email } = PlatformLoginBodySchema.omit({ password: true }).parse(input);
+  const { username } = PlatformLoginBodySchema.omit({ password: true }).parse(input);
   const { displayName } = ProfileBodySchema.parse(input);
   try {
     return await withAdmin(db, async (a) => {
       const id = randomUUID();
-      await a.db
-        .insert(platformOperators)
-        .values({ id, email, displayName, passwordHash: input.passwordHash, createdAt: nowIso() });
-      return { id, email, displayName };
+      await a.db.insert(platformOperators).values({
+        id,
+        username,
+        displayName,
+        passwordHash: input.passwordHash,
+        createdAt: nowIso(),
+      });
+      return { id, username, displayName };
     });
   } catch (error) {
     rethrowConflict(error);

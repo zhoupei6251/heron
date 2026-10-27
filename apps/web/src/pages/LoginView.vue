@@ -11,9 +11,10 @@ import { useAuthStore } from "../stores/auth";
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
-const form = reactive({ tenant: "", email: "", password: "" });
+const form = reactive({ tenant: "", identifier: "", password: "" });
+const platform = computed(() => form.tenant.trim() === "");
 const ready = computed(
-  () => form.email.trim() !== "" && form.password.length >= MIN_PASSWORD_LENGTH,
+  () => form.identifier.trim() !== "" && form.password.length >= MIN_PASSWORD_LENGTH,
 );
 // 换工作空间等于换身份：进行中的登录必须作废，否则它回来时会把旧空间的身份写成当前会话。
 // clear() 推进会话 generation，store 里那次 login 的成功分支就再也落不下来。
@@ -41,7 +42,7 @@ async function submit(): Promise<void> {
   try {
     const applied = await auth.login({
       tenant: form.tenant.trim().toLowerCase(),
-      email: form.email.trim(),
+      identifier: form.identifier.trim(),
       password: form.password,
     });
     if (!applied || !mounted || current !== submission) return;
@@ -96,13 +97,13 @@ async function submit(): Promise<void> {
             maxlength="63"
           />
         </ElFormItem>
-        <ElFormItem label="邮箱" for="login-email">
+        <ElFormItem :label="platform ? '用户名' : '邮箱'" for="login-identifier">
           <ElInput
-            id="login-email"
-            v-model="form.email"
-            type="email"
+            id="login-identifier"
+            v-model="form.identifier"
+            type="text"
             autocomplete="username"
-            placeholder="输入你的邮箱"
+            :placeholder="platform ? '平台管理员用户名' : '你在该工作空间的邮箱'"
             maxlength="254"
           />
         </ElFormItem>

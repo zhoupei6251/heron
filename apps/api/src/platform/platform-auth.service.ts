@@ -3,8 +3,8 @@ import { JwtService } from "@nestjs/jwt";
 import { z } from "zod";
 import type { PlatformUser } from "@heron/contracts";
 import {
-  findPlatformOperatorByEmail,
   findPlatformOperatorById,
+  findPlatformOperatorByUsername,
   revokePlatformSessions,
   type Db,
 } from "@heron/db/pg";
@@ -20,7 +20,7 @@ const PayloadSchema = z.object({
 });
 const safeUser = (row: PlatformUser): PlatformUser => ({
   id: row.id,
-  email: row.email,
+  username: row.username,
   displayName: row.displayName,
 });
 
@@ -32,10 +32,10 @@ export class PlatformAuthService {
   ) {}
 
   async login(
-    email: string,
+    username: string,
     password: string,
   ): Promise<{ user: PlatformUser; token: string } | null> {
-    const operator = await findPlatformOperatorByEmail(this.db, email);
+    const operator = await findPlatformOperatorByUsername(this.db, username);
     const valid = verifyPassword(password, operator?.passwordHash ?? DUMMY_HASH);
     if (!operator || !valid || operator.disabledAt !== null) return null;
     const token = await this.jwt.signAsync(

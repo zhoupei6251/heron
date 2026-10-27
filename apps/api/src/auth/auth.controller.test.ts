@@ -30,7 +30,7 @@ const SESSION: ConsoleSession = {
   permissions: ["task.claim", "review.confirm", "usage.read"],
   menus: [],
 };
-const BODY = { tenant: "acme", email: USER.email, password: "correct-horse-battery" };
+const BODY = { tenant: "acme", identifier: USER.email, password: "correct-horse-battery" };
 
 function makeController(login: unknown) {
   const cookie = vi.fn();
@@ -94,11 +94,11 @@ describe("POST /api/auth/login", () => {
     await expect(controller.login(BODY, res)).rejects.toBeInstanceOf(UnauthorizedException);
     expect(cookie).not.toHaveBeenCalled();
     expect(clearCookie).not.toHaveBeenCalled();
-    // 「用户不存在」与「口令错」必须是同一句话，否则响应就成了「这个邮箱注册过」的证词
+    // 「用户不存在」与「口令错」必须是同一句话，否则响应就成了「这个账号注册过」的证词
     const error = (await controller.login(BODY, res).catch((e: unknown) => e)) as {
       response?: { message?: string };
     };
-    expect(error.response?.message).toBe("邮箱或口令不正确");
+    expect(error.response?.message).toBe("账号或口令不正确");
   });
 });
 

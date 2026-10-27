@@ -82,7 +82,7 @@ describe("人工确认（真 socket）", () => {
     const res = await fetch(`${base}/api/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tenant: slug, email, password: PASSWORD }),
+      body: JSON.stringify({ tenant: slug, identifier: email, password: PASSWORD }),
     });
     if (!res.ok) throw new Error(`登录失败：${res.status} ${await res.text()}`);
     const raw = res.headers.getSetCookie()[0] ?? "";

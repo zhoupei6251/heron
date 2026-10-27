@@ -31,10 +31,10 @@ const tenantSession = (identity = user): ConsoleSession => ({
 });
 const platformSession = (): ConsoleSession => ({
   kind: "platform",
-  user: { id: user.id, email: user.email, displayName: "Platform operator" },
+  user: { id: user.id, username: "platform-admin", displayName: "Platform operator" },
   ...consoleAccess("platform"),
 });
-const credentials = { tenant: "acme", email: user.email, password: "password-long-enough" };
+const credentials = { tenant: "acme", identifier: user.email, password: "password-long-enough" };
 const gates = { open: true, blockers: [], locations: [] };
 // Element Plus types intersect the prompt object with Action; confirm resolves an Action.
 const confirmed = "confirm" as Awaited<ReturnType<typeof ElMessageBox.confirm>>;
@@ -178,13 +178,13 @@ describe("login completion ownership", () => {
       vi.stubGlobal("fetch", vi.fn().mockReturnValue(pending.promise));
       const view = await mount(LoginView, "/login?redirect=/review");
       view.auth.clear();
-      input(view.root, "#login-email", user.email);
+      input(view.root, "#login-identifier", user.email);
       input(view.root, "#login-password", credentials.password);
       submit(view.root);
       input(view.root, "#login-tenant", "other-workspace");
       await nextTick();
       expect(view.root.querySelector<HTMLInputElement>("#login-password")!.value).toBe("");
-      input(view.root, "#login-email", "platform@example.com");
+      input(view.root, "#login-identifier", "platform");
       input(view.root, "#login-password", "other-form-password");
       const replace = vi.spyOn(view.router, "replace");
       pending.resolve(json(tenantSession(), status));
@@ -202,7 +202,7 @@ describe("login completion ownership", () => {
     vi.stubGlobal("fetch", vi.fn().mockReturnValue(pending.promise));
     const view = await mount(LoginView, "/login?redirect=/review");
     view.auth.clear();
-    input(view.root, "#login-email", user.email);
+    input(view.root, "#login-identifier", user.email);
     input(view.root, "#login-password", credentials.password);
     submit(view.root);
     await view.router.push("/login?redirect=/production");
@@ -215,7 +215,7 @@ describe("login completion ownership", () => {
     vi.stubGlobal("fetch", vi.fn().mockReturnValue(pending.promise));
     const view = await mount(LoginView, "/login");
     view.auth.clear();
-    input(view.root, "#login-email", user.email);
+    input(view.root, "#login-identifier", user.email);
     input(view.root, "#login-password", credentials.password);
     submit(view.root);
     const replace = vi.spyOn(view.router, "replace");

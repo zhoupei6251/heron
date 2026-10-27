@@ -33,7 +33,7 @@ const tenantSession = (role: Role = "viewer"): ConsoleSession => ({
 });
 const platformSession = (): ConsoleSession => ({
   kind: "platform",
-  user: { id: USER.id, email: USER.email, displayName: USER.displayName },
+  user: { id: USER.id, username: "platform-admin", displayName: USER.displayName },
   ...consoleAccess("platform"),
 });
 const Blank = { template: "<div />" };
@@ -236,7 +236,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-const credentials = { tenant: "acme", email: USER.email, password: "password-long-enough" };
+const credentials = { tenant: "acme", identifier: USER.email, password: "password-long-enough" };
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 
 describe.each(["tenant", "platform"] as const)("%s session interleavings", (scope) => {

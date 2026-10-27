@@ -56,7 +56,7 @@ async function main(): Promise<void> {
   }
 
   await createPlatformOperator(db, {
-    email: "platform@example.com",
+    username: "platform",
     displayName: "演示平台管理员",
     passwordHash: hashPassword(password),
   });
@@ -101,7 +101,7 @@ async function main(): Promise<void> {
   console.log(`工作空间：default（演示工作空间）`);
   for (const [email, role] of accounts) console.log(`  ${role.padEnd(8)} ${email}`);
   console.log("统一登录：工作空间填 default 进入租户；工作空间留空则按平台运营登录");
-  console.log("  平台运营 platform@example.com（仅此内存演示使用相同的显式演示口令）");
+  console.log("  平台运营用户名 platform（仅此内存演示使用相同的显式演示口令）");
   console.log(
     "数据只在内存里：重启即清空；演示口令来自 HERON_DEMO_PASSWORD；不启动 worker 或外部发布。",
   );

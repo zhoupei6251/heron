@@ -17,20 +17,23 @@ const tenant = {
 
 describe("console contracts", () => {
   it("normalizes a single login without guessing a tenant or accepting invalid workspace codes", () => {
-    expect(c.LoginBodySchema.parse({ email: member.email, password: member.password })).toEqual({
+    expect(c.LoginBodySchema.parse({ identifier: " Admin ", password: member.password })).toEqual({
       tenant: "",
-      email: "boss@example.com",
+      identifier: "admin",
       password: member.password,
     });
     expect(
-      c.LoginBodySchema.parse({ tenant: " alpha ", email: member.email, password: member.password })
-        .tenant,
+      c.LoginBodySchema.parse({
+        tenant: " alpha ",
+        identifier: member.email,
+        password: member.password,
+      }).tenant,
     ).toBe("alpha");
     for (const value of ["a/b", "a".repeat(64), "-", null]) {
       expect(
         c.LoginBodySchema.safeParse({
           tenant: value,
-          email: member.email,
+          identifier: member.email,
           password: member.password,
         }).success,
       ).toBe(false);
@@ -113,12 +116,11 @@ describe("console contracts", () => {
   });
   it("validates separate platform login and tenant provisioning", () => {
     expect(c.PlatformLoginBodySchema).toBeDefined();
-    expect(c.PlatformLoginBodySchema.parse({ email: member.email, password: "old" }).email).toBe(
-      "boss@example.com",
-    );
     expect(
-      c.PlatformLoginBodySchema.safeParse({ email: member.email, password: "x".repeat(129) })
-        .success,
+      c.PlatformLoginBodySchema.parse({ username: " Admin ", password: member.password }).username,
+    ).toBe("admin");
+    expect(
+      c.PlatformLoginBodySchema.safeParse({ username: "admin", password: "x".repeat(129) }).success,
     ).toBe(false);
     expect(c.CreateTenantBodySchema.parse(tenant).name).toBe("Workspace");
     for (const slug of ["aa", "AcmE", "-acme", "acme-", "中文", "a".repeat(64)]) {

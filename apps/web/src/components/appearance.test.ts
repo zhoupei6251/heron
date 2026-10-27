@@ -23,7 +23,7 @@ const tenantSession = (): ConsoleSession => ({
 });
 const platformSession = (): ConsoleSession => ({
   kind: "platform",
-  user: { id: USER.id, email: USER.email, displayName: USER.displayName },
+  user: { id: USER.id, username: "platform-admin", displayName: USER.displayName },
   ...consoleAccess("platform"),
 });
 

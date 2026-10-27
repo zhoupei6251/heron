@@ -29,6 +29,13 @@
       "when": 1793082952289,
       "tag": "0003_script_store",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793170000000,
+      "tag": "0004_platform_username",
+      "breakpoints": true
     }
   ]
 }

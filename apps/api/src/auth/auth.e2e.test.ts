@@ -72,7 +72,7 @@ describe("认证传输（真 socket）", () => {
     const res = await fetch(`${base}/api/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tenant: SLUG, email, password }),
+      body: JSON.stringify({ tenant: SLUG, identifier: email, password }),
     });
     if (!res.ok) return null;
     const raw = res.headers.getSetCookie()[0] ?? "";
@@ -136,7 +136,7 @@ describe("认证传输（真 socket）", () => {
     const res = await fetch(`${base}/api/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tenant: SLUG, email: REVIEWER, password: PASSWORD }),
+      body: JSON.stringify({ tenant: SLUG, identifier: REVIEWER, password: PASSWORD }),
     });
     expect(res.status).toBe(201);
     const body = await json(res);
@@ -182,10 +182,10 @@ describe("认证传输（真 socket）", () => {
     const res = await fetch(`${base}/api/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tenant: SLUG, email: REVIEWER, password: "wrong-horse-battery" }),
+      body: JSON.stringify({ tenant: SLUG, identifier: REVIEWER, password: "wrong-horse-battery" }),
     });
     expect(res.status).toBe(401);
-    expect(await json(res)).toMatchObject({ message: "邮箱或口令不正确" });
+    expect(await json(res)).toMatchObject({ message: "账号或口令不正确" });
     expect(res.headers.getSetCookie()).toEqual([]);
   });
 
@@ -194,7 +194,7 @@ describe("认证传输（真 socket）", () => {
       fetch(`${base}/api/auth/login`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ tenant: SLUG, email, password: "wrong-horse-battery" }),
+        body: JSON.stringify({ tenant: SLUG, identifier: email, password: "wrong-horse-battery" }),
       });
     for (let i = 0; i < 5; i += 1) {
       expect((await attempt("throttle@example.com")).status).toBe(401);

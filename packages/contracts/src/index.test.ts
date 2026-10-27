@@ -27,47 +27,60 @@ const USER = "11111111-1111-4111-8111-111111111111";
 const SLUG = "acme";
 
 describe("LoginBodySchema", () => {
-  it("邮箱在边界上就规范化成小写", () => {
+  const password = "x".repeat(MIN_PASSWORD_LENGTH);
+
+  it("租户登录的邮箱在边界上就规范化成小写", () => {
     const parsed = LoginBodySchema.parse({
       tenant: SLUG,
-      email: "Boss@Example.COM",
-      password: "x".repeat(MIN_PASSWORD_LENGTH),
+      identifier: "Boss@Example.COM",
+      password,
     });
     // 库里只有小写（ck_users_email_lower），登录查询不许再猜大小写
-    expect(parsed.email).toBe("boss@example.com");
+    expect(parsed.identifier).toBe("boss@example.com");
   });
 
   it("空工作空间用于平台登录，租户编码在边界规范化", () => {
-    const credentials = { email: "boss@example.com", password: "x".repeat(MIN_PASSWORD_LENGTH) };
-    expect(LoginBodySchema.parse(credentials).tenant).toBe("");
-    expect(LoginBodySchema.parse({ ...credentials, tenant: " ACME " }).tenant).toBe("acme");
+    expect(LoginBodySchema.parse({ identifier: " Admin ", password })).toEqual({
+      tenant: "",
+      identifier: "admin",
+      password,
+    });
+    expect(
+      LoginBodySchema.parse({ tenant: " ACME ", identifier: "boss@example.com", password }).tenant,
+    ).toBe("acme");
+  });
+
+  it("平台用户名不是邮箱：邮箱形状的字符串登不进平台", () => {
+    const platform = (identifier: string) =>
+      LoginBodySchema.safeParse({ tenant: "", identifier, password }).success;
+    expect(platform("admin")).toBe(true);
+    expect(platform("ops.1")).toBe(true);
+    // 平台账号表里没有邮箱列，放进来只会在查库时白跑一趟
+    for (const identifier of ["admin@example.com", "a", "ad/min", "-admin", "管理员"])
+      expect(platform(identifier)).toBe(false);
   });
 
   it("差一个字符的口令被拒：短的直接不进哈希层", () => {
     expect(
       LoginBodySchema.safeParse({
         tenant: SLUG,
-        email: "boss@example.com",
+        identifier: "boss@example.com",
         password: "x".repeat(MIN_PASSWORD_LENGTH - 1),
       }).success,
     ).toBe(false);
     expect(
       LoginBodySchema.safeParse({
         tenant: SLUG,
-        email: "boss@example.com",
-        password: "x".repeat(MIN_PASSWORD_LENGTH),
+        identifier: "boss@example.com",
+        password,
       }).success,
     ).toBe(true);
   });
 
-  it("不是邮箱的字符串进不来", () => {
-    expect(
-      LoginBodySchema.safeParse({
-        tenant: SLUG,
-        email: "boss",
-        password: "x".repeat(MIN_PASSWORD_LENGTH),
-      }).success,
-    ).toBe(false);
+  it("不是邮箱的字符串进不来：租户分支仍然只认邮箱", () => {
+    expect(LoginBodySchema.safeParse({ tenant: SLUG, identifier: "boss", password }).success).toBe(
+      false,
+    );
   });
 });
 

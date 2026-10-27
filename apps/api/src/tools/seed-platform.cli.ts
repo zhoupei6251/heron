@@ -24,7 +24,7 @@ async function main(): Promise<void> {
 main().catch(() => {
   // Raw database exceptions may carry SQL values, so never log the exception here.
   console.error(
-    `平台种子失败：请检查 HERON_PLATFORM_EMAIL / PASSWORD（${String(MIN_PASSWORD_LENGTH)}–128 位）/ NAME 和数据库连接配置；未输出凭据或 SQL`,
+    `平台种子失败：请检查 HERON_PLATFORM_USERNAME / PASSWORD（${String(MIN_PASSWORD_LENGTH)}–128 位）/ NAME 和数据库连接配置；未输出凭据或 SQL`,
   );
   process.exitCode = 1;
 });

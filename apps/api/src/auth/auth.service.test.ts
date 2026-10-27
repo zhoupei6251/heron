@@ -123,7 +123,7 @@ describe("AuthService.login", () => {
   it("rejects a stale active tenant preread and cannot revive its login after resume", async () => {
     await seedUser(DEFAULT_TENANT_ID);
     const operator = await createPlatformOperator(db, {
-      email: "platform@example.com",
+      username: "platform",
       displayName: "Platform",
       passwordHash: "unusable:test",
     });

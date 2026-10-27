@@ -99,7 +99,7 @@ describe("protected artifact streaming (real socket + PGlite)", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         tenant: "artifacts",
-        email: "viewer@example.com",
+        identifier: "viewer@example.com",
         password: PASSWORD,
       }),
     });

@@ -24,7 +24,7 @@ describe("platform console repositories (real PGlite)", () => {
   async function operator() {
     expect(repo.createPlatformOperator).toBeTypeOf("function");
     return repo.createPlatformOperator(db, {
-      email: " Ops@Example.COM ",
+      username: " Ops.Admin ",
       displayName: "Ops",
       passwordHash: "sensitive-operator-hash",
     });
@@ -32,9 +32,9 @@ describe("platform console repositories (real PGlite)", () => {
 
   it("seeds a separate normalized operator, exposes hash only in auth lookup and revokes sessions", async () => {
     const op = await operator();
-    expect(op).toMatchObject({ email: "ops@example.com", displayName: "Ops" });
+    expect(op).toMatchObject({ username: "ops.admin", displayName: "Ops" });
     expect(op).not.toHaveProperty("passwordHash");
-    expect(await repo.findPlatformOperatorByEmail(db, " OPS@example.com ")).toMatchObject({
+    expect(await repo.findPlatformOperatorByUsername(db, " OPS.ADMIN ")).toMatchObject({
       id: op.id,
       passwordHash: "sensitive-operator-hash",
       sessionVersion: 0,
@@ -47,7 +47,7 @@ describe("platform console repositories (real PGlite)", () => {
     });
     await expect(
       repo.createPlatformOperator(db, {
-        email: op.email.toUpperCase(),
+        username: op.username.toUpperCase(),
         displayName: "Duplicate",
         passwordHash: "secret",
       }),

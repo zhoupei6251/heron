@@ -90,18 +90,44 @@ export type Task = z.infer<typeof TaskSchema>;
 /** 口令强度：太短的直接在边界拒，不进哈希层（一次 scrypt 约 50–100ms，别让垃圾输入白烧 CPU）。 */
 export const MIN_PASSWORD_LENGTH = 10;
 
-// 空 tenant 只查平台账号；租户邮箱不是全局身份，不能跨租户猜测或合并。
-export const LoginBodySchema = z.object({
-  tenant: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .max(63)
-    .regex(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*)?$/)
-    .default(""),
-  email: z.string().trim().toLowerCase().max(254).pipe(z.email()),
-  password: z.string().min(MIN_PASSWORD_LENGTH).max(128),
-});
+/** 平台账号的用户名：小写字母或数字开头，可含 . _ -；登录与引导共用这一份判据。 */
+export const PlatformUsernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(2)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9._-]*$/);
+
+/**
+ * 空 tenant 只查平台账号；租户邮箱不是全局身份，不能跨租户猜测或合并。
+ * 第二个字段两种身份共用：租户里是邮箱，平台上（空 tenant）是用户名——
+ * 判据分开写在同一次校验里，放宽平台不等于放宽租户。
+ */
+export const LoginBodySchema = z
+  .object({
+    tenant: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .max(63)
+      .regex(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*)?$/)
+      .default(""),
+    identifier: z.string().trim().toLowerCase().min(1).max(254),
+    password: z.string().min(MIN_PASSWORD_LENGTH).max(128),
+  })
+  .superRefine((value, ctx) => {
+    const valid =
+      value.tenant === ""
+        ? PlatformUsernameSchema.safeParse(value.identifier).success
+        : z.email().safeParse(value.identifier).success;
+    if (!valid)
+      ctx.addIssue({
+        code: "custom",
+        path: ["identifier"],
+        message: value.tenant === "" ? "Invalid platform username" : "Invalid email",
+      });
+  });
 
 export type LoginBody = z.infer<typeof LoginBodySchema>;
 
@@ -405,13 +431,13 @@ export const FeedSourceSchema = FeedSourceBodySchema.extend({
 export type FeedSource = z.infer<typeof FeedSourceSchema>;
 
 export const PlatformLoginBodySchema = z.object({
-  email: ConsoleEmailSchema,
-  password: z.string().min(1).max(128),
+  username: PlatformUsernameSchema,
+  password: z.string().min(MIN_PASSWORD_LENGTH).max(128),
 });
 export type PlatformLoginBody = z.infer<typeof PlatformLoginBodySchema>;
 export const PlatformUserSchema = z.object({
   id: z.uuid(),
-  email: z.email(),
+  username: PlatformUsernameSchema,
   displayName: z.string(),
 });
 export type PlatformUser = z.infer<typeof PlatformUserSchema>;
