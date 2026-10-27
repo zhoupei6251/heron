@@ -14,6 +14,7 @@ import {
   openDb,
   withTenant,
 } from "@heron/db/pg";
+import { MIN_PASSWORD_LENGTH } from "@heron/contracts";
 import { hashPassword } from "@heron/domain";
 
 import { AppModule } from "../app.module";
@@ -27,13 +28,15 @@ import { applyTransport } from "../transport";
  * 它跑的是**生产同一条 transport 与全部业务路由**，只把 PgModule 的 provider 换成 pglite
  * （与 api 的 e2e 同一个做法）。数据只活在进程里：重启即清空，不写任何磁盘。
  *
- * 口令不写默认值：HERON_DEMO_PASSWORD 必须由人给（至少 12 位），缺了就拒绝启动。
+ * 口令不写默认值：HERON_DEMO_PASSWORD 必须由人给（至少 10 位），缺了就拒绝启动。
  * JWT 密钥缺省时随机生成——每次重启换一把，旧会话随之作废，这是内存库下应有的行为。
  */
 async function main(): Promise<void> {
   const password = process.env.HERON_DEMO_PASSWORD ?? "";
-  if (password.length < 12 || password.length > 128) {
-    throw new Error("HERON_DEMO_PASSWORD 必须给且为 12–128 位：演示账号的口令不写默认值。");
+  if (password.length < MIN_PASSWORD_LENGTH || password.length > 128) {
+    throw new Error(
+      `HERON_DEMO_PASSWORD 必须给且为 ${String(MIN_PASSWORD_LENGTH)}–128 位：演示账号的口令不写默认值。`,
+    );
   }
   process.env.HERON_JWT_SECRET ??= randomBytes(32).toString("hex");
 

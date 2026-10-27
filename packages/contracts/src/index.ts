@@ -88,7 +88,7 @@ export const TaskSchema = z.object({
 export type Task = z.infer<typeof TaskSchema>;
 
 /** 口令强度：太短的直接在边界拒，不进哈希层（一次 scrypt 约 50–100ms，别让垃圾输入白烧 CPU）。 */
-export const MIN_PASSWORD_LENGTH = 12;
+export const MIN_PASSWORD_LENGTH = 10;
 
 // 空 tenant 只查平台账号；租户邮箱不是全局身份，不能跨租户猜测或合并。
 export const LoginBodySchema = z.object({
@@ -203,12 +203,37 @@ export const RetentionBodySchema = z.object({
 
 export type RetentionBody = z.infer<typeof RetentionBodySchema>;
 
-export const CreateFakeTaskInputSchema = z.object({
-  capability: z.string().min(1),
+/**
+ * 写稿模型的页面配置。apiKey 留空表示「不改」——界面只回显「已配置」，不回显密钥。
+ * 地址走 http/https 且不许带内嵌凭据：worker 会去请求它，凭据只该在 Authorization 头里。
+ */
+export const ModelSettingsBodySchema = z.object({
+  baseUrl: z
+    .string()
+    .trim()
+    .max(2048)
+    .url()
+    .refine(
+      (value) => {
+        const url = new URL(value);
+        return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+      },
+      { message: "模型地址必须是不带凭据的 HTTP(S) URL" },
+    )
+    // 存归一形：请求拼 `${baseUrl}/chat/completions`，结尾多一个斜杠就多一个空段
+    .transform((value) => value.replace(/\/+$/, "")),
+  model: z.string().trim().min(1).max(200),
+  apiKey: z.string().trim().max(500).optional(),
+});
+
+export type ModelSettingsBody = z.infer<typeof ModelSettingsBodySchema>;
+
+/** 手工建任务只收标题：capability 由服务端定（当前只有 news），请求体里没有第二个能指定它的位置。 */
+export const CreateTaskInputSchema = z.object({
   title: z.string().min(1),
 });
 
-export type CreateFakeTaskInput = z.infer<typeof CreateFakeTaskInputSchema>;
+export type CreateTaskInput = z.infer<typeof CreateTaskInputSchema>;
 
 /**
  * 待审队列的一条：reviewer 要回答的问题是「哪条任务、哪一版渲染、联络表指纹是什么」。
@@ -276,6 +301,25 @@ export const CapabilityManifestSchema = z.object({
 });
 
 export type CapabilityManifest = z.infer<typeof CapabilityManifestSchema>;
+
+/**
+ * 写稿产出的最小形状。版式还没定，所以这里只钉「不钉就会静默丢内容」的那几条：
+ * body 为空配音会停机；屏句可选，但和 title 同句会让版式把同一句并排打两遍。
+ * 版式相关的 8 条（落点、条目容量、变量填得出）等版式定稿后再加，别在这里提前发明。
+ */
+export const ScriptSceneSchema = z.object({
+  /** 口播正文：配音读它。 */
+  body: z.string().trim().min(1).max(200),
+  /** 屏句：可选，出现时必须非空。 */
+  onscreen: z.string().trim().min(1).max(40).optional(),
+});
+
+export const NewsScriptSchema = z.object({
+  title: z.string().trim().min(1).max(30),
+  scenes: z.array(ScriptSceneSchema).min(2).max(8),
+});
+
+export type NewsScript = z.infer<typeof NewsScriptSchema>;
 
 // Console DTOs extend the existing tenant and task contracts.
 export const PageQuerySchema = z.object({
@@ -354,6 +398,8 @@ export type FeedSourceBody = z.infer<typeof FeedSourceBodySchema>;
 export const FeedSourceSchema = FeedSourceBodySchema.extend({
   id: z.uuid(),
   lastFetchAt: z.string().nullable(),
+  lastAttemptAt: z.string().nullable(),
+  lastError: z.string().nullable(),
   createdAt: z.string(),
 });
 export type FeedSource = z.infer<typeof FeedSourceSchema>;

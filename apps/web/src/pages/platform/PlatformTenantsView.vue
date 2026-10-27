@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { CreateTenantBodySchema, type PlatformTenant, type Tenant } from "@heron/contracts";
+import {
+  CreateTenantBodySchema,
+  MIN_PASSWORD_LENGTH,
+  type PlatformTenant,
+  type Tenant,
+} from "@heron/contracts";
 import { Plus } from "@element-plus/icons-vue";
 import {
   ElAlert,
@@ -44,8 +49,7 @@ function open() {
 async function create() {
   const parsed = CreateTenantBodySchema.safeParse(form);
   if (!parsed.success) {
-    error.value =
-      "请填写完整信息：登录标识为 3–63 位小写字母、数字或中划线，邮箱须有效，初始密码至少 12 位。";
+    error.value = `请填写完整信息：登录标识为 3–63 位小写字母、数字或中划线，邮箱须有效，初始密码至少 ${String(MIN_PASSWORD_LENGTH)} 位。`;
     return;
   }
   saving.value = true;
@@ -212,7 +216,9 @@ onMounted(list.load);
             maxlength="128"
             autocomplete="new-password"
           />
-          <p class="form-hint">至少 12 位，无默认密码。请通过安全渠道交给所有者。</p></ElFormItem
+          <p class="form-hint">
+            至少 {{ MIN_PASSWORD_LENGTH }} 位，无默认密码。请通过安全渠道交给所有者。
+          </p></ElFormItem
         >
         <ElAlert
           title="该账号仅拥有此工作空间的所有者权限，不具备平台运营权限。"

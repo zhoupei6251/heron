@@ -150,7 +150,13 @@ onMounted(load);
             ><template #default="{ row }"
               ><div class="cell-title">{{ row.title ?? "未命名任务" }}</div>
               <div class="cell-subtitle">
-                {{ row.capability === "p0-fake" ? "演示流程" : row.capability }}
+                {{
+                  row.capability === "p0-fake"
+                    ? "演示流程"
+                    : row.capability === "news"
+                      ? "新闻短视频"
+                      : row.capability
+                }}
               </div></template
             ></ElTableColumn
           ><ElTableColumn label="状态" width="120"

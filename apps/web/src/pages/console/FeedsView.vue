@@ -28,6 +28,7 @@ const list = reactive(usePagedList<FeedSource>("/manage/feeds", () => allowed.va
 const drawer = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
+const fetching = ref<string | null>(null);
 const target = ref<FeedSource | null>(null);
 const form = reactive({ name: "", url: "", frequencySec: 900, enabled: true });
 function open(feed: FeedSource | null) {
@@ -63,6 +64,20 @@ async function save() {
     saving.value = false;
   }
 }
+async function fetchNow(feed: FeedSource) {
+  fetching.value = feed.id;
+  try {
+    const result = await request<{ imported: number }>(`/manage/feeds/${feed.id}/fetch`, {
+      method: "POST",
+    });
+    ElMessage.success(`采集完成，合并 ${result.imported} 条候选`);
+  } catch (cause) {
+    ElMessage.error(errorMessage(cause));
+  } finally {
+    fetching.value = null;
+    await list.load();
+  }
+}
 onMounted(list.load);
 </script>
 <template>
@@ -80,7 +95,7 @@ onMounted(list.load);
       </div>
     </header>
     <ElAlert
-      title="当前提供数据源配置管理，自动采集调度尚未接通；启用配置不代表已经开始抓取。"
+      title="启用的数据源由后台按各自间隔自动采集（worker 每 30 秒检查一次），也可以在这里立即抓取一次。"
       type="info"
       show-icon
       :closable="false"
@@ -121,15 +136,32 @@ onMounted(list.load);
             }}</ElTag></template
           ></ElTableColumn
         >
-        <ElTableColumn label="最近采集" min-width="170"
+        <ElTableColumn label="最近成功采集" min-width="170"
           ><template #default="{ row }">{{
-            row.lastFetchAt ? dateTime(row.lastFetchAt) : "尚未采集"
+            row.lastFetchAt ? dateTime(row.lastFetchAt) : "尚未成功采集"
           }}</template></ElTableColumn
         >
-        <ElTableColumn label="操作" width="100" fixed="right"
+        <ElTableColumn label="上次尝试" min-width="230"
+          ><template #default="{ row }">
+            <div>{{ row.lastAttemptAt ? dateTime(row.lastAttemptAt) : "尚未尝试" }}</div>
+            <div
+              v-if="row.lastError"
+              class="cell-subtitle"
+              style="overflow-wrap: anywhere; color: var(--el-color-danger)"
+            >
+              {{ row.lastError }}
+            </div>
+          </template></ElTableColumn
+        >
+        <ElTableColumn label="操作" width="180" fixed="right"
           ><template #default="{ row }"
-            ><ElButton link type="primary" @click="open(row as FeedSource)"
-              >配置</ElButton
+            ><ElButton link type="primary" @click="open(row as FeedSource)">配置</ElButton>
+            <ElButton
+              link
+              type="primary"
+              :loading="fetching === row.id"
+              @click="fetchNow(row as FeedSource)"
+              >立即采集</ElButton
             ></template
           ></ElTableColumn
         >

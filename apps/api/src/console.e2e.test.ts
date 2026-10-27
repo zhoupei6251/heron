@@ -219,6 +219,14 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     }
     expect((await request("/manage/feeds", viewer)).status).toBe(403);
     expect((await request("/manage/audit", viewer)).status).toBe(403);
+    expect(
+      (
+        await request("/settings/model", viewer, "PUT", {
+          baseUrl: "https://api.qnaigc.com/v1",
+          model: "qiniu/conatus-free",
+        })
+      ).status,
+    ).toBe(403);
     expect((await request("/manage/usage", viewer)).status).toBe(200);
     expect((await request("/manage/workspace", viewer, "PATCH", { name: "No" })).status).toBe(403);
     expect((await request("/manage/workspace", admin, "PATCH", { name: "Renamed" })).status).toBe(
@@ -232,8 +240,24 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
         .status,
     ).toBe(200);
     expect((await request("/settings/retention", admin, "PUT", { days: 45 })).status).toBe(200);
+    const saved = await request("/settings/model", admin, "PUT", {
+      baseUrl: "https://api.qnaigc.com/v1/",
+      model: "qiniu/conatus-free",
+      apiKey: "sk-e2e-secret",
+    });
+    expect(saved.status).toBe(200);
+    const settingsState = await data(await request("/settings", admin));
+    expect(settingsState.model).toEqual({
+      baseUrl: "https://api.qnaigc.com/v1",
+      model: "qiniu/conatus-free",
+      hasApiKey: true,
+    });
+    // 密钥入库但不出接口：回显只有「配没配」
+    expect(JSON.stringify(settingsState)).not.toContain("sk-e2e-secret");
     const audit = JSON.stringify(await data(await request("/manage/audit", admin)));
     expect(audit).toContain("retention.updated");
+    expect(audit).toContain("model.updated");
+    expect(audit).not.toContain("sk-e2e-secret");
     expect(audit).not.toMatch(/scrypt|passwordHash|explicit-console/);
     expect((await request("/manage/usage", admin)).status).toBe(200);
   });

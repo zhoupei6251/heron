@@ -73,7 +73,7 @@ describe("console contracts", () => {
       displayName: "Boss",
     });
     for (const patch of [
-      { password: "x".repeat(11) },
+      { password: "x".repeat(c.MIN_PASSWORD_LENGTH - 1) },
       { password: "x".repeat(129) },
       { displayName: " " },
       { displayName: "x".repeat(81) },

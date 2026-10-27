@@ -46,6 +46,17 @@ export async function createTenant(
   return id;
 }
 
+/**
+ * 跨租户定时任务（采集到期、成片保留清理）要逐租户进入上下文，先得有这张名单。
+ * 停租的也在内：数据还在磁盘上，保留策略不会因为被停用就失效。
+ */
+export async function listTenantIds(db: Db): Promise<string[]> {
+  const rows = await withAdmin(db, (a) =>
+    a.db.select({ id: tenants.id }).from(tenants).orderBy(tenants.createdAt),
+  );
+  return rows.map((row) => row.id);
+}
+
 /** 登录时人只报得出工作空间名，所以它是登录链上第一个查询——大小写与空格不许让人再猜一次。 */
 export async function findTenantBySlug(db: Db, slug: string): Promise<TenantRef | null> {
   const rows = await withAdmin(db, (a) =>

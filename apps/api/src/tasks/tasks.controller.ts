@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Inject, Param, Post } from "@nestjs/common";
 import {
-  CreateFakeTaskInputSchema,
+  CreateTaskInputSchema,
   type AuthUser,
-  type CreateFakeTaskInput,
+  type CreateTaskInput,
   type Task,
 } from "@heron/contracts";
 
@@ -29,9 +29,15 @@ export class TasksController {
   @RequireAction("task.claim")
   create(
     @CurrentUser() user: AuthUser,
-    @Body(new ZodValidationPipe(CreateFakeTaskInputSchema)) input: CreateFakeTaskInput,
+    @Body(new ZodValidationPipe(CreateTaskInputSchema)) input: CreateTaskInput,
   ): Promise<Task> {
     return this.tasks.create(user, input);
+  }
+
+  @Post("from-candidate/:id")
+  @RequireAction("task.claim")
+  startProduction(@CurrentUser() user: AuthUser, @Param("id") id: string): Promise<Task> {
+    return this.tasks.startProduction(user, id);
   }
 
   @Post(":id/claim")

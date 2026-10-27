@@ -32,6 +32,7 @@ const saving = ref(false);
 const error = ref<string | null>(null);
 const selected = ref<Candidate | null>(null);
 const drawer = ref(false);
+const starting = ref<string | null>(null);
 const statuses: Record<CandidateStatus, string> = {
   candidate: "待选题",
   selected: "已选题",
@@ -48,10 +49,10 @@ async function createTask() {
   saving.value = true;
   error.value = null;
   try {
-    await tasksApi.create({ capability: "p0-fake", title: title.value.trim() });
+    await tasksApi.create({ title: title.value.trim() });
     dialog.value = false;
     title.value = "";
-    ElMessage.success("演示选题已创建，可前往生产任务认领");
+    ElMessage.success("选题已加入候选库");
     await list.load();
   } catch (cause) {
     error.value = errorMessage(cause);
@@ -59,6 +60,20 @@ async function createTask() {
     saving.value = false;
   }
 }
+async function startProduction(row: Candidate) {
+  starting.value = row.id;
+  try {
+    await tasksApi.fromCandidate(row.id);
+    ElMessage.success("已创建生产任务，可前往生产任务页跟进");
+    drawer.value = false;
+    await list.load();
+  } catch (cause) {
+    ElMessage.error(errorMessage(cause));
+  } finally {
+    starting.value = null;
+  }
+}
+const canStart = (row: Candidate) => row.status !== "published" && row.status !== "rejected";
 function inspect(row: Candidate) {
   selected.value = row;
   drawer.value = true;
@@ -81,7 +96,7 @@ onMounted(list.load);
             dialog = true;
             error = null;
           "
-          >新建演示选题</ElButton
+          >手动添加选题</ElButton
         >
       </div>
     </header>
@@ -99,7 +114,7 @@ onMounted(list.load);
       <ElTable
         :data="list.items"
         row-key="id"
-        empty-text="候选库还是空的。可新建演示选题体验流程，自动采集尚未接通。"
+        empty-text="候选库还是空的。到数据源页配置热榜源并立即采集，或手动添加一条选题。"
       >
         <ElTableColumn label="选题" min-width="340"
           ><template #default="{ row }"
@@ -110,7 +125,7 @@ onMounted(list.load);
               @click="inspect(row as Candidate)"
               >{{ row.title }}</ElButton
             >
-            <div class="cell-subtitle">{{ row.sourceName ?? "手动录入 / 演示" }}</div></template
+            <div class="cell-subtitle">{{ row.sourceName ?? "手动录入" }}</div></template
           ></ElTableColumn
         >
         <ElTableColumn label="热度" width="100"
@@ -126,10 +141,16 @@ onMounted(list.load);
         <ElTableColumn label="最近出现" min-width="170"
           ><template #default="{ row }">{{ dateTime(row.lastSeenAt) }}</template></ElTableColumn
         >
-        <ElTableColumn label="操作" width="120" fixed="right"
+        <ElTableColumn label="操作" width="190" fixed="right"
           ><template #default="{ row }"
-            ><ElButton link type="primary" @click="inspect(row as Candidate)"
-              >查看选题</ElButton
+            ><ElButton link type="primary" @click="inspect(row as Candidate)">查看选题</ElButton>
+            <ElButton
+              link
+              type="primary"
+              :disabled="!allowed || !canStart(row as Candidate)"
+              :loading="starting === row.id"
+              @click="startProduction(row as Candidate)"
+              >开始生产</ElButton
             ></template
           ></ElTableColumn
         >
@@ -137,13 +158,13 @@ onMounted(list.load);
     </ListPanel>
     <ElDialog
       v-model="dialog"
-      title="新建演示选题"
+      title="手动添加选题"
       width="min(480px, 92vw)"
       :close-on-click-modal="!saving"
       :close-on-press-escape="!saving"
       :show-close="!saving"
       ><ElAlert
-        title="此入口使用 P0 演示能力，不调用真实生成模型或真实发布平台。"
+        title="手动输入的选题与采集来的热点共用同一个候选库；写稿、渲染与发布环节目前仍是占位实现。"
         type="info"
         :closable="false"
         class="page-alert"
@@ -155,14 +176,10 @@ onMounted(list.load);
         class="page-alert"
       /><ElForm label-position="top" @submit.prevent="createTask"
         ><ElFormItem label="选题标题" for="candidate-title" required
-          ><ElInput
-            id="candidate-title"
-            v-model="title"
-            maxlength="200"
-            placeholder="输入要演示的新闻标题"
+          ><ElInput id="candidate-title" v-model="title" maxlength="200" placeholder="输入新闻标题"
         /></ElFormItem>
         <div class="form-actions">
-          <ElButton type="primary" native-type="submit" :loading="saving">创建演示选题</ElButton
+          <ElButton type="primary" native-type="submit" :loading="saving">添加选题</ElButton
           ><ElButton :disabled="saving" @click="dialog = false">取消</ElButton>
         </div></ElForm
       ></ElDialog
@@ -175,13 +192,20 @@ onMounted(list.load);
           {{ selected.summary || "暂无摘要" }}
         </p>
         <p class="form-hint" style="margin-top: 24px">
-          来源：{{ selected.sourceName ?? "手动录入 / 演示" }}<br />首次出现：{{
+          来源：{{ selected.sourceName ?? "手动录入" }}<br />首次出现：{{
             dateTime(selected.firstSeenAt)
           }}<br />出现次数：{{ selected.hits }}
         </p>
         <div class="form-actions">
+          <ElButton
+            type="primary"
+            :disabled="!allowed || !canStart(selected)"
+            :loading="starting === selected.id"
+            @click="startProduction(selected)"
+            >开始生产</ElButton
+          >
           <RouterLink :to="{ path: '/production', query: { q: selected.title } }"
-            ><ElButton type="primary">查看关联生产任务</ElButton></RouterLink
+            ><ElButton>查看关联生产任务</ElButton></RouterLink
           >
         </div></template
       ></ElDrawer

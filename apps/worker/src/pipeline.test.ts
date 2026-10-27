@@ -8,21 +8,28 @@ import {
   createTenant,
   createUser,
   findPublishByKey,
+  getScript,
   getTask,
   latestRender,
   listGateResults,
   migrate,
   openDb,
+  setModelSettings,
+  usageRecords,
   withTenant,
   type Db,
 } from "@heron/db/pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { NEWS_CAPABILITY } from "@heron/capability-news";
+
 import { P0_FAKE } from "./capabilities";
 import { OWNER } from "./config";
+import type { ModelConfig } from "./model";
 import { walkTask, type WalkTrace } from "./pipeline";
 import { createMutex } from "./queue";
 import { claimNext } from "./scheduler";
+import type { ScriptDeps } from "./scripting";
 import { runTask } from "./tick";
 
 /**
@@ -56,24 +63,24 @@ describe("worker 流水线", () => {
     await db.close();
   });
 
-  async function seedClaimedTask(): Promise<string> {
+  async function seedClaimedTask(capability: string = P0_FAKE): Promise<string> {
     return withTenant(db, tenantId, async (t) => {
       const candidateId = await createCandidate(t, {
         title: "某市开通新航线",
         summary: "",
         heat: 1,
       });
-      const task = await createTask(t, { capability: P0_FAKE, candidateId });
+      const task = await createTask(t, { capability, candidateId });
       await claimByHuman(t, task.id, reviewerId);
       return task.id;
     });
   }
 
-  async function runOnce(): Promise<WalkTrace> {
+  async function runOnce(deps: ScriptDeps = {}): Promise<WalkTrace> {
     const claimed = await claimNext(db);
     if (!claimed) throw new Error("预期能领到任务，结果池子是空的");
     expect(claimed.tenantId).toBe(tenantId);
-    return withTenant(db, tenantId, (t) => walkTask(t, claimed.task, OWNER));
+    return withTenant(db, tenantId, (t) => walkTask(t, claimed.task, OWNER, deps));
   }
 
   it("走到 review 就停：租约释放、渲染落库、不替人确认", async () => {
@@ -158,6 +165,119 @@ describe("worker 流水线", () => {
 
     // 队列里躺着一条库里没有的活（清库、换环境）：空转返回 null，不炸消费者
     expect(await runTask(db, randomUUID())).toBeNull();
+  });
+
+  const STUB_MODEL = { baseUrl: "http://127.0.0.1:1/v1", apiKey: "", model: "stub-model" };
+
+  /** 替掉真模型，其余解析、落库、记账照走真实路径。 */
+  function stubChat(script: unknown): ScriptDeps {
+    return {
+      modelConfig: STUB_MODEL,
+      chat: () =>
+        Promise.resolve({
+          content: JSON.stringify(script),
+          tokensIn: 12,
+          tokensOut: 34,
+          model: STUB_MODEL.model,
+        }),
+    };
+  }
+
+  async function runOnceCaught(deps: ScriptDeps): Promise<string> {
+    const claimed = await claimNext(db);
+    if (!claimed) throw new Error("预期能领到任务，结果池子是空的");
+    // catch 在回调里：闸拒时 gate_results 与 stage=failed 已写在同一个事务里，
+    // 让异常穿出 withTenant 就是回滚掉审计痕（与 tick.ts 同一条规矩）
+    return withTenant(db, tenantId, async (t) => {
+      try {
+        await walkTask(t, claimed.task, OWNER, deps);
+      } catch (cause) {
+        return cause instanceof Error ? cause.message : String(cause);
+      }
+      throw new Error("期望被闸拒绝，结果走完了");
+    });
+  }
+
+  it("news 写稿：模型产出落库并记 token，随后照常走到 review", async () => {
+    const taskId = await seedClaimedTask(NEWS_CAPABILITY);
+    const script = {
+      title: "某市开通新航线",
+      scenes: [
+        { body: "首航航班今天上午起飞。", onscreen: "首航｜今天起飞" },
+        { body: "航线每周三班。" },
+      ],
+    };
+    const trace = await runOnce(stubChat(script));
+
+    expect(trace.finalStage).toBe("review");
+    expect(trace.steps).toContain("scripting(stub-model)");
+    expect(await withTenant(db, tenantId, (t) => getScript(t, taskId))).toEqual(script);
+
+    const usage = await withTenant(db, tenantId, (t) =>
+      t.db.select({ kind: usageRecords.kind, quantity: usageRecords.quantity }).from(usageRecords),
+    );
+    expect(usage).toEqual(
+      expect.arrayContaining([
+        { kind: "llm_tokens_in", quantity: "12" },
+        { kind: "llm_tokens_out", quantity: "34" },
+      ]),
+    );
+  });
+
+  it("模型少一镜：契约闸在 factcheck→rendering 拒绝，原因点名缺什么", async () => {
+    const taskId = await seedClaimedTask(NEWS_CAPABILITY);
+    const message = await runOnceCaught(
+      stubChat({ title: "只有一镜", scenes: [{ body: "正文" }] }),
+    );
+
+    expect(message).toContain("contract.script_shape");
+    expect(message).toContain("scenes");
+    expect(await withTenant(db, tenantId, (t) => getTask(t, taskId))).toMatchObject({
+      stage: "failed",
+    });
+    const gates = await withTenant(db, tenantId, (t) => listGateResults(t, taskId));
+    expect(gates.find((gate) => gate.gate === "contract")).toMatchObject({ passed: false });
+  });
+
+  it("页面配的模型就是这次调用用的模型：密钥留空时回落到环境变量", async () => {
+    await seedClaimedTask(NEWS_CAPABILITY);
+    await withTenant(db, tenantId, (t) =>
+      setModelSettings(t, {
+        baseUrl: "https://api.qnaigc.com/v1",
+        model: "moonshotai/kimi-k3-free",
+      }),
+    );
+    const seen: ModelConfig[] = [];
+    const deps: ScriptDeps = {
+      // 不注入 modelConfig：让配置真的走「读租户设置 → 回落环境变量」这条路
+      chat: (config) => {
+        seen.push(config);
+        return Promise.resolve({
+          content: JSON.stringify({
+            title: "某市开通新航线",
+            scenes: [{ body: "首航今天起飞。" }, { body: "每周三班。" }],
+          }),
+          tokensIn: null,
+          tokensOut: null,
+          model: config.model,
+        });
+      },
+    };
+    const previous = process.env.HERON_MODEL_API_KEY;
+    process.env.HERON_MODEL_API_KEY = "env-key";
+    try {
+      const trace = await runOnce(deps);
+      expect(trace.finalStage).toBe("review");
+      expect(trace.steps).toContain("scripting(moonshotai/kimi-k3-free)");
+      expect(seen[0]).toEqual({
+        baseUrl: "https://api.qnaigc.com/v1",
+        apiKey: "env-key",
+        model: "moonshotai/kimi-k3-free",
+      });
+    } finally {
+      if (previous === undefined) delete process.env.HERON_MODEL_API_KEY;
+      else process.env.HERON_MODEL_API_KEY = previous;
+    }
   });
 });
 

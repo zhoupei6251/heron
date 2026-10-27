@@ -6,6 +6,7 @@ import { sha256, VIDEOS_DIR } from "@heron/db";
 import {
   advanceTask,
   findPublishByKey,
+  getScript,
   insertPublish,
   insertRender,
   latestRender,
@@ -14,9 +15,15 @@ import {
   updatePublish,
   type TenantDb,
 } from "@heron/db/pg";
-import { DECLARATION_TEXT, type GateEvaluator } from "@heron/domain";
+import {
+  DECLARATION_TEXT,
+  gateForTransition,
+  scriptVerdict,
+  type GateEvaluator,
+} from "@heron/domain";
 
 import { getManifest } from "./capabilities";
+import { declaresScript, generateScript, type ScriptDeps } from "./scripting";
 
 export interface WalkTrace {
   readonly taskId: string;
@@ -31,6 +38,7 @@ function taskDir(taskId: string): string {
 /**
  * contract / visual / compliance 三道闸的尺子还在 harness-factory，P1/P5 才搬过来。
  * 这里显式占位放行并打点：domain 的门禁位仍报“未启用”，界面发布按钮保持置灰。
+ * 例外是 news 的合同闸：它已有 domain 实现（scriptVerdict），不再占位。
  */
 function placeholderVerdict(gate: GateName): GateVerdict {
   return {
@@ -61,13 +69,30 @@ function humanNotWorkerDecidable(taskId: string): GateVerdict {
   };
 }
 
-function buildEvaluator(): GateEvaluator {
-  return ({ gate, task }) =>
-    gate === "human" ? humanNotWorkerDecidable(task.id) : placeholderVerdict(gate);
+function buildEvaluator(scripted: boolean, script: unknown): GateEvaluator {
+  return ({ gate, task }) => {
+    if (gate === "human") return humanNotWorkerDecidable(task.id);
+    // 没声明写稿提示词的 capability（p0-fake）保持占位：它没有稿子可判
+    if (gate === "contract" && scripted) return scriptVerdict(script);
+    return placeholderVerdict(gate);
+  };
 }
 
 /** 进入某个阶段之前的副作用。人的确认不在这里：那一步由真实的人点出来。 */
-async function onEnter(tdb: TenantDb, task: Task, to: Stage, note: string[]): Promise<void> {
+async function onEnter(
+  tdb: TenantDb,
+  task: Task,
+  to: Stage,
+  note: string[],
+  deps: ScriptDeps,
+  scripted: boolean,
+): Promise<void> {
+  if (to === "scripting") {
+    if (!scripted) return;
+    note.push(await generateScript(tdb, task, deps));
+    return;
+  }
+
   if (to === "rendering") {
     const dir = taskDir(task.id);
     mkdirSync(dir, { recursive: true });
@@ -114,9 +139,14 @@ async function onEnter(tdb: TenantDb, task: Task, to: Stage, note: string[]): Pr
  * 释放必须和推进在同一个事务里（调用方 withTenant）——否则「停在 review 却还占着租约」
  * 的窗口里崩一次，租约过期会被当成进程死亡去计数，几次之后一条等人的任务就变成 failed。
  */
-export async function walkTask(tdb: TenantDb, task: Task, owner: string): Promise<WalkTrace> {
+export async function walkTask(
+  tdb: TenantDb,
+  task: Task,
+  owner: string,
+  deps: ScriptDeps = {},
+): Promise<WalkTrace> {
   const manifest = getManifest(task.capability);
-  const evaluator = buildEvaluator();
+  const scripted = declaresScript(manifest.promptKeys);
   const steps: string[] = [task.stage];
   let current = task;
 
@@ -136,12 +166,17 @@ export async function walkTask(tdb: TenantDb, task: Task, owner: string): Promis
       throw new Error(`任务 ${current.id} 在 ${current.stage} 之后没有后继，pipeline 声明不完整`);
     }
     const note: string[] = [];
-    await onEnter(tdb, current, next, note);
+    await onEnter(tdb, current, next, note, deps, scripted);
+    // 稿子在这一轮里才生成，所以要到合同闸那一刻再读，不能在循环外一次读死
+    const script =
+      scripted && gateForTransition(current.stage, next) === "contract"
+        ? await getScript(tdb, current.id)
+        : null;
     current = await advanceTask(tdb, {
       taskId: current.id,
       owner,
       to: next,
-      evaluateGate: evaluator,
+      evaluateGate: buildEvaluator(scripted, script),
     });
     steps.push(note.length > 0 ? `${next}(${note.join(",")})` : next);
   }

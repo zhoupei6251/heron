@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   CreateMemberBodySchema,
+  MIN_PASSWORD_LENGTH,
   UpdateMemberBodySchema,
   ROLES,
   type Member,
@@ -225,7 +226,7 @@ onMounted(list.load);
             maxlength="128"
           />
           <p class="form-hint">
-            至少 12 位。请通过安全渠道交给成员，并提醒登录后修改。
+            至少 {{ MIN_PASSWORD_LENGTH }} 位。请通过安全渠道交给成员，并提醒登录后修改。
           </p></ElFormItem
         >
         <ElFormItem label="角色" for="member-role"

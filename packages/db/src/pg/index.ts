@@ -13,6 +13,7 @@
 export * from "./artifacts";
 export * from "./candidates";
 export * from "./driver";
+export * from "./feeds";
 export * from "./identity";
 export * from "./migrate";
 export * from "./rls";

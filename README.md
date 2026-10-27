@@ -2,9 +2,9 @@
 
 自主部署的多租户新闻视频工作室，以人工确认连接选题、生产、审片与发布。
 
-**当前可用：** 统一登录与权限菜单、工作空间与平台管理、成员与角色管理、任务与审片界面、用量和审计、Postgres 行级隔离、Docker Compose 部署。
+**当前可用：** 统一登录与权限菜单、工作空间与平台管理、成员与角色管理、热榜定时采集、候选直接开始生产、写稿模型（OpenAI 兼容，页面上按租户配模型与密钥，环境变量兜底）、写稿产出的字段与排版前置契约闸、任务与审片界面、用量和审计、成片按天保留清理、Postgres 行级隔离、Docker Compose 部署。
 
-**仍在建设：** 自动采集调度、模型生成、真实渲染与发布平台接入、计费。演示任务不会调用外部发布平台；生产门禁未就绪时，不应把演示流程视为可用于真实发布的生产线。
+**仍在建设：** 真实渲染与发布平台接入、契约闸之外的视觉/合规两道闸、计费。演示任务不会调用外部发布平台；生产门禁未就绪时，不应把演示流程视为可用于真实发布的生产线。
 
 规格书在 `docs/plans/`：
 
@@ -37,11 +37,11 @@ pnpm db:seed-owner
 
 所有账号都在 `/login` 登录：工作空间成员填写工作空间标识、邮箱与密码；平台管理员将工作空间留空。登录后按服务端返回的角色、权限与菜单进入首页，不需要选择控制台。相同邮箱不代表相同账号，系统不会跨工作空间尝试登录，也不会把工作空间所有者自动提升为平台管理员。
 
-要创建初始平台管理员，显式配置 `HERON_PLATFORM_EMAIL`、`HERON_PLATFORM_PASSWORD`（12–128 位）和可选的 `HERON_PLATFORM_NAME`，再运行 `pnpm db:seed-platform`。引导命令不会重置已有账号的密码，完成后应移除引导密码配置。
+要创建初始平台管理员，显式配置 `HERON_PLATFORM_EMAIL`、`HERON_PLATFORM_PASSWORD`（10–128 位）和可选的 `HERON_PLATFORM_NAME`，再运行 `pnpm db:seed-platform`。引导命令不会重置已有账号的密码，完成后应移除引导密码配置。
 
 ### 不连接业务数据库的界面开发
 
-在本地环境提供一次性的 `HERON_DEMO_PASSWORD`（12–128 位，无内置默认值），然后使用两个终端：
+在本地环境提供一次性的 `HERON_DEMO_PASSWORD`（10–128 位，无内置默认值），然后使用两个终端：
 
 ```bash
 # 终端 1：完整 API 路由，数据库使用内存 PGlite
@@ -68,7 +68,7 @@ HERON_DEV_API_URL=http://127.0.0.1:3101 pnpm web:dev
 - 顶栏支持明亮、深色、跟随系统三种配色；偏好保存在当前浏览器，不存储任何登录凭证。
 - `Ctrl+K` / `⌘K` 打开快捷导航，按页面名称、分组或路径搜索；方向键选择，Enter 进入，Esc 关闭。快捷导航只显示当前账号获准访问的页面。
 - 表格、抽屉和审片工作台适配窄屏；动画尊重系统的减少动态效果设置。
-- 用量统计不是账单，健康检查不是外部发布服务的可用性证明；数据源配置保存不代表自动采集已经执行。
+- 用量统计不是账单，健康检查不是外部发布服务的可用性证明。启用的数据源由 worker 每 30 秒按各自间隔采集，也可以在同一页点「立即采集」；失败原因留在数据源的「上次尝试」列，不静默。
 
 ## 命令
 
@@ -90,15 +90,18 @@ HERON_DEV_API_URL=http://127.0.0.1:3101 pnpm web:dev
 只有两个进程，分界是故障隔离不是微服务：Chromium / ffmpeg 崩溃不应带走 API。
 
 ```
-apps/api/         NestJS：REST + SSE 进度 + 托管 web/dist（按域分目录 auth/tasks/gates/settings/events/health）
+apps/api/         NestJS：REST + SSE 进度 + 托管 web/dist；按域分目录（auth / tasks / review / manage /
+                  platform / gates / settings / events / health / tools），dev 下是 pglite 开发台
 apps/worker/      单 worker：领租约 → 写稿 / 截图 / 合成 / 发布；到 review 放租约等人，确认后接着跑
-apps/web/         Vite + Vue 3 + Tailwind 4 + Element Plus；entries/ 下是版式 SFC
+apps/web/         Vite + Vue 3 + Tailwind 4 + Element Plus；pages/console 与 pages/platform 是两套台，
+                  entries/demo 是版式 SFC 的独立入口
 packages/contracts/  zod 契约：DTO + 十态状态机 + 判定类型（前后端同一份）
 packages/domain/     五道闸纯函数与状态机规则（闸只有这一份实现，api 与 worker 都读它）
 packages/db/         Postgres + Drizzle + RLS（`@heron/db/pg`）；包根只剩路径、时间、指纹、设置键
-capabilities/news/   这一个 capability 的 manifest（只留接缝，不做平台抽象）
+packages/redis/      连接与探针；BullMQ 派发与登录失败计数，不配 Redis 就退回轮询
+capabilities/news/   这一个 capability 的 manifest：pipeline、闸名与写稿提示词键已声明，layouts 还空着
 Dockerfile           单阶段镜像，api 与 worker 共用；apps/web/dist 在镜像里
-deploy/              docker-compose.yml（db + api + worker）
+deploy/              docker-compose.yml（db + redis + api + worker）
 ```
 
 ## 状态机与五道闸
@@ -108,11 +111,15 @@ candidate → claimed → scripting → factcheck → rendering → review → a
                                                                     ↘ failed(带原因)
 ```
 
-`factcheck`、`review` 是**闸**不是步骤。闸挂在转移上：去重（`norm_key`）、契约（8 条）、视觉几何、
+`factcheck`、`review` 是**闸**不是步骤。闸挂在转移上：去重（`norm_key`）、契约、视觉几何、
 合规三件套（mp4 元数据 `AIGC` + 声明「内容由AI生成」）、人工确认。
 
-**当前门禁位：4 道闸的尺子还在 harness-factory，`GET /api/gates` 报 `open:false`，界面的「发布」按钮必须置灰。**
-worker 里那三道是显式占位放行，台账会写明「占位放行：尺子还在 harness-factory」；人的闸不在 worker 里，
+`capabilities/news` 声明了写稿提示词后，`scripting` 会真调模型并把稿子写进 `scripts`，
+`factcheck → rendering` 的契约闸判这张稿子：缺稿、字段形状不对、title 与屏句重复都会拒，并写明哪条、哪段。
+与版式有关的几条契约（字号、填幅、领句位几何）要等 layouts 落地才能判，现在不冒充已实现。
+
+**当前门禁位：视觉与合规两道闸的尺子还在 harness-factory，`GET /api/gates` 报 `open:false`，界面的「发布」按钮必须置灰。**
+worker 里这两道仍是显式占位放行，台账会写明「占位放行：尺子还在 harness-factory」；人的闸不在 worker 里，
 只能由确认动作（`confirmByHuman`）产出，worker 领不到 review 阶段的任务。
 
 ## 数据
@@ -122,14 +129,18 @@ worker 里那三道是显式占位放行，台账会写明「占位放行：尺�
 受控的特权仓储入口，不向客户端开放任意 SQL 或任意租户绕过能力。包根（`@heron/db`）只保留路径、时间、
 指纹与设置键，不 import 驱动也不开库。
 
-成片与诊断产物在 `${HERON_HOME:-data}/videos/<task-id>/`（DB 只存路径与指纹）；
-渲染失败留下 `.keep` 标记的目录不参与自动清理。保留天数存在 `settings` 里，清理任务本身还没接
-（不假装有）。所有 `*_at` 列一律 UTC ISO-8601 带 `Z`，由 `packages/db/src/time.ts` 单点写入。
+成片与诊断产物在 `${HERON_HOME:-data}/videos/<task-id>/`（DB 只存路径与指纹）。worker 每小时按各租户
+`video_retention_days` 清理过期目录；渲染失败留下 `.keep` 的目录不清，只清「最后一版渲染也已过期」的任务。
+渲染行不删——发布单指着它，审计仍要回答当时发的是哪一版。所有 `*_at` 列一律 UTC ISO-8601 带 `Z`，
+由 `packages/db/src/time.ts` 单点写入。
 表名与列的设计依据见 stack-v2 §7。
 
 `.env` 由 `packages/db/src/home.ts` 读取（api 与 worker 共用同一处路径计算）；
 真环境变量优先于文件。两个进程都读 `DATABASE_URL`（没配就拒绝启动，不给默认值），
-api 另读 `HERON_JWT_SECRET`（没配或短于 32 字符同样拒绝启动）与 `HERON_COOKIE_SECURE`。
+api 另读 `HERON_JWT_SECRET`（没配或短于 32 字符同样拒绝启动）与 `HERON_COOKIE_SECURE`，
+worker 读 `HERON_MODEL_BASE_URL` / `HERON_MODEL_API_KEY` / `HERON_MODEL_NAME`（默认地址指向七牛云），
+但「工作空间设置 → 写稿模型」里按租户配的优先：地址与模型名以页面为准，密钥页面留空则用环境变量那把。
+换任何 OpenAI 兼容服务都只改这三项，不碰代码；缺模型名时只有写稿那一步报错，不影响进程启动。
 
 ## 部署
 
@@ -142,10 +153,12 @@ pnpm db:seed-owner                                                    # 在宿�
 
 `--env-file .env` 不能省：compose 只在 compose 文件所在目录找 `.env`，而仓库的那份在根上。
 
-- 三个服务：`db`（postgres:18-alpine，命名卷 `pg_data`）、`api`、`worker`。**api 与 worker 同一个镜像**
-  （`Dockerfile` 单阶段，只是入口命令不同）——拆开就得把 `packages/*` 发成 npm 包。
-- `api` 顺带静态托管 `apps/web/dist`，所以没有第四个服务，也不需要 nginx 才能看界面。
-- 端口只绑回环（`127.0.0.1:3000`、`127.0.0.1:5432`）；要公网访问是你自己改 compose，不是默认。
+- 四个服务：`db`（postgres:18-alpine，命名卷 `pg_data`）、`redis`（redis:8-alpine，AOF 开、卷 `redis_data`）、
+  `api`、`worker`。**api 与 worker 同一个镜像**（`Dockerfile` 单阶段，只是入口命令不同）——拆开就得把
+  `packages/*` 发成 npm 包。
+- `api` 顺带静态托管 `apps/web/dist`，所以不需要 nginx 才能看界面。
+- 端口只绑回环（`127.0.0.1:3000`、`127.0.0.1:5432`、`127.0.0.1:6379`；`REDIS_PORT` 可改，这台机器用
+  6380 避开另一个项目的 redis）；要公网访问是你自己改 compose，不是默认。
 - `heron_data` 卷被 api 与 worker 共享：成片要能被 api 直接读出来给前端。
 - `worker` 等 `api` 的 healthcheck 通过才启动（`depends_on: service_healthy`）：迁移由 api 独占，
   worker 连上太早只会报 relation 不存在；它自己也有 `waitForSchema` 兜底。
@@ -212,7 +225,11 @@ cron 不继承登录 shell 的 PATH，所以写死一份：这台机器上 `dock
 - 同源写请求校验 `Origin` 与服务端看到的协议/Host；反向代理必须保留 Host，公网部署必须配置 HTTPS 与安全 cookie。
 - 抖音登录态在 `~/.heron/state/douyin/`，仓库与 DB 都不存 cookie 本体；DB 只存路径 + sha256 指纹，
   指纹不匹配就红，**绝不静默用一份来源不明的旧登录态去发东西**。
-- 模型密钥只走环境变量，调用集中在一个 client 模块里。
+- 模型密钥只走环境变量或在「工作空间设置」页按租户配置，调用集中在 `apps/worker/src/model.ts` 一个模块；
+  密钥进 settings 表（租户隔离、RLS 保护）但接口只回显「已配置」，审计台账与日志里都没有它。
+  落库的只有稿子与供应商返回的 token 用量（没返回就记空，不拿 0 充数）。
+- 数据源地址由租户管理员填写，worker 会去请求它：当前**不做**出口地址白名单/解析后 IP 校验。
+  单租户自部署可以接受；开放注册或对外提供多租户托管前，必须补上 SSRF 防护（拒绝内网与云元数据地址）。
 - 发布重试前必须先核实"是不是其实已经发出去了"（`publishes.verified_at`），回执丢失不等于没发出去。
 
 ## 不做

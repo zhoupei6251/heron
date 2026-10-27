@@ -53,12 +53,14 @@ import { RequireAction } from "../common/decorators/require-action.decorator";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { PG_DB } from "../db/pg";
 import { ArtifactService } from "./artifact.service";
+import { FeedService } from "./feed.service";
 
 @Controller("manage")
 export class ManageController {
   constructor(
     @Inject(PG_DB) private readonly db: Db,
     @Inject(ArtifactService) private readonly artifacts: ArtifactService,
+    @Inject(FeedService) private readonly feedService: FeedService,
   ) {}
 
   @Get("overview")
@@ -138,6 +140,12 @@ export class ManageController {
     @Body(new ZodValidationPipe(FeedSourceBodySchema)) body: FeedSourceBody,
   ) {
     return withTenant(this.db, user.tenantId, (t) => updateFeedSource(t, user.id, id, body));
+  }
+
+  @Post("feeds/:id/fetch")
+  @RequireAction("settings.write")
+  fetchFeed(@CurrentUser() user: AuthUser, @Param("id", new ParseUUIDPipe()) id: string) {
+    return this.feedService.fetchNow(user, id);
   }
 
   @Get("candidates")

@@ -6,9 +6,11 @@ import { nowIso } from "../time";
 import {
   type Db,
   createTenant,
+  getModelSettings,
   getRetentionDays,
   migrate,
   openDb,
+  setModelSettings,
   settings,
   setRetentionDays,
   withTenant,
@@ -82,5 +84,34 @@ describe("pg settings 仓储", () => {
       }),
     );
     expect(await withTenant(db, tenantA, (t) => getRetentionDays(t))).toBe(DEFAULT_RETENTION_DAYS);
+  });
+
+  it("模型配置按租户存；密钥留空提交不覆盖旧值，B 台看不到 A 台的", async () => {
+    expect(await withTenant(db, tenantA, (t) => getModelSettings(t))).toEqual({
+      baseUrl: null,
+      apiKey: null,
+      model: null,
+    });
+    const baseUrl = "https://api.qnaigc.com/v1";
+    await withTenant(db, tenantA, (t) =>
+      setModelSettings(t, { baseUrl, model: "qiniu/conatus-free" }),
+    );
+    await withTenant(db, tenantA, (t) =>
+      setModelSettings(t, { baseUrl, model: "moonshotai/kimi-k3-free", apiKey: "sk-a" }),
+    );
+    // 界面回显的是「已配置」，换模型时密钥那一栏留空——这次提交不能把密钥抹掉
+    await withTenant(db, tenantA, (t) =>
+      setModelSettings(t, { baseUrl, model: "nvidia/nemotron-3-ultra-550b-a55b0-free" }),
+    );
+    expect(await withTenant(db, tenantA, (t) => getModelSettings(t))).toEqual({
+      baseUrl,
+      apiKey: "sk-a",
+      model: "nvidia/nemotron-3-ultra-550b-a55b0-free",
+    });
+    expect(await withTenant(db, tenantB, (t) => getModelSettings(t))).toEqual({
+      baseUrl: null,
+      apiKey: null,
+      model: null,
+    });
   });
 });

@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { PasswordBodySchema, ProfileBodySchema, type AuthUser } from "@heron/contracts";
+import {
+  MIN_PASSWORD_LENGTH,
+  PasswordBodySchema,
+  ProfileBodySchema,
+  type AuthUser,
+} from "@heron/contracts";
 import {
   ElAlert,
   ElButton,
@@ -53,7 +58,7 @@ async function changePassword() {
   let generation = sessionGeneration();
   const parsed = PasswordBodySchema.safeParse(password);
   if (!parsed.success || password.newPassword !== password.confirm) {
-    error.value = "请输入当前密码、新密码（12–128 位），并确保两次新密码一致。";
+    error.value = `请输入当前密码、新密码（${String(MIN_PASSWORD_LENGTH)}–128 位），并确保两次新密码一致。`;
     return;
   }
   try {
@@ -122,7 +127,7 @@ async function changePassword() {
       <div class="form-section">
         <h2>修改密码</h2>
         <p class="form-hint" style="margin-bottom: 20px">
-          使用至少 12 位的独立密码。修改后将退出所有设备。
+          使用至少 {{ MIN_PASSWORD_LENGTH }} 位的独立密码。修改后将退出所有设备。
         </p>
         <ElForm label-position="top" @submit.prevent="changePassword"
           ><ElFormItem label="当前密码" for="current-password" required

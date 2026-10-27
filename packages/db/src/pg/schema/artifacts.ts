@@ -17,44 +17,65 @@ import { users } from "./users";
 import { tenants } from "./tenants";
 import { tasks } from "./tasks";
 
-/** 一次渲染一行；fingerprint 是人审看到的那张联络表的指纹，确认记录必须对上它。 */
-export const renders = pgTable(
-  "renders",
+/** 一次渲染一行；fingerprint 是人审看到的那张联络表的指纹，确认记录必须对上它。 */ export const renders =
+  pgTable(
+    "renders",
+    {
+      id: uuid("id").primaryKey(),
+      // 子表：租户靠 tasks 的 FK 继承（规则见 schema/index.ts 的两张清单）
+      taskId: uuid("task_id")
+        .notNull()
+        .references(() => tasks.id, { onDelete: "cascade" }),
+      version: integer("version").notNull(),
+      pack: text("pack").notNull(),
+      mp4Path: text("mp4_path"),
+      mp4Sha256: text("mp4_sha256"),
+      mp4Bytes: integer("mp4_bytes"),
+      contactSheetPath: text("contact_sheet_path"),
+      fingerprint: text("fingerprint").notNull(),
+      width: integer("width"),
+      height: integer("height"),
+      fps: doublePrecision("fps"),
+      durationMs: integer("duration_ms"),
+      // 合规三件套的 sidecar（aigc.json）落在成片旁边，DB 只存路径
+      aigcSidecarPath: text("aigc_sidecar_path"),
+      // 各阶段耗时 [{stage, seconds}]：一次渲染约 60s 墙钟，慢在哪得能查
+      timings: jsonb("timings")
+        .$type<{ stage: string; seconds: number }[]>()
+        .notNull()
+        .default(sql`'[]'::jsonb`),
+      createdAt: text("created_at").notNull(),
+    },
+    (t) => [
+      uniqueIndex("u_renders_task_version").on(t.taskId, t.version),
+      check("ck_renders_version_positive", sql`${t.version} > 0`),
+      check("ck_renders_bytes_nonnegative", sql`${t.mp4Bytes} IS NULL OR ${t.mp4Bytes} >= 0`),
+      check("ck_renders_width_positive", sql`${t.width} IS NULL OR ${t.width} > 0`),
+      check("ck_renders_height_positive", sql`${t.height} IS NULL OR ${t.height} > 0`),
+      check("ck_renders_fps_positive", sql`${t.fps} IS NULL OR ${t.fps} > 0`),
+      check(
+        "ck_renders_duration_nonnegative",
+        sql`${t.durationMs} IS NULL OR ${t.durationMs} >= 0`,
+      ),
+    ],
+  );
+
+/**
+ * 写稿产出。一任务一行：重写就覆盖（重跑的判据是任务状态，不是版本号）。
+ * content 原样存模型给的 JSON，形状由契约闸判——写稿阶段先落库再判，手改稿也绕不过去。
+ */
+export const scripts = pgTable(
+  "scripts",
   {
     id: uuid("id").primaryKey(),
-    // 子表：租户靠 tasks 的 FK 继承（规则见 schema/index.ts 的两张清单）
     taskId: uuid("task_id")
       .notNull()
       .references(() => tasks.id, { onDelete: "cascade" }),
-    version: integer("version").notNull(),
-    pack: text("pack").notNull(),
-    mp4Path: text("mp4_path"),
-    mp4Sha256: text("mp4_sha256"),
-    mp4Bytes: integer("mp4_bytes"),
-    contactSheetPath: text("contact_sheet_path"),
-    fingerprint: text("fingerprint").notNull(),
-    width: integer("width"),
-    height: integer("height"),
-    fps: doublePrecision("fps"),
-    durationMs: integer("duration_ms"),
-    // 合规三件套的 sidecar（aigc.json）落在成片旁边，DB 只存路径
-    aigcSidecarPath: text("aigc_sidecar_path"),
-    // 各阶段耗时 [{stage, seconds}]：一次渲染约 60s 墙钟，慢在哪得能查
-    timings: jsonb("timings")
-      .$type<{ stage: string; seconds: number }[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
+    model: text("model").notNull(),
+    content: jsonb("content").$type<unknown>().notNull(),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [
-    uniqueIndex("u_renders_task_version").on(t.taskId, t.version),
-    check("ck_renders_version_positive", sql`${t.version} > 0`),
-    check("ck_renders_bytes_nonnegative", sql`${t.mp4Bytes} IS NULL OR ${t.mp4Bytes} >= 0`),
-    check("ck_renders_width_positive", sql`${t.width} IS NULL OR ${t.width} > 0`),
-    check("ck_renders_height_positive", sql`${t.height} IS NULL OR ${t.height} > 0`),
-    check("ck_renders_fps_positive", sql`${t.fps} IS NULL OR ${t.fps} > 0`),
-    check("ck_renders_duration_nonnegative", sql`${t.durationMs} IS NULL OR ${t.durationMs} >= 0`),
-  ],
+  (t) => [uniqueIndex("u_scripts_task").on(t.taskId)],
 );
 
 export const confirmations = pgTable(

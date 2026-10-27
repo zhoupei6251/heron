@@ -23,6 +23,7 @@ import {
   createTask,
   findPublishByKey,
   getTask,
+  getScript,
   hasPublishedTaskForCandidate,
   insertConfirmation,
   insertPosture,
@@ -36,10 +37,15 @@ import {
   openDb,
   publishes,
   recordUsage,
+  setCandidateStatus,
+  startProductionFromCandidate,
+  scripts,
   sumUsage,
   taskEvents,
+  tasks,
   tenants,
   updatePublish,
+  upsertScript,
   usageRecords,
   withTenant,
   type Db,
@@ -450,6 +456,30 @@ describe("pg 仓储层（异步 + 双通道）", () => {
     expect(await withTenant(db, TENANT_A, (t) => nextRenderVersion(t, ref.taskId))).toBe(2);
   });
 
+  it("稿子一任务一份：重写覆盖，别的租户读不到", async () => {
+    const ref = await claimedTask();
+    await withTenant(db, TENANT_A, async (t) => {
+      await upsertScript(t, {
+        taskId: ref.taskId,
+        model: "旧模型",
+        content: { title: "旧稿", scenes: [] },
+      });
+      await upsertScript(t, {
+        taskId: ref.taskId,
+        model: "新模型",
+        content: { title: "新稿", scenes: [{ body: "正文" }] },
+      });
+    });
+
+    expect(await withTenant(db, TENANT_A, (t) => getScript(t, ref.taskId))).toEqual({
+      title: "新稿",
+      scenes: [{ body: "正文" }],
+    });
+    // 子表的隔离靠 RLS 的 EXISTS 策略：按 taskId 查越界，得到的是 null 而不是别人的稿子
+    expect(await withTenant(db, TENANT_B, (t) => getScript(t, ref.taskId))).toBeNull();
+    expect(await withTenant(db, TENANT_A, (t) => t.db.select().from(scripts))).toHaveLength(1);
+  });
+
   it("发布幂等键复用，凭证两列必须成对", async () => {
     const ref = await claimedTask();
     const renderId = await withTenant(db, TENANT_A, (t) =>
@@ -595,6 +625,85 @@ describe("pg 仓储层（异步 + 双通道）", () => {
     expect(events.filter((e) => e.toStage === "failed")).toHaveLength(0);
     // 认领一条 + 走到 published 一条，markFailed 没添上第九条
     expect(events).toHaveLength(TO_PUBLISHED.length + 1);
+  });
+
+  /** 候选 → 在途任务：认领人来自会话、候选转 selected、台账从 candidate 起笔。 */
+  it("开始生产：候选变成一条已认领的任务，而不是先建任务再认领", async () => {
+    const seeded = await withTenant(db, TENANT_A, async (t) => {
+      const userId = await createUser(t, {
+        email: "start@example.com",
+        displayName: "周佩",
+        passwordHash: PASSWORD_HASH,
+        role: "reviewer",
+      });
+      const candidateId = await createCandidate(t, {
+        title: "某市开通新航线",
+        summary: "",
+        heat: 1,
+      });
+      const task = await startProductionFromCandidate(t, candidateId, userId, "news");
+      return { userId, candidateId, task };
+    });
+    expect(seeded.task).toMatchObject({
+      stage: "claimed",
+      claimedBy: seeded.userId,
+      candidateId: seeded.candidateId,
+    });
+    const [candidate] = await withTenant(db, TENANT_A, (t) =>
+      t.db.select().from(candidates).where(eq(candidates.id, seeded.candidateId)),
+    );
+    expect(candidate?.status).toBe("selected");
+    const events = await withTenant(db, TENANT_A, (t) =>
+      t.db.select().from(taskEvents).where(eq(taskEvents.taskId, seeded.task.id)),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ fromStage: "candidate", toStage: "claimed" });
+  });
+
+  it("同一条候选点两次，第二次被拒，在途任务只有一条", async () => {
+    const { userId, candidateId } = await withTenant(db, TENANT_A, async (t) => {
+      const userId = await createUser(t, {
+        email: "twice@example.com",
+        displayName: "周佩",
+        passwordHash: PASSWORD_HASH,
+        role: "reviewer",
+      });
+      const candidateId = await createCandidate(t, {
+        title: "某市开通新航线",
+        summary: "",
+        heat: 1,
+      });
+      await startProductionFromCandidate(t, candidateId, userId, "news");
+      return { userId, candidateId };
+    });
+    await expect(
+      withTenant(db, TENANT_A, (t) => startProductionFromCandidate(t, candidateId, userId, "news")),
+    ).rejects.toMatchObject({ code: "conflict" });
+    const rows = await withTenant(db, TENANT_A, (t) =>
+      t.db.select().from(tasks).where(eq(tasks.candidateId, candidateId)),
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it("已发布的候选不能再开始生产", async () => {
+    const { userId, candidateId } = await withTenant(db, TENANT_A, async (t) => {
+      const userId = await createUser(t, {
+        email: "done@example.com",
+        displayName: "周佩",
+        passwordHash: PASSWORD_HASH,
+        role: "reviewer",
+      });
+      const candidateId = await createCandidate(t, {
+        title: "某市开通新航线",
+        summary: "",
+        heat: 1,
+      });
+      await setCandidateStatus(t, candidateId, "published", AT);
+      return { userId, candidateId };
+    });
+    await expect(
+      withTenant(db, TENANT_A, (t) => startProductionFromCandidate(t, candidateId, userId, "news")),
+    ).rejects.toMatchObject({ code: "conflict" });
   });
 
   /**

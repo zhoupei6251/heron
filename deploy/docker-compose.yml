@@ -43,6 +43,11 @@ x-app: &app
     # 宿主进程用 .env 里的 127.0.0.1 那条。故意不写 depends_on: redis——
     # 应用层它是可选的，先起 api 也没关系，ioredis 会重连。
     REDIS_URL: redis://:${REDIS_PASSWORD:?口令必须在 .env 里给，镜像和本文件都不带默认口令}@redis:6379
+    # 写稿模型：只有 worker 用得到。三个都可以留空——worker 照常起，
+    # 走到写稿那一步才报缺模型名（这里不设默认模型名，供应商决定 id）。
+    HERON_MODEL_BASE_URL: ${HERON_MODEL_BASE_URL:-}
+    HERON_MODEL_API_KEY: ${HERON_MODEL_API_KEY:-}
+    HERON_MODEL_NAME: ${HERON_MODEL_NAME:-}
   depends_on:
     db:
       condition: service_healthy

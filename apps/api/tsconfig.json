@@ -14,5 +14,5 @@
       "@heron/redis": ["../../packages/redis/src/index.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "vitest.config.ts"]
 }

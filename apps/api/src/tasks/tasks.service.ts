@@ -1,5 +1,6 @@
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type { AuthUser, GateVerdict, Task } from "@heron/contracts";
+import { NEWS_CAPABILITY } from "@heron/capability-news";
 import {
   type Db,
   claimByHuman,
@@ -12,6 +13,7 @@ import {
   markFailed,
   ManagementError,
   requireActiveActor,
+  startProductionFromCandidate,
   withTenant,
 } from "@heron/db/pg";
 import { dedupeVerdict, formatErrorReason, normKey } from "@heron/domain";
@@ -40,7 +42,7 @@ export class TasksService {
    * 建任务。去重闸在这里判：拒了不是静默返回已有那条，而是留一条 failed 的任务——
    * 界面要能展开「为什么拒」，一条不存在的记录展示不出任何东西。
    */
-  create(user: AuthUser, input: { capability: string; title: string }): Promise<Task> {
+  create(user: AuthUser, input: { title: string }): Promise<Task> {
     const key = normKey(input.title);
     return withTenant(this.db, user.tenantId, async (t) => {
       await requireActiveActor(t, user.id, "task.claim");
@@ -51,7 +53,7 @@ export class TasksService {
       });
       if (!verdict.passed) {
         const blocked = await createTask(t, {
-          capability: input.capability,
+          capability: NEWS_CAPABILITY,
           candidateId: existing,
         });
         await markFailed(t, blocked.id, formatErrorReason(verdict));
@@ -59,8 +61,29 @@ export class TasksService {
       }
       const candidateId =
         existing ?? (await createCandidate(t, { title: input.title, summary: "", heat: 0 }));
-      return createTask(t, { capability: input.capability, candidateId });
+      return createTask(t, { capability: NEWS_CAPABILITY, candidateId });
     });
+  }
+
+  /**
+   * 从候选开始生产：一条候选一条在途任务，重复点由仓储用候选行锁挡住。
+   * 推队列排在事务之后，理由同 claim()：账本先落定，worker 才有活可领。
+   */
+  async startProduction(user: AuthUser, candidateId: string): Promise<Task> {
+    let task: Task;
+    try {
+      task = await withTenant(this.db, user.tenantId, async (t) => {
+        await requireActiveActor(t, user.id, "task.claim");
+        return startProductionFromCandidate(t, candidateId, user.id, NEWS_CAPABILITY);
+      });
+    } catch (cause) {
+      if (cause instanceof ManagementError) throw cause;
+      throw new BadRequestException(
+        "开始生产失败：候选不存在、状态已变化或操作人不可用，请刷新后重试",
+      );
+    }
+    await this.queue.push(task.id);
+    return task;
   }
 
   /**

@@ -1,6 +1,12 @@
 import { and, eq } from "drizzle-orm";
 
-import { DEFAULT_RETENTION_DAYS, RETENTION_SETTING_KEY } from "../setting-keys";
+import {
+  DEFAULT_RETENTION_DAYS,
+  MODEL_API_KEY_SETTING_KEY,
+  MODEL_BASE_URL_SETTING_KEY,
+  MODEL_NAME_SETTING_KEY,
+  RETENTION_SETTING_KEY,
+} from "../setting-keys";
 import { nowIso } from "../time";
 import type { TenantDb } from "./rls";
 import { settings } from "./schema/index";
@@ -48,4 +54,32 @@ export async function setRetentionDays(tdb: TenantDb, days: number): Promise<voi
     throw new Error(`保留天数必须是正整数，收到 ${days}`);
   }
   await writeSetting(tdb, RETENTION_SETTING_KEY, String(days));
+}
+
+/** 三项都可能没配过：null 表示「这一项用兜底」（worker 先看环境变量，最后落到默认地址）。 */
+export interface ModelSettings {
+  baseUrl: string | null;
+  apiKey: string | null;
+  model: string | null;
+}
+
+export async function getModelSettings(tdb: TenantDb): Promise<ModelSettings> {
+  return {
+    baseUrl: await readSetting(tdb, MODEL_BASE_URL_SETTING_KEY),
+    apiKey: await readSetting(tdb, MODEL_API_KEY_SETTING_KEY),
+    model: await readSetting(tdb, MODEL_NAME_SETTING_KEY),
+  };
+}
+
+/**
+ * apiKey 只在给新值时才写：界面回显的是「已配置」，留空提交不能把密钥抹掉。
+ * 想把密钥换掉就输入新的；清空密钥这件事没有输入框会做。
+ */
+export async function setModelSettings(
+  tdb: TenantDb,
+  input: { baseUrl: string; model: string; apiKey?: string },
+): Promise<void> {
+  await writeSetting(tdb, MODEL_BASE_URL_SETTING_KEY, input.baseUrl);
+  await writeSetting(tdb, MODEL_NAME_SETTING_KEY, input.model);
+  if (input.apiKey) await writeSetting(tdb, MODEL_API_KEY_SETTING_KEY, input.apiKey);
 }

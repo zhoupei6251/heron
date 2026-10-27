@@ -15,6 +15,20 @@
       "when": 1792721580199,
       "tag": "0001_product_console",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793079292093,
+      "tag": "0002_feed_attempt_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793082952289,
+      "tag": "0003_script_store",
+      "breakpoints": true
     }
   ]
 }

@@ -58,7 +58,12 @@ export const feedSources = pgTable(
     url: text("url").notNull(),
     frequencySec: integer("frequency_sec").notNull().default(900),
     enabled: boolean("enabled").notNull().default(true),
+    /** 最后一次**成功**抓取；失败不动它，界面才不会把「试过了」当成「抓到了」。 */
     lastFetchAt: text("last_fetch_at"),
+    /** 最后一次尝试（成功或失败都写）：下次重试 = 它 + frequency_sec。 */
+    lastAttemptAt: text("last_attempt_at"),
+    /** 最后一次失败原因；成功后清空。失败不静默靠这一列。 */
+    lastError: text("last_error"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [

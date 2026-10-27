@@ -1,4 +1,9 @@
-import { CreateMemberBodySchema, PlatformUserSchema, type PlatformUser } from "@heron/contracts";
+import {
+  CreateMemberBodySchema,
+  MIN_PASSWORD_LENGTH,
+  PlatformUserSchema,
+  type PlatformUser,
+} from "@heron/contracts";
 import { createPlatformOperator, findPlatformOperatorByEmail, type Db } from "@heron/db/pg";
 import { hashPassword } from "@heron/domain";
 
@@ -10,7 +15,7 @@ export function parsePlatformBootstrap(env: NodeJS.ProcessEnv) {
   });
   if (!result.success)
     throw new Error(
-      "HERON_PLATFORM_EMAIL 必须为有效邮箱；HERON_PLATFORM_PASSWORD 必须为 12–128 位；HERON_PLATFORM_NAME 至多 80 字符",
+      `HERON_PLATFORM_EMAIL 必须为有效邮箱；HERON_PLATFORM_PASSWORD 必须为 ${String(MIN_PASSWORD_LENGTH)}–128 位；HERON_PLATFORM_NAME 至多 80 字符`,
     );
   return result.data;
 }

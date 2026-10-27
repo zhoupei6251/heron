@@ -6,3 +6,12 @@
 
 export const RETENTION_SETTING_KEY = "video_retention_days";
 export const DEFAULT_RETENTION_DAYS = 30;
+
+/**
+ * 写稿模型的三项：页面上按租户配，环境变量兜底。
+ * 地址默认七牛云；模型名不设默认——各家 id 不同，猜一个只会换来 404。
+ */
+export const MODEL_BASE_URL_SETTING_KEY = "model_base_url";
+export const MODEL_API_KEY_SETTING_KEY = "model_api_key";
+export const MODEL_NAME_SETTING_KEY = "model_name";
+export const DEFAULT_MODEL_BASE_URL = "https://api.qnaigc.com/v1";

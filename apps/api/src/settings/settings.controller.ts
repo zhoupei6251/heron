@@ -1,10 +1,16 @@
 import { Body, Controller, Get, Inject, Put } from "@nestjs/common";
-import { type AuthUser, type RetentionBody, RetentionBodySchema } from "@heron/contracts";
+import {
+  type AuthUser,
+  type ModelSettingsBody,
+  ModelSettingsBodySchema,
+  type RetentionBody,
+  RetentionBodySchema,
+} from "@heron/contracts";
 
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { RequireAction } from "../common/decorators/require-action.decorator";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
-import { SettingsService } from "./settings.service";
+import { type ModelSettingsView, SettingsService } from "./settings.service";
 
 @Controller("settings")
 export class SettingsController {
@@ -12,8 +18,12 @@ export class SettingsController {
   constructor(@Inject(SettingsService) private readonly settings: SettingsService) {}
 
   @Get()
-  state(@CurrentUser() user: AuthUser): Promise<{ retentionDays: number }> {
-    return this.settings.retentionDays(user).then((retentionDays) => ({ retentionDays }));
+  state(
+    @CurrentUser() user: AuthUser,
+  ): Promise<{ retentionDays: number; model: ModelSettingsView }> {
+    return Promise.all([this.settings.retentionDays(user), this.settings.model(user)]).then(
+      ([retentionDays, model]) => ({ retentionDays, model }),
+    );
   }
 
   @Put("retention")
@@ -23,5 +33,14 @@ export class SettingsController {
     @Body(new ZodValidationPipe(RetentionBodySchema)) body: RetentionBody,
   ): Promise<{ retentionDays: number }> {
     return this.settings.setRetention(user, body.days).then((retentionDays) => ({ retentionDays }));
+  }
+
+  @Put("model")
+  @RequireAction("settings.write")
+  setModel(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(ModelSettingsBodySchema)) body: ModelSettingsBody,
+  ): Promise<ModelSettingsView> {
+    return this.settings.setModel(user, body);
   }
 }

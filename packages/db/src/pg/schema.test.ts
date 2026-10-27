@@ -88,9 +88,19 @@ describe("schema v3（多租户）", () => {
     expect((await realTables(d)).sort()).toEqual([...listed].sort());
   });
 
-  it("0001 快照与当前 schema 一致，下一次生成不会重复建表", async () => {
+  it("最新快照与当前 schema 一致，下一次生成不会重复建表", async () => {
+    // 读 journal 的最后一条而不是写死 0001：每加一个迁移都得回来改一次，改不动的那天就成了摆设
+    const journal = JSON.parse(
+      await readFile(join(__dirname, "../../drizzle/meta/_journal.json"), "utf8"),
+    ) as { entries: { idx: number }[] };
+    const latest = journal.entries.at(-1);
+    if (!latest) throw new Error("drizzle journal 是空的，没有快照可比");
+    // 快照按序号命名（0002_snapshot.json），不是按 journal 的 tag
     const snapshot: unknown = JSON.parse(
-      await readFile(join(__dirname, "../../drizzle/meta/0001_snapshot.json"), "utf8"),
+      await readFile(
+        join(__dirname, `../../drizzle/meta/${String(latest.idx).padStart(4, "0")}_snapshot.json`),
+        "utf8",
+      ),
     );
     expect(
       await generateMigration(

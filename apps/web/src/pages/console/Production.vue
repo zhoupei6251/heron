@@ -85,13 +85,20 @@ onMounted(() => {
       <ElTable
         :data="list.items"
         row-key="id"
-        empty-text="没有匹配的任务，可从候选管理创建演示选题。"
+        empty-text="没有匹配的任务，可从候选管理点「开始生产」。"
       >
         <ElTableColumn label="生产内容" min-width="310"
           ><template #default="{ row }"
             ><div class="cell-title">{{ row.title ?? "未命名任务" }}</div>
             <div class="cell-subtitle">
-              {{ row.capability === "p0-fake" ? "P0 演示 · 非真实发布" : row.capability }} ·
+              {{
+                row.capability === "p0-fake"
+                  ? "P0 演示 · 非真实发布"
+                  : row.capability === "news"
+                    ? "新闻短视频"
+                    : row.capability
+              }}
+              ·
               {{ row.id.slice(0, 8) }}
             </div></template
           ></ElTableColumn

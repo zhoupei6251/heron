@@ -6,7 +6,14 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { nowIso } from "../time";
 import { requireTenantUser } from "./identity";
 import type { TenantDb } from "./rls";
-import { aigcPosture, confirmations, gateResults, publishes, renders } from "./schema/index";
+import {
+  aigcPosture,
+  confirmations,
+  gateResults,
+  publishes,
+  renders,
+  scripts,
+} from "./schema/index";
 
 /**
  * 一次闸判定落一行：rejections 保留结构化原文，界面展开全文与 oracle 对账都靠它。
@@ -188,6 +195,21 @@ export async function confirmationMatches(
   return rows.length > 0;
 }
 
+/**
+ * 保留清理的候选：**全部**渲染都早于 cutoff 的任务。
+ * 判据是 max(created_at) 而不是「有任一版过期」：同一任务重渲后新旧版本共用一个目录，
+ * 按旧版本判断会把刚出的新片一起删掉。渲染行本身不删——publishes.render_id 指着它，
+ * 审计也要能回答「当时发的是哪一版、文件在哪（已清理）」。
+ */
+export async function listExpiredTaskDirs(tdb: TenantDb, cutoff: string): Promise<string[]> {
+  const rows = await tdb.db
+    .select({ taskId: renders.taskId })
+    .from(renders)
+    .groupBy(renders.taskId)
+    .having(sql`max(${renders.createdAt}) < ${cutoff}`);
+  return rows.map((row) => row.taskId);
+}
+
 export interface NewPublish {
   renderId: string;
   idempotencyKey: string;
@@ -286,4 +308,34 @@ export async function insertPosture(tdb: TenantDb, input: NewPosture): Promise<s
     revertedAt: input.revertedAt ?? null,
   });
   return id;
+}
+
+/** 一任务一份稿子：重写直接覆盖，形状判定留给契约闸（这里不替它做白名单）。 */
+export async function upsertScript(
+  tdb: TenantDb,
+  input: { taskId: string; model: string; content: unknown },
+): Promise<void> {
+  await tdb.db
+    .insert(scripts)
+    .values({
+      id: randomUUID(),
+      taskId: input.taskId,
+      model: input.model,
+      content: input.content,
+      createdAt: nowIso(),
+    })
+    .onConflictDoUpdate({
+      target: scripts.taskId,
+      set: { model: input.model, content: input.content, createdAt: nowIso() },
+    });
+}
+
+/** 契约闸读它。返回原样 JSON：形状对不对由 domain 的纯函数判，不在仓储里提前归一。 */
+export async function getScript(tdb: TenantDb, taskId: string): Promise<unknown> {
+  const rows = await tdb.db
+    .select({ content: scripts.content })
+    .from(scripts)
+    .where(eq(scripts.taskId, taskId))
+    .limit(1);
+  return rows[0]?.content ?? null;
 }

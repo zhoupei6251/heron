@@ -13,6 +13,7 @@ import { and, asc, desc, eq, gt, isNotNull, isNull, lt, notInArray, or, sql } fr
 import { nowIso } from "../time";
 import type { AdminDb } from "./admin";
 import { setCandidateStatus } from "./candidates";
+import { ManagementError } from "./console-query";
 import { requireTenantUser } from "./identity";
 import type { TenantDb } from "./rls";
 import { insertConfirmation, insertGateResult, latestRender } from "./artifacts";
@@ -247,6 +248,72 @@ export async function claimByHuman(tdb: TenantDb, taskId: string, userId: string
   const next = await selectTask(tdb.db, tdb.tenantId, taskId);
   if (!next) throw new Error(`认领后读不回任务：${taskId}`);
   return next;
+}
+
+/**
+ * 候选 → 在途任务（N5：认领对象是候选，不是先建任务再认领）。
+ *
+ * 同一条候选只许有一条在途任务，判据落在候选行的 FOR UPDATE 上：两个标签页同时点
+ * 「开始生产」，第二个会先等锁，醒来后在途任务已经看得见，拿到的是一句人话而不是第二份稿子。
+ * 认领人来自会话；台账写明是谁把哪条候选转成了生产任务。
+ */
+export async function startProductionFromCandidate(
+  tdb: TenantDb,
+  candidateId: string,
+  userId: string,
+  capability: string,
+): Promise<Task> {
+  const rows = await tdb.db
+    .select({ status: candidates.status })
+    .from(candidates)
+    .where(and(eq(candidates.id, candidateId), eq(candidates.tenantId, tdb.tenantId)))
+    .limit(1)
+    .for("update");
+  const candidate = rows[0];
+  if (!candidate) throw new ManagementError("not_found", "候选不存在或不在当前工作区");
+  if (candidate.status === "published" || candidate.status === "rejected")
+    throw new ManagementError("conflict", "这条候选已发布或已退回，不能再开始生产");
+
+  const actor = await requireTenantUser(tdb, userId);
+  const inflight = await tdb.db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.candidateId, candidateId),
+        eq(tasks.tenantId, tdb.tenantId),
+        notInArray(tasks.stage, TERMINAL),
+      ),
+    )
+    .limit(1);
+  if (inflight.length > 0)
+    throw new ManagementError("conflict", "这条候选已经有在途任务，请到生产任务页继续");
+
+  const at = nowIso();
+  const id = randomUUID();
+  await tdb.db.insert(tasks).values({
+    id,
+    tenantId: tdb.tenantId,
+    capability,
+    candidateId,
+    stage: "claimed",
+    claimedBy: userId,
+    claimedAt: at,
+    createdAt: at,
+    updatedAt: at,
+  });
+  await setCandidateStatus(tdb, candidateId, "selected", at);
+  await tdb.db.insert(taskEvents).values({
+    taskId: id,
+    fromStage: "candidate",
+    toStage: "claimed",
+    reason: `从候选开始生产，认领人 ${actor.displayName}（${actor.role}）`,
+    createdAt: at,
+  });
+
+  const task = await selectTask(tdb.db, tdb.tenantId, id);
+  if (!task) throw new Error(`任务写入后读不回：${id}`);
+  return task;
 }
 
 /**

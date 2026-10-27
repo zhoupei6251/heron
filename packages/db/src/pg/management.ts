@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   CreateMemberBodySchema,
   FeedSourceBodySchema,
+  ModelSettingsBodySchema,
   PageQuerySchema,
   ProfileBodySchema,
   RetentionBodySchema,
@@ -16,6 +17,7 @@ import {
   type FeedSource,
   type FeedSourceBody,
   type Member,
+  type ModelSettingsBody,
   type Page,
   type PageQuery,
   type ProfileBody,
@@ -31,7 +33,7 @@ import { can, type Action } from "@heron/domain";
 import { nowIso } from "../time";
 import { ManagementError, readPage, rethrowConflict, searchPattern } from "./console-query";
 import type { TenantDb } from "./rls";
-import { setRetentionDays } from "./settings";
+import { setRetentionDays, setModelSettings } from "./settings";
 import {
   auditLogs,
   candidates,
@@ -62,6 +64,8 @@ const feedColumns = {
   frequencySec: feedSources.frequencySec,
   enabled: feedSources.enabled,
   lastFetchAt: feedSources.lastFetchAt,
+  lastAttemptAt: feedSources.lastAttemptAt,
+  lastError: feedSources.lastError,
   createdAt: feedSources.createdAt,
 };
 
@@ -411,6 +415,23 @@ export async function setAuditedRetention(
   await setRetentionDays(tdb, days);
   await audit(tdb, actorId, "retention.updated", tdb.tenantId, { days });
   return days;
+}
+
+/** 审计里只记地址与模型名，密钥本身不进 audit_logs——台账会长期留存，密钥不该跟着扩散。 */
+export async function setAuditedModel(
+  tdb: TenantDb,
+  actorId: string,
+  input: ModelSettingsBody,
+): Promise<ModelSettingsBody> {
+  await requireActiveActor(tdb, actorId, "settings.write");
+  const body = ModelSettingsBodySchema.parse(input);
+  await setModelSettings(tdb, body);
+  await audit(tdb, actorId, "model.updated", tdb.tenantId, {
+    baseUrl: body.baseUrl,
+    model: body.model,
+    keyChanged: Boolean(body.apiKey),
+  });
+  return body;
 }
 
 export async function workspaceOverview(tdb: TenantDb): Promise<WorkspaceOverview> {

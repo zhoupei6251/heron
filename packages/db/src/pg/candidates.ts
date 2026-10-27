@@ -49,6 +49,22 @@ export async function findCandidateByNormKey(tdb: TenantDb, key: string): Promis
   return rows[0]?.id ?? null;
 }
 
+/** 写稿要的输入：标题与摘要。 */
+export interface CandidateBrief {
+  id: string;
+  title: string;
+  summary: string;
+}
+
+export async function getCandidate(tdb: TenantDb, id: string): Promise<CandidateBrief | null> {
+  const rows = await tdb.db
+    .select({ id: candidates.id, title: candidates.title, summary: candidates.summary })
+    .from(candidates)
+    .where(and(eq(candidates.id, id), eq(candidates.tenantId, tdb.tenantId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 /**
  * 认领、发布这些动作会推着候选走 status。
  * 时间戳由调用方传进来：一次状态转移里 tasks.updated_at 与 candidates.updated_at 必须是同一个时刻。

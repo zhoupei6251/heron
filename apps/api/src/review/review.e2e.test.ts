@@ -385,4 +385,25 @@ describe("人工确认（真 socket）", () => {
 
     push.mockRestore();
   });
+
+  it("从候选开始生产：认领人来自会话，重复点拿 409 而不是第二条在途任务", async () => {
+    const { tenantId, slug, reviewerId } = await newTenant();
+    const candidateId = await withTenant(db, tenantId, (t) =>
+      createCandidate(t, { title: "某市开通新航线", summary: "", heat: 1 }),
+    );
+    const token = await login(slug, REVIEWER);
+    const push = vi.spyOn(app.get(TaskQueueService), "push");
+
+    const first = await post(`/tasks/from-candidate/${candidateId}`, token, {});
+    expect(first.status).toBe(201);
+    const created = await json(first);
+    expect(created).toMatchObject({ stage: "claimed", candidateId, claimedBy: reviewerId });
+    expect(push.mock.calls.map(([id]) => id)).toEqual([String(created.id)]);
+
+    const second = await post(`/tasks/from-candidate/${candidateId}`, token, {});
+    expect(second.status).toBe(409);
+    expect(await withTenant(db, tenantId, (t) => t.db.select().from(tasks))).toHaveLength(1);
+
+    push.mockRestore();
+  });
 });

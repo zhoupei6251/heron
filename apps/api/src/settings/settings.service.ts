@@ -1,8 +1,32 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { AuthUser } from "@heron/contracts";
-import { type Db, getRetentionDays, setAuditedRetention, withTenant } from "@heron/db/pg";
+import type { AuthUser, ModelSettingsBody } from "@heron/contracts";
+import {
+  type Db,
+  type ModelSettings,
+  getModelSettings,
+  getRetentionDays,
+  setAuditedModel,
+  setAuditedRetention,
+  withTenant,
+} from "@heron/db/pg";
+import { DEFAULT_MODEL_BASE_URL } from "@heron/db";
 
 import { PG_DB } from "../db/pg";
+
+/** 界面拿到的模型配置：只回答「配没配密钥」，密钥本身不出库。 */
+export interface ModelSettingsView {
+  baseUrl: string;
+  model: string;
+  hasApiKey: boolean;
+}
+
+function view(stored: ModelSettings): ModelSettingsView {
+  return {
+    baseUrl: stored.baseUrl ?? DEFAULT_MODEL_BASE_URL,
+    model: stored.model ?? "",
+    hasApiKey: stored.apiKey !== null,
+  };
+}
 
 /**
  * 设置是「每个租户各存一份」（settings 的主键是 (tenant_id, key)）：
@@ -20,5 +44,16 @@ export class SettingsService {
   /** 入参已被 RetentionBodySchema 校验过（正整数、上限 3650），这里不再兜第二层。 */
   async setRetention(user: AuthUser, days: number): Promise<number> {
     return withTenant(this.db, user.tenantId, (t) => setAuditedRetention(t, user.id, days));
+  }
+
+  model(user: AuthUser): Promise<ModelSettingsView> {
+    return withTenant(this.db, user.tenantId, (t) => getModelSettings(t)).then(view);
+  }
+
+  async setModel(user: AuthUser, body: ModelSettingsBody): Promise<ModelSettingsView> {
+    return withTenant(this.db, user.tenantId, async (t) => {
+      await setAuditedModel(t, user.id, body);
+      return view(await getModelSettings(t));
+    });
   }
 }
