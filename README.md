@@ -164,32 +164,45 @@ pnpm db:seed-owner                                                    # 在宿�
 
 ### 自动构建与发版（阿里云 ACR）
 
-镜像仓库 `registry.cn-shanghai.aliyuncs.com/heron_docker/heron`（ACR 个人版，cn-shanghai）。
+镜像仓库 `registry.cn-shanghai.aliyuncs.com/heron-docker/heron`（ACR 个人版，cn-shanghai）。
 链路是 **push → ACR 云端构建 → 宿主 cron 拉取重建**，人只在第一次动手：
 
-1. 控制台（一次性，只有账号能做）：实例 → 仓库管理 → 代码源 → 绑定 GitHub；
-   仓库的构建规则加两条——分支 `main` → 版本 `latest`、分支 `dev` → 版本 `dev`，
-   构建上下文目录 `.`、Dockerfile 文件名 `Dockerfile`，并打开「代码变更自动构建」；
-   「访问凭证」里设一个**固定密码**（不是阿里云登录密码）。
+ACR 的构建**必须开「海外构建」**：内地节点 `git clone github.com` 稳定失败
+（实测 `Empty reply from server` / `Encountered end of file`，5s 与 90s 各断一次），换地域也一样；
+开了海外构建，同一个仓库 clone 只要 1s。
+
+1. 控制台（一次性，只有账号能做）：仓库「访问凭证」里设一个**固定密码**（不是阿里云登录密码）。
+   构建规则按分支产出 tag（`main`→`latest`、`dev`→`dev`，内置 `tags:release-v$version`→版本号），
+   构建上下文目录 `/`（仓库根，就是 `/Dockerfile`；控制台不接受 `.`）、Dockerfile 文件名 `Dockerfile`；
+   「触发器」里打开「代码变更自动构建」，并确认构建走**海外**节点。
 2. 宿主（一次性）：`docker login registry.cn-shanghai.aliyuncs.com`——凭据落 `~/.docker/config.json`，cron 才拿得到。
-3. 部署 `.env` 加一行：`HERON_IMAGE=registry.cn-shanghai.aliyuncs.com/heron_docker/heron:latest`。
+3. 部署 `.env` 加一行：`HERON_IMAGE=registry.cn-shanghai.aliyuncs.com/heron-docker/heron:latest`。
+   是**连字符** `heron-docker`，不是控制台弹窗里显示的下划线 `heron_docker`——后者 pull 会报
+   `repository does not exist`（实测）。
 4. cron 每 5 分钟跑一次 `deploy/pull-latest.sh`：
 
 ```
-*/5 * * * * HERON_DEPLOY_DIR=/docker/heron bash /docker/heron/src/deploy/pull-latest.sh >> /docker/heron/data/pull-latest.log 2>&1
+*/5 * * * * HERON_DEPLOY_DIR=/docker/heron PATH=/usr/local/bin:/usr/bin:/bin bash /docker/heron/src/deploy/pull-latest.sh >> /docker/heron/data/pull-latest.log 2>&1
 ```
+
+cron 不继承登录 shell 的 PATH，所以写死一份：这台机器上 `docker` 恰好落在默认的 `/usr/bin`，
+不写也能跑，但换台机器（docker 在 `/usr/local/bin`）就是每 5 分钟积一条失败日志。
 
 - compose 里镜像写成 `${HERON_IMAGE:-heron:local}`：设了就是只拉不建，没设还是本地 build——
   **不接仓库的自部署者照样起**，ACR 因此是加速器不是前提（与 Redis 同一条规矩）。
 - `dev` 是日常开发分支，`main` 才是发版线：ACR 不跑测试，推上去就构建、构建完就被拉走，
   所以 `main` 只接住过了 `pnpm check` 的提交。想把这台机器切成开发线，把 `HERON_IMAGE` 换成 `:dev`。
 - 发版是「换容器」不是「原地更新」：新容器起不来，旧的一直服务到它起来为止。回滚就是把 `HERON_IMAGE`
-  改回上一个版本号——除 `latest` 外再按 `v${build_number}` 留一条规则，不然 `latest` 只有一个版本可回。
-- 个人版构建超时 30 分钟。`.npmrc` 没配国内源，`pnpm install` 走 registry.npmjs.org；真嫌慢就加
+  改回上一个版本号（`latest` 本身只有一个，改它等于没有回滚），版本号靠打 tag 产出：
+  `git tag release-v0.1.0 && git push --tags` → 内置规则出 `:0.1.0`。
+- 个人版构建超时 30 分钟，实测冷构建 **1 分 31 秒**（`--no-cache` 跑仓库根的 `Dockerfile`），离上限很远。
+  `.npmrc` 没配国内源，`pnpm install` 走 registry.npmjs.org；真嫌慢就加
   `registry=https://registry.npmmirror.com` 一行——lockfile 只存 integrity、不存 tarball 地址，换源不用重生成它。
-- 拉取失败时**不要**顺手 `docker compose up -d`：服务里有 `build:`，compose 会退到本地构建并把
-  仓库地址打上 tag，于是「跑的是仓库里的哪一版」这件事就再也问不出来了。脚本里 `pull` 在 `up` 前面，
-  拉不到就停手（实测报错：`pull access denied ... or may require 'docker login'`）。
+- 拉取失败时**不要**顺手 `docker compose up -d`：服务里有 `build:`，`up` 会退到本地构建并把仓库地址
+  打上 tag，于是「跑的是仓库里的哪一版」这件事就再也问不出来了。`pull` 自己不会 build（实测只留一句
+  `Warning: ... must be built from source by running: docker compose build api`），所以脚本里 `pull` 在
+  `up` 前面、拉不到就 `set -e` 退出（实测 `pull access denied ... or may require 'docker login'` → EXIT=1，
+  六个容器 uptime 不变）。
 
 ## 安全边界（硬约束）
 
