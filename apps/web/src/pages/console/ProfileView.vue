@@ -18,7 +18,7 @@ import {
 import { onBeforeUnmount, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { request, errorMessage, sessionGeneration } from "../../api/http";
-import { roleLabel } from "../../auth/roles";
+import { roleLabel, VIEW_FENCE } from "../../auth/roles";
 import { useAuthStore } from "../../stores/auth";
 const auth = useAuthStore();
 const router = useRouter();
@@ -105,6 +105,14 @@ async function changePassword() {
       :closable="false"
       class="page-alert"
     />
+    <ElAlert
+      v-if="auth.readOnly"
+      :title="VIEW_FENCE"
+      type="info"
+      show-icon
+      :closable="false"
+      class="page-alert"
+    />
     <div class="panel form-panel">
       <div class="form-section">
         <h2>基本资料</h2>
@@ -118,8 +126,9 @@ async function changePassword() {
               id="profile-name"
               v-model="name"
               maxlength="80"
-              autocomplete="name" /></ElFormItem
-          ><ElButton type="primary" native-type="submit" :loading="saving"
+              autocomplete="name"
+              :disabled="auth.readOnly" /></ElFormItem
+          ><ElButton type="primary" native-type="submit" :loading="saving" :disabled="auth.readOnly"
             >保存资料</ElButton
           ></ElForm
         >
@@ -137,7 +146,8 @@ async function changePassword() {
               type="password"
               show-password
               autocomplete="current-password"
-              maxlength="128" /></ElFormItem
+              maxlength="128"
+              :disabled="auth.readOnly" /></ElFormItem
           ><ElFormItem label="新密码" for="new-password" required
             ><ElInput
               id="new-password"
@@ -145,7 +155,8 @@ async function changePassword() {
               type="password"
               show-password
               autocomplete="new-password"
-              maxlength="128" /></ElFormItem
+              maxlength="128"
+              :disabled="auth.readOnly" /></ElFormItem
           ><ElFormItem label="确认新密码" for="confirm-password" required
             ><ElInput
               id="confirm-password"
@@ -153,8 +164,11 @@ async function changePassword() {
               type="password"
               show-password
               autocomplete="new-password"
-              maxlength="128" /></ElFormItem
-          ><ElButton native-type="submit" :loading="saving">修改密码并退出</ElButton></ElForm
+              maxlength="128"
+              :disabled="auth.readOnly" /></ElFormItem
+          ><ElButton native-type="submit" :loading="saving" :disabled="auth.readOnly"
+            >修改密码并退出</ElButton
+          ></ElForm
         >
       </div>
     </div>

@@ -217,6 +217,34 @@ describe("AuthService.login", () => {
     expect(await service.login(" acme ", EMAIL, PASSWORD)).toBeTruthy();
   });
 
+  /**
+   * 不带空间码的那一步（界面已经不问你了）。
+   * 判据只有一个：恰好一个空间的口令通过。两个都通过说明这两家共用口令，
+   * 挑任何一个都是拿口令猜工作空间——宁可 401，也不登进「其中一个」。
+   */
+  it("不带空间码：只有一个空间对得上就登进那一家", async () => {
+    await seedUser(DEFAULT_TENANT_ID);
+    await seedUser(TENANT_B, { password: "another-tenant-secret" });
+    expect((await service.login("", EMAIL, PASSWORD))?.user.tenantSlug).toBe("acme");
+    expect((await service.login("", EMAIL, "another-tenant-secret"))?.user.tenantSlug).toBe("beta");
+  });
+
+  it("不带空间码且两家共用口令：谁都不登，宁可 401 也不拿口令猜工作空间", async () => {
+    await seedUser(DEFAULT_TENANT_ID);
+    await seedUser(TENANT_B);
+    expect(await service.login("", EMAIL, PASSWORD)).toBeNull();
+    // 闸只关「不带空间」这一步：各自的空间码仍旧各进各的
+    expect(await service.login(SLUG_A, EMAIL, PASSWORD)).toBeTruthy();
+    expect(await service.login(SLUG_B, EMAIL, PASSWORD)).toBeTruthy();
+  });
+
+  it("不带空间码时停租的那个空间不算候选：剩下的唯一一家可以登", async () => {
+    await seedUser(DEFAULT_TENANT_ID);
+    await seedUser(TENANT_B);
+    await setTenantSuspended(db, TENANT_B, AT);
+    expect((await service.login("", EMAIL, PASSWORD))?.user.tenantSlug).toBe("acme");
+  });
+
   it("载荷带必需版本与租户 audience，但不带邮箱或凭据", async () => {
     const userId = await seedUser(DEFAULT_TENANT_ID);
     const signed = await service.login(SLUG_A, EMAIL, PASSWORD);

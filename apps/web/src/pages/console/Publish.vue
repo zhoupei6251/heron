@@ -53,14 +53,12 @@ onMounted(list.load);
       :loading="list.loading"
       :error="list.error"
       placeholder="搜索内容标题"
+      empty-title="还没有发布记录"
+      empty-hint="在审片工作台确认成片后，系统会自动发布并在这里留下回执。"
       @search="list.search"
       @refresh="list.load"
     >
-      <ElTable
-        :data="list.items"
-        row-key="id"
-        empty-text="暂无发布记录，已创建的发布单会在这里显示。"
-      >
+      <ElTable :data="list.items" row-key="id">
         <ElTableColumn label="内容 / 版本" min-width="290"
           ><template #default="{ row }"
             ><div class="cell-title">{{ row.title ?? "未命名内容" }}</div>

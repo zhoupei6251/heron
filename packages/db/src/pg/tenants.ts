@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 
 import { nowIso } from "../time";
 import { withAdmin } from "./admin";
@@ -119,4 +119,25 @@ export async function getActiveTenant(
   // Login uses the same workspace lock as identity changes and suspension, before reading users.
   const rows = await (options.forUpdate ? query.for("update") : query);
   return rows[0] ?? null;
+}
+
+/**
+ * 全部在用的工作空间，给右上角那个切换器用。
+ *
+ * 不复用 listPlatformTenants：那条分页查询带成员数与任务数两个聚合，切换器一个都不读，
+ * 而空间列表要一次拿全（分页的切换器会让人以为世界上只有 20 个空间）。
+ */
+export function listActiveTenants(db: Db): Promise<TenantRef[]> {
+  return withAdmin(db, (a) =>
+    a.db
+      .select({
+        id: tenants.id,
+        name: tenants.name,
+        slug: tenants.slug,
+        suspendedAt: tenants.suspendedAt,
+      })
+      .from(tenants)
+      .where(isNull(tenants.suspendedAt))
+      .orderBy(asc(tenants.name), asc(tenants.id)),
+  );
 }

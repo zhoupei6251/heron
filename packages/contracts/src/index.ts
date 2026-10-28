@@ -100,9 +100,9 @@ export const PlatformUsernameSchema = z
   .regex(/^[a-z0-9][a-z0-9._-]*$/);
 
 /**
- * 空 tenant 只查平台账号；租户邮箱不是全局身份，不能跨租户猜测或合并。
- * 第二个字段两种身份共用：租户里是邮箱，平台上（空 tenant）是用户名——
- * 判据分开写在同一次校验里，放宽平台不等于放宽租户。
+ * 界面不再问工作空间：带 `@` 的是租户邮箱，不带的是平台运营用户名，形状即身份。
+ * `tenant` 仍接受（脚本与旧链接显式指定空间），但空值不再等于「一定是平台账号」。
+ * 租户邮箱不是全局身份，跨空间的歧义由服务层判，不在这里放宽。
  */
 export const LoginBodySchema = z
   .object({
@@ -117,19 +117,20 @@ export const LoginBodySchema = z
     password: z.string().min(MIN_PASSWORD_LENGTH).max(128),
   })
   .superRefine((value, ctx) => {
-    const valid =
-      value.tenant === ""
-        ? PlatformUsernameSchema.safeParse(value.identifier).success
-        : z.email().safeParse(value.identifier).success;
+    const email = z.email().safeParse(value.identifier).success;
+    const username = PlatformUsernameSchema.safeParse(value.identifier).success;
+    const valid = value.tenant === "" ? email || username : email;
     if (!valid)
       ctx.addIssue({
         code: "custom",
         path: ["identifier"],
-        message: value.tenant === "" ? "Invalid platform username" : "Invalid email",
+        message: value.tenant === "" ? "Invalid username or email" : "Invalid email",
       });
   });
 
 export type LoginBody = z.infer<typeof LoginBodySchema>;
+/** 界面发出去的那一份：tenant 有默认值，所以可以不填（服务端按账号形状定 realm）。 */
+export type LoginBodyInput = z.input<typeof LoginBodySchema>;
 
 /** 会话确立后前端能拿到的「我是谁」：不含口令哈希，也不含 disabled_at——能拿到这张表就说明已经验过。 */
 export const AuthUserSchema = z.object({
@@ -142,9 +143,12 @@ export const AuthUserSchema = z.object({
    */
   tenantName: z.string().min(1),
   tenantSlug: z.string().min(1),
-  email: z.email(),
+  /** 展示用，不参与判断；平台运营查看时这一格是运营账号的用户名，不是邮箱。 */
+  email: z.string().min(1).max(254),
   displayName: z.string(),
   role: z.enum(ROLES),
+  /** 缺格 = 空间成员。platform-view 由服务端签发，接口侧只读（见 api 的 RolesGuard）。 */
+  scope: z.enum(["member", "platform-view"]).optional(),
 });
 
 export type AuthUser = z.infer<typeof AuthUserSchema>;
@@ -156,12 +160,15 @@ export type AuthUser = z.infer<typeof AuthUserSchema>;
  *
  * sub / tid 在这里就判 uuid：守卫拿 tid 开租户上下文，非 uuid 连 set_config 之后的
  * 策略求值都过不去，那是在 SQL 里炸 22024，而不是在这儿安静地返回 401。
+ * act=platform 的票属于平台运营查看某个空间：audience 与租户票相同（所以 tid 仍旧是
+ * 服务端签进去的唯一租户坐标），但 sub 是 platform_operators.id，写动作在闸口被拒。
  */
 export const JwtPayloadSchema = z.object({
   sub: z.string().uuid(),
   tid: z.string().uuid(),
   role: z.enum(ROLES),
   ver: z.number().int().nonnegative(),
+  act: z.literal("platform").optional(),
 });
 
 export type JwtPayload = z.infer<typeof JwtPayloadSchema>;
@@ -441,6 +448,9 @@ export const PlatformUserSchema = z.object({
   displayName: z.string(),
 });
 export type PlatformUser = z.infer<typeof PlatformUserSchema>;
+/** 平台运营进入某个工作空间查看。只收 id：空间坐标由服务端回库确认，不接名字与 slug。 */
+export const WorkspaceViewBodySchema = z.object({ tenantId: z.uuid() });
+export type WorkspaceViewBody = z.infer<typeof WorkspaceViewBodySchema>;
 
 export const CONSOLE_MENU_IDS = [
   "overview",

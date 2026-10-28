@@ -5,37 +5,71 @@
 
 :root {
   color-scheme: light;
-  --heron-bg: #f1f5f4;
+  --heron-bg: #f5f6fb;
   --heron-surface: #ffffff;
-  --heron-surface-soft: #f6f9f8;
-  --heron-ink: #183831;
-  --heron-muted: #60786f;
-  --heron-line: #dce7e2;
-  --heron-sidebar: #102f28;
-  --heron-accent: #177a61;
-  --heron-hero: #123e33;
-  --heron-hero-ink: #f2fff8;
-  --heron-hero-muted: #bbdace;
-  --heron-shadow: 0 8px 30px #123e3306;
-  --heron-display: "Bahnschrift", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --el-color-primary: #177a61;
-  --el-color-primary-light-3: #5d9f8d;
-  --el-color-primary-light-5: #8bbdb0;
-  --el-color-primary-light-7: #bdd8cf;
-  --el-color-primary-light-8: #d5e7e1;
-  --el-color-primary-light-9: #edf5f1;
-  --el-color-primary-dark-2: #11624d;
-  --el-color-success: #39815d;
-  --el-color-warning: #b97d2e;
-  --el-color-danger: #c4514e;
-  --el-border-color: #dbe5df;
-  --el-border-color-light: #e7eeea;
-  --el-text-color-primary: #19332d;
-  --el-text-color-regular: #4d6159;
-  --el-text-color-secondary: #6e807a;
-  --el-fill-color-light: #f5f8f6;
-  --el-border-radius-base: 7px;
-  --el-font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --heron-surface-soft: #f1f3fa;
+  --heron-ink: #131a2a;
+  --heron-muted: #5b6577;
+  --heron-line: #e3e7f0;
+  --heron-accent: #4f46e5;
+  --heron-accent-2: #7c3aed;
+  --heron-grad: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --heron-shadow: 0 1px 2px #131a2a0c, 0 12px 32px -14px #131a2a24;
+  --heron-shadow-lift: 0 2px 6px #131a2a0f, 0 26px 50px -20px #131a2a33;
+  --heron-display: "Space Grotesk Variable", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --heron-mono: "JetBrains Mono Variable", Consolas, monospace;
+  /* 玻璃只上悬停层：顶栏、弹层、卡片头。长表格行不吃 blur，避免滚动掉帧。 */
+  --heron-glass: rgba(255, 255, 255, 0.74);
+  --heron-glass-line: rgba(19, 26, 42, 0.09);
+  --heron-blur: 16px;
+  /* 侧栏自成一套暗底 token，亮/暗主题各自重映射，省掉一整组 html.dark 覆盖。 */
+  --heron-sidebar: #0e1020;
+  --heron-side-ink: #c7cbe4;
+  --heron-side-strong: #f5f6ff;
+  --heron-side-muted: #8a90b6;
+  --heron-side-hover: #1b1f3c;
+  --heron-side-active: #262c5c;
+  --heron-side-line: #232848;
+  --heron-side-badge: #1a1e3a;
+  --heron-side-accent: #c4b5fd;
+  --heron-hero: #0f1230;
+  --heron-hero-ink: #f1f2ff;
+  --heron-hero-muted: #a9aecd;
+  /* 深色叙事面板（登录页 + 两个总览页头）共用一套；派生自上面的主题 token，暗色无需重映射。 */
+  --heron-hero-bg:
+    radial-gradient(
+      110% 90% at 92% 0%,
+      color-mix(in srgb, var(--heron-accent) 42%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      90% 70% at 0% 100%,
+      color-mix(in srgb, var(--heron-accent-2) 30%, transparent),
+      transparent 60%
+    ),
+    var(--heron-hero);
+  --heron-hero-line: color-mix(in srgb, var(--heron-hero-ink) 16%, transparent);
+  --heron-hero-accent: color-mix(in srgb, var(--heron-accent-2) 55%, var(--heron-hero-ink));
+  /* 播放器/联络表的中性暗底：不能带品牌色，否则成片调色看起来像界面的一部分。 */
+  --heron-stage: #0b0e1a;
+  --el-color-primary: #4f46e5;
+  --el-color-primary-light-3: #837ded;
+  --el-color-primary-light-5: #a7a2f2;
+  --el-color-primary-light-7: #cac7f7;
+  --el-color-primary-light-8: #dcdafa;
+  --el-color-primary-light-9: #ededfc;
+  --el-color-primary-dark-2: #3f38b7;
+  --el-color-success: #047857;
+  --el-color-warning: #b45309;
+  --el-color-danger: #dc2626;
+  --el-border-color: #dde2ee;
+  --el-border-color-light: #e7ebf4;
+  --el-text-color-primary: #131a2a;
+  --el-text-color-regular: #414b5d;
+  --el-text-color-secondary: #5b6577;
+  --el-fill-color-light: #f1f3fa;
+  --el-border-radius-base: 10px;
+  --el-font-family: "DM Sans Variable", "PingFang SC", "Microsoft YaHei", sans-serif;
   --el-font-size-base: 13px;
   font-family: var(--el-font-family);
   color: var(--heron-ink);
@@ -44,47 +78,60 @@
 }
 html.dark {
   color-scheme: dark;
-  --heron-bg: #101a19;
-  --heron-surface: #182522;
-  --heron-surface-soft: #1d2d28;
-  --heron-ink: #e0eee7;
-  --heron-muted: #a0b8ad;
-  --heron-line: #30433b;
-  --heron-sidebar: #0c211b;
-  --heron-accent: #77d5b0;
-  --heron-hero: #183f32;
-  --heron-shadow: 0 8px 30px #00000012;
+  --heron-bg: #0a0c15;
+  --heron-surface: #12151f;
+  --heron-surface-soft: #181c29;
+  --heron-ink: #e7e9f4;
+  --heron-muted: #98a0b8;
+  --heron-line: #262b3d;
+  --heron-accent: #8b7cf6;
+  --heron-accent-2: #a78bfa;
+  --heron-grad: linear-gradient(135deg, #6d5ce0, #8b5cf6);
+  --heron-shadow: 0 1px 2px #00000040, 0 14px 34px -16px #00000066;
+  --heron-shadow-lift: 0 2px 8px #00000050, 0 28px 54px -22px #00000080;
+  --heron-glass: rgba(18, 21, 31, 0.74);
+  --heron-glass-line: rgba(255, 255, 255, 0.08);
+  --heron-sidebar: #070910;
+  --heron-side-ink: #b6bbd6;
+  --heron-side-strong: #eef0ff;
+  --heron-side-muted: #7a80a2;
+  --heron-side-hover: #141830;
+  --heron-side-active: #1d2350;
+  --heron-side-line: #1a1e33;
+  --heron-side-badge: #171b32;
+  --heron-side-accent: #a5b4fc;
+  --heron-hero: #12162f;
   --el-bg-color: var(--heron-surface);
   --el-bg-color-page: var(--heron-bg);
-  --el-bg-color-overlay: #20342b;
+  --el-bg-color-overlay: #1a1e2c;
   --el-text-color-primary: var(--heron-ink);
-  --el-text-color-regular: #bed1c7;
+  --el-text-color-regular: #c3c9dd;
   --el-text-color-secondary: var(--heron-muted);
-  --el-text-color-placeholder: #869e93;
-  --el-color-primary: #77d5b0;
-  --el-color-primary-light-3: #579c81;
-  --el-color-primary-light-5: #467962;
-  --el-color-primary-light-7: #345945;
-  --el-color-primary-light-8: #2b493b;
-  --el-color-primary-light-9: #213a2e;
-  --el-color-primary-dark-2: #9ce3c5;
-  --el-color-success: #8fcdaa;
-  --el-color-warning: #e5b973;
-  --el-color-danger: #f09c92;
+  --el-text-color-placeholder: #7f879f;
+  --el-color-primary: #8b7cf6;
+  --el-color-primary-light-3: #6a5cd0;
+  --el-color-primary-light-5: #544aa8;
+  --el-color-primary-light-7: #3d3781;
+  --el-color-primary-light-8: #322d6b;
+  --el-color-primary-light-9: #272354;
+  --el-color-primary-dark-2: #a79bfa;
+  --el-color-success: #34d399;
+  --el-color-warning: #fbbf24;
+  --el-color-danger: #f87171;
   --el-border-color: var(--heron-line);
-  --el-border-color-light: #293d33;
-  --el-border-color-lighter: #24382e;
-  --el-border-color-extra-light: #203329;
-  --el-fill-color: #263c30;
+  --el-border-color-light: #222738;
+  --el-border-color-lighter: #1e2333;
+  --el-border-color-extra-light: #1b2030;
+  --el-fill-color: #1d2231;
   --el-fill-color-light: var(--heron-surface-soft);
-  --el-fill-color-lighter: #203429;
+  --el-fill-color-lighter: #191d2b;
   --el-fill-color-blank: var(--heron-surface);
-  --el-mask-color: #101a19cc;
+  --el-mask-color: #0a0c15cc;
 }
 html.dark .el-button--primary:not(.is-link):not(.is-text):not(.is-plain) {
-  --el-button-text-color: #102c20;
-  --el-button-hover-text-color: #102c20;
-  --el-button-active-text-color: #102c20;
+  --el-button-text-color: #0d0b1f;
+  --el-button-hover-text-color: #0d0b1f;
+  --el-button-active-text-color: #0d0b1f;
 }
 * {
   box-sizing: border-box;
@@ -109,7 +156,7 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 :focus-visible {
-  outline: 3px solid #6bbfa3;
+  outline: 3px solid var(--heron-accent-2);
   outline-offset: 4px;
 }
 h1,
@@ -119,22 +166,26 @@ p {
   margin-top: 0;
 }
 h1 {
+  font-family: var(--heron-display);
   font-size: 28px;
-  line-height: 1.4;
+  line-height: 1.3;
   font-weight: 650;
-  letter-spacing: -0.8px;
+  letter-spacing: -0.9px;
 }
 h2 {
+  font-family: var(--heron-display);
   font-size: 18px;
   line-height: 1.5;
   font-weight: 600;
+  letter-spacing: -0.3px;
 }
 h3 {
+  font-family: var(--heron-display);
   font-size: 15px;
   font-weight: 600;
 }
 ::selection {
-  background: #c9e7da;
+  background: color-mix(in srgb, var(--heron-accent) 20%, transparent);
 }
 .skip-link {
   position: fixed;
@@ -153,9 +204,15 @@ h3 {
   grid-template-columns: 224px minmax(0, 1fr);
 }
 .console-sidebar {
-  background: linear-gradient(160deg, #ffffff04, transparent 35%), var(--heron-sidebar);
-  border-right: 1px solid #ffffff0c;
-  color: #c5d7cf;
+  background:
+    radial-gradient(
+      120% 60% at 0% 0%,
+      color-mix(in srgb, var(--heron-accent) 26%, transparent),
+      transparent 62%
+    ),
+    var(--heron-sidebar);
+  border-right: 1px solid var(--heron-side-line);
+  color: var(--heron-side-ink);
   height: 100dvh;
   position: sticky;
   top: 0;
@@ -168,25 +225,23 @@ h3 {
   align-items: center;
   gap: 11px;
   padding: 28px 24px 25px;
-  color: #fff;
-  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
-  font-size: 32px;
+  color: var(--heron-side-strong);
+  font-family: var(--heron-display);
+  font-size: 31px;
   line-height: 1;
-  letter-spacing: -0.9px;
+  letter-spacing: -1.2px;
 }
 .brand-mark {
   width: 31px;
   height: 37px;
-  color: #9fd4bd;
+  color: var(--heron-side-accent);
 }
 .brand-caption {
   display: block;
   margin-top: 7px;
-  font:
-    8px/1.2 "Segoe UI",
-    sans-serif;
-  letter-spacing: 2.2px;
-  color: #88aa9c;
+  font: 8px/1.2 var(--heron-mono);
+  letter-spacing: 2.4px;
+  color: var(--heron-side-muted);
 }
 .workspace-badge {
   display: flex;
@@ -194,8 +249,9 @@ h3 {
   align-items: center;
   margin: 0 15px 16px;
   padding: 12px 10px;
-  border: 1px solid #365148;
-  border-radius: 8px;
+  border: 1px solid var(--heron-side-line);
+  border-radius: 12px;
+  background: var(--heron-side-badge);
 }
 .workspace-symbol {
   display: grid;
@@ -203,9 +259,10 @@ h3 {
   width: 31px;
   height: 32px;
   flex-shrink: 0;
-  border-radius: 6px;
-  background: #35594a;
-  color: #d2eada;
+  border-radius: 8px;
+  background: var(--heron-grad);
+  color: #fff;
+  font-family: var(--heron-display);
   font-size: 14px;
 }
 .workspace-badge > div {
@@ -218,11 +275,11 @@ h3 {
   white-space: nowrap;
   font-size: 12px;
   font-weight: 550;
-  color: #ecf5ef;
+  color: var(--heron-side-strong);
 }
 .workspace-badge div > span {
   display: block;
-  color: #92ada1;
+  color: var(--heron-side-muted);
   font-size: 10px;
   margin-top: 4px;
 }
@@ -234,42 +291,47 @@ h3 {
   margin-top: 19px;
 }
 .nav-label {
-  color: #86a297;
-  font-size: 10px;
-  letter-spacing: 1.5px;
+  color: var(--heron-side-muted);
+  font: 10px/1.4 var(--heron-mono);
+  letter-spacing: 1.6px;
   margin: 0 12px 8px;
+  text-transform: uppercase;
 }
 .nav-link {
   display: flex;
   align-items: center;
   gap: 11px;
   padding: 9px 13px;
-  border-radius: 6px;
+  border-radius: 9px;
   margin: 3px 0;
   font-size: 12px;
   transition:
-    background 0.15s,
-    color 0.15s;
+    background 0.16s,
+    color 0.16s,
+    box-shadow 0.16s;
 }
 .nav-link .el-icon {
   font-size: 16px;
-  color: #93afa2;
+  color: var(--heron-side-muted);
 }
 .nav-link:hover {
-  background: #213e33;
-  color: #fff;
+  background: var(--heron-side-hover);
+  color: var(--heron-side-strong);
 }
 .nav-link.is-active {
-  background: #2d5946;
-  color: #f4fff7;
-  box-shadow: inset 3px 0 #a8d1aa;
+  background: var(--heron-side-active);
+  color: var(--heron-side-strong);
+  box-shadow:
+    inset 3px 0 var(--heron-accent-2),
+    0 6px 18px -10px #000000aa;
+  font-weight: 550;
 }
 .nav-link.is-active .el-icon {
-  color: #d0e6c9;
+  color: var(--heron-side-accent);
 }
 .sidebar-foot {
-  color: #9ab3a7;
-  border-top: 1px solid #2e493d;
+  color: var(--heron-side-muted);
+  border-top: 1px solid var(--heron-side-line);
   padding: 17px 16px;
   font-size: 10px;
   white-space: nowrap;
@@ -278,13 +340,13 @@ h3 {
   display: inline-block;
   height: 6px;
   width: 6px;
-  background: #74b092;
+  background: var(--el-color-success);
   border-radius: 50%;
   margin-right: 5px;
   vertical-align: middle;
 }
 .status-dot.offline {
-  background: #c5995a;
+  background: var(--el-color-warning);
 }
 .console-body {
   min-width: 0;
@@ -298,12 +360,12 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  border-bottom: 1px solid var(--heron-line);
-  background: color-mix(in srgb, var(--heron-surface) 92%, transparent);
+  border-bottom: 1px solid var(--heron-glass-line);
+  background: var(--heron-glass);
   position: sticky;
   top: 0;
   z-index: 20;
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(var(--heron-blur)) saturate(1.5);
 }
 .breadcrumb {
   display: flex;
@@ -377,9 +439,7 @@ h3 {
 .eyebrow {
   display: block;
   color: var(--heron-accent);
-  font:
-    10px/1.5 "Consolas",
-    monospace;
+  font: 10px/1.5 var(--heron-mono);
   letter-spacing: 1.8px;
   margin-bottom: 8px;
   text-transform: uppercase;
@@ -393,7 +453,7 @@ h3 {
 }
 .panel {
   border: 1px solid var(--heron-line);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--heron-surface);
   overflow: hidden;
   box-shadow: var(--heron-shadow);
@@ -409,6 +469,7 @@ h3 {
   gap: 15px;
   align-items: center;
   border-bottom: 1px solid var(--heron-line);
+  background: var(--heron-surface-soft);
 }
 .panel-header h2,
 .panel-header h3 {
@@ -477,7 +538,17 @@ h3 {
   min-height: 34px;
 }
 .el-button--primary {
-  box-shadow: 0 2px 3px #1e614712;
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--heron-accent) 30%, transparent),
+    0 8px 18px -10px color-mix(in srgb, var(--heron-accent) 55%, transparent);
+}
+/* 置灰的按钮不该再带 accent 的发光，也不该留着实心主色：只在有权限时才像主操作 */
+.el-button--primary.is-disabled,
+.el-button--primary:disabled {
+  box-shadow: none;
+  border-color: var(--heron-line);
+  background: var(--heron-surface);
+  color: var(--heron-muted);
 }
 .el-input__wrapper {
   min-height: 36px;
@@ -493,10 +564,10 @@ h3 {
   color: var(--heron-ink);
 }
 .el-dialog {
-  border-radius: 12px;
+  border-radius: 14px;
 }
 .el-tag {
-  border-radius: 4px;
+  border-radius: 999px;
   font-size: 10px;
 }
 .el-empty__description p {
@@ -512,20 +583,30 @@ h3 {
 .stat-card {
   background: var(--heron-surface);
   border: 1px solid var(--heron-line);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 21px;
   box-shadow: var(--heron-shadow);
   position: relative;
   overflow: hidden;
+  transition:
+    box-shadow 0.18s,
+    transform 0.18s,
+    border-color 0.18s;
+}
+.stat-card:hover {
+  box-shadow: var(--heron-shadow-lift);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--heron-accent) 30%, var(--heron-line));
 }
 .stat-card::before {
   content: "";
   position: absolute;
   top: 0;
   left: 21px;
-  width: 28px;
-  height: 2px;
-  background: var(--heron-accent);
+  width: 32px;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--heron-grad);
 }
 .stat-label {
   font-size: 12px;
@@ -545,11 +626,8 @@ h3 {
   flex-shrink: 0;
 }
 .stat-value {
-  font:
-    500 33px/1.5 "Bahnschrift",
-    "Segoe UI",
-    sans-serif;
-  letter-spacing: -1px;
+  font: 500 33px/1.4 var(--heron-display);
+  letter-spacing: -1.1px;
   margin: 9px 0 3px;
   font-variant-numeric: tabular-nums;
 }
@@ -569,7 +647,7 @@ h3 {
   color: var(--heron-muted);
 }
 .mono {
-  font-family: "Consolas", monospace;
+  font-family: var(--heron-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -597,6 +675,24 @@ h3 {
   line-height: 1.8;
   margin: 7px 0 0;
 }
+/* 用量图：一种单位一块，块间用分隔线，不做卡片套卡片。 */
+.usage-groups {
+  display: grid;
+  gap: 18px;
+}
+.usage-group + .usage-group {
+  border-top: 1px solid var(--heron-line);
+  padding-top: 18px;
+}
+.usage-group h3 {
+  font-family: var(--heron-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--heron-muted);
+  margin-bottom: 10px;
+}
 .form-actions {
   margin-top: 24px;
   display: flex;
@@ -612,6 +708,83 @@ h3 {
   padding: 15px;
   border-radius: 6px;
 }
+/* Lucide 由所在层级的字号定尺寸；线宽压到 1.75，贴合 12–13px 的界面密度。 */
+.lucide {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  stroke-width: 1.75;
+}
+.page-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+  border: 1px solid color-mix(in srgb, var(--el-color-danger) 32%, var(--heron-line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--el-color-danger) 6%, var(--heron-surface));
+}
+.page-error > .el-icon {
+  font-size: 17px;
+  color: var(--el-color-danger);
+  margin-top: 2px;
+}
+.page-error-body {
+  flex: 1;
+  min-width: 0;
+}
+.page-error-body strong {
+  display: block;
+  font-size: 12px;
+  color: var(--el-color-danger);
+}
+.page-error-body p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--heron-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.panel-state {
+  padding: 46px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.state-mark {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  background: var(--el-color-primary-light-9);
+  color: var(--heron-accent);
+  font-size: 22px;
+}
+.empty-title {
+  font-family: var(--heron-display);
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+.empty-hint {
+  color: var(--heron-muted);
+  font-size: 12px;
+  line-height: 1.8;
+  margin: 0;
+  max-width: 420px;
+}
+.state-action {
+  margin-top: 6px;
+}
+.table-skeleton {
+  padding: 22px;
+}
 
 .login-screen {
   min-height: 100dvh;
@@ -620,8 +793,8 @@ h3 {
   background: var(--heron-surface);
 }
 .login-story {
-  background: radial-gradient(ellipse at 0% 90%, #46795755, transparent 70%), #12362d;
-  color: #e4eee8;
+  background: var(--heron-hero-bg);
+  color: var(--heron-hero-ink);
   display: flex;
   flex-direction: column;
   padding: 30px 9% 40px;
@@ -640,7 +813,7 @@ h3 {
   z-index: 1;
 }
 .login-editorial .eyebrow {
-  color: #9ebfae;
+  color: var(--heron-hero-accent);
 }
 .login-editorial h1 {
   font-size: clamp(32px, 3.4vw, 48px);
@@ -650,7 +823,7 @@ h3 {
   margin: 20px 0;
 }
 .login-editorial > p {
-  color: #9fbdae;
+  color: var(--heron-hero-muted);
   font-size: 13px;
   line-height: 2;
   max-width: 320px;
@@ -661,22 +834,23 @@ h3 {
   gap: 0;
   margin-top: 45px;
   font-size: 11px;
-  color: #c2d6c9;
+  color: var(--heron-hero-muted);
 }
 .editorial-line span {
   padding: 10px 13px;
-  border: 1px solid #4d6f5c;
-  border-radius: 4px;
+  border: 1px solid var(--heron-hero-line);
+  border-radius: 8px;
+  color: var(--heron-hero-ink);
   white-space: nowrap;
 }
 .editorial-line i {
   height: 1px;
   width: 22px;
-  background: #527764;
+  background: var(--heron-hero-line);
 }
 .login-story-footer {
   font-size: 10px;
-  color: #8bab9a;
+  color: var(--heron-hero-muted);
 }
 .login-form-side {
   display: flex;
@@ -801,7 +975,7 @@ h3 {
   .nav-group + .nav-group {
     margin: 0;
     padding-left: 15px;
-    border-left: 1px solid #416050;
+    border-left: 1px solid var(--heron-side-line);
   }
   .nav-link {
     white-space: nowrap;
@@ -809,7 +983,7 @@ h3 {
     margin: 0;
   }
   .nav-link.is-active {
-    box-shadow: inset 0 -2px #a8d1aa;
+    box-shadow: inset 0 -2px var(--heron-side-accent);
   }
   .console-topbar {
     min-height: 60px;

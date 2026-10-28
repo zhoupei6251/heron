@@ -45,14 +45,12 @@ onMounted(list.load);
       :loading="list.loading"
       :error="list.error"
       placeholder="搜索成片标题"
+      empty-title="成片库还是空的"
+      empty-hint="任务通过审片确认后会在这里留下版本记录，并按保留天数自动清理。"
       @search="list.search"
       @refresh="list.load"
     >
-      <ElTable
-        :data="list.items"
-        row-key="id"
-        empty-text="还没有成片，渲染完成后会在这里保留版本记录。"
-      >
+      <ElTable :data="list.items" row-key="id">
         <ElTableColumn label="成片" min-width="300"
           ><template #default="{ row }"
             ><div class="cell-title">{{ row.title ?? "未命名成片" }}</div>
@@ -165,14 +163,14 @@ onMounted(list.load);
 .asset-video {
   width: 100%;
   max-height: 380px;
-  background: #14221c;
-  border-radius: 8px;
+  background: var(--heron-stage);
+  border-radius: 12px;
   margin-bottom: 20px;
 }
 .asset-sheet {
   display: block;
   max-width: 100%;
   border: 1px solid var(--heron-line);
-  border-radius: 6px;
+  border-radius: 10px;
 }
 </style>

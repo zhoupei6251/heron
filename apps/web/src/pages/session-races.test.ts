@@ -34,7 +34,7 @@ const platformSession = (): ConsoleSession => ({
   user: { id: user.id, username: "platform-admin", displayName: "Platform operator" },
   ...consoleAccess("platform"),
 });
-const credentials = { tenant: "acme", identifier: user.email, password: "password-long-enough" };
+const credentials = { identifier: user.email, password: "password-long-enough" };
 const gates = { open: true, blockers: [], locations: [] };
 // Element Plus types intersect the prompt object with Action; confirm resolves an Action.
 const confirmed = "confirm" as Awaited<ReturnType<typeof ElMessageBox.confirm>>;
@@ -172,7 +172,7 @@ describe.each(["tenant", "platform"])("%s logout navigation ownership", (scope) 
 
 describe("login completion ownership", () => {
   it.each([200, 401])(
-    "does not redirect or erase a changed workspace's form (%s)",
+    "does not redirect or erase a form whose account changed mid-flight (%s)",
     async (status) => {
       const pending = deferred<Response>();
       vi.stubGlobal("fetch", vi.fn().mockReturnValue(pending.promise));
@@ -181,9 +181,7 @@ describe("login completion ownership", () => {
       input(view.root, "#login-identifier", user.email);
       input(view.root, "#login-password", credentials.password);
       submit(view.root);
-      input(view.root, "#login-tenant", "other-workspace");
-      await nextTick();
-      expect(view.root.querySelector<HTMLInputElement>("#login-password")!.value).toBe("");
+      // 登录还在途时改了账号：这一次提交作废，迟到的回执不许跳页、不许登进旧账号、也不许抹掉新输入
       input(view.root, "#login-identifier", "platform");
       input(view.root, "#login-password", "other-form-password");
       const replace = vi.spyOn(view.router, "replace");

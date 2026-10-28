@@ -11,22 +11,22 @@ import { useAuthStore } from "../stores/auth";
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
-const form = reactive({ tenant: "", identifier: "", password: "" });
-const platform = computed(() => form.tenant.trim() === "");
+const form = reactive({ identifier: "", password: "" });
 const ready = computed(
   () => form.identifier.trim() !== "" && form.password.length >= MIN_PASSWORD_LENGTH,
 );
-// 换工作空间等于换身份：进行中的登录必须作废，否则它回来时会把旧空间的身份写成当前会话。
-// clear() 推进会话 generation，store 里那次 login 的成功分支就再也落不下来。
+// 身份由账号形状定（带 @ 是空间邮箱，不带是运营用户名），界面不再问工作空间：
+// 一次提交只有一个落点，submission 只用来作废「提交后又改账号或离开本页」的那次在途登录。
 let submission = 0;
 let mounted = true;
 watch(
-  () => form.tenant,
+  () => form.identifier,
   () => {
     submission++;
-    form.password = "";
-    auth.clear();
+    // 在途那次登录已经不代表这个人了：连会话代次一起作废，迟到的 200 才登不进旧账号
+    if (auth.busy) auth.clear();
   },
+  // 同步：一次按键与紧随其后的提交可能落在同一个 tick 里，作废必须赶在下一次提交计数之前
   { flush: "sync" },
 );
 onBeforeUnmount(() => {
@@ -41,7 +41,6 @@ async function submit(): Promise<void> {
   const redirect = route.query.redirect;
   try {
     const applied = await auth.login({
-      tenant: form.tenant.trim().toLowerCase(),
       identifier: form.identifier.trim(),
       password: form.password,
     });
@@ -73,7 +72,7 @@ async function submit(): Promise<void> {
         <span class="eyebrow">ONE CONSOLE, YOUR ACCESS</span>
         <h1>一个入口，<br />进入你能管理的那部分。</h1>
         <p>
-          工作空间成员与平台运营共用同一个登录入口。填工作空间标识进入内容工作台；留空则以平台管理员身份登录。
+          工作空间成员与平台运营共用同一个登录入口：邮箱进内容工作台，用户名进平台控制台。
           你能看到哪些页面，由服务端按身份下发。
         </p>
         <div class="editorial-line" aria-label="内容生产流程">
@@ -88,22 +87,13 @@ async function submit(): Promise<void> {
         <span class="eyebrow">WELCOME TO HERON</span>
         <h2>登录 heron</h2>
         <p>菜单与页面权限由服务端按你的身份下发。</p>
-        <ElFormItem label="工作空间" for="login-tenant">
-          <ElInput
-            id="login-tenant"
-            v-model="form.tenant"
-            autocomplete="organization"
-            placeholder="留空则以平台管理员身份登录"
-            maxlength="63"
-          />
-        </ElFormItem>
-        <ElFormItem :label="platform ? '用户名' : '邮箱'" for="login-identifier">
+        <ElFormItem label="账号" for="login-identifier">
           <ElInput
             id="login-identifier"
             v-model="form.identifier"
             type="text"
             autocomplete="username"
-            :placeholder="platform ? '平台管理员用户名' : '你在该工作空间的邮箱'"
+            placeholder="工作空间邮箱，或平台管理员用户名"
             maxlength="254"
           />
         </ElFormItem>

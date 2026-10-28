@@ -11,6 +11,8 @@ import {
 } from "@heron/contracts";
 import {
   type Db,
+  findLoginTenantsByEmail,
+  findPlatformOperatorById,
   findTenantBySlug,
   getActiveTenant,
   getUserByEmail,
@@ -67,6 +69,27 @@ function toAuthUser(
 }
 
 /**
+ * 平台运营的查看身份：email 那格放用户名（只用于展示，判据一律不读它），
+ * role 给 owner 是因为这个空间里的一批**读**接口按写动作设门槛（GET /manage/audit 要 settings.write）；
+ * 真正的写入由 scope 在 RolesGuard 里拒掉，所以这里的「像 owner」只到看得见为止。
+ */
+function toViewUser(
+  operator: { id: string; username: string; displayName: string },
+  tenant: { id: string; name: string; slug: string },
+): AuthUser {
+  return {
+    id: operator.id,
+    tenantId: tenant.id,
+    tenantName: tenant.name,
+    tenantSlug: tenant.slug,
+    email: operator.username,
+    displayName: operator.displayName,
+    role: "owner",
+    scope: "platform-view",
+  };
+}
+
+/**
  * 登录的判据与「每次请求回库复查」的判据都在这一个类里，因为它们是同一个问题的两次问法：
  * 这个人此刻还进得来吗？
  *
@@ -86,8 +109,11 @@ export class AuthService {
    * 三件事按「先便宜后贵、先判环境后判人」排：租户 → 人 → 口令。
    * 任何一步不成立都返回同一个 null——调用方（控制器）因此拿不到「是没这个人还是口令错」这个信息，
    * 也就没法把它写进响应。这是刻意的：错误消息统一成「邮箱或口令不正确」。
+   *
+   * tenant 为空 = 界面那一步（不选工作空间）：先按邮箱把他可能在的空间列出来，再逐个走下面这段。
    */
   async login(tenant: string, email: string, password: string): Promise<SignedIn | null> {
+    if (tenant === "") return this.loginByEmail(email, password);
     const ref = await findTenantBySlug(this.db, tenant);
     if (!ref || ref.suspendedAt !== null) {
       verifyPassword(password, TIMING_EQUALIZER_HASH);
@@ -111,6 +137,26 @@ export class AuthService {
       const token = await this.jwt.signAsync(payload, { audience: TENANT_AUDIENCE });
       return { token, user: toAuthUser(user, tenant) };
     });
+  }
+
+  /**
+   * 不带工作空间码的登录：同名邮箱在多个空间是允许的（唯一键是「租户内邮箱」），
+   * 所以判据只有一个——恰好一个空间的口令通过。两个以上通过说明这些空间共用口令，
+   * 挑任何一个都是拿口令猜工作空间，宁可 401 也不登进去。
+   * shortcut: 只验前 4 个候选（每个一次 scrypt，约 50–100ms），空间更多且邮箱重名时要显式带工作空间码。
+   */
+  private async loginByEmail(email: string, password: string): Promise<SignedIn | null> {
+    const candidates = (await findLoginTenantsByEmail(this.db, email)).slice(0, 4);
+    if (!candidates.length) {
+      verifyPassword(password, TIMING_EQUALIZER_HASH);
+      return null;
+    }
+    const matched: SignedIn[] = [];
+    for (const ref of candidates) {
+      const signed = await this.login(ref.slug, email, password);
+      if (signed) matched.push(signed);
+    }
+    return matched.length === 1 ? matched[0]! : null;
   }
 
   logout(user: AuthUser): Promise<number> {
@@ -169,15 +215,47 @@ export class AuthService {
   async userFor(payload: unknown): Promise<AuthUser | null> {
     const parsed = JwtPayloadSchema.safeParse(payload);
     if (!parsed.success) return null;
-    const { sub, tid, ver } = parsed.data;
+    const { sub, tid, ver, act } = parsed.data;
+    // 查看票的主语在另一张表上。这次读必须开在租户事务之前：pglite 只有一条连接，
+    // 事务里再进特权通道就是「在事务里开事务」。
+    const operator = act === "platform" ? await findPlatformOperatorById(this.db, sub) : null;
+    if (act === "platform") {
+      if (!operator || operator.disabledAt !== null || operator.sessionVersion !== ver) return null;
+    }
     return withTenant(this.db, tid, async (t) => {
       // 租户先判：停租的租户里每一个人都该立刻失效，
       // 不然「停租的租户整个关在门外」只挡住了进门的人，没挡住已经登进来的人。
       const tenant = await getActiveTenant(t);
       if (!tenant) return null;
+      // 停租同样立刻收回查看票；运营账号已在这次读里判过，不再回库。
+      if (operator) return toViewUser(operator, tenant);
       const user = await getUserById(t, sub);
       if (!user || user.disabledAt !== null || user.sessionVersion !== ver) return null;
       return toAuthUser(user, tenant);
     });
+  }
+
+  /**
+   * 平台运营进入某个工作空间查看。票仍旧是租户 audience——`tid` 由服务端按库里的行签进去，
+   * 每条业务查询照旧走 withTenant 的 RLS，查看态得到的租户坐标和成员一样不可自报。
+   * ver 取运营账号的 sessionVersion：登出或停号 bumps 它，正在看的票当场失效。
+   */
+  async viewToken(
+    operatorId: string,
+    tenantId: string,
+  ): Promise<{ token: string; user: AuthUser } | null> {
+    const row = await findPlatformOperatorById(this.db, operatorId);
+    if (!row || row.disabledAt !== null) return null;
+    const tenant = await withTenant(this.db, tenantId, (t) => getActiveTenant(t));
+    if (!tenant) return null;
+    const payload: JwtPayload = {
+      sub: row.id,
+      tid: tenant.id,
+      role: "owner",
+      ver: row.sessionVersion,
+      act: "platform",
+    };
+    const token = await this.jwt.signAsync(payload, { audience: TENANT_AUDIENCE });
+    return { token, user: toViewUser(row, tenant) };
   }
 }

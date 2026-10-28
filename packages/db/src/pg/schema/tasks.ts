@@ -69,6 +69,8 @@ export const feedSources = pgTable(
   (t) => [
     check("ck_feed_sources_frequency", sql`${t.frequencySec} >= 60`),
     uniqueIndex("u_feed_sources_tenant_url").on(t.tenantId, t.url),
+    // 数据源列表：租户等值 + 最近创建
+    index("ix_feed_sources_tenant_recent").on(t.tenantId, sql`${t.createdAt} DESC`, t.id),
   ],
 );
 
@@ -99,7 +101,8 @@ export const candidates = pgTable(
   (t) => [
     // 去重是「租户内的事实」：两个客户撞同一热点是正常业务，全局唯一会把平台做成单人工具
     uniqueIndex("u_candidates_tenant_norm").on(t.tenantId, t.normKey),
-    index("ix_candidates_status").on(t.status, sql`${t.lastSeenAt} DESC`),
+    // 候选列表 = 租户等值（RLS 给）+ 最近上榜排序；索引照查询形状建，id 兜平同一时刻
+    index("ix_candidates_tenant_recent").on(t.tenantId, sql`${t.lastSeenAt} DESC`, t.id),
     check("ck_candidates_hits_positive", sql`${t.hits} > 0`),
     check("ck_candidates_rank_peak_positive", sql`${t.rankPeak} IS NULL OR ${t.rankPeak} > 0`),
     check("ck_candidates_status_known", inEnum(t.status, CANDIDATE_STATUSES)),
@@ -127,10 +130,13 @@ export const tasks = pgTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
-    // runner 领取靠这条索引；partial 到非终态，避免把已完成的行也拖进来
+    // 两条领取查询都长这样：非终态 + 租约过期，取 created_at 最早的一条。
+    // 索引照查询形状建（局部谓词是终态之外的都算），否则每次轮询都要把非终态任务全取出来排序
     index("ix_tasks_claimable")
-      .on(t.stage, t.leaseOwner, t.heartbeat)
+      .on(t.createdAt)
       .where(sql`${t.stage} NOT IN ('published','failed')`),
+    // 租户台的任务列表：租户等值 + 最近创建
+    index("ix_tasks_tenant_recent").on(t.tenantId, sql`${t.createdAt} DESC`, t.id),
     index("ix_tasks_candidate").on(t.candidateId),
     check("ck_tasks_stage_known", inEnum(t.stage, STAGES)),
     check("ck_tasks_attempts_nonnegative", sql`${t.attempts} >= 0`),

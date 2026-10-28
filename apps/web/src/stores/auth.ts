@@ -1,7 +1,8 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
-import type { AuthUser, ConsoleMenu, ConsoleSession, LoginBody } from "@heron/contracts";
+import type { AuthUser, ConsoleMenu, ConsoleSession, LoginBodyInput } from "@heron/contracts";
+import { can, type Action } from "@heron/domain";
 
 import { ApiError } from "../api";
 import { authApi } from "../api/auth";
@@ -34,16 +35,26 @@ export const useAuthStore = defineStore("auth", () => {
   const session = ref<ConsoleSession | null>(null);
   const busy = ref(false);
   const error = ref<string | null>(null);
-  /** 只有租户会话有工作空间内的会员身份；平台运营在租户页面上没有立足点。 */
+  /** 租户那一面的身份：空间成员，或平台运营的查看态（scope=platform-view，只读）。平台台没有这一格。 */
   const user = computed<AuthUser | null>(() =>
     session.value?.kind === "tenant" ? session.value.user : null,
   );
   /** 渲染与路由注册都读这一份：后端下发什么，界面就只能出现什么。 */
   const menus = computed<ConsoleMenu[]>(() => authorizedMenus(session.value));
+  /** 查看态只读：与服务端 RolesGuard 的动词闸同一条判据，界面据此置灰写入。 */
+  const readOnly = computed(() => user.value?.scope === "platform-view");
+  /**
+   * 写动作能不能做：角色够格 **且** 不是查看态。
+   * 页面的可见性不许用它——有些读接口按写动作设门槛（GET /manage/audit 要 settings.write），
+   * 查看态必须读得到，只是不许动手。
+   */
+  function canWrite(action: Action): boolean {
+    return !readOnly.value && user.value !== null && can(user.value.role, action);
+  }
   /** 守卫每次导航都会问一次「我是谁」；并发的问法共用同一个请求，不并发打 /auth/me。 */
   let meRequest: Promise<void> | null = null;
 
-  async function login(input: LoginBody): Promise<boolean> {
+  async function login(input: LoginBodyInput): Promise<boolean> {
     let generation = advanceSession();
     meRequest = null;
     busy.value = true;
@@ -92,6 +103,26 @@ export const useAuthStore = defineStore("auth", () => {
     return session.value;
   }
 
+  /**
+   * 换一张票：进某个空间查看（tenantId）或退出查看（null 回平台台）。
+   * 与 login 一样先推进会话代次——上一个空间发出的请求迟到时，
+   * 不许把结果写进新空间的界面上。失败只报原因、不动会话：那张 cookie 仍旧能用。
+   */
+  async function switchWorkspace(tenantId: string | null): Promise<boolean> {
+    const generation = advanceSession();
+    meRequest = null;
+    error.value = null;
+    try {
+      const me = tenantId ? await authApi.enterWorkspace(tenantId) : await authApi.exitWorkspace();
+      if (generation !== sessionGeneration()) return false;
+      session.value = me;
+      return true;
+    } catch (cause) {
+      if (generation === sessionGeneration()) error.value = reasonOf(cause);
+      return false;
+    }
+  }
+
   /** 资料更新只回填身份那一格，不重发菜单：菜单的服务端来源是会话本身，不是这个人。 */
   function applyUser(next: AuthUser): void {
     if (session.value?.kind !== "tenant") return;
@@ -114,5 +145,19 @@ export const useAuthStore = defineStore("auth", () => {
     if (generation === sessionGeneration()) clear();
   }
 
-  return { session, user, menus, busy, error, login, fetchMe, applyUser, clear, logout };
+  return {
+    session,
+    user,
+    menus,
+    readOnly,
+    canWrite,
+    busy,
+    error,
+    login,
+    fetchMe,
+    switchWorkspace,
+    applyUser,
+    clear,
+    logout,
+  };
 });

@@ -50,14 +50,16 @@ describe("LoginBodySchema", () => {
     ).toBe("acme");
   });
 
-  it("平台用户名不是邮箱：邮箱形状的字符串登不进平台", () => {
-    const platform = (identifier: string) =>
+  it("不带工作空间码时两种账号形状都收：realm 由服务层按 @ 判", () => {
+    const noTenant = (identifier: string) =>
       LoginBodySchema.safeParse({ tenant: "", identifier, password }).success;
-    expect(platform("admin")).toBe(true);
-    expect(platform("ops.1")).toBe(true);
-    // 平台账号表里没有邮箱列，放进来只会在查库时白跑一趟
-    for (const identifier of ["admin@example.com", "a", "ad/min", "-admin", "管理员"])
-      expect(platform(identifier)).toBe(false);
+    expect(noTenant("admin")).toBe(true);
+    expect(noTenant("ops.1")).toBe(true);
+    // 界面上那一步（选工作空间）去掉了，邮箱必须也能过边界——它走租户分支，不是平台分支
+    expect(noTenant("boss@example.com")).toBe(true);
+    // 两边字符集都不认的字符串在边界就拒，不放进服务层白跑一趟库
+    for (const identifier of ["a", "ad/min", "-admin", "管理员"])
+      expect(noTenant(identifier)).toBe(false);
   });
 
   it("差一个字符的口令被拒：短的直接不进哈希层", () => {

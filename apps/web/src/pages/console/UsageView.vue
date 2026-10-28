@@ -1,14 +1,30 @@
 <script setup lang="ts">
 import type { UsageSummary, PlatformUsageSummary } from "@heron/contracts";
-import { Refresh } from "@element-plus/icons-vue";
+import { RefreshCw } from "lucide-vue-next";
 import { ElAlert, ElButton, ElTable, ElTableColumn, ElTag } from "element-plus";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { request, errorMessage } from "../../api/http";
+import UsageBars from "../../components/UsageBars.vue";
 const platform = useRoute().meta.platform === true;
 const rows = ref<(UsageSummary | PlatformUsageSummary)[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
+/** 不同单位不合并：每种单位各画一张，条内按用量降序。 */
+const groups = computed(() => {
+  const byUnit = new Map<string, { label: string; value: number }[]>();
+  for (const row of rows.value) {
+    const label = "tenantName" in row ? `${row.tenantName} · ${row.kind}` : row.kind;
+    const bars = byUnit.get(row.unit) ?? [];
+    bars.push({ label, value: Number(row.quantity) });
+    byUnit.set(row.unit, bars);
+  }
+  return [...byUnit].map(([unit, bars]) => ({
+    unit,
+    bars: bars.sort((a, b) => b.value - a.value),
+    summary: `${unit} 累计用量：${bars.map((bar) => `${bar.label} ${bar.value}`).join("，")}`,
+  }));
+});
 async function load() {
   loading.value = true;
   error.value = null;
@@ -34,7 +50,7 @@ onMounted(load);
         <p class="page-description">按实际用量账本汇总，保留各资源的原始计量单位。</p>
       </div>
       <div class="page-actions">
-        <ElButton :icon="Refresh" :loading="loading" @click="load">刷新统计</ElButton>
+        <ElButton :icon="RefreshCw" :loading="loading" @click="load">刷新统计</ElButton>
       </div>
     </header>
     <ElAlert
@@ -45,6 +61,18 @@ onMounted(load);
       :closable="false"
       class="page-alert"
     />
+    <div v-if="groups.length" class="panel">
+      <div class="panel-header">
+        <h2>用量分布</h2>
+        <ElTag type="info">按单位分组</ElTag>
+      </div>
+      <div class="panel-body usage-groups">
+        <section v-for="group in groups" :key="group.unit" class="usage-group">
+          <h3>单位：{{ group.unit }}</h3>
+          <UsageBars :bars="group.bars" :summary="group.summary" />
+        </section>
+      </div>
+    </div>
     <div class="panel" :aria-busy="loading">
       <div class="panel-header">
         <h2>累计资源消耗</h2>

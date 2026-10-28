@@ -63,6 +63,21 @@ export class PlatformAuthService {
     return safeUser(operator);
   }
 
+  /**
+   * 从查看态回到平台台：按库里此刻的 sessionVersion 重发一张平台票。
+   * 不复用旧票——查看期间这张 cookie 已经换成了租户票；重新走一遍口令登录
+   * 既不可能（界面没有口令）也不该（登出、停号会当场把这条去路切断）。
+   */
+  async reissue(operatorId: string): Promise<{ token: string; user: PlatformUser } | null> {
+    const operator = await findPlatformOperatorById(this.db, operatorId);
+    if (!operator || operator.disabledAt !== null) return null;
+    const token = await this.jwt.signAsync(
+      { sub: operator.id, ver: operator.sessionVersion },
+      { audience: PLATFORM_AUDIENCE },
+    );
+    return { token, user: safeUser(operator) };
+  }
+
   logout(user: PlatformUser): Promise<number> {
     return revokePlatformSessions(this.db, user.id);
   }

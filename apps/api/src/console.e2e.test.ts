@@ -486,6 +486,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
       expect((await data(res)).message).toBe("账号或口令不正确");
       expect(res.headers.getSetCookie()).toEqual([]);
     }
+    // 平台运营用户名走平台分支（形状里没有 @），三种空值写法都算「没带空间码」
     for (const tenant of ["", "   ", undefined]) {
       expect(
         (
@@ -497,7 +498,26 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
         ).status,
       ).toBe(201);
     }
-    // 平台分支只认用户名：邮箱形状的字符串在边界就拒，不会退到租户表里再试一次
+    // 不带空间码的邮箱：恰好一个空间的口令对得上，就登进那一家（界面上选空间那一步已经没了）
+    const alphaByName = await request("/auth/login", "", "POST", {
+      identifier: "owner@example.com",
+      password: PASSWORD,
+    });
+    expect(alphaByName.status).toBe(201);
+    expect(ConsoleSessionSchema.parse(await data(alphaByName)).user).toMatchObject({
+      id: ownerId,
+      tenantSlug: "alpha",
+    });
+    const betaByName = await request("/auth/login", "", "POST", {
+      identifier: "owner@example.com",
+      password: "beta-owner-password",
+    });
+    expect(betaByName.status).toBe(201);
+    expect(ConsoleSessionSchema.parse(await data(betaByName)).user).toMatchObject({
+      id: foreignUser,
+      tenantSlug: "beta",
+    });
+    // 邮箱形状的字符串只是不再被边界拒掉：它在租户分支里查无此人，答案仍旧是 401
     for (const tenant of ["", "   ", undefined]) {
       expect(
         (
@@ -507,7 +527,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
             password: PASSWORD,
           })
         ).status,
-      ).toBe(400);
+      ).toBe(401);
     }
   });
 
@@ -527,8 +547,8 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     }
     for (const [tenant, identifier] of [
       ["alpha", "not-email"],
-      ["", "admin@example.com"],
       ["", "ad/min"],
+      ["", "管理员"],
     ]) {
       expect(
         (await request("/auth/login", "", "POST", { tenant, identifier, password: PASSWORD }))
@@ -546,6 +566,68 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
         ).status,
       ).toBe(400);
     }
+  });
+
+  it("lets a platform operator view one workspace read-only and come back", async () => {
+    const operator = await platformLogin();
+    // 这一列不是对象而是数组，data() 那个 Record 形状套不住它
+    const spaces = (await (await request("/auth/workspaces", operator)).json()) as {
+      id: string;
+      slug: string;
+    }[];
+    // 不按名字断言顺序：前面的用例把 Alpha 改名了，这里只问「两家都在且只有两家」
+    expect(spaces.map((space) => space.slug).sort()).toEqual(["alpha", "beta"]);
+    // 空间成员问同一句只拿到自家那一个：切换器不属于他
+    expect(await data(await request("/auth/workspaces", owner))).toHaveLength(1);
+    const betaId = spaces.find((space) => space.slug === "beta")!.id;
+
+    const view = await request("/auth/workspace-view", operator, "POST", { tenantId: betaId });
+    expect(view.status).toBe(201);
+    const session = ConsoleSessionSchema.parse(await data(view));
+    expect(session.kind).toBe("tenant");
+    expect(session.user).toMatchObject({
+      scope: "platform-view",
+      role: "owner",
+      tenantSlug: "beta",
+      email: "platform",
+    });
+    const cookie = view.headers.getSetCookie()[0]!.split(";")[0]!;
+
+    // 读得到这一家。GET /manage/feeds 的门槛是 settings.write——按动词判才放得行
+    const feeds = await request("/manage/feeds", cookie);
+    expect(feeds.status).toBe(200);
+    expect(JSON.stringify(await data(feeds))).toContain(foreignFeed);
+
+    const readOnly = "以平台身份查看工作空间是只读的：这一步请由该空间的成员执行。";
+    // 有动作的、没标 @Roles 的、连读起来像读的写接口都点一遍：只读闸是按 HTTP 方法判的，不看有没有声明动作
+    const writeRoutes: [string, string][] = [
+      ["/manage/feeds", "POST"],
+      [`/manage/feeds/${foreignFeed}/fetch`, "POST"],
+      [`/manage/members/${foreignUser}`, "PATCH"],
+      ["/auth/profile", "PATCH"],
+      ["/auth/password", "POST"],
+    ];
+    for (const [path, method] of writeRoutes) {
+      const res = await request(path, cookie, method, {});
+      expect(res.status, `${method} ${path}`).toBe(403);
+      expect((await data(res)).message).toBe(readOnly);
+    }
+    // 成员借查看票的路也进不来
+    expect(
+      (await request("/auth/workspace-view", owner, "POST", { tenantId: betaId })).status,
+    ).toBe(403);
+
+    const back = await request("/auth/workspace-view/end", cookie, "POST");
+    expect(back.status).toBe(201);
+    expect(ConsoleSessionSchema.parse(await data(back)).kind).toBe("platform");
+    const backCookie = back.headers.getSetCookie()[0]!.split(";")[0]!;
+    expect((await request("/platform/tenants", backCookie)).status).toBe(200);
+    // 查看票当场换掉了：拿着平台票去敲租户接口就是 401，没有第三种身份
+    expect((await request("/manage/feeds", backCookie)).status).toBe(401);
+
+    const audit = await data(await request("/platform/audit", backCookie));
+    expect(JSON.stringify(audit)).toContain("workspace.view_started");
+    expect(JSON.stringify(audit)).toContain("workspace.view_ended");
   });
 
   it("keeps realm guards separate after unified login, including tenant mutations and human review", async () => {

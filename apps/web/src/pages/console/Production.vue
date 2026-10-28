@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { TaskSummary } from "@heron/contracts";
-import { can } from "@heron/domain";
 import {
   ElButton,
   ElDescriptions,
@@ -12,19 +11,18 @@ import {
   ElTag,
 } from "element-plus";
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { RouterLink, useRoute } from "vue-router";
+import { RouterLink } from "vue-router";
 import { tasksApi } from "../../api";
 import { errorMessage } from "../../api/http";
 import ListPanel from "../../components/ListPanel.vue";
-import StageTag from "../../components/StageTag.vue";
+import StageTrack from "../../components/StageTrack.vue";
 import { usePagedList } from "../../composables/usePagedList";
 import { dateTime } from "../../format";
 import { useAuthStore } from "../../stores/auth";
 import { useTasksStore } from "../../stores/tasks";
 const auth = useAuthStore();
 const tasks = useTasksStore();
-const route = useRoute();
-const allowed = computed(() => !!auth.user && can(auth.user.role, "task.claim"));
+const allowed = computed(() => auth.canWrite("task.claim"));
 const list = reactive(usePagedList<TaskSummary>("/manage/tasks"));
 const saving = ref(false);
 const drawer = ref(false);
@@ -52,10 +50,7 @@ watch(
   },
   { deep: true },
 );
-onMounted(() => {
-  list.query = typeof route.query.q === "string" ? route.query.q : "";
-  void list.search();
-});
+onMounted(list.load);
 </script>
 <template>
   <section>
@@ -79,14 +74,15 @@ onMounted(() => {
       :loading="list.loading"
       :error="list.error"
       placeholder="搜索任务标题"
+      empty-title="还没有生产任务"
+      empty-hint="从候选管理挑一条选题开始生产，任务会在这里按阶段推进。"
       @search="list.search"
       @refresh="list.load"
     >
-      <ElTable
-        :data="list.items"
-        row-key="id"
-        empty-text="没有匹配的任务，可从候选管理点「开始生产」。"
-      >
+      <template #empty-action>
+        <RouterLink to="/candidates"><ElButton type="primary">去挑选题</ElButton></RouterLink>
+      </template>
+      <ElTable :data="list.items" row-key="id">
         <ElTableColumn label="生产内容" min-width="310"
           ><template #default="{ row }"
             ><div class="cell-title">{{ row.title ?? "未命名任务" }}</div>
@@ -103,8 +99,8 @@ onMounted(() => {
             </div></template
           ></ElTableColumn
         >
-        <ElTableColumn label="阶段" width="130"
-          ><template #default="{ row }"><StageTag :stage="row.stage" /></template
+        <ElTableColumn label="阶段" width="150"
+          ><template #default="{ row }"><StageTrack :stage="row.stage" dense /></template
         ></ElTableColumn>
         <ElTableColumn prop="attempts" label="尝试次数" width="110" />
         <ElTableColumn label="更新时间" min-width="170"
@@ -135,7 +131,7 @@ onMounted(() => {
     </ListPanel>
     <ElDrawer v-model="drawer" title="任务详情" size="580px"
       ><template v-if="selected"
-        ><StageTag :stage="selected.stage" />
+        ><StageTrack :stage="selected.stage" />
         <h2 style="margin-top: 18px">{{ selected.title ?? "未命名任务" }}</h2>
         <ElDescriptions :column="1" border
           ><ElDescriptionsItem label="任务标识"

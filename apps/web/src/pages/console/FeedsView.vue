@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { FeedSourceBodySchema, type FeedSource } from "@heron/contracts";
 import { can } from "@heron/domain";
-import { Plus } from "@element-plus/icons-vue";
+import { Plus } from "lucide-vue-next";
 import {
   ElAlert,
   ElButton,
@@ -18,12 +18,15 @@ import {
 } from "element-plus";
 import { computed, onMounted, reactive, ref } from "vue";
 import { request, errorMessage } from "../../api/http";
+import { VIEW_FENCE } from "../../auth/roles";
 import ListPanel from "../../components/ListPanel.vue";
 import { usePagedList } from "../../composables/usePagedList";
 import { dateTime } from "../../format";
 import { useAuthStore } from "../../stores/auth";
 const auth = useAuthStore();
 const allowed = computed(() => !!auth.user && can(auth.user.role, "settings.write"));
+/** 查看态读得到这份配置（读接口就按 settings.write 设门槛），但改不了：写动作走另一条判据。 */
+const writable = computed(() => auth.canWrite("settings.write"));
 const list = reactive(usePagedList<FeedSource>("/manage/feeds", () => allowed.value));
 const drawer = ref(false);
 const saving = ref(false);
@@ -89,13 +92,21 @@ onMounted(list.load);
         <p class="page-description">统一管理选题来源，保留清晰的采集配置。</p>
       </div>
       <div class="page-actions">
-        <ElButton type="primary" :icon="Plus" :disabled="!allowed" @click="open(null)"
+        <ElButton type="primary" :icon="Plus" :disabled="!writable" @click="open(null)"
           >添加数据源</ElButton
         >
       </div>
     </header>
     <ElAlert
       title="启用的数据源由后台按各自间隔自动采集（worker 每 30 秒检查一次），也可以在这里立即抓取一次。"
+      type="info"
+      show-icon
+      :closable="false"
+      class="page-alert"
+    />
+    <ElAlert
+      v-if="auth.readOnly"
+      :title="VIEW_FENCE"
       type="info"
       show-icon
       :closable="false"
@@ -116,10 +127,17 @@ onMounted(list.load);
       :loading="list.loading"
       :error="list.error"
       placeholder="搜索名称或地址"
+      empty-title="还没有数据源"
+      empty-hint="添加一个热榜源，后台会按你设的间隔自动抓取候选。"
       @search="list.search"
       @refresh="list.load"
     >
-      <ElTable :data="list.items" row-key="id" empty-text="还没有数据源，添加团队关注的新闻来源。">
+      <template #empty-action>
+        <ElButton v-if="writable" type="primary" :icon="Plus" @click="open(null)"
+          >添加数据源</ElButton
+        >
+      </template>
+      <ElTable :data="list.items" row-key="id">
         <ElTableColumn label="来源" min-width="290"
           ><template #default="{ row }"
             ><div class="cell-title">{{ row.name }}</div>
@@ -155,11 +173,14 @@ onMounted(list.load);
         >
         <ElTableColumn label="操作" width="180" fixed="right"
           ><template #default="{ row }"
-            ><ElButton link type="primary" @click="open(row as FeedSource)">配置</ElButton>
+            ><ElButton link type="primary" :disabled="!writable" @click="open(row as FeedSource)"
+              >配置</ElButton
+            >
             <ElButton
               link
               type="primary"
               :loading="fetching === row.id"
+              :disabled="!writable"
               @click="fetchNow(row as FeedSource)"
               >立即采集</ElButton
             ></template

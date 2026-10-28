@@ -28,7 +28,8 @@ export const auditLogs = pgTable(
       .default(sql`'{}'::jsonb`),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [index("ix_audit_logs_tenant_time").on(t.tenantId, t.createdAt, t.id)],
+  // 审计列表按「最近写入优先、id 兜平同毫秒」翻页：方向要跟 ORDER BY 一致才吃得下这半段
+  (t) => [index("ix_audit_logs_tenant_time").on(t.tenantId, sql`${t.createdAt} DESC`, t.id)],
 );
 
 /** Separate identity realm; never granted to heron_app, not a tenant child table. */
@@ -67,5 +68,5 @@ export const platformAuditLogs = pgTable(
       .default(sql`'{}'::jsonb`),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [index("ix_platform_audit_logs_time").on(t.createdAt, t.id)],
+  (t) => [index("ix_platform_audit_logs_time").on(sql`${t.createdAt} DESC`, t.id)],
 );

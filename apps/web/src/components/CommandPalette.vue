@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowRight, Search } from "@element-plus/icons-vue";
+import { ArrowRight, Search } from "lucide-vue-next";
 import { ElDialog } from "element-plus";
 import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
 import { useRouter } from "vue-router";

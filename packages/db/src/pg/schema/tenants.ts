@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { check, index, pgTable, text, uuid } from "drizzle-orm/pg-core";
 
 /** 租户是这一切的外键目标；第一期只有 DEFAULT_TENANT_ID 一行，但边界从第一天就立着。 */
 export const tenants = pgTable(
@@ -16,6 +16,8 @@ export const tenants = pgTable(
     // 登录时人报的是工作空间名（slug），库里只留小写这一种形状，查询才不许猜大小写。
     // 与 ck_users_email_lower 同一条规矩：规范形由 DB 兜，不靠每个写入方自觉。
     check("ck_tenants_slug_lower", sql`${t.slug} = lower(${t.slug})`),
+    // 平台租户列表：没有租户维度可等值，只按最近创建
+    index("ix_tenants_recent").on(sql`${t.createdAt} DESC`, t.id),
   ],
 );
 

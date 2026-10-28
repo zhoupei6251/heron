@@ -48,6 +48,8 @@ import { tasks } from "./tasks";
     },
     (t) => [
       uniqueIndex("u_renders_task_version").on(t.taskId, t.version),
+      // 子表没有 tenant_id：成片库按时间序取页，租户由 join tasks 过滤
+      index("ix_renders_recent").on(sql`${t.createdAt} DESC`, t.id),
       check("ck_renders_version_positive", sql`${t.version} > 0`),
       check("ck_renders_bytes_nonnegative", sql`${t.mp4Bytes} IS NULL OR ${t.mp4Bytes} >= 0`),
       check("ck_renders_width_positive", sql`${t.width} IS NULL OR ${t.width} > 0`),
@@ -133,7 +135,8 @@ export const publishes = pgTable(
   },
   (t) => [
     uniqueIndex("u_publishes_tenant_idempotency").on(t.tenantId, t.idempotencyKey),
-    index("ix_publishes_status").on(t.status, t.createdAt),
+    // 发布记录列表：租户等值 + 最近创建（按 status 过滤目前没有查询，故不建 status 索引）
+    index("ix_publishes_tenant_recent").on(t.tenantId, sql`${t.createdAt} DESC`, t.id),
     check("ck_publishes_status_known", inEnum(t.status, PUBLISH_STATUSES)),
     check(
       "ck_publishes_credential_pair",

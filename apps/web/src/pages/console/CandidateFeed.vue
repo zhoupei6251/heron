@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Candidate, CandidateStatus } from "@heron/contracts";
-import { can } from "@heron/domain";
-import { Plus } from "@element-plus/icons-vue";
+import { Plus } from "lucide-vue-next";
+import { computed, onMounted, reactive, ref } from "vue";
 import {
   ElAlert,
   ElButton,
@@ -15,7 +15,6 @@ import {
   ElTableColumn,
   ElTag,
 } from "element-plus";
-import { computed, onMounted, reactive, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { tasksApi } from "../../api";
 import { errorMessage } from "../../api/http";
@@ -24,7 +23,7 @@ import { usePagedList } from "../../composables/usePagedList";
 import { dateTime } from "../../format";
 import { useAuthStore } from "../../stores/auth";
 const auth = useAuthStore();
-const allowed = computed(() => !!auth.user && can(auth.user.role, "task.claim"));
+const allowed = computed(() => auth.canWrite("task.claim"));
 const list = reactive(usePagedList<Candidate>("/manage/candidates"));
 const dialog = ref(false);
 const title = ref("");
@@ -108,14 +107,24 @@ onMounted(list.load);
       :loading="list.loading"
       :error="list.error"
       placeholder="搜索选题标题"
+      empty-title="还没有候选选题"
+      empty-hint="接一个数据源让热榜自动进来，或手动录入一条。"
       @search="list.search"
       @refresh="list.load"
     >
-      <ElTable
-        :data="list.items"
-        row-key="id"
-        empty-text="候选库还是空的。到数据源页配置热榜源并立即采集，或手动添加一条选题。"
-      >
+      <template #empty-action>
+        <ElButton
+          v-if="allowed"
+          :icon="Plus"
+          @click="
+            dialog = true;
+            error = null;
+          "
+          >手动添加选题</ElButton
+        >
+        <ElButton v-else @click="$router.push('/feeds')">去配置数据源</ElButton>
+      </template>
+      <ElTable :data="list.items" row-key="id">
         <ElTableColumn label="选题" min-width="340"
           ><template #default="{ row }"
             ><ElButton

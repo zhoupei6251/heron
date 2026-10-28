@@ -1,12 +1,6 @@
 <script setup lang="ts">
 import type { Page, PlatformTenant, PlatformAuditLog } from "@heron/contracts";
-import {
-  ArrowRight,
-  OfficeBuilding,
-  Tickets,
-  DataAnalysis,
-  Monitor,
-} from "@element-plus/icons-vue";
+import { ArrowRight, Building2, ChartColumnBig, Gauge, Newspaper } from "lucide-vue-next";
 import { ElAlert, ElButton, ElIcon, ElTable, ElTableColumn, ElTag } from "element-plus";
 import { onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
@@ -71,19 +65,19 @@ onMounted(load);
     </div>
     <div class="platform-shortcuts">
       <RouterLink to="/platform/tenants"
-        ><ElIcon><OfficeBuilding /></ElIcon>
+        ><ElIcon><Building2 /></ElIcon>
         <div><strong>租户管理</strong><span>开通与访问控制</span></div>
         <ElIcon><ArrowRight /></ElIcon></RouterLink
       ><RouterLink to="/platform/usage"
-        ><ElIcon><DataAnalysis /></ElIcon>
+        ><ElIcon><ChartColumnBig /></ElIcon>
         <div><strong>全局用量</strong><span>查看实际资源账本</span></div>
         <ElIcon><ArrowRight /></ElIcon></RouterLink
       ><RouterLink to="/platform/audit"
-        ><ElIcon><Tickets /></ElIcon>
+        ><ElIcon><Newspaper /></ElIcon>
         <div><strong>操作审计</strong><span>追溯平台管理变更</span></div>
         <ElIcon><ArrowRight /></ElIcon></RouterLink
       ><RouterLink to="/platform/health"
-        ><ElIcon><Monitor /></ElIcon>
+        ><ElIcon><Gauge /></ElIcon>
         <div><strong>服务健康</strong><span>运行状态与生产门禁</span></div>
         <ElIcon><ArrowRight /></ElIcon
       ></RouterLink>
@@ -141,15 +135,15 @@ onMounted(load);
   display: flex;
   justify-content: space-between;
   gap: 25px;
-  background: radial-gradient(ellipse at 90% 10%, #47818a40, transparent 65%), #183c40;
-  color: #f0fbf8;
-  border: 1px solid #477578;
+  background: var(--heron-hero-bg);
+  color: var(--heron-hero-ink);
+  border: 1px solid var(--heron-hero-line);
   border-radius: 16px;
   padding: 34px;
   margin-bottom: 24px;
 }
 .platform-intro .eyebrow {
-  color: #acd4d1;
+  color: var(--heron-hero-accent);
 }
 .platform-intro h2 {
   font-family: var(--heron-display);
@@ -160,23 +154,22 @@ onMounted(load);
 .platform-intro p {
   font-size: 12px;
   line-height: 1.8;
-  color: #bedbd5;
+  color: var(--heron-hero-muted);
 }
 .workspace-total {
   min-width: 155px;
-  border-left: 1px solid #628b8766;
+  border-left: 1px solid var(--heron-hero-line);
   padding-left: 30px;
   display: flex;
   flex-direction: column;
-  color: #bedbd5;
+  color: var(--heron-hero-muted);
   font-size: 11px;
 }
 .workspace-total strong {
-  font:
-    46px/1.7 Bahnschrift,
-    sans-serif;
-  color: #e7fff2;
-  font-size: 64px;
+  font: 500 64px/1.3 var(--heron-display);
+  letter-spacing: -2.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--heron-hero-ink);
 }
 .workspace-total small {
   font-size: 10px;
@@ -202,6 +195,7 @@ onMounted(load);
 }
 .platform-shortcuts > a:hover {
   border-color: var(--heron-accent);
+  box-shadow: var(--heron-shadow-lift);
   transform: translateY(-3px);
 }
 .platform-shortcuts .el-icon {
@@ -254,7 +248,7 @@ onMounted(load);
   .workspace-total {
     padding: 15px 0 0;
     border-left: 0;
-    border-top: 1px solid #628b8766;
+    border-top: 1px solid var(--heron-hero-line);
   }
   .platform-shortcuts {
     gap: 9px;

@@ -52,12 +52,27 @@ async function mount(platform = false) {
   await nextTick();
   return root;
 }
+const MODE_LABEL: Record<string, string> = {
+  auto: "跟随系统",
+  light: "明亮模式",
+  dark: "深色模式",
+};
 async function select(root: HTMLElement, mode: string) {
-  const control = root.querySelector<HTMLSelectElement>("select[aria-label='配色模式']");
-  expect(control, "the shared console exposes a labelled appearance selector").not.toBeNull();
-  control!.value = mode;
-  control!.dispatchEvent(new Event("change", { bubbles: true }));
+  const trigger = root.querySelector<HTMLButtonElement>("button[aria-label^='配色模式']");
+  expect(trigger, "the shared console exposes a labelled appearance control").not.toBeNull();
+  trigger!.click();
+  await vi.waitFor(() =>
+    expect(document.querySelectorAll<HTMLElement>("[role='menuitem']")).toHaveLength(3),
+  );
+  const item = [...document.querySelectorAll<HTMLElement>("[role='menuitem']")].find((element) =>
+    element.textContent?.includes(MODE_LABEL[mode]!),
+  );
+  expect(item, `appearance option ${mode}`).not.toBeUndefined();
+  item!.click();
   await nextTick();
+  await vi.waitFor(() =>
+    expect(trigger!.getAttribute("aria-label")).toBe(`配色模式：${MODE_LABEL[mode]!}`),
+  );
 }
 beforeEach(() => {
   localStorage.clear();
@@ -112,9 +127,11 @@ describe("console appearance", () => {
     localStorage.setItem("heron:appearance", "unexpected-value");
     media.matches = true;
     const root = await mount();
-    expect(root.querySelector<HTMLSelectElement>("select[aria-label='配色模式']")?.value).toBe(
-      "auto",
-    );
+    expect(
+      root
+        .querySelector<HTMLButtonElement>("button[aria-label^='配色模式']")
+        ?.getAttribute("aria-label"),
+    ).toBe("配色模式：跟随系统");
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(document.documentElement.classList.contains("unexpected-value")).toBe(false);
   });
@@ -152,10 +169,11 @@ describe("console command scope", () => {
       const trigger = root.querySelector<HTMLButtonElement>("button[aria-label='快捷导航']");
       expect(trigger, "shared console exposes command navigation").not.toBeNull();
       trigger!.click();
+      // 只数 palette 自己的选项与输入框：右上角的工作空间切换器同样往 body 里挂一个 combobox
       await vi.waitFor(() => {
-        expect(document.querySelectorAll("[role='option']")).toHaveLength(platform ? 5 : 13);
+        expect(document.querySelectorAll(".command-option")).toHaveLength(platform ? 5 : 13);
       });
-      const offeredPaths = [...document.querySelectorAll("[role='option'] .command-path")].map(
+      const offeredPaths = [...document.querySelectorAll(".command-option .command-path")].map(
         (element) => element.textContent,
       );
       const menuPaths = [...root.querySelectorAll(".console-nav a")].map((element) =>
@@ -163,9 +181,9 @@ describe("console command scope", () => {
       );
       expect(offeredPaths).toEqual(menuPaths);
       expect(offeredPaths.every((path) => path?.startsWith("/platform") === platform)).toBe(true);
-      const input = document.querySelector<HTMLInputElement>("input[role='combobox']")!;
+      const input = document.querySelector<HTMLInputElement>(".command-search input")!;
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-      await vi.waitFor(() => expect(document.querySelector("input[role='combobox']")).toBeNull());
+      await vi.waitFor(() => expect(document.querySelector(".command-search input")).toBeNull());
     },
   );
 });

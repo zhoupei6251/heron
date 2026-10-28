@@ -15,8 +15,15 @@ import type {
   LoginBody,
   PasswordBody,
   ProfileBody,
+  WorkspaceViewBody,
 } from "@heron/contracts";
-import { LoginBodySchema, ProfileBodySchema, PasswordBodySchema } from "@heron/contracts";
+import {
+  LoginBodySchema,
+  ProfileBodySchema,
+  PasswordBodySchema,
+  WorkspaceViewBodySchema,
+} from "@heron/contracts";
+import type { TenantRef } from "@heron/db/pg";
 import type { Response } from "express";
 
 import {
@@ -33,11 +40,13 @@ import { ConsoleAuthService } from "./console-auth.service";
 import { ConsoleSessionGuard, CurrentSession } from "./console-session.guard";
 
 /**
- * 认证的三个入口：把口令换成会话（login）、把会话换回身份（me）、把会话作废（logout）。
+ * 认证的入口：把口令换成会话（login）、把会话换回身份（me）、把会话作废（logout），
+ * 以及平台运营进出某个工作空间查看（workspaces / workspace-view）。
  * 判据一条都不在这里——登录对不对在 ConsoleAuthService，token 有效无效在守卫。
  *
- * login / me / logout 是同一个 cookie 的两面：空工作空间码进平台身份，非空进租户身份。
- * profile 与 password 只挂在租户那一面（平台账号由 HERON_PLATFORM_* 显式引导，不由界面改）。
+ * login / me / logout 是同一个 cookie 的两面：按账号形状分平台身份与租户身份。
+ * workspace-view 换出来的也是这个 cookie，只是多带一个 scope=platform-view，写动作由 RolesGuard 拒。
+ * profile 与 password 只挂在租户成员那一面（平台账号由 HERON_PLATFORM_* 显式引导，不由界面改）。
  */
 @Controller("auth")
 export class AuthController {
@@ -88,6 +97,50 @@ export class AuthController {
     res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
     res.clearCookie(PLATFORM_COOKIE, platformCookieOptions());
     return { ok: true };
+  }
+
+  /**
+   * 切换器那一个下拉的数据源。返回的是工作空间坐标（id/name/slug），不是租户业务数据：
+   * 进了哪家之后能读什么，仍由那张新签的租户票决定。
+   */
+  @Public()
+  @UseGuards(ConsoleSessionGuard)
+  @Get("workspaces")
+  workspaces(@CurrentSession() session: ConsoleSession): Promise<TenantRef[]> {
+    return this.console.workspaces(session);
+  }
+
+  /**
+   * 进入某个工作空间查看：换一张服务端签的租户票（`tid` 取自库里的行，不由客户端报），
+   * cookie 就此变成租户身份，13 个租户页面与它们的接口一行都不用改。
+   * 代价写在 RolesGuard 上：这张票只读。
+   */
+  @Public()
+  @UseGuards(ConsoleSessionGuard)
+  @Post("workspace-view")
+  async startView(
+    @CurrentSession() session: ConsoleSession,
+    @Body(new ZodValidationPipe(WorkspaceViewBodySchema)) body: WorkspaceViewBody,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<ConsoleSession> {
+    const switched = await this.console.startView(session, body.tenantId);
+    if (!switched) throw new UnauthorizedException("工作空间不可用或运营账号已停用，请重新登录");
+    res.cookie(SESSION_COOKIE, switched.token, sessionCookieOptions());
+    return switched.session;
+  }
+
+  /** 退出查看：换回平台票。成员调它拿到的是 403，不是「把自己登出了」。 */
+  @Public()
+  @UseGuards(ConsoleSessionGuard)
+  @Post("workspace-view/end")
+  async endView(
+    @CurrentSession() session: ConsoleSession,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<ConsoleSession> {
+    const switched = await this.console.endView(session);
+    if (!switched) throw new UnauthorizedException("运营账号已停用，请重新登录");
+    res.cookie(SESSION_COOKIE, switched.token, sessionCookieOptions());
+    return switched.session;
   }
 
   @Patch("profile")

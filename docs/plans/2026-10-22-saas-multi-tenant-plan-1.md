@@ -785,6 +785,8 @@ export const AuthUserSchema = z.object({
 >    `ck_tenants_slug_lower` 与 `findTenantBySlug`，契约抢先改写过一遍，界面回填的输入就和库里对不上了。
 >    那条 CHECK 是新加的，迁移因此重新生成为 `drizzle/0000_far_surge.sql`；与旧文件 diff 只有这一条约束，
 >    逐字看过才敢说没夹带。`schema.test.ts` 补一条「slug 只留一种规范形」，`index.test.ts` 补「ACME / 带空格 都收」。
+>    （2026-10-27 修订：`tenant` 字段仍在契约里、脚本可显式指定空间，但界面已不再发送它——realm 改由账号形状判
+>    （带 `@` 走租户、不带走平台运营），不带空间码的邮箱登录只在**恰好一个**空间口令通过时放行。见根 README。）
 > 4. **计划里的 `maxAge: "12h"` 删了**。不是嫌它多余，是它在 passport-jwt 4.0.1 里**根本不存在**
 >    （`lib/` grep 零命中，`@types/passport-jwt` 也没有）——留着就是一个静默失效的假期限，
 >    读代码的人以为有时钟，实际唯一的时钟是 `expiresIn` 写进 payload 的 `exp`。同理 `algorithms` 不写：

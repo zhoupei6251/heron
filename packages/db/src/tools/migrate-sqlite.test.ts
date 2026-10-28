@@ -204,10 +204,12 @@ describe("SQLite → Postgres 导入", () => {
       normKey: "旧库候选",
       status: "published",
     });
-    expect(seen.allTasks.map((task) => [task.id, task.stage])).toEqual([
-      [TASK_1, "published"],
-      [TASK_2, "failed"],
-    ]);
+    expect(seen.allTasks.map((task) => [task.id, task.stage]).sort()).toEqual(
+      [
+        [TASK_1, "published"],
+        [TASK_2, "failed"],
+      ].sort(),
+    );
     expect(seen.events.map((event) => event.reason)).toEqual(["认领人 p0-script", null, null]);
     expect(seen.render).toMatchObject({
       id: RENDER,

@@ -18,6 +18,7 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { settingsApi, gatesApi } from "../../api";
 import { request, errorMessage, sessionGeneration } from "../../api/http";
+import { VIEW_FENCE } from "../../auth/roles";
 import { useAuthStore } from "../../stores/auth";
 const auth = useAuthStore();
 let mounted = true;
@@ -26,6 +27,8 @@ onBeforeUnmount(() => {
 });
 const ownsSession = (generation: number) => mounted && generation === sessionGeneration();
 const allowed = computed(() => !!auth.user && can(auth.user.role, "settings.write"));
+/** 设置值在查看态要读出来（否则页面一片空白），能落盘的只有该空间成员。 */
+const writable = computed(() => auth.canWrite("settings.write"));
 const workspace = ref<Tenant | null>(null);
 const gates = ref<GateState | null>(null);
 const name = ref("");
@@ -166,6 +169,14 @@ onMounted(load);
       :closable="false"
       class="page-alert"
     />
+    <ElAlert
+      v-if="auth.readOnly"
+      :title="VIEW_FENCE"
+      type="info"
+      show-icon
+      :closable="false"
+      class="page-alert"
+    />
     <div class="split-grid">
       <div class="panel">
         <div class="form-section">
@@ -176,7 +187,7 @@ onMounted(load);
                 id="workspace-name"
                 v-model="name"
                 maxlength="100"
-                :disabled="!allowed || !workspace" /></ElFormItem
+                :disabled="!writable || !workspace" /></ElFormItem
             ><ElFormItem label="登录标识"
               ><span class="mono">{{ workspace?.slug ?? "—" }}</span></ElFormItem
             >
@@ -186,7 +197,7 @@ onMounted(load);
                 type="primary"
                 native-type="submit"
                 :loading="saving"
-                :disabled="!allowed || !workspace || loading"
+                :disabled="!writable || !workspace || loading"
                 >保存空间信息</ElButton
               >
             </div></ElForm
@@ -202,14 +213,14 @@ onMounted(load);
                 :min="1"
                 :max="3650"
                 :precision="0"
-                :disabled="loading"
+                :disabled="!writable || loading"
             /></ElFormItem>
             <p class="form-hint">保存的是保留策略，不会立即删除文件。实际清理由服务端流程执行。</p>
             <div class="form-actions">
               <ElButton
                 native-type="submit"
                 :loading="saving"
-                :disabled="days === undefined || loading"
+                :disabled="!writable || days === undefined || loading"
                 >保存保留策略</ElButton
               >
             </div></ElForm
@@ -222,7 +233,7 @@ onMounted(load);
               ><ElInput
                 id="model-base-url"
                 v-model="modelBaseUrl"
-                :disabled="loading"
+                :disabled="!writable || loading"
                 placeholder="https://api.qnaigc.com/v1" /></ElFormItem
             ><ElFormItem label="模型" for="model-name"
               ><ElSelect
@@ -231,7 +242,7 @@ onMounted(load);
                 filterable
                 allow-create
                 default-first-option
-                :disabled="loading"
+                :disabled="!writable || loading"
                 placeholder="选一个免费模型，或直接输入别家的模型 id"
                 style="width: 100%"
                 ><ElOption
@@ -246,14 +257,14 @@ onMounted(load);
                 type="password"
                 show-password
                 autocomplete="new-password"
-                :disabled="loading"
+                :disabled="!writable || loading"
                 :placeholder="hasApiKey ? '已配置，留空不改' : '粘贴供应商的 API key'"
             /></ElFormItem>
             <p class="form-hint">
               写稿阶段由 worker 使用；没填的项回落到服务端环境变量。密钥只用于调用模型，接口不回显。
             </p>
             <div class="form-actions">
-              <ElButton native-type="submit" :loading="saving" :disabled="loading"
+              <ElButton native-type="submit" :loading="saving" :disabled="!writable || loading"
                 >保存模型配置</ElButton
               >
             </div></ElForm

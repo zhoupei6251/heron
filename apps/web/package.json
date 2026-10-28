@@ -11,11 +11,15 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@element-plus/icons-vue": "2.3.2",
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
     "@heron/contracts": "workspace:*",
     "@vueuse/core": "15.0.0",
+    "echarts": "^6.1.0",
     "element-plus": "2.14.7",
     "gsap": "3.15.0",
+    "lucide-vue-next": "^1.0.0",
     "pinia": "4.1.0",
     "vue": "3.5.44",
     "vue-router": "5.4.0"

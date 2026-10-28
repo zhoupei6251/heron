@@ -130,6 +130,27 @@ export async function revokePlatformSessions(db: Db, operatorId: string): Promis
   });
 }
 
+/**
+ * 查看态的进出留痕。target_id 是被看的那个工作空间：台账要能回答「谁在什么时候进了哪家」，
+ * 而这条链不能靠事后从 token 里拼。
+ */
+export async function noteWorkspaceView(
+  db: Db,
+  operatorId: string,
+  tenantId: string,
+  started: boolean,
+): Promise<void> {
+  await withAdmin(db, async (a) => {
+    await requireOperator(a, operatorId);
+    await audit(
+      a,
+      operatorId,
+      started ? "workspace.view_started" : "workspace.view_ended",
+      tenantId,
+    );
+  });
+}
+
 export async function listPlatformTenants(
   db: Db,
   input: Partial<PageQuery> = {},

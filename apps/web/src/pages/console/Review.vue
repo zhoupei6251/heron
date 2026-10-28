@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CircleCheck, Refresh, VideoCamera } from "@element-plus/icons-vue";
+import { CircleCheck, Clapperboard, RefreshCw } from "lucide-vue-next";
 import type { GateState, ReviewItem } from "@heron/contracts";
 import {
   ElAlert,
@@ -18,6 +18,7 @@ import { gatesApi } from "../../api";
 import { errorMessage, sessionGeneration } from "../../api/http";
 import { artifactUrl, reviewsApi } from "../../api/reviews";
 import { reviewBlocker } from "../../auth/review";
+import { VIEW_FENCE } from "../../auth/roles";
 import { useAuthStore } from "../../stores/auth";
 
 const auth = useAuthStore();
@@ -55,13 +56,15 @@ const sheetLoaded = computed(
   () => !loading.value && !!sheetElement.value && loadedSheet.value === sheetKey.value,
 );
 const blocker = computed(() =>
-  reviewBlocker(
-    auth.user?.role ?? null,
-    gates.value,
-    selected.value,
-    sheetLoaded.value,
-    acknowledged.value,
-  ),
+  auth.readOnly
+    ? VIEW_FENCE
+    : reviewBlocker(
+        auth.user?.role ?? null,
+        gates.value,
+        selected.value,
+        sheetLoaded.value,
+        acknowledged.value,
+      ),
 );
 watch(
   sheetKey,
@@ -177,7 +180,7 @@ onMounted(() => {
         <p class="page-description">看清内容，核对版本。你的确认，只对眼前这版成片生效。</p>
       </div>
       <div class="page-actions">
-        <ElButton :icon="Refresh" :loading="loading" @click="refresh">刷新队列</ElButton>
+        <ElButton :icon="RefreshCw" :loading="loading" @click="refresh">刷新队列</ElButton>
       </div>
     </div>
     <ElAlert
@@ -223,7 +226,7 @@ onMounted(() => {
           @click="selectTask(item.taskId)"
         >
           <span class="queue-icon"
-            ><ElIcon><VideoCamera /></ElIcon></span
+            ><ElIcon><Clapperboard /></ElIcon></span
           ><span
             ><strong>{{ item.title || "未命名任务" }}</strong
             ><small>{{
@@ -254,7 +257,7 @@ onMounted(() => {
               @error="mediaError = '视频无法加载，请检查产物是否存在或刷新队列'"
             />
             <div v-else class="no-video">
-              <ElIcon :size="34"><VideoCamera /></ElIcon>
+              <ElIcon :size="34"><Clapperboard /></ElIcon>
               <p>当前版本没有视频文件</p>
             </div>
           </div>
@@ -370,8 +373,8 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   min-height: 330px;
-  background: #10251f;
-  border-radius: 8px;
+  background: var(--heron-stage);
+  border-radius: 12px;
   overflow: hidden;
 }
 .video-stage video {
@@ -380,7 +383,7 @@ onMounted(() => {
 }
 .no-video {
   text-align: center;
-  color: #8aa897;
+  color: var(--heron-hero-muted);
   font-size: 12px;
 }
 .no-video p {

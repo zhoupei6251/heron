@@ -8,13 +8,14 @@ import {
   createCandidate,
   createPlatformOperator,
   createTenant,
+  recordUsage,
   tasks,
   createUser,
   migrate,
   openDb,
   withTenant,
 } from "@heron/db/pg";
-import { MIN_PASSWORD_LENGTH } from "@heron/contracts";
+import { MIN_PASSWORD_LENGTH, USAGE_KIND_UNITS } from "@heron/contracts";
 import { hashPassword } from "@heron/domain";
 
 import { AppModule } from "../app.module";
@@ -44,6 +45,8 @@ async function main(): Promise<void> {
   await migrate(db);
 
   const tenantId = await createTenant(db, { name: "演示工作空间", slug: "default" });
+  // 第二家只为右上角那个切换器而有：它没有成员，平台运营切进去看到的是真空间
+  await createTenant(db, { name: "第二工作空间", slug: "second" });
   const accounts = [
     ["owner@example.com", "owner", "演示所有者"],
     ["reviewer@example.com", "reviewer", "演示审核员"],
@@ -89,6 +92,18 @@ async function main(): Promise<void> {
     });
   }
 
+  // 用量页要有数才看得出单位分组与条形图；这几行是演示记账，不是计费账单。
+  for (const [kind, quantity] of [
+    ["llm_tokens_in", "128400"],
+    ["llm_tokens_out", "41200"],
+    ["render_seconds", "1830"],
+    ["publish", "3"],
+  ] as const) {
+    await withTenant(db, tenantId, (t) =>
+      recordUsage(t, { kind, quantity, unit: USAGE_KIND_UNITS[kind], detail: { demo: true } }),
+    );
+  }
+
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(PG_DB)
     .useValue(db)
@@ -100,8 +115,8 @@ async function main(): Promise<void> {
   console.log(`heron 开发台（内存 pglite）：http://127.0.0.1:${String(API_PORT)}`);
   console.log(`工作空间：default（演示工作空间）`);
   for (const [email, role] of accounts) console.log(`  ${role.padEnd(8)} ${email}`);
-  console.log("统一登录：工作空间填 default 进入租户；工作空间留空则按平台运营登录");
-  console.log("  平台运营用户名 platform（仅此内存演示使用相同的显式演示口令）");
+  console.log("统一登录：邮箱直接进自己的工作空间；用户名 platform 进平台台");
+  console.log("  平台运营登录后用右上角的切换器只读查看任一工作空间（演示口令同上）");
   console.log(
     "数据只在内存里：重启即清空；演示口令来自 HERON_DEMO_PASSWORD；不启动 worker 或外部发布。",
   );

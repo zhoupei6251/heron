@@ -12,3 +12,6 @@ export const ROLE_LABELS: Record<Role, string> = {
 export function roleLabel(role: Role): string {
   return ROLE_LABELS[role];
 }
+
+/** 查看态写入被拒的同一句话：服务端 403 用全文，界面置灰时用它解释为什么。 */
+export const VIEW_FENCE = "以平台身份查看工作空间是只读的：这一步请由该空间的成员执行。";

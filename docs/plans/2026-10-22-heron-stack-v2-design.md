@@ -286,6 +286,17 @@ Chromium/ffmpeg 崩溃不应带走 API。`@nestjs/schedule` 只负责“抓榜 +
 （`title.replace(/[^\p{L}\p{N}]/gu, "")`），**取消原来的小写折叠**——折叠要先改 `ledger.py`
 再重生成 fixtures，两边一起动，否则 §6 那条 oracle diff 非空即红直接爆。
 
+**索引按查询形状建（2026-10-28，迁移 `0005_tenant_first_indexes.sql` / `0006_list_order_indexes.sql`）**：
+租户列表查询的形状都是 `tenant_id` 等值 + 时间倒序 + `id` 兜平同一时刻，索引因此一律 tenant-first：
+`ix_candidates_tenant_recent(tenant_id, last_seen_at DESC, id)`、`ix_tasks_tenant_recent`、
+`ix_publishes_tenant_recent`、`ix_audit_logs_tenant_time`，以及 `0006` 补上的成员、数据源两条。
+平台审计没有租户维度，同形只按 `created_at DESC, id`（`ix_platform_audit_logs_time`）。
+平台租户列表与成片库也没有租户可等值（前者是平台视角，后者是子表、租户由 join tasks 过滤），
+只按 `created_at DESC, id`：`ix_tenants_recent`、`ix_renders_recent`。原先按 `status` 单列的三条索引删了：
+状态取值少、选择度低，而 RLS 的每次查询都已经先过 `tenant_id`。调度是唯一跨租户的读，保留部分索引
+`ix_tasks_claimable(created_at) WHERE stage NOT IN ('published','failed')`——领取查询都是
+「非终态 + 租约过期，取最早创建」，前缀列不能带 `tenant_id`，否则每轮轮询都要全表扫再排序。
+
 **本期读写状态**：`gate_results` 从 P0 起就在写，读它的界面在 P2；news 五张表由 `db.test.ts`
 建表并验约束，写它们的是 P1 的写稿通路；运行期按 capability 清单决定挂哪组迁移同样是 P1 接缝
 （现在两个进程都只 `migrate(db, ["core"])`）。

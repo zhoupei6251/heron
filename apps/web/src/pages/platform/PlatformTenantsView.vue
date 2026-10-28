@@ -5,7 +5,7 @@ import {
   type PlatformTenant,
   type Tenant,
 } from "@heron/contracts";
-import { Plus } from "@element-plus/icons-vue";
+import { Plus } from "lucide-vue-next";
 import {
   ElAlert,
   ElButton,
@@ -122,14 +122,15 @@ onMounted(list.load);
       :loading="list.loading"
       :error="list.error"
       placeholder="搜索名称或登录标识"
+      empty-title="还没有开通工作空间"
+      empty-hint="开通后，团队成员在登录页用邮箱直接进入自己的工作空间。"
       @search="list.search"
       @refresh="list.load"
     >
-      <ElTable
-        :data="list.items"
-        row-key="id"
-        empty-text="暂无工作空间，点击“开通工作空间”创建首个租户。"
-      >
+      <template #empty-action>
+        <ElButton type="primary" :icon="Plus" @click="open">开通工作空间</ElButton>
+      </template>
+      <ElTable :data="list.items" row-key="id">
         <ElTableColumn label="工作空间" min-width="240"
           ><template #default="{ row }"
             ><div class="cell-title">{{ row.name }}</div>

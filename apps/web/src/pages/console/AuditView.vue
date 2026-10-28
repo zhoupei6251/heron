@@ -77,10 +77,12 @@ onMounted(list.load);
       :loading="list.loading"
       :error="list.error"
       placeholder="按操作代码搜索，例如 member"
+      empty-title="还没有审计记录"
+      empty-hint="成员、权限、设置与发布这些写入操作发生后会记在这里。"
       @search="list.search"
       @refresh="list.load"
     >
-      <ElTable :data="list.items" row-key="id" empty-text="还没有管理操作记录。">
+      <ElTable :data="list.items" row-key="id">
         <ElTableColumn label="时间" min-width="170"
           ><template #default="{ row }">{{ dateTime(row.createdAt) }}</template></ElTableColumn
         >
@@ -131,8 +133,6 @@ onMounted(list.load);
   border: 1px solid var(--heron-line);
   border-radius: 6px;
   padding: 18px;
-  font:
-    12px/1.8 Consolas,
-    monospace;
+  font: 12px/1.8 var(--heron-mono);
 }
 </style>

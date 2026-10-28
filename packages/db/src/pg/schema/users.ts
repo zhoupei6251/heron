@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, integer, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { check, index, integer, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { ROLES, type Role } from "@heron/contracts";
 
 import { inEnum } from "./enums";
@@ -29,6 +29,8 @@ export const users = pgTable(
   (t) => [
     // 同一邮箱在不同租户是两个人；全局唯一会把多租户平台做成单人工具
     uniqueIndex("u_users_tenant_email").on(t.tenantId, t.email),
+    // 成员列表：租户等值 + 最近创建，id 兜平同一时刻
+    index("ix_users_tenant_recent").on(t.tenantId, sql`${t.createdAt} DESC`, t.id),
     // 规范形只留一种：登录查询不许再猜大小写
     check("ck_users_email_lower", sql`${t.email} = lower(${t.email})`),
     check("ck_users_role_known", inEnum(t.role, ROLES)),

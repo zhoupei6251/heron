@@ -2,19 +2,19 @@
 import type { GateState, TaskSummary } from "@heron/contracts";
 import {
   ArrowRight,
-  Refresh,
-  Tickets,
-  VideoCamera,
-  View,
-  Promotion,
-  Warning,
   CircleCheck,
-} from "@element-plus/icons-vue";
+  Clapperboard,
+  Eye,
+  Newspaper,
+  RefreshCw,
+  Send,
+  TriangleAlert,
+} from "lucide-vue-next";
 import { ElAlert, ElButton, ElEmpty, ElIcon, ElTable, ElTableColumn, ElTag } from "element-plus";
 import { onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { request, errorMessage } from "../../api/http";
-import StageTag from "../../components/StageTag.vue";
+import StageTrack from "../../components/StageTrack.vue";
 import { dateTime } from "../../format";
 import { useAuthStore } from "../../stores/auth";
 const auth = useAuthStore();
@@ -59,7 +59,7 @@ onMounted(load);
         </p>
       </div>
       <div class="page-actions">
-        <ElButton :icon="Refresh" :loading="loading" @click="load">刷新概览</ElButton>
+        <ElButton :icon="RefreshCw" :loading="loading" @click="load">刷新概览</ElButton>
       </div>
     </header>
     <ElAlert
@@ -87,19 +87,19 @@ onMounted(load);
       </div>
       <nav class="desk-flow" aria-label="生产流程快捷入口">
         <RouterLink to="/candidates"
-          ><span class="flow-index">01 / DISCOVER</span><ElIcon><Tickets /></ElIcon
+          ><span class="flow-index">01 / DISCOVER</span><ElIcon><Newspaper /></ElIcon
           ><strong>发现选题</strong><span>整理值得关注的线索</span></RouterLink
         >
         <RouterLink to="/production"
-          ><span class="flow-index">02 / PRODUCE</span><ElIcon><VideoCamera /></ElIcon
+          ><span class="flow-index">02 / PRODUCE</span><ElIcon><Clapperboard /></ElIcon
           ><strong>内容生产</strong><span>跟进任务与失败原因</span></RouterLink
         >
         <RouterLink to="/review" class="flow-review"
-          ><span class="flow-index">03 / REVIEW</span><ElIcon><View /></ElIcon
+          ><span class="flow-index">03 / REVIEW</span><ElIcon><Eye /></ElIcon
           ><strong>人工审片</strong><span>确认事实、画面与版本</span></RouterLink
         >
         <RouterLink to="/publish"
-          ><span class="flow-index">04 / DELIVER</span><ElIcon><Promotion /></ElIcon
+          ><span class="flow-index">04 / DELIVER</span><ElIcon><Send /></ElIcon
           ><strong>发布追踪</strong><span>检查回执与发布状态</span></RouterLink
         >
       </nav>
@@ -107,14 +107,14 @@ onMounted(load);
     <div class="stats-grid" :aria-busy="loading">
       <div class="stat-card">
         <div class="stat-label">
-          <span>候选选题</span><ElIcon><Tickets /></ElIcon>
+          <span>候选选题</span><ElIcon><Newspaper /></ElIcon>
         </div>
         <div class="stat-value">{{ overview?.candidates ?? "—" }}</div>
         <div class="stat-note">工作空间候选库</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">
-          <span>生产任务</span><ElIcon><VideoCamera /></ElIcon>
+          <span>生产任务</span><ElIcon><Clapperboard /></ElIcon>
         </div>
         <div class="stat-value">{{ overview?.tasks ?? "—" }}</div>
         <div class="stat-note">全部生产阶段</div>
@@ -128,7 +128,7 @@ onMounted(load);
       </div>
       <div class="stat-card">
         <div class="stat-label">
-          <span>需要处理的失败</span><ElIcon><Warning /></ElIcon>
+          <span>需要处理的失败</span><ElIcon><TriangleAlert /></ElIcon>
         </div>
         <div class="stat-value">{{ overview?.failed ?? "—" }}</div>
         <div class="stat-note">在生产任务中查看完整原因</div>
@@ -159,8 +159,9 @@ onMounted(load);
                 }}
               </div></template
             ></ElTableColumn
-          ><ElTableColumn label="状态" width="120"
-            ><template #default="{ row }"><StageTag :stage="row.stage" /></template></ElTableColumn
+          ><ElTableColumn label="状态" width="150"
+            ><template #default="{ row }"
+              ><StageTrack :stage="row.stage" dense /></template></ElTableColumn
           ><ElTableColumn label="更新" min-width="160"
             ><template #default="{ row }">{{ dateTime(row.updatedAt) }}</template></ElTableColumn
           ></ElTable
@@ -186,7 +187,7 @@ onMounted(load);
                 <ElIcon
                   :class="['gate-indicator', { passed: location.satisfied }]"
                   :aria-label="location.satisfied ? '已满足' : '未满足'"
-                  ><CircleCheck v-if="location.satisfied" /><Warning v-else
+                  ><CircleCheck v-if="location.satisfied" /><TriangleAlert v-else
                 /></ElIcon>
                 <div>
                   <strong>{{ location.gate }}</strong>
@@ -207,9 +208,9 @@ onMounted(load);
 .editorial-desk {
   position: relative;
   overflow: hidden;
-  background: radial-gradient(ellipse at 90% 0%, #3a866859, transparent 65%), var(--heron-hero);
+  background: var(--heron-hero-bg);
   color: var(--heron-hero-ink);
-  border: 1px solid #42745d;
+  border: 1px solid var(--heron-hero-line);
   border-radius: 16px;
   padding: 30px;
   margin-bottom: 24px;
@@ -228,7 +229,7 @@ onMounted(load);
   position: relative;
 }
 .editorial-desk .eyebrow {
-  color: #aed2be;
+  color: var(--heron-hero-accent);
 }
 .editorial-desk h2 {
   font-family: var(--heron-display);
@@ -246,7 +247,7 @@ onMounted(load);
   display: inline-flex;
   align-items: center;
   gap: 16px;
-  color: #d5f6e0;
+  color: var(--heron-hero-accent);
   font-weight: 600;
   font-size: 12px;
   min-height: 40px;
@@ -267,31 +268,31 @@ onMounted(load);
   gap: 9px 5px;
   min-width: 0;
   padding: 17px;
-  border: 1px solid #67988166;
-  border-radius: 10px;
-  background: #0b2d2455;
+  border: 1px solid var(--heron-hero-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--heron-hero-ink) 6%, transparent);
   color: var(--heron-hero-muted);
   transition:
     background 160ms,
+    border-color 160ms,
     transform 160ms;
 }
 .desk-flow > a:hover {
-  background: #ffffff12;
+  background: color-mix(in srgb, var(--heron-hero-ink) 13%, transparent);
+  border-color: color-mix(in srgb, var(--heron-hero-ink) 34%, transparent);
   transform: translateY(-3px);
 }
 .desk-flow .flow-review {
-  border-color: #9ad8b5;
-  background: #ffffff0c;
+  border-color: var(--heron-hero-accent);
+  background: color-mix(in srgb, var(--heron-accent-2) 20%, transparent);
 }
 .flow-index {
-  font:
-    10px/1.6 Consolas,
-    monospace;
+  font: 10px/1.6 var(--heron-mono);
   letter-spacing: 1px;
 }
 .desk-flow .el-icon {
   font-size: 20px;
-  color: #b5e7c7;
+  color: var(--heron-hero-accent);
 }
 .desk-flow strong {
   grid-column: 1 / -1;

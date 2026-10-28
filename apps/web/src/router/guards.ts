@@ -119,7 +119,8 @@ export function installAuthGuards(router: Router): void {
     // 深链接在会话恢复之前就匹配到了兜底路由：身份到手后再按新路由表解析一次。
     if (state.retried === to.fullPath) return true;
     state.retried = to.fullPath;
-    return { path: to.fullPath, replace: true };
+    // 只给 path 会把 fullPath 里的 ?q&page 一并塞进路径而丢掉：查询条件要原样带过去
+    return { path: to.path, query: to.query, hash: to.hash, replace: true };
   });
 
   setUnauthorizedHandler(() => {

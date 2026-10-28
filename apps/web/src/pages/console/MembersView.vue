@@ -7,7 +7,7 @@ import {
   type Member,
 } from "@heron/contracts";
 import { can } from "@heron/domain";
-import { Plus } from "@element-plus/icons-vue";
+import { Plus } from "lucide-vue-next";
 import {
   ElAlert,
   ElButton,
@@ -25,13 +25,15 @@ import {
 } from "element-plus";
 import { computed, onMounted, reactive, ref } from "vue";
 import { request, errorMessage } from "../../api/http";
-import { roleLabel } from "../../auth/roles";
+import { roleLabel, VIEW_FENCE } from "../../auth/roles";
 import ListPanel from "../../components/ListPanel.vue";
 import { usePagedList } from "../../composables/usePagedList";
 import { dateTime } from "../../format";
 import { useAuthStore } from "../../stores/auth";
 const auth = useAuthStore();
 const allowed = computed(() => !!auth.user && can(auth.user.role, "user.manage"));
+/** 查看态读得到成员名单（读接口按 user.manage 设门槛），但增删改都要由该空间的成员执行。 */
+const writable = computed(() => auth.canWrite("user.manage"));
 const list = reactive(usePagedList<Member>("/manage/members", () => allowed.value));
 const drawer = ref(false);
 const target = ref<Member | null>(null);
@@ -116,11 +118,19 @@ onMounted(list.load);
         </p>
       </div>
       <div class="page-actions">
-        <ElButton type="primary" :icon="Plus" :disabled="!allowed" @click="open(null)"
+        <ElButton type="primary" :icon="Plus" :disabled="!writable" @click="open(null)"
           >添加成员</ElButton
         >
       </div>
     </header>
+    <ElAlert
+      v-if="auth.readOnly"
+      :title="VIEW_FENCE"
+      type="info"
+      show-icon
+      :closable="false"
+      class="page-alert"
+    />
     <ElAlert
       v-if="!allowed"
       title="只有工作空间所有者可以管理成员；你仍可在角色权限页查看权限说明。"
@@ -137,14 +147,17 @@ onMounted(list.load);
         :loading="list.loading"
         :error="list.error"
         placeholder="搜索姓名或邮箱"
+        empty-title="还没有成员"
+        empty-hint="邀请同事加入这个工作空间，按角色分配权限。"
         @search="list.search"
         @refresh="list.load"
       >
-        <ElTable
-          :data="list.items"
-          row-key="id"
-          empty-text="暂无成员，点击“添加成员”邀请团队加入。"
-        >
+        <template #empty-action>
+          <ElButton v-if="writable" type="primary" :icon="Plus" @click="open(null)"
+            >添加成员</ElButton
+          >
+        </template>
+        <ElTable :data="list.items" row-key="id">
           <ElTableColumn label="成员" min-width="240"
             ><template #default="{ row }"
               ><div class="cell-title">
@@ -169,12 +182,16 @@ onMounted(list.load);
           >
           <ElTableColumn label="操作" width="180" fixed="right"
             ><template #default="{ row }"
-              ><ElButton link type="primary" :disabled="saving" @click="open(row as Member)"
+              ><ElButton
+                link
+                type="primary"
+                :disabled="!writable || saving"
+                @click="open(row as Member)"
                 >编辑</ElButton
               ><ElButton
                 link
                 :type="row.disabledAt ? 'primary' : 'danger'"
-                :disabled="row.id === auth.user?.id || saving"
+                :disabled="!writable || row.id === auth.user?.id || saving"
                 @click="toggle(row as Member)"
                 >{{ row.disabledAt ? "恢复" : "停用" }}</ElButton
               ></template

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CircleCheck, Minus } from "@element-plus/icons-vue";
+import { CircleCheck, Minus } from "lucide-vue-next";
 import { ROLES } from "@heron/contracts";
 import { ACTIONS, can, type Action } from "@heron/domain";
 import { ElAlert, ElIcon, ElTable, ElTableColumn, ElTag } from "element-plus";

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Refresh } from "@element-plus/icons-vue";
+import { RefreshCw } from "lucide-vue-next";
 import {
   ElAlert,
   ElButton,
@@ -50,7 +50,7 @@ onMounted(load);
         </p>
       </div>
       <div class="page-actions">
-        <ElButton :icon="Refresh" :loading="loading" @click="load">重新检查</ElButton>
+        <ElButton :icon="RefreshCw" :loading="loading" @click="load">重新检查</ElButton>
       </div>
     </header>
     <ElAlert

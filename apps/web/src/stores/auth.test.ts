@@ -236,7 +236,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-const credentials = { tenant: "acme", identifier: USER.email, password: "password-long-enough" };
+const credentials = { identifier: USER.email, password: "password-long-enough" };
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 
 describe.each(["tenant", "platform"] as const)("%s session interleavings", (scope) => {
@@ -371,6 +371,67 @@ describe.each(["tenant", "platform"] as const)("%s session interleavings", (scop
     await pending;
     expect(handler).not.toHaveBeenCalled();
     expect(store().session?.kind).toBe(scope);
+  });
+});
+
+describe("切换工作空间（平台运营 view-as）", () => {
+  const OTHER_TENANT = "00000000-0000-4000-8000-000000000002";
+  /** 服务端的查看态身份固定给 owner：够格读全部页面，写由 scope 拦。 */
+  const viewSession = (tenantName: string): ConsoleSession => ({
+    kind: "tenant",
+    user: { ...USER, role: "owner", tenantName, scope: "platform-view" },
+    ...consoleAccess("owner"),
+  });
+
+  it("换到第二家时，第一家迟到的回执不许盖掉当前空间", async () => {
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise),
+    );
+    const store = useAuthStore();
+    store.session = platformSession();
+    const enteringFirst = store.switchWorkspace(USER.tenantId);
+    const enteringSecond = store.switchWorkspace(OTHER_TENANT);
+    first.resolve(response(viewSession("A 台")));
+    expect(await enteringFirst).toBe(false);
+    expect(store.session?.kind).toBe("platform");
+    second.resolve(response(viewSession("B 台")));
+    expect(await enteringSecond).toBe(true);
+    expect(store.user?.tenantName).toBe("B 台");
+    expect(store.user?.scope).toBe("platform-view");
+  });
+
+  it("切换失败只报原因，不许把正在看的那个空间丢掉", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ message: "以平台身份查看工作空间是只读的" }), {
+            status: 403,
+          }),
+        ),
+      ),
+    );
+    const store = useAuthStore();
+    store.session = viewSession("A 台");
+    expect(await store.switchWorkspace(OTHER_TENANT)).toBe(false);
+    expect(store.user?.tenantName).toBe("A 台");
+    expect(store.error).toBe("以平台身份查看工作空间是只读的");
+  });
+
+  it("查看态角色够格也写不了，但读权限照旧", () => {
+    const store = useAuthStore();
+    store.session = viewSession("A 台");
+    expect(store.readOnly).toBe(true);
+    expect(store.canWrite("settings.write")).toBe(false);
+    expect(store.canWrite("task.claim")).toBe(false);
+    // 页面可见性与读接口仍看角色：查看态只是不许动手，不是不许看
+    expect(can(store.user!.role, "settings.write")).toBe(true);
+    store.session = tenantSession("owner");
+    expect(store.readOnly).toBe(false);
+    expect(store.canWrite("settings.write")).toBe(true);
   });
 });
 

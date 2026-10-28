@@ -4,8 +4,11 @@ import type { Role } from "@heron/contracts";
 import { and, eq, isNull } from "drizzle-orm";
 
 import { nowIso } from "../time";
+import { withAdmin } from "./admin";
 import type { TenantDb } from "./rls";
-import { users } from "./schema/index";
+import type { Db } from "./driver";
+import type { TenantRef } from "./tenants";
+import { tenants, users } from "./schema/index";
 
 export interface NewUser {
   email: string;
@@ -105,6 +108,30 @@ export async function getUserById(tdb: TenantDb, userId: string): Promise<PgUser
     .where(and(eq(users.tenantId, tdb.tenantId), eq(users.id, userId)))
     .limit(1);
   return rows[0] ?? null;
+}
+
+/**
+ * 登录时人只报邮箱：把他可能在的那些有效工作空间找出来。
+ *
+ * 特权通道（与 tenants.ts 的 slug 定位同理）：这一刻还没有可信租户坐标，拿邮箱去设 GUC
+ * 等于让请求自己选租户。返回的是**候选**，不是身份——调用方必须逐个验口令，
+ * 只有恰好一个通过才算登录成功；两个以上通过就是「同名邮箱 + 同口令」，宁可拒。
+ */
+export async function findLoginTenantsByEmail(db: Db, email: string): Promise<TenantRef[]> {
+  const normalized = email.trim().toLowerCase();
+  return withAdmin(db, (a) =>
+    a.db
+      .select({
+        id: tenants.id,
+        name: tenants.name,
+        slug: tenants.slug,
+        suspendedAt: tenants.suspendedAt,
+      })
+      .from(users)
+      .innerJoin(tenants, eq(tenants.id, users.tenantId))
+      .where(and(eq(users.email, normalized), isNull(tenants.suspendedAt)))
+      .orderBy(tenants.createdAt, tenants.id),
+  );
 }
 
 /** 停用是软关闭：留行、留哈希，只把登录口关上（撤销已签发的 token 靠守卫那次回库复查）。 */

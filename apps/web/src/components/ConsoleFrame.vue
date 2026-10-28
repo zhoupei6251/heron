@@ -1,23 +1,24 @@
 <script setup lang="ts">
 import {
   ArrowRight,
-  Connection,
-  DataAnalysis,
-  DocumentChecked,
-  FolderOpened,
+  Building2,
+  ChartColumnBig,
+  CircleUser,
+  Clapperboard,
+  Eye,
+  FileCheck,
+  FolderOpen,
+  Gauge,
   House,
-  Key,
-  Monitor,
-  OfficeBuilding,
-  Promotion,
-  Setting,
-  SwitchButton,
-  Tickets,
-  User,
-  UserFilled,
-  VideoCamera,
-  View,
-} from "@element-plus/icons-vue";
+  KeyRound,
+  LayoutDashboard,
+  LogOut,
+  Newspaper,
+  Rss,
+  Send,
+  Settings,
+  Users,
+} from "lucide-vue-next";
 import { ElAvatar, ElButton, ElIcon, ElTag } from "element-plus";
 import { computed, type Component } from "vue";
 import { RouterLink, useRoute } from "vue-router";
@@ -28,6 +29,7 @@ import { roleLabel } from "../auth/roles";
 import { useAuthStore } from "../stores/auth";
 import CommandPalette from "./CommandPalette.vue";
 import ThemeSwitcher from "./ThemeSwitcher.vue";
+import WorkspaceSwitcher from "./WorkspaceSwitcher.vue";
 
 const props = defineProps<{ connected?: boolean; signingOut: boolean }>();
 defineEmits<{ logout: [] }>();
@@ -38,32 +40,36 @@ const route = useRoute();
 /** 图标是纯展示，不进契约：后端只管 id / 路径 / 文案 / 分组。 */
 const ICONS: Record<ConsoleMenu["id"], Component> = {
   overview: House,
-  candidates: Tickets,
-  production: VideoCamera,
-  review: View,
-  publish: Promotion,
-  library: FolderOpened,
-  members: User,
-  roles: Key,
-  feeds: Connection,
-  settings: Setting,
-  usage: DataAnalysis,
-  audit: DocumentChecked,
-  profile: UserFilled,
-  "platform-overview": House,
-  tenants: OfficeBuilding,
-  "platform-usage": DataAnalysis,
-  "platform-audit": DocumentChecked,
-  health: Monitor,
+  candidates: Newspaper,
+  production: Clapperboard,
+  review: Eye,
+  publish: Send,
+  library: FolderOpen,
+  members: Users,
+  roles: KeyRound,
+  feeds: Rss,
+  settings: Settings,
+  usage: ChartColumnBig,
+  audit: FileCheck,
+  profile: CircleUser,
+  "platform-overview": LayoutDashboard,
+  tenants: Building2,
+  "platform-usage": ChartColumnBig,
+  "platform-audit": FileCheck,
+  health: Gauge,
 };
 
 const platform = computed(() => auth.session?.kind === "platform");
 const tenant = computed(() => (auth.session?.kind === "tenant" ? auth.session.user : null));
+/** 平台运营以查看态进了某个空间：界面是租户那一套，但身份和写权限都不是这个空间的。 */
+const viewing = computed(() => tenant.value?.scope === "platform-view");
 const workspace = computed(() => tenant.value?.tenantName ?? "heron 平台");
 const name = computed(() => auth.session?.user.displayName ?? "");
-const role = computed(() =>
-  auth.session?.kind === "tenant" ? roleLabel(auth.session.user.role) : "平台管理员",
-);
+const role = computed(() => {
+  if (platform.value) return "平台管理员";
+  if (viewing.value) return "平台运营 · 只读";
+  return tenant.value ? roleLabel(tenant.value.role) : "";
+});
 const home = computed(() => auth.menus[0]?.path ?? "/");
 const profilePath = computed(() => auth.menus.find((menu) => menu.id === "profile")?.path);
 
@@ -112,7 +118,13 @@ const currentTitle = computed(
         <span class="workspace-symbol">{{ platform ? "P" : workspace.slice(0, 1) }}</span>
         <div>
           <strong>{{ workspace }}</strong
-          ><span>{{ platform ? "运营与内容权限相互隔离" : "你的内容生产空间" }}</span>
+          ><span>{{
+            platform
+              ? "运营与内容权限相互隔离"
+              : viewing
+                ? "以平台身份查看，改动由该空间的成员执行"
+                : "你的内容生产空间"
+          }}</span>
         </div>
       </div>
       <nav class="console-nav" :aria-label="platform ? '平台导航' : '工作空间导航'">
@@ -132,7 +144,13 @@ const currentTitle = computed(
       </nav>
       <div class="sidebar-foot">
         <span class="status-dot"></span>
-        {{ platform ? "平台账号看不到任何租户内容" : "每一次发布，都经过你的确认" }}
+        {{
+          platform
+            ? "从右上角选一家，即可查看它的数据"
+            : viewing
+              ? "只读查看：这一家的改动由其成员执行"
+              : "每一次发布，都经过你的确认"
+        }}
       </div>
     </aside>
     <div class="console-body">
@@ -142,6 +160,7 @@ const currentTitle = computed(
           ><ElIcon><ArrowRight /></ElIcon><strong>{{ currentTitle }}</strong>
         </div>
         <div class="topbar-actions">
+          <WorkspaceSwitcher />
           <CommandPalette :items="commandItems" />
           <ThemeSwitcher />
           <span v-if="!platform" class="connection-status"
@@ -163,7 +182,7 @@ const currentTitle = computed(
           >
           <ElButton
             text
-            :icon="SwitchButton"
+            :icon="LogOut"
             :loading="signingOut"
             aria-label="退出登录"
             title="退出登录"

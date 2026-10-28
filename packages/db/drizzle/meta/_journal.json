@@ -36,6 +36,20 @@
       "when": 1793170000000,
       "tag": "0004_platform_username",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793170000001,
+      "tag": "0005_tenant_first_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793170000002,
+      "tag": "0006_list_order_indexes",
+      "breakpoints": true
     }
   ]
 }
