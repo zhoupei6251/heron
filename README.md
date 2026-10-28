@@ -81,7 +81,7 @@ HERON_DEV_API_URL=http://127.0.0.1:3101 pnpm web:dev
 | 命令                           | 作用                                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------------------- |
 | `pnpm check`                   | 出口判据：`format:check → lint → typecheck → test`，四步全绿才算过                    |
-| `pnpm typecheck`               | 七个包各自 `tsc -p`，web 走 `vue-tsc`                                                 |
+| `pnpm typecheck`               | 八个包各自 `tsc -p`，web 走 `vue-tsc`                                                 |
 | `pnpm lint` / `lint:fix`       | ESLint 10 flat config，带类型感知；`reference/` 不扫                                  |
 | `pnpm format` / `format:check` | Prettier，`docs/` 不动（规格书的排版是手排的）                                        |
 | `pnpm test`                    | vitest：domain 判定 + db 约束 + api 会话 + worker 流水线（review 停/人确认/发布幂等） |
@@ -211,6 +211,8 @@ cron 不继承登录 shell 的 PATH，所以写死一份：这台机器上 `dock
   **不接仓库的自部署者照样起**，ACR 因此是加速器不是前提（与 Redis 同一条规矩）。
 - `dev` 是日常开发分支，`main` 才是发版线：ACR 不跑测试，推上去就构建、构建完就被拉走，
   所以 `main` 只接住过了 `pnpm check` 的提交。想把这台机器切成开发线，把 `HERON_IMAGE` 换成 `:dev`。
+- GitHub Actions（`.github/workflows/check.yml`）在推 `dev`/`main` 与 PR 上跑 `pnpm check` 和
+  `pnpm web:build`：ACR 那一步只证明镜像能构建，不证明代码能过闸；版式包的构建错误也只有这里能拦住。
 - 发版是「换容器」不是「原地更新」：新容器起不来，旧的一直服务到它起来为止。回滚就是把 `HERON_IMAGE`
   改回上一个版本号（`latest` 本身只有一个，改它等于没有回滚），版本号靠打 tag 产出：
   `git tag release-v0.1.0 && git push --tags` → 内置规则出 `:0.1.0`。
@@ -247,3 +249,7 @@ serverless（V8 isolate 没有子进程与 ffmpeg/Chromium）· 无人值守自�
 改为落地——决策、代价与顺序见 [docs/plans/2026-10-22-saas-multi-tenant-plan-1.md](docs/plans/2026-10-22-saas-multi-tenant-plan-1.md)。
 队列中间件（Redis + BullMQ）同批翻案，但只让它当派发：job 里只有一个 taskId，状态机、租约、尝试次数
 与闸痕全在 Postgres 的 tasks 表；REDIS_URL 不配时 worker 退回自己轮询，Redis 因此不是前提。
+
+## 许可
+
+MIT，见 [LICENSE](LICENSE)。

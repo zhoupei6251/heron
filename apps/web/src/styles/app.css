@@ -967,6 +967,11 @@ h3 {
     overflow-x: auto;
     padding: 0 12px 10px;
     gap: 15px;
+    /* 横向滚动条会在头部压出一条灰带；右侧截断的菜单项本身就是可继续滑动的提示 */
+    scrollbar-width: none;
+  }
+  .console-nav::-webkit-scrollbar {
+    display: none;
   }
   .nav-group {
     display: flex;
