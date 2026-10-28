@@ -66,12 +66,12 @@ onMounted(() => {
   flex-direction: column;
   overflow: hidden;
   padding: 132px 96px 116px;
-  color: #f4f5fb;
+  color: #f2f7f8;
   font-family:
     "Space Grotesk Variable", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
   background:
-    radial-gradient(120% 62% at 92% 0%, rgba(124, 58, 237, 0.24), transparent 62%),
-    radial-gradient(90% 52% at 0% 100%, rgba(79, 70, 229, 0.2), transparent 60%), #0b0e1a;
+    radial-gradient(120% 62% at 92% 0%, rgba(90, 169, 191, 0.24), transparent 62%),
+    radial-gradient(90% 52% at 0% 100%, rgba(27, 108, 128, 0.2), transparent 60%), #0a1417;
 }
 .watermark {
   position: absolute;
@@ -82,7 +82,7 @@ onMounted(() => {
   line-height: 1;
   letter-spacing: -0.06em;
   color: transparent;
-  -webkit-text-stroke: 2px rgba(226, 232, 255, 0.07);
+  -webkit-text-stroke: 2px rgba(226, 240, 242, 0.07);
   pointer-events: none;
 }
 .pack-top {
@@ -94,10 +94,10 @@ onMounted(() => {
   font-size: 28px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #9aa3c7;
+  color: #97abb0;
 }
 .pack-top .kicker {
-  color: #c4b5fd;
+  color: #8ad2e0;
 }
 .pack-body {
   position: relative;
@@ -120,19 +120,19 @@ onMounted(() => {
   height: 8px;
   border-radius: 4px;
   margin: 46px 0 40px;
-  background: linear-gradient(90deg, #7c3aed, #4f46e5);
+  background: linear-gradient(90deg, #5aa9bf, #1b6c80);
 }
 .onscreen {
   font-size: 52px;
   font-weight: 500;
   line-height: 1.4;
-  color: #c4b5fd;
+  color: #8ad2e0;
   margin: 0 0 30px;
 }
 .body {
   font-size: 46px;
   line-height: 1.62;
-  color: #c9cee4;
+  color: #c3d2d5;
   margin: 0;
 }
 .pack-foot {
@@ -143,18 +143,18 @@ onMounted(() => {
   align-items: center;
   gap: 28px;
   padding-top: 38px;
-  border-top: 1px solid rgba(226, 232, 255, 0.14);
+  border-top: 1px solid rgba(226, 240, 242, 0.14);
   font-size: 26px;
 }
 .source {
-  color: #8d95b8;
+  color: #83999e;
 }
 .declaration {
   flex-shrink: 0;
   padding: 12px 24px;
-  border: 1px solid rgba(226, 232, 255, 0.24);
+  border: 1px solid rgba(226, 240, 242, 0.24);
   border-radius: 999px;
-  color: #eef0ff;
+  color: #eaf3f4;
   font-size: 24px;
   letter-spacing: 0.02em;
 }

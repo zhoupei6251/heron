@@ -11,9 +11,9 @@
   --heron-ink: #131a2a;
   --heron-muted: #5b6577;
   --heron-line: #e3e7f0;
-  --heron-accent: #4f46e5;
-  --heron-accent-2: #7c3aed;
-  --heron-grad: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --heron-accent: #1b6c80;
+  --heron-accent-2: #5aa9bf;
+  --heron-grad: linear-gradient(135deg, #1b6c80, #5aa9bf);
   --heron-shadow: 0 1px 2px #131a2a0c, 0 12px 32px -14px #131a2a24;
   --heron-shadow-lift: 0 2px 6px #131a2a0f, 0 26px 50px -20px #131a2a33;
   --heron-display: "Space Grotesk Variable", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -23,16 +23,16 @@
   --heron-glass-line: rgba(19, 26, 42, 0.09);
   --heron-blur: 16px;
   /* 侧栏自成一套暗底 token，亮/暗主题各自重映射，省掉一整组 html.dark 覆盖。 */
-  --heron-sidebar: #0e1020;
-  --heron-side-ink: #c7cbe4;
-  --heron-side-strong: #f5f6ff;
-  --heron-side-muted: #8a90b6;
-  --heron-side-hover: #1b1f3c;
-  --heron-side-active: #262c5c;
-  --heron-side-line: #232848;
-  --heron-side-badge: #1a1e3a;
-  --heron-side-accent: #c4b5fd;
-  --heron-hero: #0f1230;
+  --heron-sidebar: #0b1417;
+  --heron-side-ink: #c2ced2;
+  --heron-side-strong: #f2f7f8;
+  --heron-side-muted: #84999e;
+  --heron-side-hover: #132428;
+  --heron-side-active: #14353d;
+  --heron-side-line: #1e3036;
+  --heron-side-badge: #13262b;
+  --heron-side-accent: #8ad2e0;
+  --heron-hero: #0c1a1e;
   --heron-hero-ink: #f1f2ff;
   --heron-hero-muted: #a9aecd;
   /* 深色叙事面板（登录页 + 两个总览页头）共用一套；派生自上面的主题 token，暗色无需重映射。 */
@@ -52,13 +52,13 @@
   --heron-hero-accent: color-mix(in srgb, var(--heron-accent-2) 55%, var(--heron-hero-ink));
   /* 播放器/联络表的中性暗底：不能带品牌色，否则成片调色看起来像界面的一部分。 */
   --heron-stage: #0b0e1a;
-  --el-color-primary: #4f46e5;
-  --el-color-primary-light-3: #837ded;
-  --el-color-primary-light-5: #a7a2f2;
-  --el-color-primary-light-7: #cac7f7;
-  --el-color-primary-light-8: #dcdafa;
-  --el-color-primary-light-9: #ededfc;
-  --el-color-primary-dark-2: #3f38b7;
+  --el-color-primary: #1b6c80;
+  --el-color-primary-light-3: #5f98a6;
+  --el-color-primary-light-5: #8db6c0;
+  --el-color-primary-light-7: #bbd3d9;
+  --el-color-primary-light-8: #d1e2e6;
+  --el-color-primary-light-9: #e8f0f2;
+  --el-color-primary-dark-2: #165666;
   --el-color-success: #047857;
   --el-color-warning: #b45309;
   --el-color-danger: #dc2626;
@@ -84,23 +84,23 @@ html.dark {
   --heron-ink: #e7e9f4;
   --heron-muted: #98a0b8;
   --heron-line: #262b3d;
-  --heron-accent: #8b7cf6;
-  --heron-accent-2: #a78bfa;
-  --heron-grad: linear-gradient(135deg, #6d5ce0, #8b5cf6);
+  --heron-accent: #5fb3c9;
+  --heron-accent-2: #86d2e0;
+  --heron-grad: linear-gradient(135deg, #4e9fb5, #7cc9da);
   --heron-shadow: 0 1px 2px #00000040, 0 14px 34px -16px #00000066;
   --heron-shadow-lift: 0 2px 8px #00000050, 0 28px 54px -22px #00000080;
   --heron-glass: rgba(18, 21, 31, 0.74);
   --heron-glass-line: rgba(255, 255, 255, 0.08);
-  --heron-sidebar: #070910;
-  --heron-side-ink: #b6bbd6;
-  --heron-side-strong: #eef0ff;
-  --heron-side-muted: #7a80a2;
-  --heron-side-hover: #141830;
-  --heron-side-active: #1d2350;
-  --heron-side-line: #1a1e33;
-  --heron-side-badge: #171b32;
-  --heron-side-accent: #a5b4fc;
-  --heron-hero: #12162f;
+  --heron-sidebar: #060d0e;
+  --heron-side-ink: #b0c3c7;
+  --heron-side-strong: #eaf3f4;
+  --heron-side-muted: #74898e;
+  --heron-side-hover: #101f22;
+  --heron-side-active: #12303a;
+  --heron-side-line: #17282c;
+  --heron-side-badge: #122428;
+  --heron-side-accent: #7cc9da;
+  --heron-hero: #0e1d20;
   --el-bg-color: var(--heron-surface);
   --el-bg-color-page: var(--heron-bg);
   --el-bg-color-overlay: #1a1e2c;
@@ -108,13 +108,13 @@ html.dark {
   --el-text-color-regular: #c3c9dd;
   --el-text-color-secondary: var(--heron-muted);
   --el-text-color-placeholder: #7f879f;
-  --el-color-primary: #8b7cf6;
-  --el-color-primary-light-3: #6a5cd0;
-  --el-color-primary-light-5: #544aa8;
-  --el-color-primary-light-7: #3d3781;
-  --el-color-primary-light-8: #322d6b;
-  --el-color-primary-light-9: #272354;
-  --el-color-primary-dark-2: #a79bfa;
+  --el-color-primary: #5fb3c9;
+  --el-color-primary-light-3: #4b9cb1;
+  --el-color-primary-light-5: #3f8498;
+  --el-color-primary-light-7: #336c7c;
+  --el-color-primary-light-8: #2d5e6c;
+  --el-color-primary-light-9: #244c58;
+  --el-color-primary-dark-2: #7cc9da;
   --el-color-success: #34d399;
   --el-color-warning: #fbbf24;
   --el-color-danger: #f87171;
@@ -129,9 +129,9 @@ html.dark {
   --el-mask-color: #0a0c15cc;
 }
 html.dark .el-button--primary:not(.is-link):not(.is-text):not(.is-plain) {
-  --el-button-text-color: #0d0b1f;
-  --el-button-hover-text-color: #0d0b1f;
-  --el-button-active-text-color: #0d0b1f;
+  --el-button-text-color: #071618;
+  --el-button-hover-text-color: #071618;
+  --el-button-active-text-color: #071618;
 }
 * {
   box-sizing: border-box;
@@ -692,6 +692,29 @@ h3 {
   text-transform: uppercase;
   color: var(--heron-muted);
   margin-bottom: 10px;
+}
+/* 额度表：三条进度条并排，窄屏自动叠起来。数字等宽，好逐月对着看。 */
+.quota-gauges {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 18px 28px;
+}
+.quota-meter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--heron-muted);
+  margin-bottom: 8px;
+}
+.quota-meter-head .mono {
+  color: var(--heron-ink);
+  font-variant-numeric: tabular-nums;
+}
+.quota-gauges + .quota-foot,
+.quota-gauges + .form-hint {
+  margin-top: 18px;
 }
 .form-actions {
   margin-top: 24px;
