@@ -2,8 +2,9 @@ import { cleanupArtifacts } from "./cleanup";
 import { collectFeeds } from "./collect";
 import { connectWorkerDb } from "./db";
 import { MAX_ATTEMPTS, OWNER } from "./config";
+import { tickProto } from "./proto";
 import { createMutex, startQueueWorker } from "./queue";
-import { recoverLeases } from "./scheduler";
+import { recoverLeases, recoverProtoLeases } from "./scheduler";
 import { tick } from "./tick";
 
 const MIN_NODE_MAJOR = 24;
@@ -98,8 +99,9 @@ async function main(): Promise<void> {
   const runExclusive = createMutex();
   const worker = startQueueWorker(db, runExclusive);
   const recovery = await recoverLeases(db);
+  const protoRecovery = await runExclusive(() => recoverProtoLeases(db));
   console.log(
-    `worker 启动（${OWNER}），${worker ? "BullMQ 派发 + 60s 轮询兜底" : "串行轮询领任务（未配 REDIS_URL）"}；重启恢复：回队 ${recovery.returned.length} 条，判死 ${recovery.failed.length} 条（最多重试 ${MAX_ATTEMPTS} 次）`,
+    `worker 启动（${OWNER}），${worker ? "BullMQ 派发 + 60s 轮询兜底" : "串行轮询领任务（未配 REDIS_URL）"}；重启恢复：回队 ${String(recovery.returned.length)} 条，判死 ${String(recovery.failed.length)} 条（最多重试 ${String(MAX_ATTEMPTS)} 次）；原型回队 ${String(protoRecovery.returned.length)} 个，判死 ${String(protoRecovery.failed.length)} 个`,
   );
 
   const collection = recurring("本轮采集失败", COLLECT_INTERVAL_MS, async () => {
@@ -123,7 +125,9 @@ async function main(): Promise<void> {
   const idleMs = worker ? POLL_WITH_QUEUE_MS : POLL_ONLY_MS;
   while (!stopping) {
     try {
-      const result = await runExclusive(() => tick(db));
+      // 新闻线优先：两条线共用同一把互斥锁，一次只推一条
+      const result =
+        (await runExclusive(() => tick(db))) ?? (await runExclusive(() => tickProto(db)));
       if (result) console.log(result);
     } catch (cause) {
       // 单轮失败不退出：库抖动时 worker 重试，而不是让 compose 反复重启它

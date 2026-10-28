@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SESSION_COOKIE, apiHost, cookieSecure, jwtSecret } from "./runtime";
+import { SESSION_COOKIE, apiHost, cookieSecure, jwtSecret, protoMaxInflight } from "./runtime";
 
 /**
  * 这一层是唯一读认证相关环境变量的地方。两条规矩都在这里钉：
@@ -10,6 +10,7 @@ import { SESSION_COOKIE, apiHost, cookieSecure, jwtSecret } from "./runtime";
 const ORIGINAL = process.env.HERON_JWT_SECRET;
 const ORIGINAL_SECURE = process.env.HERON_COOKIE_SECURE;
 const ORIGINAL_HOST = process.env.HOST;
+const ORIGINAL_MAX_INFLIGHT = process.env.PROTO_MAX_INFLIGHT;
 
 afterEach(() => {
   if (ORIGINAL === undefined) delete process.env.HERON_JWT_SECRET;
@@ -18,6 +19,8 @@ afterEach(() => {
   else process.env.HERON_COOKIE_SECURE = ORIGINAL_SECURE;
   if (ORIGINAL_HOST === undefined) delete process.env.HOST;
   else process.env.HOST = ORIGINAL_HOST;
+  if (ORIGINAL_MAX_INFLIGHT === undefined) delete process.env.PROTO_MAX_INFLIGHT;
+  else process.env.PROTO_MAX_INFLIGHT = ORIGINAL_MAX_INFLIGHT;
 });
 
 describe("jwtSecret", () => {
@@ -68,5 +71,20 @@ describe("apiHost", () => {
     expect(apiHost()).toBe("127.0.0.1");
     process.env.HOST = "0.0.0.0";
     expect(apiHost()).toBe("0.0.0.0");
+  });
+});
+
+describe("protoMaxInflight", () => {
+  it("默认 3；只认正整数，把上限读成「不限」等于没有上限", () => {
+    delete process.env.PROTO_MAX_INFLIGHT;
+    expect(protoMaxInflight()).toBe(3);
+    process.env.PROTO_MAX_INFLIGHT = "   ";
+    expect(protoMaxInflight()).toBe(3);
+    process.env.PROTO_MAX_INFLIGHT = "5";
+    expect(protoMaxInflight()).toBe(5);
+    for (const raw of ["0", "-1", "abc", "1.5"]) {
+      process.env.PROTO_MAX_INFLIGHT = raw;
+      expect(() => protoMaxInflight()).toThrow(/PROTO_MAX_INFLIGHT/);
+    }
   });
 });

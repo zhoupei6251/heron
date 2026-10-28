@@ -21,6 +21,27 @@ export const HERON_HOME = process.env.HERON_HOME ?? join(REPO_ROOT, "data");
 /** 成片与诊断产物。DB 只存路径，文件本体落在这里（api 与 worker 共享同一个卷）。 */
 export const VIDEOS_DIR = join(HERON_HOME, "videos");
 
+/** 原型产物（RP/1 源码、引擎编译结果、.rp 工程）。与成片同理：库只存指纹，文件在盘上。 */
+export const PROTOS_DIR = join(HERON_HOME, "protos");
+
+/**
+ * 原型产物的目录布局只有这一处：worker 往里写、api 从里读，
+ * 两边各拼一遍路径就会在「改了一个 join」之后互相对不上——那是不报错的那种错。
+ */
+export function protoArtifacts(projectId: string, version: number, root: string = PROTOS_DIR) {
+  const dir = join(root, projectId, `v${String(version)}`);
+  const engineDir = join(dir, "engine");
+  return {
+    dir,
+    source: join(dir, "source.json"),
+    engineDir,
+    plan: join(engineDir, "compile-plan.json"),
+    audit: join(engineDir, "audit-report.json"),
+    preview: join(engineDir, "pages-sheet.png"),
+    rp: join(dir, "prototype.rp"),
+  };
+}
+
 export const LEASE_TTL_SEC = 60;
 
 /**

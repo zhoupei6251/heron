@@ -1,14 +1,18 @@
 import "reflect-metadata";
 
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, createHash } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
 
 import { Test } from "@nestjs/testing";
 
+import { protoArtifacts } from "@heron/db";
 import {
   createCandidate,
   createPlatformOperator,
   createTenant,
   recordUsage,
+  protoProjects,
+  protoRevisions,
   tasks,
   createUser,
   migrate,
@@ -23,15 +27,13 @@ import { API_PORT } from "../config/runtime";
 import { PG_DB } from "../db/pg";
 import { applyTransport } from "../transport";
 
-/**
- * 开发台的「真 API + 内存库」：T11 之前 Docker 没起，浏览器验证不能靠假接口。
- *
- * 它跑的是**生产同一条 transport 与全部业务路由**，只把 PgModule 的 provider 换成 pglite
- * （与 api 的 e2e 同一个做法）。数据只活在进程里：重启即清空，不写任何磁盘。
- *
- * 口令不写默认值：HERON_DEMO_PASSWORD 必须由人给（至少 10 位），缺了就拒绝启动。
- * JWT 密钥缺省时随机生成——每次重启换一把，旧会话随之作废，这是内存库下应有的行为。
- */
+// 数据库重启即清空；演示产物落 HERON_HOME，固定 ID 防止重启后重复堆积。
+const DEMO_PROTO_REVIEW_ID = "de000000-0000-4000-8000-000000000001";
+const DEMO_PROTO_FAILED_ID = "de000000-0000-4000-8000-000000000002";
+/** 一张线框占位图（真 PNG）：预览链接与图片标签都要有能渲染的字节。 */
+const DEMO_PREVIEW_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAPAAAACWCAIAAABvmpKCAAACcElEQVR4nO3aoW0dQBRFwV+daZp2DYYBkcIMDMyTBgL98nWP5+oUsFoNfI8fL7+lTI+nv0D6woBWKqCVCmilAlqpgFYqoJUKaKUCWqmAViqglQpopQJaqYBWKqCVCmilAlqpHu/vnxO9vr5N98f+y4AGOjWggU4NaKBTAxro1IAGOjWggU4NaKBTAxro1IAGOjWggU4NaKBTAxro1IAGOjWggU4NaKBTmwH97I+yjQFtqQFtqQFtqQFtqQFtqQFtqQFtqQFtqQFtqZVB//z1oZWABjoV0ECnAhroVEADnQpooFMBDXQqoIFOBTTQqYAGOhXQQKcCGuhUQAOdCmigUwENdCqggU4FNNCpgAY6FdBApwIa6FRAA50KaKBTAQ10KqCBTgU00KmABjoV0ECnAhroVEADnQpooFMBDXQqoIFOBTTQqYAGOhXQQKcCGuhUQAOdCmigUwENdCqggU4FNNCpgAY6FdBApwIa6FRAA50KaKBTAQ10KqCBTgU00KmABjoV0ECnAhroVEADnQpooFMBDXQqoIFOBTTQqYAGOhXQQKcC2uwfA9pSA9pSA9pSA9pSA9pSA9pSA9pSA9pSA9pSA9pSK4N++n3C1hVEY0DPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieGXQ9g0HtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKX2F4LdKN4pyxcGAAAAAElFTkSuQmCC";
+
 async function main(): Promise<void> {
   const password = process.env.HERON_DEMO_PASSWORD ?? "";
   if (password.length < MIN_PASSWORD_LENGTH || password.length > 128) {
@@ -52,9 +54,13 @@ async function main(): Promise<void> {
     ["reviewer@example.com", "reviewer", "演示审核员"],
     ["viewer@example.com", "viewer", "演示只读"],
   ] as const;
+  const userId = new Map<string, string>();
   for (const [email, role, displayName] of accounts) {
-    await withTenant(db, tenantId, (t) =>
-      createUser(t, { email, displayName, passwordHash: hashPassword(password), role }),
+    userId.set(
+      role,
+      await withTenant(db, tenantId, (t) =>
+        createUser(t, { email, displayName, passwordHash: hashPassword(password), role }),
+      ),
     );
   }
 
@@ -103,6 +109,106 @@ async function main(): Promise<void> {
       recordUsage(t, { kind, quantity, unit: USAGE_KIND_UNITS[kind], detail: { demo: true } }),
     );
   }
+
+  // 原型工坊的演示行：状态、版本、四道闸与产物凭证都要在页面上看得见，所以产物文件也真落盘——
+  // 下载接口逐次校验盘上指纹，只插库行的假数据验不出预览、下载与确认这条链。
+  const demoArt = protoArtifacts(DEMO_PROTO_REVIEW_ID, 2);
+  const demoPreview = Buffer.from(DEMO_PREVIEW_PNG, "base64");
+  const demoRp = Buffer.from("【演示数据】不是 Axure 工程，只用来验证下载与指纹校验。\n");
+  const demoSource = `${JSON.stringify({ pages: [{ name: "工单列表", components: [] }] }, null, 2)}\n`;
+  const demoAudit = {
+    gates: { color_ok: true, font_ok: true, semantic_naming_ok: true, group_coverage_ok: true },
+    coverage: {
+      font: { passed: 42, applicable: 42 },
+      semanticNaming: { passed: 31, applicable: 39 },
+      groupCoverage: { passed: 12, applicable: 12 },
+    },
+  };
+  mkdirSync(demoArt.engineDir, { recursive: true });
+  writeFileSync(demoArt.source, demoSource);
+  writeFileSync(demoArt.audit, `${JSON.stringify(demoAudit, null, 2)}\n`);
+  writeFileSync(demoArt.preview, demoPreview);
+  writeFileSync(demoArt.rp, demoRp);
+  const previousArt = protoArtifacts(DEMO_PROTO_REVIEW_ID, 1);
+  mkdirSync(previousArt.dir, { recursive: true });
+  writeFileSync(previousArt.source, demoSource);
+
+  const sha = (data: Buffer): string => createHash("sha256").update(data).digest("hex");
+  const engineDown =
+    "原型引擎未就绪：未配置 ZEE_RP_HOME：原型生成需要 zee-rp 引擎；未配置 AXURE_BLANK_TEMPLATE_RP9：装配 .rp 需要一份 Axure RP9 空白工程模板";
+  const demoAt = new Date().toISOString();
+  await withTenant(db, tenantId, async (t) => {
+    await t.db.insert(protoProjects).values([
+      {
+        id: DEMO_PROTO_REVIEW_ID,
+        tenantId,
+        title: "【演示数据】客服工单后台",
+        requirement:
+          "三页：工单列表（筛选状态与优先级、点行进详情）、工单详情（时间线加处理输入框）、新建工单表单。" +
+          "配色收敛在一套品牌蓝，正文用系统中文字体。仅供界面验收，不是真原型。",
+        target: "web",
+        theme: "enterprise-light",
+        stage: "review",
+        errorReason: null,
+        attempts: 2,
+        createdBy: userId.get("owner") ?? null,
+        createdAt: demoAt,
+        updatedAt: demoAt,
+      },
+      {
+        id: DEMO_PROTO_FAILED_ID,
+        tenantId,
+        title: "【演示数据】移动端审批中心（引擎未就绪）",
+        requirement: "移动端：待我审批列表、单据详情、同意/驳回两个动作。仅供界面验收。",
+        target: "mobile",
+        theme: "mobile-lowfi",
+        stage: "failed",
+        errorReason: engineDown,
+        attempts: 1,
+        createdBy: userId.get("owner") ?? null,
+        createdAt: demoAt,
+        updatedAt: demoAt,
+      },
+    ]);
+    await t.db.insert(protoRevisions).values([
+      {
+        // 旧的一版：视觉闸没过，所以没有 .rp 与预览——详情页要能同时呈现「留着的失败版」
+        id: randomUUID(),
+        projectId: DEMO_PROTO_REVIEW_ID,
+        version: 1,
+        rp1Source: demoSource,
+        model: "演示模型",
+        tokensIn: 1200,
+        tokensOut: 480,
+        failureKind: "visual",
+        failureReason: "视觉闸：语义命名未过（semantic_naming_ok=fail（31/39））",
+        createdAt: demoAt,
+      },
+      {
+        id: randomUUID(),
+        projectId: DEMO_PROTO_REVIEW_ID,
+        version: 2,
+        rp1Source: demoSource,
+        engineVersion: "演示引擎 0.0.0",
+        audit: demoAudit,
+        model: "演示模型",
+        tokensIn: 1500,
+        tokensOut: 620,
+        rpSha256: sha(demoRp),
+        rpBytes: demoRp.length,
+        previewSha256: sha(demoPreview),
+        createdAt: demoAt,
+      },
+      {
+        id: randomUUID(),
+        projectId: DEMO_PROTO_FAILED_ID,
+        version: 1,
+        failureKind: "engine",
+        failureReason: engineDown,
+        createdAt: demoAt,
+      },
+    ]);
+  });
 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(PG_DB)

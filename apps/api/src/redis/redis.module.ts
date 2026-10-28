@@ -7,6 +7,7 @@ import {
   parseRedisUrl,
   type Redis,
   type TaskQueue,
+  type TaskQueueJob,
 } from "@heron/redis";
 
 /**
@@ -57,10 +58,10 @@ export class TaskQueueService {
   // @Inject 不能省成裸类型：tsx 不执行 emitDecoratorMetadata，隐式注入在启动期才炸。
   constructor(@Inject(QUEUE) private readonly queue: QueueHandle) {}
 
-  async push(taskId: string): Promise<void> {
+  async push(taskId: string, kind: TaskQueueJob["kind"] = "task"): Promise<void> {
     // 没配 Redis 时轮询就是唯一的调度器，这不是异常，不该每次认领都留一条 warn
     if (!this.queue) return;
-    const result = await enqueueTask(this.queue, taskId);
+    const result = await enqueueTask(this.queue, taskId, kind);
     if (!result.ok) {
       this.logger.warn(`${taskId.slice(0, 8)} 未进队列，由 worker 轮询兜底：${result.detail}`);
     }

@@ -8,6 +8,10 @@ export interface HealthReport {
   webDist: { ok: boolean; detail: string };
   redis: { configured: boolean; ok: boolean; detail: string };
   publish: { open: boolean; blockers: string[] };
+  proto: {
+    engine: { ok: boolean; detail: string; version: string | null };
+    template: { ok: boolean; detail: string };
+  };
 }
 
 export async function loadHealth(): Promise<HealthReport> {
@@ -30,7 +34,12 @@ export async function loadHealth(): Promise<HealthReport> {
           typeof body.redis.detail === "string" &&
           typeof body.publish?.open === "boolean" &&
           Array.isArray(body.publish.blockers) &&
-          body.publish.blockers.every((item) => typeof item === "string")
+          body.publish.blockers.every((item) => typeof item === "string") &&
+          typeof body.proto?.engine?.ok === "boolean" &&
+          typeof body.proto.engine.detail === "string" &&
+          (body.proto.engine.version === null || typeof body.proto.engine.version === "string") &&
+          typeof body.proto.template?.ok === "boolean" &&
+          typeof body.proto.template.detail === "string"
         )
           return body;
       } catch {

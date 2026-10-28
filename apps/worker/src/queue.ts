@@ -4,9 +4,10 @@ import { type Db } from "@heron/db/pg";
 import { TASK_QUEUE, type TaskQueueJob } from "@heron/redis";
 
 import { OWNER, REDIS_URL } from "./config";
+import { runProto } from "./proto";
 import { runTask } from "./tick";
 
-/** 队列里的一条活只带 taskId：谁领、领不领得到，全由 Postgres 的判据说了算。 */
+/** 队列里的一条活只带 id 与 kind：谁领、领不领得到，全由 Postgres 的判据说了算。 */
 
 /**
  * 同进程互斥。BullMQ 的 `concurrency: 1` 只约束 job 之间，挡不住兜底轮询在渲染跑到一半时又领一条，
@@ -44,7 +45,9 @@ export function startQueueWorker(
     (job) =>
       runExclusive(async () => {
         try {
-          return await runTask(db, job.data.taskId);
+          return job.data.kind === "proto"
+            ? await runProto(db, job.data.taskId)
+            : await runTask(db, job.data.taskId);
         } catch (cause) {
           // 任务状态与失败原因都已落在 Postgres；这里静默的话，Redis 里只剩一条看不懂的 failed job。
           return `job 异常：${cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)}`;

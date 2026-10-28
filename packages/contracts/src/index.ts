@@ -20,6 +20,41 @@ export const GATES = ["dedupe", "contract", "visual", "compliance", "human"] as 
 export type GateName = (typeof GATES)[number];
 
 /**
+ * 原型工坊的状态机。与新闻线是两套：同一条任务表装不下「需求 → .rp」这种产物与闸，
+ * 共用只会让两条线的失败原因互相污染。
+ */
+export const PROTO_STAGES = [
+  "draft",
+  "scripting",
+  "compiling",
+  "review",
+  "approved",
+  "delivered",
+  "failed",
+] as const;
+
+export type ProtoStage = (typeof PROTO_STAGES)[number];
+
+export const PROTO_TARGETS = ["web", "mobile"] as const;
+export type ProtoTarget = (typeof PROTO_TARGETS)[number];
+
+/** 引擎内置主题。target 与 theme 的搭配由接口层校验，存储层只认名单。 */
+export const PROTO_THEMES = [
+  "enterprise-light",
+  "modern-dark",
+  "cobalt-pro",
+  "mobile-lowfi",
+  "mobile-hifi",
+] as const;
+export type ProtoTheme = (typeof PROTO_THEMES)[number];
+
+/** 失败分类：谁该被修，界面据此说人话（模型 / 引擎 / 契约或视觉闸）。 */
+export const PROTO_FAILURE_KINDS = ["model", "contract", "visual", "engine"] as const;
+export type ProtoFailureKind = (typeof PROTO_FAILURE_KINDS)[number];
+
+export const PROTO_REQUIREMENT_MAX = 8000;
+
+/**
  * 台账行的状态（candidates.status）。与任务的 stage 是两回事：
  * stage 是「这台机器正在为它干活」，status 是「这条热点在台账里走到哪了」。
  */
@@ -459,6 +494,7 @@ export const CONSOLE_MENU_IDS = [
   "review",
   "publish",
   "library",
+  "proto",
   "members",
   "roles",
   "feeds",
@@ -610,3 +646,92 @@ export const PlatformAuditLogSchema = AuditLogSchema.omit({
   operatorName: z.string().nullable(),
 });
 export type PlatformAuditLog = z.infer<typeof PlatformAuditLogSchema>;
+
+/**
+ * 原型工坊。需求原文只在详情里发：列表每页 20 条 × 8000 字会把表格接口变成下载接口。
+ * 前端上限用同一个 PROTO_REQUIREMENT_MAX，两个数字各写一遍迟早漂移。
+ */
+export const CreateProtoBodySchema = z
+  .object({
+    title: WorkspaceNameSchema,
+    requirement: z.string().trim().min(1, "需求描述不能为空").max(PROTO_REQUIREMENT_MAX),
+    target: z.enum(PROTO_TARGETS),
+    theme: z.enum(PROTO_THEMES),
+  })
+  .refine(
+    (value) =>
+      value.target === "mobile"
+        ? value.theme.startsWith("mobile-")
+        : !value.theme.startsWith("mobile-"),
+    { message: "画布与主题不匹配：移动端用 mobile-*，Web 用其余主题", path: ["theme"] },
+  );
+export type CreateProtoBody = z.infer<typeof CreateProtoBodySchema>;
+
+export const ProtoProjectSummarySchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  target: z.enum(PROTO_TARGETS),
+  theme: z.enum(PROTO_THEMES),
+  stage: z.enum(PROTO_STAGES),
+  errorReason: z.string().nullable(),
+  latestVersion: z.number().int().positive().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ProtoProjectSummary = z.infer<typeof ProtoProjectSummarySchema>;
+
+export const ProtoRevisionSchema = z.object({
+  id: z.uuid(),
+  projectId: z.uuid(),
+  version: z.number().int().positive(),
+  model: z.string().nullable(),
+  tokensIn: z.number().int().nonnegative().nullable(),
+  tokensOut: z.number().int().nonnegative().nullable(),
+  engineVersion: z.string().nullable(),
+  failureKind: z.enum(PROTO_FAILURE_KINDS).nullable(),
+  failureReason: z.string().nullable(),
+  rpSha256: z.string().nullable(),
+  rpBytes: z.number().int().nonnegative().nullable(),
+  previewSha256: z.string().nullable(),
+  hasSource: z.boolean(),
+  hasAudit: z.boolean(),
+  hasPreview: z.boolean(),
+  hasRp: z.boolean(),
+  confirmedBy: z.uuid().nullable(),
+  confirmedByName: z.string().nullable(),
+  confirmedAt: z.string().nullable(),
+  axureVerified: z.boolean(),
+  axureVerifiedAt: z.string().nullable(),
+  deliveredAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type ProtoRevision = z.infer<typeof ProtoRevisionSchema>;
+
+export const ProtoProjectDetailSchema = ProtoProjectSummarySchema.extend({
+  requirement: z.string(),
+  revisions: z.array(ProtoRevisionSchema),
+  /** 审计报告里的闸结论；只发结论，原文走下载接口。 */
+  gates: z.array(z.object({ key: z.string(), label: z.string(), passed: z.boolean() })),
+});
+export type ProtoProjectDetail = z.infer<typeof ProtoProjectDetailSchema>;
+
+/** 原生闸的勾选是「人证」：不勾也能交付，但这一版会永久带着「未在 Axure 验证」。 */
+export const ProtoConfirmBodySchema = z.object({
+  revisionId: z.uuid(),
+  previewSha256: z.string().min(1),
+  axureVerified: z.boolean().default(false),
+});
+export type ProtoConfirmBody = z.infer<typeof ProtoConfirmBodySchema>;
+
+export const PROTO_ARTIFACT_KINDS = ["rp", "preview", "audit", "source"] as const;
+export const ProtoArtifactKindSchema = z.enum(PROTO_ARTIFACT_KINDS);
+export type ProtoArtifactKind = z.infer<typeof ProtoArtifactKindSchema>;
+
+/** 页面据此决定「开始生成」是否可点：引擎或模板缺失时置灰并显示同一条原因。 */
+export const ProtoEngineStatusSchema = z.object({
+  engine: z.object({ ok: z.boolean(), detail: z.string(), version: z.string().nullable() }),
+  template: z.object({ ok: z.boolean(), detail: z.string() }),
+  inflight: z.number().int().nonnegative(),
+  maxInflight: z.number().int().positive(),
+});
+export type ProtoEngineStatus = z.infer<typeof ProtoEngineStatusSchema>;

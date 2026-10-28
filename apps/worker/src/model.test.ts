@@ -154,16 +154,23 @@ describe("chat（OpenAI 兼容）", () => {
     }
   });
 
-  it("空内容当失败：配出一段无声稿子比报错更坏", async () => {
+  it.each(["", "  ", null])("空内容 %j 仍报错，但保留已消耗用量", async (content) => {
     const server = await listen((_req, res) => {
-      res.end(JSON.stringify({ choices: [{ message: { content: "  " } }] }));
+      res.end(
+        JSON.stringify({
+          choices: [{ message: { content } }],
+          usage: { prompt_tokens: 11, completion_tokens: 7 },
+        }),
+      );
     });
     try {
-      await expect(
-        chat({ baseUrl: server.baseUrl, apiKey: "", model: "m" }, [
-          { role: "user", content: "hi" },
-        ]),
-      ).rejects.toThrow(/空内容/);
+      const response = chat({ baseUrl: server.baseUrl, apiKey: "", model: "m" }, [
+        { role: "user", content: "hi" },
+      ]);
+      await expect(response).rejects.toThrow(/空内容/);
+      await expect(response).rejects.toMatchObject({
+        reply: { content: content ?? "", model: "m", tokensIn: 11, tokensOut: 7 },
+      });
     } finally {
       await server.close();
     }

@@ -5,5 +5,6 @@
  */
 export * from "./hash";
 export * from "./home";
+export * from "./proto-tools";
 export * from "./setting-keys";
 export * from "./time";

@@ -18,6 +18,7 @@ export const MENU_ROUTES: Record<ConsoleMenu["id"], RouteRecordRaw> = {
   review: { path: "/review", component: () => import("../pages/console/Review.vue") },
   publish: { path: "/publish", component: () => import("../pages/console/Publish.vue") },
   library: { path: "/library", component: () => import("../pages/console/LibraryView.vue") },
+  proto: { path: "/proto", component: () => import("../pages/console/ProtoWorkshop.vue") },
   members: { path: "/members", component: () => import("../pages/console/MembersView.vue") },
   roles: { path: "/roles", component: () => import("../pages/console/RolesView.vue") },
   feeds: { path: "/feeds", component: () => import("../pages/console/FeedsView.vue") },

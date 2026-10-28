@@ -1,7 +1,10 @@
 import { Controller, Get, type INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Test } from "@nestjs/testing";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { existsSync } from "node:fs";
+import type * as Fs from "node:fs";
+import * as protoTools from "../../../packages/db/src/proto-tools";
 import {
   type Db,
   openDb,
@@ -21,7 +24,15 @@ import { ConsoleSessionSchema } from "@heron/contracts";
 import { hashPassword } from "@heron/domain";
 import { AppModule } from "./app.module";
 import { PG_DB } from "./db/pg";
+import { REDIS, QUEUE } from "./redis/redis.module";
 import { applyTransport } from "./transport";
+
+// Block the import-time .env loader: this suite must never read deployment credentials.
+const envFileSpy = vi.hoisted(() => vi.spyOn(process, "loadEnvFile").mockImplementation(() => {}));
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof Fs>();
+  return { ...fs, existsSync: vi.fn(fs.existsSync) };
+});
 
 const PASSWORD = "explicit-console-test-password";
 const SECRET = "console-test-signing-key-at-least-32-characters";
@@ -164,6 +175,10 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     })
       .overrideProvider(PG_DB)
       .useValue(db)
+      .overrideProvider(REDIS)
+      .useValue(null)
+      .overrideProvider(QUEUE)
+      .useValue(null)
       .compile();
     app = module.createNestApplication({ logger: false });
     applyTransport(app);
@@ -175,6 +190,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
   });
   afterAll(async () => {
     await app?.close();
+    envFileSpy.mockRestore();
     if (originalSecret === undefined) delete process.env.HERON_JWT_SECRET;
     else process.env.HERON_JWT_SECRET = originalSecret;
   });
@@ -441,6 +457,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
           "review",
           "publish",
           "library",
+          "proto",
           "roles",
           "usage",
           "profile",
@@ -845,6 +862,62 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     }
     expect((await request("/auth/me", owner)).status).toBe(200);
   });
+
+  it.each([
+    [true, true, true],
+    [true, false, true],
+    [false, true, true],
+    [false, false, true],
+    [true, true, false],
+    [true, false, false],
+    [false, true, false],
+    [false, false, false],
+  ])(
+    "platform health isolates proto diagnostics (engine=%s, template=%s, web=%s)",
+    async (engineOk, templateOk, webOk) => {
+      const operator = await platformLogin();
+      const proto = {
+        engine: {
+          ok: engineOk,
+          detail: engineOk ? "zee-rp p9-test 已就位" : "引擎缺失：/private/zee-rp",
+          version: engineOk ? "p9-test" : null,
+        },
+        template: {
+          ok: templateOk,
+          detail: templateOk ? "RP9 已就位：/private/blank.rp" : "模板缺失：/private/blank.rp",
+        },
+      };
+      const engine = vi.spyOn(protoTools, "probeEngine").mockReturnValue(proto.engine);
+      const template = vi.spyOn(protoTools, "probeTemplate").mockReturnValue(proto.template);
+      vi.mocked(existsSync).mockReturnValue(webOk);
+      try {
+        const response = await request("/platform/health", operator);
+        expect(response.status).toBe(webOk ? 200 : 503);
+        expect(await data(response)).toMatchObject({
+          ok: webOk,
+          db: { ok: true },
+          webDist: { ok: webOk },
+          publish: { open: false },
+          proto,
+        });
+        const publicResponse = await request("/health");
+        expect(publicResponse.status).toBe(webOk ? 200 : 503);
+        const publicReport = await data(publicResponse);
+        expect(publicReport.ok).toBe(webOk);
+        expect(publicReport).not.toHaveProperty("proto");
+        expect(JSON.stringify(publicReport)).not.toContain("/private/");
+        for (const cookie of ["", owner]) {
+          const denied = await request("/platform/health", cookie);
+          expect(denied.status).toBe(401);
+          expect(await data(denied)).not.toHaveProperty("proto");
+        }
+      } finally {
+        engine.mockRestore();
+        template.mockRestore();
+        vi.mocked(existsSync).mockReset();
+      }
+    },
+  );
 
   it("never returns internal exceptions or credential/SQL fragments", async () => {
     const res = await request("/test-only-error", owner);

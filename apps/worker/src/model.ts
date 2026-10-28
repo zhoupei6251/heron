@@ -26,6 +26,13 @@ export interface ChatReply {
   model: string;
 }
 
+export class EmptyModelReplyError extends Error {
+  constructor(readonly reply: ChatReply) {
+    super("模型返回了空内容");
+    this.name = "EmptyModelReplyError";
+  }
+}
+
 /** 七牛云 AI 推理的 OpenAI 兼容入口。换厂商就覆盖 HERON_MODEL_BASE_URL。 */
 const DEFAULT_BASE_URL = "https://api.qnaigc.com/v1";
 /** 本机模型不需要密钥。容器里连宿主上的 Ollama 走 host.docker.internal。 */
@@ -107,17 +114,15 @@ export async function chat(config: ModelConfig, messages: ChatMessage[]): Promis
   const choices = isRecord(body) && Array.isArray(body.choices) ? body.choices : [];
   const first: unknown = choices[0];
   const message = isRecord(first) && isRecord(first.message) ? first.message : null;
-  const content = message && typeof message.content === "string" ? message.content : null;
-  if (content === null || content.trim() === "") {
-    throw new Error(`模型返回了空内容：${text.slice(0, 200)}`);
-  }
-
+  const content = message && typeof message.content === "string" ? message.content : "";
   const usage = isRecord(body) && isRecord(body.usage) ? body.usage : null;
-  return {
+  const reply: ChatReply = {
     content,
     tokensIn: usage && typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : null,
     tokensOut:
       usage && typeof usage.completion_tokens === "number" ? usage.completion_tokens : null,
     model: config.model,
   };
+  if (!content.trim()) throw new EmptyModelReplyError(reply);
+  return reply;
 }

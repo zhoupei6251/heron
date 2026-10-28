@@ -170,8 +170,11 @@ describe("console command scope", () => {
       expect(trigger, "shared console exposes command navigation").not.toBeNull();
       trigger!.click();
       // 只数 palette 自己的选项与输入框：右上角的工作空间切换器同样往 body 里挂一个 combobox
+      // 条数不写死：菜单是服务端给的，加一项不该来改这里的常量
+      const navCount = root.querySelectorAll(".console-nav a").length;
+      expect(navCount).toBeGreaterThan(0);
       await vi.waitFor(() => {
-        expect(document.querySelectorAll(".command-option")).toHaveLength(platform ? 5 : 13);
+        expect(document.querySelectorAll(".command-option")).toHaveLength(navCount);
       });
       const offeredPaths = [...document.querySelectorAll(".command-option .command-path")].map(
         (element) => element.textContent,

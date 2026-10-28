@@ -16,6 +16,22 @@ export const SET_TENANT_GUC = "app.tenant_id";
 export const APP_ROLE = "heron_app";
 
 /**
+ * 子表 → 父表的租户继承关系。子表自己没有 tenant_id，策略必须顺着 FK 回到父表；
+ * 这张映射与 TABLES_WITHOUT_TENANT 是同一件事的两半：漏一个键，applyRls 直接抛错，
+ * 而不是建出一条谁都能读的策略。
+ */
+const TENANT_CHILD_PARENT: Record<
+  (typeof TABLES_WITHOUT_TENANT)[number],
+  { parent: string; fk: string }
+> = {
+  task_events: { parent: "tasks", fk: "task_id" },
+  gate_results: { parent: "tasks", fk: "task_id" },
+  renders: { parent: "tasks", fk: "task_id" },
+  scripts: { parent: "tasks", fk: "task_id" },
+  proto_revisions: { parent: "proto_projects", fk: "project_id" },
+};
+
+/**
  * 从 GUC 取当前租户。写死字面量而不是拼 SET_TENANT_GUC：DDL 里不许有绑定参数。
  * 空串与未设同等对待——都是「没有租户上下文」，比较结果为 NULL，策略判假。
  */
@@ -121,20 +137,24 @@ export async function applyRls(db: Db): Promise<void> {
     );
   }
 
-  // 子表（task_events / gate_results / renders）不带 tenant_id，租户由 tasks 的 FK 继承，
-  // 所以策略也得顺着 FK 写。少了这一段，「按 task_id 查子表」就是跨租户读别人的行——
-  // 而仓储层（artifacts.ts）里每一条这样的查询都指望这条策略，它不是可选的第二道防线。
+  // 子表（task_events / gate_results / renders / scripts / proto_revisions）不带 tenant_id，
+  // 租户由父表的 FK 继承，所以策略也得顺着 FK 写。少了这一段，「按父 id 查子表」就是跨租户读别人的行——
+  // 而仓储层里每一条这样的查询都指望这条策略，它不是可选的第二道防线。
   for (const table of TABLES_WITHOUT_TENANT) {
+    const mapping = TENANT_CHILD_PARENT[table];
+    if (!mapping) throw new Error(`子表 ${table} 没有声明父表，无法生成租户隔离策略`);
     const name = sql.identifier(table);
+    const parent = sql.identifier(mapping.parent);
+    const fk = sql`${name}.${sql.identifier(mapping.fk)}`;
     await db.execute(sql`ALTER TABLE ${name} ENABLE ROW LEVEL SECURITY`);
     await db.execute(sql`ALTER TABLE ${name} FORCE ROW LEVEL SECURITY`);
     await db.execute(sql`DROP POLICY IF EXISTS tenant_isolation ON ${name}`);
     await db.execute(
       sql`CREATE POLICY tenant_isolation ON ${name}
-          USING (EXISTS (SELECT 1 FROM tasks WHERE tasks.id = ${name}.task_id
-                         AND tasks.tenant_id = ${TENANT_FROM_GUC}))
-          WITH CHECK (EXISTS (SELECT 1 FROM tasks WHERE tasks.id = ${name}.task_id
-                              AND tasks.tenant_id = ${TENANT_FROM_GUC}))`,
+          USING (EXISTS (SELECT 1 FROM ${parent} WHERE ${parent}.id = ${fk}
+                         AND ${parent}.tenant_id = ${TENANT_FROM_GUC}))
+          WITH CHECK (EXISTS (SELECT 1 FROM ${parent} WHERE ${parent}.id = ${fk}
+                              AND ${parent}.tenant_id = ${TENANT_FROM_GUC}))`,
     );
   }
 }

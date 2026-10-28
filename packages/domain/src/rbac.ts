@@ -62,6 +62,8 @@ const TENANT_MENUS: (ConsoleMenu & { action?: Action })[] = [
   { id: "review", path: "/review", label: "审片工作台", group: "内容工作室" },
   { id: "publish", path: "/publish", label: "发布记录", group: "内容工作室" },
   { id: "library", path: "/library", label: "成片库", group: "内容工作室" },
+  // 第二条业务线自成一组：它的表、状态机与页面都不与新闻线共用，菜单也不该混进「内容工作室」
+  { id: "proto", path: "/proto", label: "原型工坊", group: "原型工坊" },
   { id: "members", path: "/members", label: "成员管理", group: "工作空间", action: "user.manage" },
   { id: "roles", path: "/roles", label: "角色与权限", group: "工作空间" },
   { id: "feeds", path: "/feeds", label: "数据源配置", group: "工作空间", action: "settings.write" },

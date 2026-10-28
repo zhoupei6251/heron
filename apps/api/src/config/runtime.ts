@@ -31,6 +31,23 @@ export function platformCookieOptions(): CookieOptions {
   return { ...sessionCookieOptions(), path: "/api/platform" };
 }
 
+/**
+ * 每租户同时在途的原型生成数。默认 3，`PROTO_MAX_INFLIGHT` 可调。
+ *
+ * 只认正整数：把它读成「不限」等于把闸门读成门帘——而这条上限防的正是模型额度与引擎时间
+ * 被一次误操作烧光。拼错的值必须响，不能安静地按默认跑。
+ */
+export function protoMaxInflight(): number {
+  const raw = process.env.PROTO_MAX_INFLIGHT?.trim() ?? "";
+  if (!raw) return 3;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(
+      `PROTO_MAX_INFLIGHT 要是一个正整数，现在是 "${raw}"：猜错方向的代价是并发上限形同虚设。`,
+    );
+  }
+  return Number.parseInt(raw, 10);
+}
+
 // TTL limits token lifetime; per-request sessionVersion checks revoke sessions immediately.
 export const SESSION_TTL = "12h";
 

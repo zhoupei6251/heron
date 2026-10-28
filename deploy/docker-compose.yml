@@ -35,8 +35,11 @@ x-app: &app
     # 三个卷源都可用环境变量换成宿主目录（带 / 的值 compose 按 bind mount 处理），
     # 缺省是命名卷：自部署者不用自己 chown。
     - ${HERON_APP_VOLUME:-heron_data}:/data
+    - ${HERON_PROTO_TEMPLATES_VOLUME:-proto_templates}:/opt/axure-templates:ro
   environment:
     HERON_HOME: /data
+    ZEE_RP_HOME: /opt/zee-rp
+    AXURE_BLANK_TEMPLATE_RP9: /opt/axure-templates/blank-rp9.rp
     # 口令含 URL 保留字符时得先百分号编码：postgres.js 按 RFC 3986 解析，不替你转义。
     DATABASE_URL: postgres://${POSTGRES_USER:-heron}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-heron}
     # api 与 worker 都要它：前者投递，后者消费。容器内走服务名；
@@ -111,6 +114,9 @@ services:
       - "${API_BIND:-127.0.0.1}:${API_PORT:-3000}:3000"
     environment:
       HERON_HOME: /data
+      ZEE_RP_HOME: /opt/zee-rp
+      AXURE_BLANK_TEMPLATE_RP9: /opt/axure-templates/blank-rp9.rp
+      PROTO_MAX_INFLIGHT: ${PROTO_MAX_INFLIGHT:-3}
       PORT: "3000"
       # 容器内必须绑 0.0.0.0：绑 127.0.0.1 时宿主映射进来的连接会被 reset，
       # 而容器自己的 healthcheck（也走 loopback）照样是绿的——这个错没有任何探针能报。
@@ -155,3 +161,4 @@ volumes:
   pg_data:
   redis_data:
   heron_data:
+  proto_templates:

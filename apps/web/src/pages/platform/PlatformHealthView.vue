@@ -90,6 +90,29 @@ onMounted(load);
         >
       </div>
     </div>
+    <div v-if="health" class="panel">
+      <div class="panel-header">
+        <h2>原型工坊依赖</h2>
+      </div>
+      <div class="panel-body">
+        <ElDescriptions :column="1">
+          <ElDescriptionsItem label="zee-rp 引擎">
+            <ElTag :type="health.proto.engine.ok ? 'success' : 'warning'">{{
+              health.proto.engine.ok ? "已就绪" : "未就绪"
+            }}</ElTag>
+            <p class="form-hint">版本：{{ health.proto.engine.version ?? "未知" }}</p>
+            <p class="form-hint">{{ health.proto.engine.detail }}</p>
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="Axure RP9 模板">
+            <ElTag :type="health.proto.template.ok ? 'success' : 'warning'">{{
+              health.proto.template.ok ? "已就绪" : "未就绪"
+            }}</ElTag>
+            <p class="form-hint">{{ health.proto.template.detail }}</p>
+          </ElDescriptionsItem>
+        </ElDescriptions>
+        <p class="form-hint">依赖缺失只影响原型工坊，不影响新闻流水线与整体服务就绪状态。</p>
+      </div>
+    </div>
     <div class="panel">
       <div class="panel-header">
         <h2>发布门禁</h2>

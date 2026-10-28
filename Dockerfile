@@ -8,8 +8,19 @@
 FROM node:24-alpine
 
 ENV NODE_ENV=production \
-    CI=1
+    CI=1 \
+    ZEE_RP_HOME=/opt/zee-rp
 WORKDIR /app
+
+# zee-rp v0.2.1：锁定提交与归档校验和；CLI 无需 npm 依赖，专有 Axure 模板由用户挂载。
+ADD --checksum=sha256:d20508d8712b33e92b98a6c5013f02c6af9cfb0909bef7e5f2def2fe87b23fd4 \
+    https://codeload.github.com/LilZeeCN/zee-rp/tar.gz/74f286fead2e2524fb5f710b36e2e1db9e861df5 /tmp/zee-rp.tar.gz
+RUN apk add --no-cache python3 py3-pillow font-noto-cjk \
+    && mkdir -p /opt/zee-rp /System/Library/Fonts \
+    && tar -xzf /tmp/zee-rp.tar.gz -C /opt/zee-rp --strip-components=1 \
+    && rm /tmp/zee-rp.tar.gz \
+    # 上游只搜索 macOS 字体路径；用 Noto CJK 支持中文，不修改上游代码。
+    && ln -s /usr/share/fonts/noto/NotoSansCJK-Regular.ttc /System/Library/Fonts/Helvetica.ttc
 
 # 不用 corepack：它把 pnpm 缓存在 $HOME（构建期 root / 运行期 node 两个 home 不共享），
 # 结果是每个容器第一次启动都重新下载 pnpm（实测 worker 卡在下载 registry 上）。

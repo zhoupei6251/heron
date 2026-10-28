@@ -1,5 +1,6 @@
 export * from "./feed";
 export * from "./transitions";
+export * from "./proto";
 export * from "./error-reason";
 export * from "./password";
 export * from "./rbac";

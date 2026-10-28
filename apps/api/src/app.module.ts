@@ -4,6 +4,7 @@ import { PgModule } from "./db/pg";
 import { RedisModule } from "./redis/redis.module";
 import { ManageModule } from "./manage/manage.module";
 import { PlatformModule } from "./platform/platform.module";
+import { ProtoModule } from "./proto/proto.module";
 import { ApiExceptionFilter } from "./common/api-exception.filter";
 
 import { AuthModule } from "./auth/auth.module";
@@ -27,6 +28,7 @@ import { TasksModule } from "./tasks/tasks.module";
     RedisModule,
     PlatformModule,
     ManageModule,
+    ProtoModule,
     AuthModule,
     TasksModule,
     ReviewModule,

@@ -20,19 +20,10 @@ export class ApiExceptionFilter implements ExceptionFilter {
       return;
     }
     if (error instanceof ManagementError) {
-      const replies = {
-        not_found: { statusCode: 404, message: "当前工作空间中未找到该记录或产物" },
-        conflict: {
-          statusCode: 409,
-          message: "记录已存在或状态已变化，请刷新后重试；必须保留至少一位有效所有者",
-        },
-        forbidden: {
-          statusCode: 403,
-          message: "工作空间已停用或权限不足；不能停用或降级自身所有者账号",
-        },
-      };
-      const reply = replies[error.code];
-      res.status(reply.statusCode).json(reply);
+      // ManagementError 的 message 是仓储里写死的那几句话（不是驱动异常，不带 SQL 与参数），
+      // 而它正是「为什么被拒」的唯一来源：换成通用文案，界面就只能显示"操作失败"。
+      const status = { not_found: 404, conflict: 409, forbidden: 403 }[error.code];
+      res.status(status).json({ statusCode: status, message: error.message });
       return;
     }
     if (error instanceof HttpException) {

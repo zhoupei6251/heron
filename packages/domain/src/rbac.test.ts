@@ -14,6 +14,7 @@ describe("RBAC 纯函数", () => {
       "review",
       "publish",
       "library",
+      "proto",
       "roles",
       "usage",
       "profile",

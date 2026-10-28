@@ -108,12 +108,16 @@ export async function probeRedis(
   }
 }
 
-/** 队列名。job 里只有一个 taskId，任务状态与租约始终在 Postgres 的 tasks 表。 */
+/** 队列名。job 里只有一个 id，任务状态与租约始终在 Postgres 的 tasks / proto_projects 表。 */
 export const TASK_QUEUE = "heron-task";
 
-/** 队列载荷：派发动作不该携带任何业务状态，携带了就等于有两个真相源。 */
+/**
+ * 队列载荷：派发动作不该携带任何业务状态，携带了就等于有两个真相源。
+ * `kind` 只是告诉 worker 去查哪张账本；缺省是新闻线，老消息照样能被读懂。
+ */
 export interface TaskQueueJob {
   readonly taskId: string;
+  readonly kind?: "task" | "proto";
 }
 
 /** 带上载荷类型：拿到的 job 才有 .taskId，而不是一个 any。 */
@@ -137,20 +141,23 @@ export function openTaskQueue(
 }
 
 /**
- * 投一条任务进队列。永不抛错，也绝不许挂住调用方：
- * 这是人点「认领」「确认」之后的加速动作，投递失败只意味着 worker 靠轮询兜底会慢一点，
+ * 投一条活进队列。永不抛错，也绝不许挂住调用方：
+ * 这是人点「认领」「确认」「生成」之后的加速动作，投递失败只意味着 worker 靠轮询兜底会慢一点，
  * 而把一次 Redis 抖动变成人的请求失败，等于让加速器决定主链路。
+ *
+ * `taskId` 对新闻线是 task.id，对原型线是 project.id——两条账本各查各的，靠 kind 分流。
  */
 export async function enqueueTask(
   queue: TaskQueue | null,
   taskId: string,
+  kind: TaskQueueJob["kind"] = "task",
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<EnqueueResult> {
   if (!queue) return { ok: false, detail: "队列未配置：worker 会按轮询领任务" };
   let timer: NodeJS.Timeout | undefined;
   try {
     await Promise.race([
-      queue.add(TASK_QUEUE, { taskId } satisfies TaskQueueJob, ENQUEUE_JOB_OPTIONS),
+      queue.add(TASK_QUEUE, { taskId, kind } satisfies TaskQueueJob, ENQUEUE_JOB_OPTIONS),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
           reject(new Error(`投递超时（${timeoutMs}ms）`));
