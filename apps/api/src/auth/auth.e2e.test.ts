@@ -140,7 +140,14 @@ describe("认证传输（真 socket）", () => {
     });
     expect(res.status).toBe(201);
     const body = await json(res);
-    expect(Object.keys(body).sort()).toEqual(["kind", "menus", "permissions", "roles", "user"]);
+    expect(Object.keys(body).sort()).toEqual([
+      "groups",
+      "kind",
+      "menus",
+      "permissions",
+      "roles",
+      "user",
+    ]);
     expect(body).toMatchObject({
       kind: "tenant",
       roles: ["reviewer"],

@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Building2,
   ChartColumnBig,
+  ChevronDown,
   CircleUser,
   Clapperboard,
   Eye,
@@ -13,6 +14,7 @@ import {
   KeyRound,
   LayoutDashboard,
   LayoutTemplate,
+  ListTree,
   LogOut,
   Newspaper,
   Rss,
@@ -23,10 +25,10 @@ import {
   Users,
 } from "lucide-vue-next";
 import { ElAvatar, ElButton, ElIcon, ElTag } from "element-plus";
-import { computed, type Component } from "vue";
+import { computed, ref, watch, type Component } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 
-import type { ConsoleMenu } from "@heron/contracts";
+import type { ConsoleMenu, MenuGroupIcon } from "@heron/contracts";
 
 import { roleLabel } from "../auth/roles";
 import { useAuthStore } from "../stores/auth";
@@ -60,9 +62,21 @@ const ICONS: Record<ConsoleMenu["id"], Component> = {
   "platform-overview": LayoutDashboard,
   tenants: Building2,
   "platform-settings": SlidersHorizontal,
+  "platform-menus": ListTree,
   "platform-usage": ChartColumnBig,
   "platform-audit": FileCheck,
   health: Gauge,
+};
+
+/** 模块图标由后端给键，组件表留在前端：配置只换键，换不到任意组件。 */
+const GROUP_ICONS: Record<MenuGroupIcon, Component> = {
+  newspaper: Newspaper,
+  layout: LayoutTemplate,
+  settings: Settings,
+  monitor: Gauge,
+  operations: Building2,
+  configuration: SlidersHorizontal,
+  folder: FolderOpen,
 };
 
 const platform = computed(() => auth.session?.kind === "platform");
@@ -76,27 +90,48 @@ const role = computed(() => {
   if (viewing.value) return "平台运营 · 只读";
   return tenant.value ? roleLabel(tenant.value.role) : "";
 });
-const home = computed(() => auth.menus[0]?.path ?? "/");
+const home = computed(() => auth.homePath);
 const profilePath = computed(() => auth.menus.find((menu) => menu.id === "profile")?.path);
 
-/** 分组顺序跟后端下发顺序走，不在前端另排一套。 */
-const groups = computed(() => {
-  const result: { label: string; items: (ConsoleMenu & { icon: Component })[] }[] = [];
-  for (const menu of auth.menus) {
-    let group = result.find((item) => item.label === menu.group);
-    if (!group) {
-      group = { label: menu.group, items: [] };
-      result.push(group);
-    }
-    group.items.push({ ...menu, icon: ICONS[menu.id] });
-  }
-  return result;
-});
-const commandItems = computed(() =>
-  auth.menus.map((menu) => ({ to: menu.path, label: menu.label, group: menu.group })),
+/** 模块顺序跟后端下发顺序走，不在前端另排一套；空模块（全是隐藏项）不渲染。 */
+const groups = computed(() =>
+  auth.groups
+    .map((group) => ({
+      key: group.key,
+      label: group.label,
+      icon: GROUP_ICONS[group.icon],
+      items: auth.visibleMenus
+        .filter((menu) => menu.group === group.key)
+        .map((menu) => ({ ...menu, icon: ICONS[menu.id] })),
+    }))
+    .filter((group) => group.items.length > 0),
 );
-const currentTitle = computed(
-  () => auth.menus.find((menu) => menu.path === route.path)?.label ?? "工作台",
+const currentMenu = computed(() => auth.menus.find((menu) => menu.path === route.path));
+const currentGroup = computed(() =>
+  auth.groups.find((group) => group.key === currentMenu.value?.group),
+);
+const currentTitle = computed(() => currentMenu.value?.label ?? "工作台");
+/** 默认只展开当前页所在的模块；用户可手动收起/展开，切页时自动打开新模块。 */
+const openModules = ref<Set<string>>(new Set());
+watch(
+  () => [groups.value.map((group) => group.key).join("|"), currentGroup.value?.key] as const,
+  ([, active]) => {
+    if (active) openModules.value = new Set(openModules.value).add(active);
+  },
+  { immediate: true },
+);
+function toggleModule(key: string): void {
+  const next = new Set(openModules.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  openModules.value = next;
+}
+const commandItems = computed(() =>
+  auth.visibleMenus.map((menu) => ({
+    to: menu.path,
+    label: menu.label,
+    group: auth.groups.find((group) => group.key === menu.group)?.label ?? menu.group,
+  })),
 );
 </script>
 
@@ -134,18 +169,40 @@ const currentTitle = computed(
         </div>
       </div>
       <nav class="console-nav" :aria-label="platform ? '平台导航' : '工作空间导航'">
-        <div v-for="group in groups" :key="group.label" class="nav-group">
-          <p class="nav-label">{{ group.label }}</p>
-          <RouterLink
-            v-for="item in group.items"
-            :key="item.id"
-            :to="item.path"
-            class="nav-link"
-            :class="{ 'is-active': route.path === item.path }"
-            :aria-current="route.path === item.path ? 'page' : undefined"
+        <div v-for="group in groups" :key="group.key" class="nav-group">
+          <button
+            type="button"
+            class="nav-module"
+            :class="{ 'is-active': currentGroup?.key === group.key }"
+            :aria-expanded="openModules.has(group.key)"
+            :aria-controls="`nav-module-${group.key}`"
+            @click="toggleModule(group.key)"
           >
-            <ElIcon><component :is="item.icon" /></ElIcon><span>{{ item.label }}</span>
-          </RouterLink>
+            <ElIcon><component :is="group.icon" /></ElIcon>
+            <span>{{ group.label }}</span>
+            <ElIcon
+              class="nav-chevron"
+              :class="{ 'is-open': openModules.has(group.key) }"
+              aria-hidden="true"
+              ><ChevronDown
+            /></ElIcon>
+          </button>
+          <div
+            v-show="openModules.has(group.key)"
+            :id="`nav-module-${group.key}`"
+            class="nav-items"
+          >
+            <RouterLink
+              v-for="item in group.items"
+              :key="item.id"
+              :to="item.path"
+              class="nav-link"
+              :class="{ 'is-active': route.path === item.path }"
+              :aria-current="route.path === item.path ? 'page' : undefined"
+            >
+              <ElIcon><component :is="item.icon" /></ElIcon><span>{{ item.label }}</span>
+            </RouterLink>
+          </div>
         </div>
       </nav>
       <div class="sidebar-foot">
@@ -163,7 +220,8 @@ const currentTitle = computed(
       <header class="console-topbar">
         <div class="breadcrumb">
           <span>{{ platform ? "平台控制台" : "工作空间" }}</span
-          ><ElIcon><ArrowRight /></ElIcon><strong>{{ currentTitle }}</strong>
+          ><ElIcon><ArrowRight /></ElIcon> <span v-if="currentGroup">{{ currentGroup.label }}</span
+          ><ElIcon v-if="currentGroup"><ArrowRight /></ElIcon><strong>{{ currentTitle }}</strong>
         </div>
         <div class="topbar-actions">
           <WorkspaceSwitcher />

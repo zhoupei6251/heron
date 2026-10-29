@@ -62,7 +62,9 @@ function syncRoutes(router: Router, menus: ConsoleMenu[]): void {
  */
 export function safeRedirect(value: unknown, session: ConsoleSession | null): string {
   const menus = authorizedMenus(session);
-  const home = session ? (menus[0]?.path ?? "/not-found") : "/login";
+  const home = session
+    ? (menus.find((menu) => !menu.hidden)?.path ?? menus[0]?.path ?? "/not-found")
+    : "/login";
   if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) return home;
   if (value.includes("\\") || [...value].some((char) => char.charCodeAt(0) <= 32)) return home;
   const path = value.split(/[?#]/)[0] ?? "";
@@ -93,7 +95,7 @@ export function installAuthGuards(router: Router): void {
     if (to.path === "/") {
       // 根路径是给人的入口，不是页面：先问清身份，再决定去首页还是登录页。
       const session = auth.session ?? (await auth.fetchMe());
-      return { path: session ? (auth.menus[0]?.path ?? "/not-found") : "/login" };
+      return { path: session ? auth.homePath : "/login" };
     }
 
     const known = isMenuPath(to.path);
@@ -101,7 +103,7 @@ export function installAuthGuards(router: Router): void {
       // 带着有效票据硬打开 /login（书签、旧链接），直接回本人首页，不再让人重填一次口令。
       if (to.path === "/login") {
         const session = auth.session ?? (await auth.fetchMe());
-        if (session) return { path: auth.menus[0]?.path ?? "/not-found" };
+        if (session) return { path: auth.homePath };
       }
       return true;
     }

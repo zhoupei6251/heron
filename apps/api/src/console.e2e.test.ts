@@ -21,7 +21,7 @@ import {
   platformOperators,
   tasks,
 } from "@heron/db/pg";
-import { ConsoleSessionSchema } from "@heron/contracts";
+import { ConsoleSessionSchema, DEFAULT_CONSOLE_MENU_CONFIG } from "@heron/contracts";
 import { hashPassword } from "@heron/domain";
 import { AppModule } from "./app.module";
 import { PG_DB } from "./db/pg";
@@ -94,8 +94,20 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     });
     expect(res.status).toBe(201);
     const body = ConsoleSessionSchema.parse(await data(res));
-    expect(Object.keys(body).sort()).toEqual(["kind", "menus", "permissions", "roles", "user"]);
+    expect(Object.keys(body).sort()).toEqual([
+      "groups",
+      "kind",
+      "menus",
+      "permissions",
+      "roles",
+      "user",
+    ]);
     expect(body.kind).toBe("platform");
+    expect(body.groups.map((group) => group.key)).toEqual([
+      "platform-operations",
+      "platform-config",
+      "platform-monitor",
+    ]);
     expect(Object.keys(body.user).sort()).toEqual(["displayName", "id", "username"]);
     expect(body.roles).toEqual(["platform"]);
     expect(body.permissions).toEqual([
@@ -108,6 +120,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
       "platform-overview",
       "tenants",
       "platform-settings",
+      "platform-menus",
       "platform-usage",
       "platform-audit",
       "health",
@@ -449,6 +462,54 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     expect(restored.default_retention_days?.isDefault).toBe(true);
   });
 
+  it("lets the platform reshape tenant menus and reflects it on the next session read", async () => {
+    const opCookie = await platformLogin();
+    const initial = await data(await request("/platform/menus", opCookie));
+    expect(Object.keys(initial).sort()).toEqual(["config", "isDefault"]);
+    expect(initial.isDefault).toBe(true);
+    expect(initial.config).toEqual(DEFAULT_CONSOLE_MENU_CONFIG);
+    // 菜单配置是平台受众的写：租户 cookie 连读都不行
+    for (const cookie of [owner, viewer]) {
+      expect((await request("/platform/menus", cookie)).status).toBe(401);
+      expect(
+        (await request("/platform/menus", cookie, "PUT", DEFAULT_CONSOLE_MENU_CONFIG)).status,
+      ).toBe(401);
+    }
+
+    const custom = structuredClone(DEFAULT_CONSOLE_MENU_CONFIG);
+    custom.groups[0]!.label = "新闻线";
+    custom.groups[0]!.items[0]!.label = "总览";
+    // 候选管理收窄到 reviewer：viewer 的菜单里就该没有它
+    custom.groups[0]!.items[1]!.roles = ["reviewer"];
+    const saved = await request("/platform/menus", opCookie, "PUT", custom);
+    expect(saved.status).toBe(200);
+    expect(await data(saved)).toMatchObject({ isDefault: false, config: custom });
+
+    const viewerSession = ConsoleSessionSchema.parse(await data(await request("/auth/me", viewer)));
+    expect(viewerSession.groups[0]).toMatchObject({ key: "news", label: "新闻线" });
+    const viewerMenus = viewerSession.menus.map((menu) => menu.id);
+    expect(viewerMenus).not.toContain("candidates");
+    expect(viewerSession.menus.find((menu) => menu.id === "overview")?.label).toBe("总览");
+    // 隐藏的个人页仍在菜单数据里，路由与头像入口都靠它
+    expect(viewerSession.menus.find((menu) => menu.id === "profile")?.hidden).toBe(true);
+
+    const tooWide = structuredClone(DEFAULT_CONSOLE_MENU_CONFIG);
+    tooWide.groups[2]!.items[0]!.roles = ["viewer"];
+    const rejected = await request("/platform/menus", opCookie, "PUT", tooWide);
+    expect(rejected.status).toBe(400);
+    expect(JSON.stringify(await data(rejected))).toContain("可见角色超出");
+
+    const audit = await data(await request("/platform/audit?q=console_menu.updated", opCookie));
+    expect(audit.total).toBeGreaterThanOrEqual(1);
+
+    // 收尾：后面的用例按默认菜单断言
+    expect(
+      (await request("/platform/menus", opCookie, "PUT", DEFAULT_CONSOLE_MENU_CONFIG)).status,
+    ).toBe(200);
+    const restored = ConsoleSessionSchema.parse(await data(await request("/auth/me", viewer)));
+    expect(restored.menus.map((menu) => menu.id)).toContain("candidates");
+  });
+
   it("updates profile, rejects bad password, then revokes every session on password change but only its own on logout", async () => {
     const old = await login("new@example.com");
     const other = await login("new@example.com");
@@ -663,8 +724,16 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
           ...privilegedMenus,
         ].sort(),
       );
+      // 默认配置下每个页面都归在某个模块里：分组键必须出现在 groups 名单中
+      expect(session.groups.map((group) => group.key)).toEqual([
+        "news",
+        "proto",
+        "system",
+        "monitor",
+      ]);
       for (const menu of session.menus) {
-        expect(Object.keys(menu).sort()).toEqual(["group", "id", "label", "path"]);
+        expect(Object.keys(menu).sort()).toEqual(["group", "hidden", "id", "label", "path"]);
+        expect(session.groups.map((group) => group.key)).toContain(menu.group);
         expect(menu.path).toBe(`/${menu.id}`);
       }
       expectLegacyCleared(res);

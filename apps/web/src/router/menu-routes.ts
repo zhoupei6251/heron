@@ -1,4 +1,9 @@
-import { CONSOLE_MENU_IDS, type ConsoleMenu, type ConsoleSession } from "@heron/contracts";
+import {
+  CONSOLE_MENU_IDS,
+  PLATFORM_MENU_IDS,
+  type ConsoleMenu,
+  type ConsoleSession,
+} from "@heron/contracts";
 import type { RouteRecordRaw } from "vue-router";
 
 /**
@@ -39,6 +44,10 @@ export const MENU_ROUTES: Record<ConsoleMenu["id"], RouteRecordRaw> = {
     path: "/platform/settings",
     component: () => import("../pages/platform/PlatformSettingsView.vue"),
   },
+  "platform-menus": {
+    path: "/platform/menus",
+    component: () => import("../pages/platform/PlatformMenusView.vue"),
+  },
   "platform-usage": {
     path: "/platform/usage",
     component: () => import("../pages/console/UsageView.vue"),
@@ -53,14 +62,7 @@ export const MENU_ROUTES: Record<ConsoleMenu["id"], RouteRecordRaw> = {
   },
 };
 
-const PLATFORM_IDS: ReadonlySet<ConsoleMenu["id"]> = new Set([
-  "platform-overview",
-  "tenants",
-  "platform-settings",
-  "platform-usage",
-  "platform-audit",
-  "health",
-]);
+const PLATFORM_IDS: ReadonlySet<ConsoleMenu["id"]> = new Set(PLATFORM_MENU_IDS);
 
 export function isMenuId(value: unknown): value is ConsoleMenu["id"] {
   return typeof value === "string" && Object.hasOwn(MENU_ROUTES, value);

@@ -54,7 +54,7 @@ async function change(value: string): Promise<void> {
   }
   // 换票等于换身份，菜单整份变了，落点也必须是新身份的第一个菜单：
   // 停在 /platform/tenants 上看租户页只会撞进 404。
-  await router.replace(auth.menus[0]?.path ?? "/");
+  await router.replace(auth.homePath);
 }
 </script>
 

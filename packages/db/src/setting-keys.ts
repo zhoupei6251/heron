@@ -17,3 +17,6 @@ export const MODEL_API_KEY_SETTING_KEY = "model_api_key";
 export const MODEL_NAME_SETTING_KEY = "model_name";
 /** 与平台设置的 `default_model_base_url` 兜底值同一个常量，别在这里再写一遍字面量。 */
 export { DEFAULT_MODEL_BASE_URL };
+
+/** 平台级菜单树（JSON）。同一张 plat_setting 表，但只有平台特权通道读写，见 pg/console-menus.ts。 */
+export const CONSOLE_MENU_SETTING_KEY = "console_menus";

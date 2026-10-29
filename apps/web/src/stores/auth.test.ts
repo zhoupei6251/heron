@@ -152,8 +152,8 @@ describe("后端菜单驱动统一路由", () => {
     auth.session = {
       ...tenantSession("owner"),
       menus: [
-        { id: "review", path: "/review", label: "后端审片", group: "授权" },
-        { id: "members", path: "/evil", label: "错误映射", group: "授权" },
+        { id: "review", path: "/review", label: "后端审片", group: "授权", hidden: false },
+        { id: "members", path: "/evil", label: "错误映射", group: "授权", hidden: false },
         ...platformSession().menus,
       ],
     };

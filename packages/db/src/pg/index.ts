@@ -12,6 +12,7 @@
  */
 export * from "./artifacts";
 export * from "./candidates";
+export * from "./console-menus";
 export * from "./driver";
 export * from "./feeds";
 export * from "./identity";

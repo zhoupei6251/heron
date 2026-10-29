@@ -10,6 +10,7 @@ import {
 } from "@heron/contracts";
 import { eq } from "drizzle-orm";
 
+import { CONSOLE_MENU_SETTING_KEY } from "../setting-keys";
 import { nowIso } from "../time";
 import { audit, requireOperator, withAdmin, type AdminDb } from "./admin";
 import type { Db } from "./driver";
@@ -30,6 +31,8 @@ async function storedValues(a: AdminDb): Promise<Map<PlatformSettingKey, string>
   const rows = await a.db.select().from(platformSettings);
   const values = new Map<PlatformSettingKey, string>();
   for (const row of rows) {
+    // 菜单树与标量设置共用一张表，但它有自己的结构，不属于 PLATFORM_SETTING_DEFS
+    if (row.key === CONSOLE_MENU_SETTING_KEY) continue;
     if (!isPlatformSettingKey(row.key)) {
       console.error(`平台设置里有不认识的键，已忽略：${row.key}`);
       continue;

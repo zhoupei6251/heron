@@ -590,7 +590,11 @@ export type PlatformUser = z.infer<typeof PlatformUserSchema>;
 export const WorkspaceViewBodySchema = z.object({ tenantId: snowflakeIdSchema });
 export type WorkspaceViewBody = z.infer<typeof WorkspaceViewBodySchema>;
 
-export const CONSOLE_MENU_IDS = [
+/**
+ * 租户台的页面清单。菜单配置只能在这些页面里挑：后端可以决定「放哪、叫什么、给谁看」，
+ * 但决定不了「有哪些页面」——页面组件仍由前端白名单注册，配置写不进任意路径。
+ */
+export const TENANT_MENU_IDS = [
   "overview",
   "candidates",
   "production",
@@ -606,26 +610,173 @@ export const CONSOLE_MENU_IDS = [
   "audit",
   "sessions",
   "profile",
+] as const;
+/** 平台台的页面固定，不参与菜单配置：改坏它的人可能连配置页都进不去。 */
+export const PLATFORM_MENU_IDS = [
   "platform-overview",
   "tenants",
   "platform-settings",
+  "platform-menus",
   "platform-usage",
   "platform-audit",
   "health",
 ] as const;
+export const CONSOLE_MENU_IDS = [...TENANT_MENU_IDS, ...PLATFORM_MENU_IDS] as const;
+
+export type TenantMenuId = (typeof TENANT_MENU_IDS)[number];
+export type ConsoleMenuId = (typeof CONSOLE_MENU_IDS)[number];
+
+/** 路径是代码资产，不是配置项：菜单配置只存 id，服务端按这张表回填路径。 */
+export const MENU_PAGES: Record<ConsoleMenuId, { path: string; label: string }> = {
+  overview: { path: "/overview", label: "工作概览" },
+  candidates: { path: "/candidates", label: "候选管理" },
+  production: { path: "/production", label: "生产任务" },
+  review: { path: "/review", label: "审片工作台" },
+  publish: { path: "/publish", label: "发布记录" },
+  library: { path: "/library", label: "成片库" },
+  proto: { path: "/proto", label: "原型工坊" },
+  members: { path: "/members", label: "成员管理" },
+  roles: { path: "/roles", label: "角色与权限" },
+  feeds: { path: "/feeds", label: "数据源配置" },
+  settings: { path: "/settings", label: "工作空间设置" },
+  usage: { path: "/usage", label: "用量统计" },
+  audit: { path: "/audit", label: "操作审计" },
+  sessions: { path: "/sessions", label: "在线会话" },
+  profile: { path: "/profile", label: "个人与安全" },
+  "platform-overview": { path: "/platform", label: "运营概览" },
+  tenants: { path: "/platform/tenants", label: "租户管理" },
+  "platform-settings": { path: "/platform/settings", label: "平台设置" },
+  "platform-menus": { path: "/platform/menus", label: "菜单配置" },
+  "platform-usage": { path: "/platform/usage", label: "全局用量" },
+  "platform-audit": { path: "/platform/audit", label: "平台审计" },
+  health: { path: "/platform/health", label: "服务健康" },
+};
+
+/** 模块图标是展示资产，只认这一份名单；配置存的是键，不是组件。 */
+export const MENU_GROUP_ICONS = [
+  "newspaper",
+  "layout",
+  "settings",
+  "monitor",
+  "operations",
+  "configuration",
+  "folder",
+] as const;
+export type MenuGroupIcon = (typeof MENU_GROUP_ICONS)[number];
+
+export const ConsoleMenuGroupSchema = z.object({
+  key: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/, "模块标识只能是小写字母、数字与连字符"),
+  label: z.string().trim().min(1).max(24),
+  icon: z.enum(MENU_GROUP_ICONS),
+});
+export type ConsoleGroup = z.infer<typeof ConsoleMenuGroupSchema>;
+
 export const ConsoleMenuSchema = z.object({
   id: z.enum(CONSOLE_MENU_IDS),
   path: z.string().regex(/^\/(?!\/)[a-z/-]+$/),
   label: z.string().min(1),
   group: z.string().min(1),
+  /** 仍注册路由，只是不出现在侧栏与快捷导航里（个人设置走右上角入口）。 */
+  hidden: z.boolean(),
 });
 export type ConsoleMenu = z.infer<typeof ConsoleMenuSchema>;
 export const ConsoleAccessSchema = z.object({
   roles: z.array(z.string()),
   permissions: z.array(z.string()),
+  groups: z.array(ConsoleMenuGroupSchema),
   menus: z.array(ConsoleMenuSchema),
 });
 export type ConsoleAccess = z.infer<typeof ConsoleAccessSchema>;
+
+/**
+ * 菜单配置：只收「页面 id + 文案 + 显隐 + 角色」，不收路径与组件。
+ *
+ * `roles` 是**收窄**，不是授权：空数组表示所有通过动作门槛的角色都能看；
+ * 写了名单也只能写该页面动作门槛之上的人，服务端会再判一次。
+ */
+export const ConsoleMenuItemConfigSchema = z.object({
+  id: z.enum(TENANT_MENU_IDS),
+  label: z.string().trim().min(1).max(24),
+  hidden: z.boolean(),
+  roles: z.array(z.enum(ROLES)),
+});
+export type ConsoleMenuItemConfig = z.infer<typeof ConsoleMenuItemConfigSchema>;
+export const ConsoleMenuGroupConfigSchema = ConsoleMenuGroupSchema.extend({
+  items: z.array(ConsoleMenuItemConfigSchema).max(30),
+});
+export type ConsoleMenuGroupConfig = z.infer<typeof ConsoleMenuGroupConfigSchema>;
+export const ConsoleMenuConfigSchema = z
+  .object({ groups: z.array(ConsoleMenuGroupConfigSchema).max(12) })
+  .superRefine((value, ctx) => {
+    const groupKeys = new Set<string>();
+    const pageIds = new Set<string>();
+    for (const group of value.groups) {
+      if (groupKeys.has(group.key)) {
+        ctx.addIssue({ code: "custom", message: `模块标识重复：${group.key}` });
+      }
+      groupKeys.add(group.key);
+      for (const item of group.items) {
+        if (pageIds.has(item.id)) {
+          ctx.addIssue({ code: "custom", message: `页面重复出现：${item.id}` });
+        }
+        pageIds.add(item.id);
+        if (new Set(item.roles).size !== item.roles.length) {
+          ctx.addIssue({ code: "custom", message: `页面 ${item.id} 的可见角色重复` });
+        }
+      }
+    }
+  });
+export type ConsoleMenuConfig = z.infer<typeof ConsoleMenuConfigSchema>;
+export const ConsoleMenuConfigViewSchema = z.object({
+  config: ConsoleMenuConfigSchema,
+  isDefault: z.boolean(),
+});
+export type ConsoleMenuConfigView = z.infer<typeof ConsoleMenuConfigViewSchema>;
+
+/**
+ * 产品默认菜单：两条业务线各成一个大模块，其余是系统管理与系统监控。
+ * 个人设置不进侧栏（hidden），走右上角头像入口——和 RuoYi 把个人中心放顶栏同一取舍。
+ */
+export const DEFAULT_CONSOLE_MENU_CONFIG: ConsoleMenuConfig = {
+  groups: [
+    {
+      key: "news",
+      label: "新闻生视频",
+      icon: "newspaper",
+      items: (
+        ["overview", "candidates", "production", "review", "publish", "library"] as const
+      ).map((id) => ({ id, label: MENU_PAGES[id].label, hidden: false, roles: [] })),
+    },
+    {
+      key: "proto",
+      label: "产品原型",
+      icon: "layout",
+      items: [{ id: "proto", label: MENU_PAGES.proto.label, hidden: false, roles: [] }],
+    },
+    {
+      key: "system",
+      label: "系统管理",
+      icon: "settings",
+      items: (["members", "roles", "feeds", "settings"] as const).map((id) => ({
+        id,
+        label: MENU_PAGES[id].label,
+        hidden: false,
+        roles: [],
+      })),
+    },
+    {
+      key: "monitor",
+      label: "系统监控",
+      icon: "monitor",
+      items: [
+        { id: "usage", label: MENU_PAGES.usage.label, hidden: false, roles: [] },
+        { id: "audit", label: MENU_PAGES.audit.label, hidden: false, roles: [] },
+        { id: "sessions", label: MENU_PAGES.sessions.label, hidden: false, roles: [] },
+        { id: "profile", label: MENU_PAGES.profile.label, hidden: true, roles: [] },
+      ],
+    },
+  ],
+};
 export const ConsoleSessionSchema = z.discriminatedUnion("kind", [
   ConsoleAccessSchema.extend({ kind: z.literal("tenant"), user: AuthUserSchema }),
   ConsoleAccessSchema.extend({ kind: z.literal("platform"), user: PlatformUserSchema }),

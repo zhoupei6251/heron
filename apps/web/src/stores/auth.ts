@@ -1,7 +1,13 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
-import type { AuthUser, ConsoleMenu, ConsoleSession, LoginBodyInput } from "@heron/contracts";
+import type {
+  AuthUser,
+  ConsoleGroup,
+  ConsoleMenu,
+  ConsoleSession,
+  LoginBodyInput,
+} from "@heron/contracts";
 import { can, type Action } from "@heron/domain";
 
 import { ApiError } from "../api";
@@ -41,6 +47,15 @@ export const useAuthStore = defineStore("auth", () => {
   );
   /** 渲染与路由注册都读这一份：后端下发什么，界面就只能出现什么。 */
   const menus = computed<ConsoleMenu[]>(() => authorizedMenus(session.value));
+  /** 侧栏模块：只留下确实有菜单落在里面的分组，空模块不占位置。 */
+  const groups = computed<ConsoleGroup[]>(() => {
+    if (!session.value) return [];
+    const used = new Set(menus.value.map((menu) => menu.group));
+    return session.value.groups.filter((group) => used.has(group.key));
+  });
+  /** 落地页与快捷导航只认不隐藏的菜单；隐藏页面（个人设置）仍注册路由。 */
+  const visibleMenus = computed(() => menus.value.filter((menu) => !menu.hidden));
+  const homePath = computed(() => visibleMenus.value[0]?.path ?? menus.value[0]?.path ?? "/");
   /** 查看态只读：与服务端 RolesGuard 的动词闸同一条判据，界面据此置灰写入。 */
   const readOnly = computed(() => user.value?.scope === "platform-view");
   /**
@@ -149,6 +164,9 @@ export const useAuthStore = defineStore("auth", () => {
     session,
     user,
     menus,
+    groups,
+    visibleMenus,
+    homePath,
     readOnly,
     canWrite,
     busy,

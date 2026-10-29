@@ -2,7 +2,7 @@ import type { Page, PageQuery } from "@heron/contracts";
 
 export class ManagementError extends Error {
   constructor(
-    public readonly code: "not_found" | "conflict" | "forbidden",
+    public readonly code: "not_found" | "conflict" | "forbidden" | "invalid",
     message: string,
   ) {
     super(message);

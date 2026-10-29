@@ -1,7 +1,15 @@
-import { ROLES } from "@heron/contracts";
+import { DEFAULT_CONSOLE_MENU_CONFIG, ROLES } from "@heron/contracts";
 import { describe, expect, it } from "vitest";
 
-import { ACTIONS, can, consoleAccess, isAction, requiredRoleFor } from "./rbac";
+import {
+  ACTIONS,
+  allowedMenuRoles,
+  can,
+  consoleAccess,
+  isAction,
+  menuConfigProblem,
+  requiredRoleFor,
+} from "./rbac";
 
 describe("RBAC 纯函数", () => {
   it("returns only authorized workspace navigation and action permissions", () => {
@@ -35,12 +43,74 @@ describe("RBAC 纯函数", () => {
       "platform-overview",
       "tenants",
       "platform-settings",
+      "platform-menus",
       "platform-usage",
       "platform-audit",
       "health",
     ]);
+    expect(access.groups.map((group) => group.key)).toEqual([
+      "platform-operations",
+      "platform-config",
+      "platform-monitor",
+    ]);
     expect(access.permissions).not.toContain("review.confirm");
     expect(access.permissions).not.toContain("user.manage");
+  });
+
+  it("租户菜单分组跟随默认配置：两条业务线 + 系统管理 + 系统监控", () => {
+    const access = consoleAccess("owner");
+    expect(access.groups.map((group) => group.key)).toEqual(["news", "proto", "system", "monitor"]);
+    expect(new Set(access.menus.map((menu) => menu.group))).toEqual(
+      new Set(access.groups.map((group) => group.key)),
+    );
+    // 个人页不在导航里出现，但路由仍然存在：头像菜单还要能点进去
+    expect(access.menus.find((menu) => menu.id === "profile")?.hidden).toBe(true);
+  });
+
+  it("菜单配置能改名、排序、隐藏与收窄角色，但路径永远来自白名单", () => {
+    const config = structuredClone(DEFAULT_CONSOLE_MENU_CONFIG);
+    config.groups[0].label = "新闻线";
+    config.groups[0].items[0].hidden = true;
+    config.groups[0].items[1].roles = ["reviewer"];
+    config.groups[0].items.push(config.groups[0].items.shift()!);
+    const access = consoleAccess("viewer", config);
+    expect(access.groups[0]).toMatchObject({ key: "news", label: "新闻线" });
+    // 收窄到 reviewer 后 viewer 看不到候选管理，组内其余页面照旧
+    expect(access.menus.map((menu) => menu.id)).not.toContain("candidates");
+    expect(access.menus.find((menu) => menu.id === "production")?.path).toBe("/production");
+    // 隐藏只影响导航，不影响路由与路径解析
+    expect(access.menus.find((menu) => menu.id === "overview")).toMatchObject({
+      hidden: true,
+      path: "/overview",
+    });
+    // 配置里的顺序就是菜单顺序，隐藏的页面仍然排在原处
+    expect(access.menus.filter((menu) => menu.group === "news").map((menu) => menu.id)).toEqual([
+      "production",
+      "review",
+      "publish",
+      "library",
+      "overview",
+    ]);
+  });
+
+  it("页面动作门槛不进配置：可见角色只能收窄，不能越过接口判据", () => {
+    expect(allowedMenuRoles("members")).toEqual(["owner"]);
+    expect(allowedMenuRoles("feeds")).toEqual(["owner", "admin"]);
+    expect(allowedMenuRoles("review")).toEqual([...ROLES]);
+  });
+
+  it("保存前的语义闸：越权放人、或让某档角色一条菜单都看不到，都要拒", () => {
+    expect(menuConfigProblem(DEFAULT_CONSOLE_MENU_CONFIG)).toBeNull();
+
+    const tooWide = structuredClone(DEFAULT_CONSOLE_MENU_CONFIG);
+    tooWide.groups[2].items[0].roles = ["viewer"];
+    expect(menuConfigProblem(tooWide)).toContain("可见角色超出");
+
+    const allHidden = structuredClone(DEFAULT_CONSOLE_MENU_CONFIG);
+    for (const group of allHidden.groups) {
+      for (const item of group.items) item.hidden = true;
+    }
+    expect(menuConfigProblem(allHidden)).toContain("至少");
   });
 
   /**

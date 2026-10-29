@@ -22,7 +22,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     if (error instanceof ManagementError) {
       // ManagementError 的 message 是仓储里写死的那几句话（不是驱动异常，不带 SQL 与参数），
       // 而它正是「为什么被拒」的唯一来源：换成通用文案，界面就只能显示"操作失败"。
-      const status = { not_found: 404, conflict: 409, forbidden: 403 }[error.code];
+      const status = { not_found: 404, conflict: 409, forbidden: 403, invalid: 400 }[error.code];
       res.status(status).json({ statusCode: status, message: error.message });
       return;
     }

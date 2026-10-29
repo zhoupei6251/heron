@@ -28,6 +28,7 @@ const SESSION: ConsoleSession = {
   user: USER,
   roles: ["reviewer"],
   permissions: ["task.claim", "review.confirm", "usage.read"],
+  groups: [],
   menus: [],
 };
 const BODY = { tenant: "acme", identifier: USER.email, password: "correct-horse-battery" };

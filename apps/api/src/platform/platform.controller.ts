@@ -14,11 +14,13 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import {
+  ConsoleMenuConfigSchema,
   CreateTenantBodySchema,
   PageQuerySchema,
   PlatformSettingsBodySchema,
   TenantPlanBodySchema,
   TenantStatusBodySchema,
+  type ConsoleMenuConfig,
   type CreateTenantBody,
   type PageQuery,
   type PlatformSettingsBody,
@@ -28,6 +30,7 @@ import {
 } from "@heron/contracts";
 import {
   type Db,
+  getConsoleMenuConfig,
   listPlatformTenants,
   provisionTenant,
   changeTenantPlan,
@@ -36,6 +39,7 @@ import {
   listPlatformAudit,
   getPlatformSettings,
   writePlatformSettings,
+  writeConsoleMenuConfig,
   dbPing,
 } from "@heron/db/pg";
 import { probeEngine, probeTemplate, type EngineStatus, type TemplateStatus } from "@heron/db";
@@ -114,6 +118,20 @@ export class PlatformController {
     @Body(new ZodValidationPipe(PlatformSettingsBodySchema)) body: PlatformSettingsBody,
   ) {
     return writePlatformSettings(this.db, user.id, body.values);
+  }
+
+  /** 写平台设置时 `console_menus` 不在标量设置名单里，单独走这两条：它是整棵树，不是一格文本。 */
+  @Get("menus")
+  menus() {
+    return getConsoleMenuConfig(this.db);
+  }
+
+  @Put("menus")
+  updateMenus(
+    @CurrentPlatformUser() user: PlatformUser,
+    @Body(new ZodValidationPipe(ConsoleMenuConfigSchema)) body: ConsoleMenuConfig,
+  ) {
+    return writeConsoleMenuConfig(this.db, user.id, body);
   }
 
   @Get("usage")

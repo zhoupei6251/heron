@@ -290,12 +290,51 @@ h3 {
 .nav-group + .nav-group {
   margin-top: 19px;
 }
-.nav-label {
+/* 大模块是可折叠的目录，子菜单缩进一级；模块名不是链接，点它只负责展开。 */
+.nav-module {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 13px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
   color: var(--heron-side-muted);
-  font: 10px/1.4 var(--heron-mono);
-  letter-spacing: 1.6px;
-  margin: 0 12px 8px;
-  text-transform: uppercase;
+  font: 550 11px/1.4 var(--el-font-family);
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition:
+    background 0.16s,
+    color 0.16s;
+}
+.nav-module span {
+  flex: 1;
+  text-align: left;
+}
+.nav-module .el-icon {
+  font-size: 16px;
+  color: var(--heron-side-muted);
+}
+.nav-module:hover,
+.nav-module.is-active {
+  background: var(--heron-side-hover);
+  color: var(--heron-side-strong);
+}
+.nav-module.is-active .el-icon {
+  color: var(--heron-side-accent);
+}
+.nav-chevron {
+  font-size: 13px !important;
+  transition: transform 0.16s;
+}
+.nav-chevron.is-open {
+  transform: rotate(180deg);
+}
+.nav-items {
+  margin: 2px 0 0 20px;
+  padding-left: 6px;
+  border-left: 1px solid var(--heron-side-line);
 }
 .nav-link {
   display: flex;
@@ -982,7 +1021,7 @@ h3 {
   }
   .workspace-badge,
   .sidebar-foot,
-  .nav-label {
+  .nav-module {
     display: none;
   }
   .console-nav {
@@ -999,6 +1038,14 @@ h3 {
   .nav-group {
     display: flex;
     gap: 4px;
+  }
+  /* 收起状态只属于桌面侧栏；窄屏是一排横向入口，每个模块的子菜单都摊平显示 */
+  .nav-items {
+    display: flex !important;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    border: 0;
   }
   .nav-group + .nav-group {
     margin: 0;

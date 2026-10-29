@@ -6,7 +6,7 @@ import { RouterLink } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
 const auth = useAuthStore();
-const home = computed(() => auth.menus[0]?.path ?? "/login");
+const home = computed(() => auth.homePath);
 </script>
 <template>
   <ElResult

@@ -2,15 +2,26 @@ import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
 
 import type { AuthUser, ConsoleSession, LoginBody, PlatformUser } from "@heron/contracts";
 import { consoleAccess } from "@heron/domain";
-import { listActiveTenants, noteWorkspaceView, type Db, type TenantRef } from "@heron/db/pg";
+import {
+  listActiveTenants,
+  noteWorkspaceView,
+  readConsoleMenuConfig,
+  type Db,
+  type TenantRef,
+} from "@heron/db/pg";
 
 import { PG_DB } from "../db/pg";
 import { PlatformAuthService } from "../platform/platform-auth.service";
 import { AuthService } from "./auth.service";
 import { LoginThrottleService } from "./login-throttle.service";
 
-function tenantSession(user: AuthUser): ConsoleSession {
-  return { kind: "tenant", user, ...consoleAccess(user.role) };
+/**
+ * 租户菜单读平台级配置：菜单结构是产品的一份，不按租户各存一套。
+ * 这里按需读库而不是把树签进票里——配置改了，下一次 /auth/me 就生效，不用等人重登。
+ */
+async function tenantSession(db: Db, user: AuthUser): Promise<ConsoleSession> {
+  const config = await readConsoleMenuConfig(db);
+  return { kind: "tenant", user, ...consoleAccess(user.role, config) };
 }
 
 function platformSession(user: PlatformUser): ConsoleSession {
@@ -64,13 +75,15 @@ export class ConsoleAuthService {
       userAgent,
     );
     await this.throttle.settle(input.tenant, input.identifier, Boolean(signed));
-    return signed ? { token: signed.token, session: tenantSession(signed.user) } : null;
+    return signed
+      ? { token: signed.token, session: await tenantSession(this.db, signed.user) }
+      : null;
   }
 
   /** 一次请求只读一张票：先按租户 audience 验，验不过再按平台 audience 验。 */
   async sessionFor(token: string): Promise<ConsoleSession | null> {
     const user = await this.tenants.userForToken(token);
-    if (user) return tenantSession(user);
+    if (user) return tenantSession(this.db, user);
     const operator = await this.platform.authenticate(token);
     return operator ? platformSession(operator) : null;
   }
@@ -105,7 +118,7 @@ export class ConsoleAuthService {
       await noteWorkspaceView(this.db, operatorId, session.user.tenantId, false);
     }
     await noteWorkspaceView(this.db, operatorId, tenantId, true);
-    return { token: signed.token, session: tenantSession(signed.user) };
+    return { token: signed.token, session: await tenantSession(this.db, signed.user) };
   }
 
   /** 退出查看：换回平台票。空间没了（停租）也照样回得去，因为平台身份与那个空间无关。 */
