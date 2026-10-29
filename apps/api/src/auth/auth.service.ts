@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 
@@ -11,15 +12,19 @@ import {
 } from "@heron/contracts";
 import {
   type Db,
+  createSession,
+  findLiveSession,
   findLoginTenantsByEmail,
   findPlatformOperatorById,
   findTenantBySlug,
   getActiveTenant,
   getUserByEmail,
   getUserById,
+  keepSessionAlive,
+  revokeSession,
+  revokeUserSessions,
   updateProfile,
   changePassword,
-  revokeUserSessions,
   withTenant,
 } from "@heron/db/pg";
 import { hashPassword, verifyPassword } from "@heron/domain";
@@ -56,6 +61,7 @@ function toAuthUser(
     role: Role;
   },
   tenant: { name: string; slug: string },
+  sessionId?: string,
 ): AuthUser {
   return {
     id: user.id,
@@ -65,6 +71,7 @@ function toAuthUser(
     email: user.email,
     displayName: user.displayName,
     role: user.role,
+    ...(sessionId === undefined ? {} : { sessionId }),
   };
 }
 
@@ -112,8 +119,13 @@ export class AuthService {
    *
    * tenant 为空 = 界面那一步（不选工作空间）：先按邮箱把他可能在的空间列出来，再逐个走下面这段。
    */
-  async login(tenant: string, email: string, password: string): Promise<SignedIn | null> {
-    if (tenant === "") return this.loginByEmail(email, password);
+  async login(
+    tenant: string,
+    email: string,
+    password: string,
+    userAgent?: string,
+  ): Promise<SignedIn | null> {
+    if (tenant === "") return this.loginByEmail(email, password, userAgent);
     const ref = await findTenantBySlug(this.db, tenant);
     if (!ref || ref.suspendedAt !== null) {
       verifyPassword(password, TIMING_EQUALIZER_HASH);
@@ -127,15 +139,20 @@ export class AuthService {
       const passwordOk = verifyPassword(password, user?.passwordHash ?? TIMING_EQUALIZER_HASH);
       if (!tenant || !user || !passwordOk || user.disabledAt !== null) return null;
 
+      // 会话行与票在同一个事务里：签出票却没有那一行，下一个请求就是 401。
+      // id 同时是票里的 sid——逐条强退要知道「踢的是哪一条」，版本号只能整户踢。
+      const sessionId = randomUUID();
+      await createSession(t, { id: sessionId, userId: user.id, userAgent });
       // tid comes from the locked database snapshot, never from a client-supplied UUID.
       const payload: JwtPayload = {
         sub: user.id,
         tid: user.tenantId,
         role: user.role,
         ver: user.sessionVersion,
+        sid: sessionId,
       };
       const token = await this.jwt.signAsync(payload, { audience: TENANT_AUDIENCE });
-      return { token, user: toAuthUser(user, tenant) };
+      return { token, user: toAuthUser(user, tenant, sessionId) };
     });
   }
 
@@ -145,7 +162,11 @@ export class AuthService {
    * 挑任何一个都是拿口令猜工作空间，宁可 401 也不登进去。
    * shortcut: 只验前 4 个候选（每个一次 scrypt，约 50–100ms），空间更多且邮箱重名时要显式带工作空间码。
    */
-  private async loginByEmail(email: string, password: string): Promise<SignedIn | null> {
+  private async loginByEmail(
+    email: string,
+    password: string,
+    userAgent?: string,
+  ): Promise<SignedIn | null> {
     const candidates = (await findLoginTenantsByEmail(this.db, email)).slice(0, 4);
     if (!candidates.length) {
       verifyPassword(password, TIMING_EQUALIZER_HASH);
@@ -153,14 +174,23 @@ export class AuthService {
     }
     const matched: SignedIn[] = [];
     for (const ref of candidates) {
-      const signed = await this.login(ref.slug, email, password);
+      const signed = await this.login(ref.slug, email, password, userAgent);
       if (signed) matched.push(signed);
     }
     return matched.length === 1 ? matched[0]! : null;
   }
 
-  logout(user: AuthUser): Promise<number> {
-    return withTenant(this.db, user.tenantId, (t) => revokeUserSessions(t, user.id));
+  /**
+   * 退出只作废自己这一条。以前是一把拉高 session_version——那等于「退出登录顺手把手机上的我也踢了」，
+   * 多设备登录就成了互相顶号。没有 sid 的旧票退回整户撤销（那时也确实没有更细的粒度）。
+   */
+  async logout(user: AuthUser): Promise<void> {
+    const sid = user.sessionId;
+    if (sid === undefined) {
+      await withTenant(this.db, user.tenantId, (t) => revokeUserSessions(t, user.id));
+      return;
+    }
+    await withTenant(this.db, user.tenantId, (t) => revokeSession(t, user.id, sid));
   }
 
   profile(user: AuthUser, input: ProfileBody): Promise<AuthUser> {
@@ -215,7 +245,7 @@ export class AuthService {
   async userFor(payload: unknown): Promise<AuthUser | null> {
     const parsed = JwtPayloadSchema.safeParse(payload);
     if (!parsed.success) return null;
-    const { sub, tid, ver, act } = parsed.data;
+    const { sub, tid, ver, act, sid } = parsed.data;
     // 查看票的主语在另一张表上。这次读必须开在租户事务之前：pglite 只有一条连接，
     // 事务里再进特权通道就是「在事务里开事务」。
     const operator = act === "platform" ? await findPlatformOperatorById(this.db, sub) : null;
@@ -231,7 +261,14 @@ export class AuthService {
       if (operator) return toViewUser(operator, tenant);
       const user = await getUserById(t, sub);
       if (!user || user.disabledAt !== null || user.sessionVersion !== ver) return null;
-      return toAuthUser(user, tenant);
+      // 逐条撤销在每次请求生效，靠的是这次读而不是 token 的有效期。
+      // 没有 sid 的票是按旧格式签的：整户撤销才作废得了它，所以要求重新登录。
+      if (sid === undefined) return null;
+      const live = await findLiveSession(t, { id: sid, userId: user.id });
+      if (!live) return null;
+      // last_seen_at 一分钟写一次：控制台一轮询就把这张表写成最热表，不值。
+      await keepSessionAlive(t, live);
+      return toAuthUser(user, tenant, sid);
     });
   }
 

@@ -1,3 +1,5 @@
+# 本机的 agent 设置与临时状态：不是项目代码，各人各自的样子
+.claude/
 node_modules/
 dist/
 data/

@@ -11,19 +11,54 @@ import {
   insertRender,
   latestRender,
   nextRenderVersion,
+  quotaStatus,
+  recordUsage,
   releaseLease,
   updatePublish,
   type TenantDb,
 } from "@heron/db/pg";
 import {
   DECLARATION_TEXT,
+  exceeds,
+  excessMessage,
   gateForTransition,
   scriptVerdict,
   type GateEvaluator,
 } from "@heron/domain";
+import { createObjectStore, objectKey, type ObjectStore } from "@heron/storage";
 
 import { getManifest } from "./capabilities";
 import { declaresScript, generateScript, type ScriptDeps } from "./scripting";
+
+/** 测试替掉真模型与真存储；默认两个都走真实实现（存储默认本地驱动，等于不搬）。 */
+export interface WalkDeps extends ScriptDeps {
+  store?: ObjectStore;
+}
+
+/**
+ * 把一版渲染的产物搬到桶里，返回要写进 renders 的 key。
+ * 键带租户前缀（按租户导出/删桶）与版本号（重渲换片，不覆盖上一版）。
+ */
+async function uploadArtifacts(
+  store: ObjectStore,
+  tenantId: string,
+  taskId: string,
+  version: number,
+  files: { mp4: string; contactSheet?: string; aigcSidecar?: string },
+): Promise<{ mp4Key: string; contactSheetKey?: string; aigcSidecarKey?: string }> {
+  const mp4Key = objectKey({ tenantId, taskId, version, kind: "mp4" });
+  await store.put(mp4Key, files.mp4);
+  const keys: { mp4Key: string; contactSheetKey?: string; aigcSidecarKey?: string } = { mp4Key };
+  if (files.contactSheet) {
+    keys.contactSheetKey = objectKey({ tenantId, taskId, version, kind: "contact-sheet" });
+    await store.put(keys.contactSheetKey, files.contactSheet);
+  }
+  if (files.aigcSidecar) {
+    keys.aigcSidecarKey = objectKey({ tenantId, taskId, version, kind: "aigc-sidecar" });
+    await store.put(keys.aigcSidecarKey, files.aigcSidecar);
+  }
+  return keys;
+}
 
 export interface WalkTrace {
   readonly taskId: string;
@@ -78,13 +113,35 @@ function buildEvaluator(scripted: boolean, script: unknown): GateEvaluator {
   };
 }
 
+/** 额度拦下的任务不是「worker 崩了」：tick 据此写一条干净的原因，而不是一整段堆栈。 */
+export class QuotaRefusalError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "QuotaRefusalError";
+  }
+}
+
+/**
+ * 额度闸：进 rendering / publishing 之前判一次本月账。
+ *
+ * 判据走 domain 的纯函数，与界面提示同一份——两处各写一遍的症状是「界面说还能发、worker 拒了」。
+ * 超额抛错而不是静默跳过：任务会带着原因变 failed（tick 的 catch 里 markFailed），
+ * 而「失败必须报原因」要求这句话里能看出是哪道门、用了几条、该去哪儿升档。
+ */
+async function refuseWhenOverQuota(tdb: TenantDb, task: Task): Promise<void> {
+  const quota = await quotaStatus(tdb);
+  const excess = exceeds(quota.plan, quota.usage);
+  if (excess)
+    throw new QuotaRefusalError(`任务 ${task.id} 被额度拦下：${excessMessage(quota.plan, excess)}`);
+}
+
 /** 进入某个阶段之前的副作用。人的确认不在这里：那一步由真实的人点出来。 */
 async function onEnter(
   tdb: TenantDb,
   task: Task,
   to: Stage,
   note: string[],
-  deps: ScriptDeps,
+  deps: WalkDeps,
   scripted: boolean,
 ): Promise<void> {
   if (to === "scripting") {
@@ -94,20 +151,43 @@ async function onEnter(
   }
 
   if (to === "rendering") {
+    await refuseWhenOverQuota(tdb, task);
     const dir = taskDir(task.id);
     mkdirSync(dir, { recursive: true });
     const contactSheet = `task=${task.id}\npack=demo\nshots=1\n`;
     writeFileSync(join(dir, "contact-sheet.txt"), contactSheet, "utf8");
     writeFileSync(join(dir, "fake.mp4"), "not-a-real-video", "utf8");
     const version = await nextRenderVersion(tdb, task.id);
+    // 先传再落库：上传失败就抛，事务回滚、任务带原因失败。
+    // 静默降级成「只有本地有」会让一台渲染机成为唯一副本，而那正是对象存储要解决的问题。
+    // 本地驱动（默认）不搬任何东西，keys 保持为空，取址仍走 sendFile。
+    const store = deps.store ?? createObjectStore();
+    const keys =
+      store.driver === "local"
+        ? {}
+        : await uploadArtifacts(store, tdb.tenantId, task.id, version, {
+            mp4: join(dir, "fake.mp4"),
+            contactSheet: join(dir, "contact-sheet.txt"),
+          });
+    const durationMs = 1_000;
     await insertRender(tdb, {
       taskId: task.id,
       version,
       pack: "demo",
       mp4Path: join(dir, "fake.mp4"),
       contactSheetPath: join(dir, "contact-sheet.txt"),
-      durationMs: 1_000,
+      durationMs,
       fingerprint: sha256(contactSheet),
+      ...keys,
+    });
+    // render_seconds 记的是真花的秒数：真渲染器接上后这里换成 timings 的实测值，
+    // 与「月渲染条数」（额度）不是一回事，账本里别混用。
+    await recordUsage(tdb, {
+      kind: "render_seconds",
+      quantity: String(durationMs / 1_000),
+      unit: "seconds",
+      taskId: task.id,
+      detail: { version, pack: "demo" },
     });
     note.push(`rendering:v${version}`);
     return;
@@ -122,12 +202,22 @@ async function onEnter(
       note.push(`publishing:幂等命中 ${key}`);
       return;
     }
+    // 额度闸放在幂等键之后：重试同一版本是「补发」，不该被本月新增发布的额度挡住
+    await refuseWhenOverQuota(tdb, task);
     const publishId = await insertPublish(tdb, {
       renderId: render.id,
       idempotencyKey: key,
       declaration: DECLARATION_TEXT,
     });
     await updatePublish(tdb, publishId, { status: "confirmed", receipt: "p0-stub-receipt" });
+    // 一条发布记录记一次：重试命中幂等键时不会走到这里，账不会被重试刷高
+    await recordUsage(tdb, {
+      kind: "publish",
+      quantity: "1",
+      unit: "count",
+      taskId: task.id,
+      detail: { idempotencyKey: key, platform: "douyin" },
+    });
     note.push(`publishing:${key}`);
   }
 }
@@ -143,7 +233,7 @@ export async function walkTask(
   tdb: TenantDb,
   task: Task,
   owner: string,
-  deps: ScriptDeps = {},
+  deps: WalkDeps = {},
 ): Promise<WalkTrace> {
   const manifest = getManifest(task.capability);
   const scripted = declaresScript(manifest.promptKeys);

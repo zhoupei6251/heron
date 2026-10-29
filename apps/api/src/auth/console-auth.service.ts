@@ -45,7 +45,10 @@ export class ConsoleAuthService {
     @Inject(PG_DB) private readonly db: Db,
   ) {}
 
-  async login(input: LoginBody): Promise<{ token: string; session: ConsoleSession } | null> {
+  async login(
+    input: LoginBody,
+    userAgent?: string,
+  ): Promise<{ token: string; session: ConsoleSession } | null> {
     // 限流只看「工作空间码 + 账号」两样，验口令之前就拦：撞库脚本连 scrypt 都不该跑到。
     await this.throttle.assertAllowed(input.tenant, input.identifier);
     if (isPlatformRealm(input)) {
@@ -53,7 +56,13 @@ export class ConsoleAuthService {
       await this.throttle.settle(input.tenant, input.identifier, Boolean(signed));
       return signed ? { token: signed.token, session: platformSession(signed.user) } : null;
     }
-    const signed = await this.tenants.login(input.tenant, input.identifier, input.password);
+    // userAgent 只进 sessions 行给人看「这是哪台设备」，不参与任何判据。
+    const signed = await this.tenants.login(
+      input.tenant,
+      input.identifier,
+      input.password,
+      userAgent,
+    );
     await this.throttle.settle(input.tenant, input.identifier, Boolean(signed));
     return signed ? { token: signed.token, session: tenantSession(signed.user) } : null;
   }

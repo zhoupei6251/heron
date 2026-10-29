@@ -34,7 +34,12 @@ describe("protected artifact streaming (real socket + PGlite)", () => {
   let outsider: string;
   let normal: string;
   const originalSecret = process.env.HERON_JWT_SECRET;
-  async function task(path: string, tid = tenantId, version = 1): Promise<string> {
+  async function task(
+    path: string,
+    tid = tenantId,
+    version = 1,
+    key: string | null = null,
+  ): Promise<string> {
     return withTenant(db, tid, async (t) => {
       const id = randomUUID();
       const at = new Date().toISOString();
@@ -55,6 +60,9 @@ describe("protected artifact streaming (real socket + PGlite)", () => {
         mp4Path: path,
         contactSheetPath: path,
         aigcSidecarPath: path,
+        mp4Key: key,
+        contactSheetKey: key,
+        aigcSidecarKey: key,
         createdAt: at,
       });
       return id;
@@ -89,6 +97,14 @@ describe("protected artifact streaming (real socket + PGlite)", () => {
       .useValue(db)
       .overrideProvider("ARTIFACT_ROOT")
       .useValue(videos)
+      // 假的私有桶：只拼签名直链，不打网络。key 原样回显，方便断言拿到的确实是这一份。
+      .overrideProvider("OBJECT_STORE")
+      .useValue({
+        driver: "qiniu",
+        put: () => Promise.resolve({ key: "", bytes: 0 }),
+        url: (key: string) => `https://cdn.example.com/${key}?sign=test`,
+        remove: () => Promise.resolve(),
+      })
       .compile();
     app = mod.createNestApplication({ logger: false });
     applyTransport(app);
@@ -176,6 +192,26 @@ describe("protected artifact streaming (real socket + PGlite)", () => {
       expect((await get(id, `${kind}?version=1`)).status).toBe(409);
       expect((await get(id, `${kind}?version=2`)).status).toBe(404);
     }
+  });
+
+  it("本地那份没了就 302 到私有桶的签名直链；本地还在时优先读本机", async () => {
+    const key = `tenants/${tenantId}/tasks/keyed/v1/mp4.mp4`;
+    // 本地有：不绕 CDN（发布与诊断就在这台机器上）
+    const both = await task(join(videos, "sample.mp4"), tenantId, 1, key);
+    const local = await get(both);
+    expect(local.status).toBe(200);
+    expect(await local.text()).toBe("0123456789abcdef");
+
+    // 本地没了（保留清理删过），只剩桶里那份：302，签名地址只出现在 Location 里
+    const cleaned = await task(join(videos, "cleaned-away.mp4"), tenantId, 1, key);
+    const res = await fetch(`${base}/api/manage/artifacts/${cleaned}/mp4?version=1`, {
+      headers: { cookie },
+      redirect: "manual",
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`https://cdn.example.com/${key}?sign=test`);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(await res.text()).not.toContain("cdn.example.com");
   });
 
   it("rejects traversal, external path, symlink escape and missing/directory paths without disclosure", async () => {

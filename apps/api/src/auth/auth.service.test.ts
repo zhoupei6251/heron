@@ -13,7 +13,9 @@ import {
   findTenantBySlug,
   createPlatformOperator,
   changeTenantStatus,
+  createSession,
   getUserById,
+  revokeSession,
   changePassword,
   updateMember,
 } from "@heron/db/pg";
@@ -89,6 +91,13 @@ describe("AuthService.login", () => {
         role: "reviewer",
       }),
     );
+  }
+
+  /** 库里有这个人的一条活会话。逐条强退的判据读的就是这一行，不是票里的有效期。 */
+  async function openSession(tenantId: string, userId: string): Promise<string> {
+    const id = randomUUID();
+    await withTenant(db, tenantId, (t) => createSession(t, { id, userId }));
+    return id;
   }
 
   it("口令错与用户不存在给出同一个答案", async () => {
@@ -252,7 +261,16 @@ describe("AuthService.login", () => {
     const payload = new JwtService({ secret: TEST_SECRET }).decode<Record<string, unknown>>(
       signed?.token as string,
     );
-    expect(Object.keys(payload).sort()).toEqual(["aud", "exp", "iat", "role", "sub", "tid", "ver"]);
+    expect(Object.keys(payload).sort()).toEqual([
+      "aud",
+      "exp",
+      "iat",
+      "role",
+      "sid",
+      "sub",
+      "tid",
+      "ver",
+    ]);
     expect(payload).toMatchObject({
       sub: userId,
       tid: DEFAULT_TENANT_ID,
@@ -260,10 +278,13 @@ describe("AuthService.login", () => {
       ver: 0,
       aud: "heron-tenant",
     });
+    // sid 是「这一次登录」的句柄：逐条强退要知道踢的是哪一条，版本号只能整户踢
+    expect(payload.sid).toMatch(/^[0-9a-f-]{36}$/);
     // 邮箱与口令哈希不进 token：它们是会在库里改的字段，改一次就得重签一遍是白付的债
     expect(JSON.stringify(payload)).not.toContain("example.com");
     expect(JSON.stringify(payload)).not.toContain("scrypt");
-    // 顺带还给界面的是这张表，不是库里那一行——password_hash 一步都不许往外走
+    // 顺带还给界面的是这张表，不是库里那一行——password_hash 一步都不许往外走。
+    // sessionId 与票里的 sid 是同一个值：界面靠它认出「列表里哪条是我现在这条」。
     expect(signed?.user).toEqual({
       id: userId,
       tenantId: DEFAULT_TENANT_ID,
@@ -272,13 +293,21 @@ describe("AuthService.login", () => {
       email: EMAIL,
       displayName: "周佩",
       role: "reviewer",
+      sessionId: payload.sid,
     });
   });
 
   describe("userFor（守卫每次请求的库内复查）", () => {
     it("token 说你有身份，库说你还有没有", async () => {
       const userId = await seedUser(DEFAULT_TENANT_ID);
-      const payload = { sub: userId, tid: DEFAULT_TENANT_ID, role: "reviewer" as const, ver: 0 };
+      const sid = await openSession(DEFAULT_TENANT_ID, userId);
+      const payload = {
+        sub: userId,
+        tid: DEFAULT_TENANT_ID,
+        role: "reviewer" as const,
+        ver: 0,
+        sid,
+      };
       expect(await service.userFor(payload)).toEqual({
         id: userId,
         tenantId: DEFAULT_TENANT_ID,
@@ -287,9 +316,33 @@ describe("AuthService.login", () => {
         email: EMAIL,
         displayName: "周佩",
         role: "reviewer",
+        sessionId: sid,
       });
 
       await withTenant(db, DEFAULT_TENANT_ID, (t) => disableUser(t, userId));
+      expect(await service.userFor(payload)).toBeNull();
+    });
+
+    it("没有 sid 的旧票不认：版本号只能整户撤销，请人重新登录换一张带 sid 的", async () => {
+      const userId = await seedUser(DEFAULT_TENANT_ID);
+      await openSession(DEFAULT_TENANT_ID, userId);
+      expect(
+        await service.userFor({ sub: userId, tid: DEFAULT_TENANT_ID, role: "reviewer", ver: 0 }),
+      ).toBeNull();
+    });
+
+    it("会话行被标掉之后同一张票立刻失效：强退靠这次读，不靠票的有效期", async () => {
+      const userId = await seedUser(DEFAULT_TENANT_ID);
+      const sid = await openSession(DEFAULT_TENANT_ID, userId);
+      const payload = {
+        sub: userId,
+        tid: DEFAULT_TENANT_ID,
+        role: "reviewer" as const,
+        ver: 0,
+        sid,
+      };
+      expect(await service.userFor(payload)).not.toBeNull();
+      await withTenant(db, DEFAULT_TENANT_ID, (t) => revokeSession(t, userId, sid));
       expect(await service.userFor(payload)).toBeNull();
     });
 
@@ -313,7 +366,14 @@ describe("AuthService.login", () => {
 
     it("登进来之后才停租：已签发的会话立刻失效，不然「关在门外」只管进门", async () => {
       const userId = await seedUser(DEFAULT_TENANT_ID);
-      const payload = { sub: userId, tid: DEFAULT_TENANT_ID, role: "reviewer" as const, ver: 0 };
+      const sid = await openSession(DEFAULT_TENANT_ID, userId);
+      const payload = {
+        sub: userId,
+        tid: DEFAULT_TENANT_ID,
+        role: "reviewer" as const,
+        ver: 0,
+        sid,
+      };
       expect(await service.userFor(payload)).not.toBeNull();
 
       await setTenantSuspended(db, DEFAULT_TENANT_ID, AT);

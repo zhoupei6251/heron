@@ -5,6 +5,8 @@
  * 密钥只在调用这一刻出现：不进日志、不进错误文案、不进审计台账。
  */
 
+import { DEFAULT_MODEL_BASE_URL } from "@heron/contracts";
+
 export interface ModelConfig {
   /** 不带结尾斜杠，请求拼 `${baseUrl}/chat/completions`。 */
   baseUrl: string;
@@ -33,8 +35,8 @@ export class EmptyModelReplyError extends Error {
   }
 }
 
-/** 七牛云 AI 推理的 OpenAI 兼容入口。换厂商就覆盖 HERON_MODEL_BASE_URL。 */
-const DEFAULT_BASE_URL = "https://api.qnaigc.com/v1";
+/** 七牛云 AI 推理的 OpenAI 兼容入口。与平台设置的兜底值是同一个常量，只有一份。 */
+const DEFAULT_BASE_URL = DEFAULT_MODEL_BASE_URL;
 /** 本机模型不需要密钥。容器里连宿主上的 Ollama 走 host.docker.internal。 */
 const KEYLESS_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]", "host.docker.internal"]);
 /** 租约 TTL 是 60s：单次调用拖过它，另一个 worker 就可能接管同一条任务去重写。 */
@@ -52,20 +54,25 @@ export interface ModelSource {
 }
 
 /**
- * 合并顺序：页面配置 > 环境变量 > 默认地址。密钥与模型名没有安全默认值，
- * 所以缺模型名直接报错；密钥按地址区分——本地模型不需要。
+ * 合并顺序：租户页面配置 > 平台设置 > 环境变量 > 默认地址。
+ *
+ * 平台设置只提供地址与模型名：**密钥永远不从平台层来**（那张表里没有密钥，只有租户设置与环境变量）。
+ * 密钥与模型名没有安全默认值，所以缺模型名直接报错；密钥按地址区分——本地模型不需要。
  */
 export function resolveModelConfig(
   source: ModelSource = {},
   env: NodeJS.ProcessEnv = process.env,
+  platform: ModelSource = {},
 ): ModelConfig {
   const baseUrl = (
     source.baseUrl?.trim() ||
+    platform.baseUrl?.trim() ||
     env.HERON_MODEL_BASE_URL?.trim() ||
     DEFAULT_BASE_URL
   ).replace(/\/+$/, "");
   const apiKey = source.apiKey?.trim() || env.HERON_MODEL_API_KEY?.trim() || "";
-  const model = source.model?.trim() || env.HERON_MODEL_NAME?.trim() || "";
+  const model =
+    source.model?.trim() || platform.model?.trim() || env.HERON_MODEL_NAME?.trim() || "";
 
   let url: URL;
   try {

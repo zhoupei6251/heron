@@ -18,6 +18,8 @@ import {
   Rss,
   Send,
   Settings,
+  SlidersHorizontal,
+  Smartphone,
   Users,
 } from "lucide-vue-next";
 import { ElAvatar, ElButton, ElIcon, ElTag } from "element-plus";
@@ -53,9 +55,11 @@ const ICONS: Record<ConsoleMenu["id"], Component> = {
   settings: Settings,
   usage: ChartColumnBig,
   audit: FileCheck,
+  sessions: Smartphone,
   profile: CircleUser,
   "platform-overview": LayoutDashboard,
   tenants: Building2,
+  "platform-settings": SlidersHorizontal,
   "platform-usage": ChartColumnBig,
   "platform-audit": FileCheck,
   health: Gauge,

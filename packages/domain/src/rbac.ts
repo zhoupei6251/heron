@@ -11,6 +11,7 @@ export const ACTIONS = [
   "aigc.set",
   "user.manage",
   "usage.read",
+  "session.manage",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];
@@ -44,6 +45,8 @@ const MIN_ROLE: Record<Action, Role> = {
   "aigc.set": "admin",
   "user.manage": "owner",
   "usage.read": "viewer",
+  // 强退别人的登录：admin 起。自己的那条不需要这个动作，谁都能退掉自己。
+  "session.manage": "admin",
 };
 
 export function can(role: Role, action: Action): boolean {
@@ -76,11 +79,14 @@ const TENANT_MENUS: (ConsoleMenu & { action?: Action })[] = [
   },
   { id: "usage", path: "/usage", label: "用量统计", group: "安全与治理", action: "usage.read" },
   { id: "audit", path: "/audit", label: "操作审计", group: "安全与治理", action: "settings.write" },
+  // 不设门槛：看不到别人的会话，也至少要看得到「我在哪几处登录着」并关掉它们
+  { id: "sessions", path: "/sessions", label: "在线会话", group: "安全与治理" },
   { id: "profile", path: "/profile", label: "个人与安全", group: "安全与治理" },
 ];
 const PLATFORM_MENUS: ConsoleMenu[] = [
   { id: "platform-overview", path: "/platform", label: "运营概览", group: "平台管理" },
   { id: "tenants", path: "/platform/tenants", label: "租户管理", group: "平台管理" },
+  { id: "platform-settings", path: "/platform/settings", label: "平台设置", group: "平台管理" },
   { id: "platform-usage", path: "/platform/usage", label: "全局用量", group: "平台管理" },
   { id: "platform-audit", path: "/platform/audit", label: "平台审计", group: "平台管理" },
   { id: "health", path: "/platform/health", label: "服务健康", group: "平台管理" },

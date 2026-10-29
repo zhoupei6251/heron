@@ -6,6 +6,8 @@
 export * from "./transitions";
 export * from "./error-reason";
 export * from "./rbac";
+// 额度判据是纯函数，控制台要拿它把按钮置灰，所以两边共用一个入口
+export * from "./plan";
 export * from "./gates/dedupe";
 export * from "./gates/refusal";
 export * from "./gates/status";

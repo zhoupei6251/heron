@@ -1,0 +1,2 @@
+ALTER TABLE "tenants" ADD COLUMN "plan" text DEFAULT 'free' NOT NULL;--> statement-breakpoint
+ALTER TABLE "tenants" ADD CONSTRAINT "ck_tenants_plan_known" CHECK ("tenants"."plan" IN ('free','standard','enterprise'));

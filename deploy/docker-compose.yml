@@ -51,6 +51,15 @@ x-app: &app
     HERON_MODEL_BASE_URL: ${HERON_MODEL_BASE_URL:-}
     HERON_MODEL_API_KEY: ${HERON_MODEL_API_KEY:-}
     HERON_MODEL_NAME: ${HERON_MODEL_NAME:-}
+    # 成片异地副本。留空 = 本地驱动，行为与接对象存储之前一字不差。
+    # HERON_STORAGE=qiniu 而四项缺任意一项时进程**启动即失败**：半配能跑起来的症状是
+    # 「渲染完才发现传不上去」，而那时已经付过一次渲染成本。凭据只走这里，不落库、不进镜像。
+    HERON_STORAGE: ${HERON_STORAGE:-local}
+    QINIU_ACCESS_KEY: ${QINIU_ACCESS_KEY:-}
+    QINIU_SECRET_KEY: ${QINIU_SECRET_KEY:-}
+    QINIU_BUCKET: ${QINIU_BUCKET:-}
+    QINIU_DOMAIN: ${QINIU_DOMAIN:-}
+    QINIU_REGION: ${QINIU_REGION:-z2}
   depends_on:
     db:
       condition: service_healthy
@@ -131,6 +140,14 @@ services:
       HERON_JWT_SECRET: ${HERON_JWT_SECRET:?会话签名密钥必须在 .env 里给，镜像和本文件都不带默认值}
       # 默认 0：这台机器很可能就是 http://127.0.0.1 上自己用。挂 TLS 时改成 1。
       HERON_COOKIE_SECURE: ${HERON_COOKIE_SECURE:-0}
+      # 同上：api 块重写了整个 environment，锚点里的存储五项在这里必须再写一遍，
+      # 否则「本机能取、容器里 404」——worker 传上去了，api 不知道去哪儿签名。
+      HERON_STORAGE: ${HERON_STORAGE:-local}
+      QINIU_ACCESS_KEY: ${QINIU_ACCESS_KEY:-}
+      QINIU_SECRET_KEY: ${QINIU_SECRET_KEY:-}
+      QINIU_BUCKET: ${QINIU_BUCKET:-}
+      QINIU_DOMAIN: ${QINIU_DOMAIN:-}
+      QINIU_REGION: ${QINIU_REGION:-z2}
     healthcheck:
       # /api/health 是 @Public 的真探针（库 + 前端产物）。用 node 自带的 fetch，
       # 镜像里不必为一条探针再装 curl。start_period 留给迁移与 web/dist 检查。

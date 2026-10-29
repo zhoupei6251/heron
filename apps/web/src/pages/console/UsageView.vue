@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { UsageSummary, PlatformUsageSummary } from "@heron/contracts";
+import type { QuotaStatus, UsageSummary, PlatformUsageSummary } from "@heron/contracts";
+import { PLAN_LABELS, excessMessage, exceeds } from "@heron/domain";
 import { RefreshCw } from "lucide-vue-next";
-import { ElAlert, ElButton, ElTable, ElTableColumn, ElTag } from "element-plus";
+import { ElAlert, ElButton, ElProgress, ElTable, ElTableColumn, ElTag } from "element-plus";
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { request, errorMessage } from "../../api/http";
@@ -10,6 +11,36 @@ const platform = useRoute().meta.platform === true;
 const rows = ref<(UsageSummary | PlatformUsageSummary)[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
+/** 平台台看的是各租户的累计用量，没有「我这一家的额度」可言。 */
+const quota = ref<QuotaStatus | null>(null);
+const quotaExcess = computed(() =>
+  quota.value ? exceeds(quota.value.plan, quota.value.usage) : null,
+);
+/**
+ * 上限和用量一起显示：只给用量的话，读的人得自己去别处找「100 条算多还是算少」。
+ * 比例只是进度条的视觉，判定一律交给 exceeds —— 那条边界（>=）只写一次。
+ */
+const meters = computed(() => {
+  const q = quota.value;
+  if (!q) return [];
+  return [
+    { kind: "seats", label: "成员席位", used: q.usage.seats, limit: q.limits.seats },
+    { kind: "renders", label: "本月渲染", used: q.usage.renders, limit: q.limits.rendersPerMonth },
+    {
+      kind: "publishes",
+      label: "本月发布",
+      used: q.usage.publishes,
+      limit: q.limits.publishesPerMonth,
+    },
+  ].map((meter) => {
+    const ratio = meter.used / meter.limit;
+    return {
+      ...meter,
+      percentage: Math.min(100, Math.round(ratio * 100)),
+      status: ratio >= 1 ? ("exception" as const) : ratio >= 0.8 ? ("warning" as const) : undefined,
+    };
+  });
+});
 /** 不同单位不合并：每种单位各画一张，条内按用量降序。 */
 const groups = computed(() => {
   const byUnit = new Map<string, { label: string; value: number }[]>();
@@ -29,11 +60,17 @@ async function load() {
   loading.value = true;
   error.value = null;
   try {
-    rows.value = await request<(UsageSummary | PlatformUsageSummary)[]>(
-      platform ? "/platform/usage" : "/manage/usage",
-    );
+    const [usage, plan] = await Promise.all([
+      request<(UsageSummary | PlatformUsageSummary)[]>(
+        platform ? "/platform/usage" : "/manage/usage",
+      ),
+      platform ? Promise.resolve(null) : request<QuotaStatus>("/manage/quota"),
+    ]);
+    rows.value = usage;
+    quota.value = plan;
   } catch (cause) {
     rows.value = [];
+    quota.value = null;
     error.value = errorMessage(cause);
   } finally {
     loading.value = false;
@@ -61,6 +98,39 @@ onMounted(load);
       :closable="false"
       class="page-alert"
     />
+    <div v-if="quota" class="panel">
+      <div class="panel-header">
+        <h2>本月额度</h2>
+        <ElTag :type="quotaExcess ? 'danger' : 'info'">{{ PLAN_LABELS[quota.plan] }}档</ElTag>
+      </div>
+      <div class="panel-body">
+        <div class="quota-gauges">
+          <section v-for="meter in meters" :key="meter.kind" class="quota-meter">
+            <div class="quota-meter-head">
+              <span>{{ meter.label }}</span>
+              <span class="mono">{{ meter.used }}/{{ meter.limit }}</span>
+            </div>
+            <ElProgress
+              :percentage="meter.percentage"
+              :status="meter.status"
+              :stroke-width="8"
+              :show-text="false"
+            />
+          </section>
+        </div>
+        <ElAlert
+          v-if="quotaExcess"
+          :title="excessMessage(quota.plan, quotaExcess)"
+          type="warning"
+          show-icon
+          :closable="false"
+          class="quota-foot"
+        />
+        <p v-else class="form-hint">
+          渲染与发布按 UTC 自然月计，每月 1 日归零；成员席位是当前值，不随月份清零。
+        </p>
+      </div>
+    </div>
     <div v-if="groups.length" class="panel">
       <div class="panel-header">
         <h2>用量分布</h2>
@@ -100,7 +170,7 @@ onMounted(load);
       /></ElTable>
       <div class="panel-body">
         <p class="form-hint">
-          不同单位不合并计算。此页不是计费账单，不显示未经定价的金额、额度或预计费用。
+          不同单位不合并计算。此页不是计费账单，不显示金额或预计费用；上方额度是上限提示，不是扣费。
         </p>
       </div>
     </div>

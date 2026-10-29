@@ -22,7 +22,10 @@ export * from "./schema/index";
 export * from "./tasks";
 export * from "./tenants";
 export * from "./usage";
+export * from "./quota";
 export * from "./management";
+export * from "./sessions";
 // Narrow platform operations only; withAdmin remains private to its deep module.
 export * from "./platform";
+export * from "./platform-settings";
 export * from "./proto";

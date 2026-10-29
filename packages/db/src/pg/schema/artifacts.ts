@@ -39,6 +39,11 @@ import { tasks } from "./tasks";
       durationMs: integer("duration_ms"),
       // 合规三件套的 sidecar（aigc.json）落在成片旁边，DB 只存路径
       aigcSidecarPath: text("aigc_sidecar_path"),
+      // 对象存储里的异地副本（未配存储时为空）。路径列与 key 列并存且互不推导：
+      // 本地盘是发布与诊断的现场，key 是它在桶里的地址，任一缺失都要能回答「哪一份没了」。
+      mp4Key: text("mp4_key"),
+      contactSheetKey: text("contact_sheet_key"),
+      aigcSidecarKey: text("aigc_sidecar_key"),
       // 各阶段耗时 [{stage, seconds}]：一次渲染约 60s 墙钟，慢在哪得能查
       timings: jsonb("timings")
         .$type<{ stage: string; seconds: number }[]>()

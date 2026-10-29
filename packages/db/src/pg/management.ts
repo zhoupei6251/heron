@@ -29,9 +29,10 @@ import {
   type WorkspaceBody,
 } from "@heron/contracts";
 import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
-import { can, type Action } from "@heron/domain";
+import { can, exceeds, excessMessage, type Action } from "@heron/domain";
 import { nowIso } from "../time";
 import { ManagementError, readPage, rethrowConflict, searchPattern } from "./console-query";
+import { monthlyUsage, tenantPlan } from "./quota";
 import type { TenantDb } from "./rls";
 import { setRetentionDays, setModelSettings } from "./settings";
 import {
@@ -40,6 +41,7 @@ import {
   feedSources,
   publishes,
   renders,
+  sessions,
   tasks,
   tenants,
   usageRecords,
@@ -160,6 +162,15 @@ export async function createManagedMember(
 ): Promise<Member> {
   await requireActiveActor(tdb, actorId, "user.manage");
   const safe = CreateMemberBodySchema.omit({ password: true }).parse(input);
+  // 座位额度在写库之前判：先插进去再回滚也能「拦住」，但错误就成了数据库的而不是额度的。
+  // 判据只读 seats 那一格，渲染/发布传 0 表示这次不问它们（不然加个人会被渲染数拖住）。
+  const plan = await tenantPlan(tdb);
+  const seatExcess = exceeds(plan, {
+    seats: (await monthlyUsage(tdb)).seats,
+    renders: 0,
+    publishes: 0,
+  });
+  if (seatExcess) throw new ManagementError("conflict", excessMessage(plan, seatExcess));
   const at = nowIso();
   const id = randomUUID();
   try {
@@ -221,6 +232,9 @@ export async function updateMember(
       updatedAt: at,
     })
     .where(and(eq(users.tenantId, tdb.tenantId), eq(users.id, targetId)));
+  if (patch.disabled !== undefined || patch.role !== undefined) {
+    await markSessionsRevoked(tdb, targetId);
+  }
   await audit(tdb, actorId, "member.updated", targetId, { ...patch });
   return getMember(tdb, targetId);
 }
@@ -258,6 +272,23 @@ export async function updateProfile(
   return getMember(tdb, actorId);
 }
 
+/**
+ * 整户撤销（改密码、一键踢全部）时把会话行一起标掉：token 那边靠 session_version 失效，
+ * 但列表读的是这张表——不标，人已经被踢下线，页面还写着「在线」。
+ */
+async function markSessionsRevoked(tdb: TenantDb, userId: string): Promise<void> {
+  await tdb.db
+    .update(sessions)
+    .set({ revokedAt: nowIso() })
+    .where(
+      and(
+        eq(sessions.tenantId, tdb.tenantId),
+        eq(sessions.userId, userId),
+        isNull(sessions.revokedAt),
+      ),
+    );
+}
+
 /** Verification belongs to the service. CAS rejects a concurrent password replacement. */
 export async function changePassword(
   tdb: TenantDb,
@@ -282,6 +313,7 @@ export async function changePassword(
     )
     .returning({ version: users.sessionVersion });
   if (!row) throw new ManagementError("conflict", "Password changed since verification");
+  await markSessionsRevoked(tdb, userId);
   await audit(tdb, userId, "password.changed", userId);
   return row.version;
 }
@@ -294,6 +326,7 @@ export async function revokeUserSessions(tdb: TenantDb, userId: string): Promise
     .where(and(eq(users.tenantId, tdb.tenantId), eq(users.id, userId)))
     .returning({ version: users.sessionVersion });
   if (!row) throw new ManagementError("not_found", "Member not found in this workspace");
+  await markSessionsRevoked(tdb, userId);
   await audit(tdb, userId, "sessions.revoked", userId);
   return row.version;
 }
@@ -649,7 +682,10 @@ export interface TaskArtifact {
   renderId: string;
   version: number;
   kind: ArtifactKind;
-  path: string;
+  /** 本地盘副本。保留清理之后为 null——那时只有 key 还在回答「这一版存在过」。 */
+  path: string | null;
+  /** 对象存储里的键。没配存储（本地驱动）时为 null。 */
+  key: string | null;
   contentType: string;
   sha256: string | null;
   bytes: number | null;
@@ -680,14 +716,24 @@ export async function getArtifactForTask(
         : kind === "aigc-sidecar"
           ? render?.aigcSidecarPath
           : null;
-  if (!render || !path)
+  const key =
+    kind === "mp4"
+      ? render?.mp4Key
+      : kind === "contact-sheet"
+        ? render?.contactSheetKey
+        : kind === "aigc-sidecar"
+          ? render?.aigcSidecarKey
+          : null;
+  // 两份都没有才算不存在：本地盘被清理掉了但桶里还有，这一版仍然可读。
+  if (!render || (!path && !key))
     throw new ManagementError("not_found", "Artifact not found in this workspace");
   return {
     taskId,
     renderId: render.id,
     version: render.version,
     kind,
-    path,
+    path: path ?? null,
+    key: key ?? null,
     contentType:
       kind === "mp4" ? "video/mp4" : kind === "contact-sheet" ? "image/png" : "application/json",
     sha256: kind === "mp4" ? render.mp4Sha256 : null,

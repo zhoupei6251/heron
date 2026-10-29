@@ -17,6 +17,7 @@
     "@heron/db": "workspace:*",
     "@heron/domain": "workspace:*",
     "@heron/redis": "workspace:*",
+    "@heron/storage": "workspace:*",
     "@nestjs/common": "12.2.0",
     "@nestjs/core": "12.2.0",
     "@nestjs/jwt": "12.0.3",

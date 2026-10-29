@@ -11,16 +11,19 @@ import {
   type PlatformTenant,
   type PlatformUsageSummary,
   type PlatformUser,
+  type PlanId,
   type Tenant,
 } from "@heron/contracts";
 import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { nowIso } from "../time";
-import { withAdmin, type AdminDb } from "./admin";
+import { audit, requireOperator, withAdmin } from "./admin";
+import { readPlatformDefaults } from "./platform-settings";
 import { ManagementError, readPage, rethrowConflict, searchPattern } from "./console-query";
 import type { Db } from "./driver";
 import {
   platformAuditLogs,
   platformOperators,
+  sessions,
   tasks,
   tenants,
   usageRecords,
@@ -94,28 +97,6 @@ export async function createPlatformOperator(
   }
 }
 
-/** Hold the operator row through the mutation so a concurrent disable cannot pass a stale check. */
-async function requireOperator(a: AdminDb, operatorId: string): Promise<void> {
-  const [operator] = await a.db
-    .select({ id: platformOperators.id })
-    .from(platformOperators)
-    .where(and(eq(platformOperators.id, operatorId), isNull(platformOperators.disabledAt)))
-    .for("update");
-  if (!operator) throw new ManagementError("forbidden", "An active platform operator is required");
-}
-
-async function audit(
-  a: AdminDb,
-  operatorId: string,
-  action: string,
-  targetId: string,
-  detail: Record<string, unknown> = {},
-): Promise<void> {
-  await a.db
-    .insert(platformAuditLogs)
-    .values({ id: randomUUID(), operatorId, action, targetId, detail, createdAt: nowIso() });
-}
-
 export async function revokePlatformSessions(db: Db, operatorId: string): Promise<number> {
   return withAdmin(db, async (a) => {
     await requireOperator(a, operatorId);
@@ -177,6 +158,7 @@ export async function listPlatformTenants(
           id: tenants.id,
           name: tenants.name,
           slug: tenants.slug,
+          plan: tenants.plan,
           suspendedAt: tenants.suspendedAt,
           createdAt: tenants.createdAt,
           userCount: sql<number>`coalesce(${members.total}, 0)::int`,
@@ -203,11 +185,14 @@ export async function provisionTenant(
     return await withAdmin(db, async (a) => {
       await requireOperator(a, operatorId);
       const safe = CreateTenantBodySchema.omit({ ownerPassword: true }).parse(input);
+      // 新空间按平台设置里的默认档位开局；没设过就是 free
+      const { plan } = await readPlatformDefaults(a);
       const at = nowIso();
       const tenant: Tenant = {
         id: randomUUID(),
         name: safe.name,
         slug: safe.slug,
+        plan,
         suspendedAt: null,
         createdAt: at,
       };
@@ -226,6 +211,7 @@ export async function provisionTenant(
       await audit(a, operatorId, "tenant.provisioned", tenant.id, {
         name: tenant.name,
         slug: tenant.slug,
+        plan: tenant.plan,
         ownerId,
       });
       return tenant;
@@ -255,8 +241,40 @@ export async function changeTenantStatus(
         .update(users)
         .set({ sessionVersion: sql`${users.sessionVersion} + 1`, updatedAt: nowIso() })
         .where(eq(users.tenantId, tenantId));
+      // 会话行同一口径标掉：列表读这张表，不标就还在显示「在线」
+      await a.db
+        .update(sessions)
+        .set({ revokedAt: nowIso() })
+        .where(and(eq(sessions.tenantId, tenantId), isNull(sessions.revokedAt)));
     }
     await audit(a, operatorId, "tenant.status_changed", tenantId, { suspended });
+    return tenant;
+  });
+}
+
+/**
+ * 改档位。额度是商务决定，所以这条只走平台通道并留审计：{from,to} 两个值都记，
+ * 否则事后只有一个新档位，「是不是被人偷偷升上去了」无从对账。
+ */
+export async function changeTenantPlan(
+  db: Db,
+  operatorId: string,
+  tenantId: string,
+  plan: PlanId,
+): Promise<Tenant> {
+  return withAdmin(db, async (a) => {
+    await requireOperator(a, operatorId);
+    const [current] = await a.db.select().from(tenants).where(eq(tenants.id, tenantId));
+    if (!current) throw new ManagementError("not_found", "Workspace not found");
+    // 同档位不改：审计里不该出现「free → free」这种噪声，那会让真正的变更更难找
+    if (current.plan === plan) return current;
+    const [tenant] = await a.db
+      .update(tenants)
+      .set({ plan })
+      .where(eq(tenants.id, tenantId))
+      .returning();
+    if (!tenant) throw new ManagementError("not_found", "Workspace not found");
+    await audit(a, operatorId, "tenant.plan_changed", tenantId, { from: current.plan, to: plan });
     return tenant;
   });
 }

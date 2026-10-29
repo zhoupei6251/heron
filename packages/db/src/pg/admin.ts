@@ -1,6 +1,10 @@
-import { sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 
+import { nowIso } from "../time";
+import { ManagementError } from "./console-query";
 import type { Db } from "./driver";
+import { platformAuditLogs, platformOperators } from "./schema/index";
 
 /**
  * 数据面只有两条通道，区别只有一个：RLS 生效与否。
@@ -33,4 +37,30 @@ export async function withAdmin<T>(db: Db, fn: (a: AdminDb) => Promise<T>): Prom
     await tx.execute(sql`SET LOCAL ROLE heron_owner`);
     return fn({ db: tx as unknown as Db });
   });
+}
+
+/**
+ * 特权写入的两条规矩，所以和通道放在一起：每次写都要「操作人还在岗」+「留一行平台审计」。
+ * 各自实现一遍的症状是某条新接口漏了其中一条，而漏掉的那条正是事后要查的那条。
+ */
+export async function requireOperator(a: AdminDb, operatorId: string): Promise<void> {
+  // 连着读操作人的行：并发停用与本次写入抢同一行时，后到的那个会看到 disabled_at
+  const [operator] = await a.db
+    .select({ id: platformOperators.id })
+    .from(platformOperators)
+    .where(and(eq(platformOperators.id, operatorId), isNull(platformOperators.disabledAt)))
+    .for("update");
+  if (!operator) throw new ManagementError("forbidden", "An active platform operator is required");
+}
+
+export async function audit(
+  a: AdminDb,
+  operatorId: string,
+  action: string,
+  targetId: string,
+  detail: Record<string, unknown> = {},
+): Promise<void> {
+  await a.db
+    .insert(platformAuditLogs)
+    .values({ id: randomUUID(), operatorId, action, targetId, detail, createdAt: nowIso() });
 }

@@ -11,12 +11,14 @@ import {
   latestProtoRevision,
   markProtoDelivered,
   markProtoFailed,
+  platformDefaults,
   recordUsage,
   touchProtoLease,
   updateProtoRevision,
   withTenant,
   type ClaimedProtoProject,
   type Db,
+  type PlatformDefaults,
 } from "@heron/db/pg";
 import { protoContractVerdict, protoVisualVerdict } from "@heron/domain";
 
@@ -45,6 +47,8 @@ import type { ChatFn } from "./scripting";
 export interface ProtoDeps {
   chat?: ChatFn;
   modelConfig?: ModelConfig;
+  /** 平台级默认值。与新闻线同一条解析链：租户设置 → 平台设置 → 环境变量。 */
+  platform?: PlatformDefaults | null;
   engine?: EngineRunner;
   engineHome?: string;
   templatePath?: string;
@@ -261,7 +265,12 @@ async function generate(
   try {
     let config: ModelConfig;
     try {
-      config = deps.modelConfig ?? resolveModelConfig(start.settings);
+      config =
+        deps.modelConfig ??
+        resolveModelConfig(start.settings, process.env, {
+          baseUrl: deps.platform?.modelBaseUrl ?? null,
+          model: deps.platform?.modelName ?? null,
+        });
     } catch (cause) {
       throw new ProtoFailure("model", messageOf(cause));
     }
@@ -488,14 +497,22 @@ async function deliver(
   }
 }
 
-export function walkProto(
+export async function walkProto(
   db: Db,
   claimed: ClaimedProtoProject,
   deps: ProtoDeps = {},
 ): Promise<ProtoOutcome> {
+  // 与新闻线同一条解析链：每条任务读一次平台默认值（不缓存），读不到就退到租户设置与环境变量
+  const platform =
+    deps.platform ??
+    (await platformDefaults(db).catch((cause: unknown) => {
+      console.error(`读平台默认值失败，本条只用租户设置与环境变量：${messageOf(cause)}`);
+      return null;
+    }));
+  const merged = { ...deps, platform };
   return claimed.project.stage === "approved"
-    ? deliver(db, claimed, deps)
-    : generate(db, claimed, deps);
+    ? deliver(db, claimed, merged)
+    : generate(db, claimed, merged);
 }
 
 function describe(projectId: string, outcome: ProtoOutcome): string {

@@ -88,6 +88,31 @@ describe("模型配置", () => {
       model: "qiniu/conatus-free",
     });
   });
+
+  it("平台默认值排在环境变量之前：租户没配，先看平台那一层", () => {
+    expect(
+      resolveModelConfig(
+        {},
+        {
+          HERON_MODEL_BASE_URL: "https://env.example.com/v1",
+          HERON_MODEL_API_KEY: "env-key",
+          HERON_MODEL_NAME: "env-model",
+        },
+        { baseUrl: "https://platform.example.com/v1/", model: "platform/model" },
+      ),
+    ).toEqual({
+      baseUrl: "https://platform.example.com/v1",
+      apiKey: "env-key",
+      model: "platform/model",
+    });
+  });
+
+  it("平台那层永远不给密钥：租户与环境变量都没有时照样拒绝", () => {
+    // 平台设置表里没有密钥列（见 contracts 的 PLATFORM_SETTING_DEFS），这条守着那个设计
+    expect(() =>
+      resolveModelConfig({}, {}, { baseUrl: "https://platform.example.com/v1", model: "p/m" }),
+    ).toThrow(/API key/);
+  });
 });
 
 describe("chat（OpenAI 兼容）", () => {

@@ -57,6 +57,34 @@
       "when": 1793170000003,
       "tag": "0007_proto_workshop",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793180268934,
+      "tag": "0008_artifact_objects",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793180825960,
+      "tag": "0009_tenant_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793181900741,
+      "tag": "0010_platform_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793238341008,
+      "tag": "0011_sessions",
+      "breakpoints": true
     }
   ]
 }

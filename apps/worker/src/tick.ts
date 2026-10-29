@@ -1,8 +1,15 @@
-import { type ClaimedTask, type Db, markFailed, withTenant } from "@heron/db/pg";
+import {
+  type ClaimedTask,
+  type Db,
+  type PlatformDefaults,
+  markFailed,
+  platformDefaults,
+  withTenant,
+} from "@heron/db/pg";
 import { GateRefusalError } from "@heron/domain";
 
 import { OWNER } from "./config";
-import { walkTask, type WalkTrace } from "./pipeline";
+import { QuotaRefusalError, walkTask, type WalkTrace } from "./pipeline";
 import { claimById, claimNext } from "./scheduler";
 
 type WalkOutcome =
@@ -40,12 +47,18 @@ export async function runTask(db: Db, taskId: string): Promise<string | null> {
 async function walk(db: Db, claimed: ClaimedTask): Promise<string> {
   const { task, tenantId } = claimed;
   const label = task.id.slice(0, 8);
+  // 每条任务读一次平台默认值（不缓存）：改了设置，下一单就按新值走。
+  // 读不到不该让整条流水线停摆——退到租户设置与环境变量，并且说出来。
+  const platform: PlatformDefaults | null = await platformDefaults(db).catch((cause: unknown) => {
+    console.error(`读平台默认值失败，本单只用租户设置与环境变量：${describe(cause)}`);
+    return null;
+  });
 
   let outcome: WalkOutcome;
   try {
     outcome = await withTenant(db, tenantId, async (t): Promise<WalkOutcome> => {
       try {
-        return { ok: true, trace: await walkTask(t, task, OWNER) };
+        return { ok: true, trace: await walkTask(t, task, OWNER, { platform }) };
       } catch (cause) {
         if (cause instanceof GateRefusalError) {
           return { ok: false, gate: cause.gate, reason: cause.reason };
@@ -54,7 +67,9 @@ async function walk(db: Db, claimed: ClaimedTask): Promise<string> {
       }
     });
   } catch (cause) {
-    const reason = `worker 异常：${describe(cause)}`;
+    // 额度拦下是业务结论不是崩溃：写它自己的那句话，别让一整段堆栈盖住「30/30 该升档了」
+    const reason =
+      cause instanceof QuotaRefusalError ? cause.message : `worker 异常：${describe(cause)}`;
     try {
       await withTenant(db, tenantId, (t) => markFailed(t, task.id, reason));
     } catch (markCause) {

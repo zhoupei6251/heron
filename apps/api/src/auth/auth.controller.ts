@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Inject,
   Patch,
   Post,
@@ -65,9 +66,10 @@ export class AuthController {
   @Post("login")
   async login(
     @Body(new ZodValidationPipe(LoginBodySchema)) body: LoginBody,
+    @Headers("user-agent") userAgent: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ): Promise<ConsoleSession> {
-    const signed = await this.console.login(body);
+    const signed = await this.console.login(body, userAgent);
     if (!signed) throw new UnauthorizedException("账号或口令不正确");
     res.cookie(SESSION_COOKIE, signed.token, sessionCookieOptions());
     // 旧平台 cookie（独立入口那一版）立即作废：留着它等于给旧 token 留一条旁路。

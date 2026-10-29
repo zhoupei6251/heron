@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   ServiceUnavailableException,
   UseGuards,
@@ -16,19 +17,26 @@ import {
 import {
   CreateTenantBodySchema,
   PageQuerySchema,
+  PlatformSettingsBodySchema,
+  TenantPlanBodySchema,
   TenantStatusBodySchema,
   type CreateTenantBody,
   type PageQuery,
+  type PlatformSettingsBody,
   type PlatformUser,
+  type TenantPlanBody,
   type TenantStatusBody,
 } from "@heron/contracts";
 import {
   type Db,
   listPlatformTenants,
   provisionTenant,
+  changeTenantPlan,
   changeTenantStatus,
   platformUsage,
   listPlatformAudit,
+  getPlatformSettings,
+  writePlatformSettings,
   dbPing,
 } from "@heron/db/pg";
 import { probeEngine, probeTemplate, type EngineStatus, type TemplateStatus } from "@heron/db";
@@ -83,6 +91,29 @@ export class PlatformController {
     @Body(new ZodValidationPipe(TenantStatusBodySchema)) body: TenantStatusBody,
   ) {
     return changeTenantStatus(this.db, user.id, id, body.suspended);
+  }
+
+  @Patch("tenants/:id/plan")
+  plan(
+    @CurrentPlatformUser() user: PlatformUser,
+    @Param("id", new ParseUUIDPipe()) id: string,
+    @Body(new ZodValidationPipe(TenantPlanBodySchema)) body: TenantPlanBody,
+  ) {
+    return changeTenantPlan(this.db, user.id, id, body.plan);
+  }
+
+  @Get("settings")
+  settings() {
+    return getPlatformSettings(this.db);
+  }
+
+  /** 写入留痕在 platform_audit_logs（platform_setting.updated），一次改动一行。 */
+  @Put("settings")
+  updateSettings(
+    @CurrentPlatformUser() user: PlatformUser,
+    @Body(new ZodValidationPipe(PlatformSettingsBodySchema)) body: PlatformSettingsBody,
+  ) {
+    return writePlatformSettings(this.db, user.id, body.values);
   }
 
   @Get("usage")

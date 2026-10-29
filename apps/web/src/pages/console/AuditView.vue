@@ -33,10 +33,13 @@ const actions: Record<string, string> = {
   "profile.updated": "更新个人资料",
   "password.changed": "修改密码",
   "sessions.revoked": "注销会话",
+  "session.revoked": "强退会话",
   "feed.created": "添加数据源",
   "feed.updated": "更新数据源",
   "tenant.provisioned": "开通租户",
   "tenant.status_changed": "变更租户状态",
+  "tenant.plan_changed": "变更租户档位",
+  "platform_setting.updated": "修改平台设置",
   "retention.updated": "更新保留策略",
 };
 function actor(row: Entry): string {

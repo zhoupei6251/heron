@@ -116,8 +116,11 @@ async function main(): Promise<void> {
 
   const cleanup = recurring("本轮清理失败", CLEANUP_INTERVAL_MS, async () => {
     const result = await cleanupArtifacts(db, { signal: shutdown.signal });
-    if (result.removed + result.kept > 0) {
-      console.log(`保留清理：删除 ${result.removed} 个成片目录，.keep 保留 ${result.kept} 个`);
+    if (result.removed + result.kept + result.objectsRemoved + result.objectsFailed > 0) {
+      console.log(
+        `保留清理：删除 ${result.removed} 个成片目录，.keep 保留 ${result.kept} 个，` +
+          `桶内删 ${result.objectsRemoved} 个对象、失败 ${result.objectsFailed} 个`,
+      );
     }
   });
   cleanup.tick();

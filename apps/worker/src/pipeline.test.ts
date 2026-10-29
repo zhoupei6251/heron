@@ -8,8 +8,11 @@ import {
   createTenant,
   createUser,
   findPublishByKey,
+  getArtifactForTask,
   getScript,
   getTask,
+  insertPublish,
+  insertRender,
   latestRender,
   listGateResults,
   migrate,
@@ -19,6 +22,7 @@ import {
   withTenant,
   type Db,
 } from "@heron/db/pg";
+import { DECLARATION_TEXT } from "@heron/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { NEWS_CAPABILITY } from "@heron/capability-news";
@@ -26,7 +30,7 @@ import { NEWS_CAPABILITY } from "@heron/capability-news";
 import { P0_FAKE } from "./capabilities";
 import { OWNER } from "./config";
 import type { ModelConfig } from "./model";
-import { walkTask, type WalkTrace } from "./pipeline";
+import { walkTask, type WalkDeps, type WalkTrace } from "./pipeline";
 import { createMutex } from "./queue";
 import { claimNext } from "./scheduler";
 import type { ScriptDeps } from "./scripting";
@@ -76,7 +80,7 @@ describe("worker 流水线", () => {
     });
   }
 
-  async function runOnce(deps: ScriptDeps = {}): Promise<WalkTrace> {
+  async function runOnce(deps: WalkDeps = {}): Promise<WalkTrace> {
     const claimed = await claimNext(db);
     if (!claimed) throw new Error("预期能领到任务，结果池子是空的");
     expect(claimed.tenantId).toBe(tenantId);
@@ -96,6 +100,50 @@ describe("worker 流水线", () => {
 
     // review 不在可领集合里：等人确认期间谁都不许把它领走
     expect(await claimNext(db)).toBeNull();
+  });
+
+  it("配了对象存储就搬到桶里：key 与本地路径一起落库，按租户/任务/版本布局", async () => {
+    const taskId = await seedClaimedTask();
+    const puts: string[] = [];
+    await runOnce({
+      store: {
+        driver: "qiniu",
+        put: (key) => {
+          puts.push(key);
+          return Promise.resolve({ key, bytes: 1 });
+        },
+        url: () => null,
+        remove: () => Promise.resolve(),
+      },
+    });
+
+    const mp4 = await withTenant(db, tenantId, (t) => getArtifactForTask(t, taskId, "mp4"));
+    const sheet = await withTenant(db, tenantId, (t) =>
+      getArtifactForTask(t, taskId, "contact-sheet"),
+    );
+    expect(puts).toEqual([
+      `tenants/${tenantId}/tasks/${taskId}/v1/mp4.mp4`,
+      `tenants/${tenantId}/tasks/${taskId}/v1/contact-sheet.png`,
+    ]);
+    expect(mp4.key).toBe(puts[0]);
+    expect(sheet.key).toBe(puts[1]);
+    // 本地路径不许被 key 顶掉：诊断仍然要能在渲染机上看现场
+    expect(mp4.path).toContain("fake.mp4");
+  });
+
+  it("上传失败就不落库：这一版不存在，不静默降级成「只有本地有」", async () => {
+    const taskId = await seedClaimedTask();
+    await expect(
+      runOnce({
+        store: {
+          driver: "qiniu",
+          put: () => Promise.reject(new Error("上传被拒：401")),
+          url: () => null,
+          remove: () => Promise.resolve(),
+        },
+      }),
+    ).rejects.toThrow(/上传被拒/);
+    expect(await withTenant(db, tenantId, (t) => latestRender(t, taskId))).toBeNull();
   });
 
   it("人确认之后接着跑完，发布单按幂等键落库", async () => {
@@ -118,6 +166,55 @@ describe("worker 流水线", () => {
     expect(
       await withTenant(db, tenantId, (t) => findPublishByKey(t, `${taskId}:v1`)),
     ).not.toBeNull();
+    // 账本各记一次：渲染记秒数（真花的时间），发布记条数（额度数的就是这个）
+    const usage = await withTenant(db, tenantId, (t) =>
+      t.db.select({ kind: usageRecords.kind, quantity: usageRecords.quantity }).from(usageRecords),
+    );
+    expect(usage).toEqual(
+      expect.arrayContaining([
+        { kind: "render_seconds", quantity: "1" },
+        { kind: "publish", quantity: "1" },
+      ]),
+    );
+  });
+
+  it("本月发布满额：额度闸在幂等键之后拦下，任务 failed 且原因点名哪一格", async () => {
+    const taskId = await seedClaimedTask();
+    await runOnce();
+    const render = await withTenant(db, tenantId, (t) => latestRender(t, taskId));
+    if (!render) throw new Error("review 阶段没有渲染版本，确认无从谈起");
+    await withTenant(db, tenantId, (t) =>
+      confirmByHuman(t, {
+        taskId,
+        userId: reviewerId,
+        contactSheetFingerprint: render.fingerprint,
+      }),
+    );
+    // 免费档每月 30 条发布：填满 30 条本月记录（额度按 >= 判，正好满额就是满）
+    await withTenant(db, tenantId, async (t) => {
+      for (let i = 0; i < 30; i += 1) {
+        const filler = await insertRender(t, {
+          taskId,
+          version: 2 + i,
+          pack: "demo",
+          fingerprint: `filler-${String(i)}`,
+        });
+        await insertPublish(t, {
+          renderId: filler,
+          idempotencyKey: `filler-${String(i)}`,
+          declaration: DECLARATION_TEXT,
+        });
+      }
+    });
+
+    const result = await runTask(db, taskId);
+    expect(result).toContain("本月发布已达该档上限（30/30");
+    expect(result).toContain("平台台");
+    // 额度拦下是业务结论：原因里不该出现「worker 异常」和堆栈
+    expect(result).not.toContain("worker 异常");
+    expect(await withTenant(db, tenantId, (t) => getTask(t, taskId))).toMatchObject({
+      stage: "failed",
+    });
   });
 
   it("指纹对不上：确认被拒，任务 failed 且 human 闸痕留下", async () => {

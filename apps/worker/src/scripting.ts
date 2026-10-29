@@ -5,6 +5,7 @@ import {
   getModelSettings,
   recordUsage,
   upsertScript,
+  type PlatformDefaults,
   type TenantDb,
 } from "@heron/db/pg";
 
@@ -22,6 +23,8 @@ export type ChatFn = (config: ModelConfig, messages: ChatMessage[]) => Promise<C
 export interface ScriptDeps {
   chat?: ChatFn;
   modelConfig?: ModelConfig;
+  /** 平台级默认值（worker 每条任务读一次）。租户没配的项落到它，再落到环境变量。 */
+  platform?: PlatformDefaults | null;
 }
 
 /** capability 在 manifest 里声明了这条提示词，才意味着它要真写稿（p0-fake 因此保持空转）。 */
@@ -64,8 +67,14 @@ export async function generateScript(
     throw new Error(`任务 ${task.id} 的候选不存在或不在当前租户，无法写稿`);
   }
 
-  // 页面配置按租户存，在任务自己的租户上下文里读；没配的项回落到环境变量
-  const config = deps.modelConfig ?? resolveModelConfig(await getModelSettings(tdb));
+  // 页面配置按租户存，在任务自己的租户上下文里读；
+  // 没配的项依次回落到平台设置、环境变量（平台表里没有密钥，key 只有下面两处能给）
+  const config =
+    deps.modelConfig ??
+    resolveModelConfig(await getModelSettings(tdb), process.env, {
+      baseUrl: deps.platform?.modelBaseUrl ?? null,
+      model: deps.platform?.modelName ?? null,
+    });
   const call = deps.chat ?? chat;
   let reply: ChatReply;
   try {

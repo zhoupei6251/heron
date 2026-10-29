@@ -2,9 +2,13 @@
 import {
   CreateTenantBodySchema,
   MIN_PASSWORD_LENGTH,
+  PLAN_IDS,
+  PLAN_LIMITS,
   type PlatformTenant,
+  type PlanId,
   type Tenant,
 } from "@heron/contracts";
+import { PLAN_LABELS } from "@heron/domain";
 import { Plus } from "lucide-vue-next";
 import {
   ElAlert,
@@ -15,6 +19,8 @@ import {
   ElInput,
   ElMessage,
   ElMessageBox,
+  ElOption,
+  ElSelect,
   ElTable,
   ElTableColumn,
   ElTag,
@@ -65,6 +71,36 @@ async function create() {
     await list.load();
   } catch (cause) {
     error.value = errorMessage(cause);
+  } finally {
+    saving.value = false;
+  }
+}
+/**
+ * 改档位只在这里做：额度是商务决定，租户台只能看到「还剩多少」，看不到「改」。
+ * 确认框必须把新档位的三个上限写出来——只写档位名的话，改的人不知道自己在承诺多少条渲染。
+ */
+async function changePlan(row: PlatformTenant, plan: PlanId) {
+  if (plan === row.plan) return;
+  const limits = PLAN_LIMITS[plan];
+  try {
+    await ElMessageBox.confirm(
+      `“${row.name}”改为${PLAN_LABELS[plan]}档：成员 ${String(limits.seats)}、每月渲染 ${String(limits.rendersPerMonth)}、每月发布 ${String(limits.publishesPerMonth)}。已经在用的不会因为降档被删，但超出后流水线会拒绝新任务。`,
+      "变更档位",
+      { confirmButtonText: "确认变更", cancelButtonText: "取消" },
+    );
+  } catch {
+    return;
+  }
+  saving.value = true;
+  try {
+    await request<Tenant>(`/platform/tenants/${row.id}/plan`, {
+      method: "PATCH",
+      body: JSON.stringify({ plan }),
+    });
+    ElMessage.success(`已改为${PLAN_LABELS[plan]}档`);
+    await list.load();
+  } catch (cause) {
+    list.error = errorMessage(cause);
   } finally {
     saving.value = false;
   }
@@ -144,6 +180,20 @@ onMounted(list.load);
             }}</ElTag></template
           ></ElTableColumn
         >
+        <ElTableColumn label="档位" width="130"
+          ><template #default="{ row }"
+            ><ElSelect
+              :model-value="row.plan"
+              size="small"
+              :disabled="saving"
+              aria-label="变更档位"
+              @change="changePlan(row as PlatformTenant, $event as PlanId)"
+              ><ElOption
+                v-for="id in PLAN_IDS"
+                :key="id"
+                :label="PLAN_LABELS[id]"
+                :value="id" /></ElSelect></template
+        ></ElTableColumn>
         <ElTableColumn prop="userCount" label="成员" width="95" /><ElTableColumn
           prop="taskCount"
           label="任务"
@@ -222,7 +272,7 @@ onMounted(list.load);
           </p></ElFormItem
         >
         <ElAlert
-          title="该账号仅拥有此工作空间的所有者权限，不具备平台运营权限。"
+          title="该账号仅拥有此工作空间的所有者权限，不具备平台运营权限。新空间默认免费档，额度可在此页改档。"
           type="info"
           :closable="false"
         />

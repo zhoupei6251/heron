@@ -148,11 +148,13 @@ describe("认证传输（真 socket）", () => {
     });
     const user = body.user as Record<string, unknown>;
     // 身份仍然是安全 DTO；会话 token、口令哈希和版本都不进响应体。
+    // sessionId 是「这次登录」的句柄，不是凭据：拿它换不到访问权，只用来在会话列表里认自己这一条。
     expect(Object.keys(user).sort()).toEqual([
       "displayName",
       "email",
       "id",
       "role",
+      "sessionId",
       "tenantId",
       "tenantName",
       "tenantSlug",

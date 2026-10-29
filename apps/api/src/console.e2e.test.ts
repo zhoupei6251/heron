@@ -9,6 +9,7 @@ import {
   type Db,
   openDb,
   migrate,
+  changeTenantPlan,
   createTenant,
   withTenant,
   createUser,
@@ -106,6 +107,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     expect(body.menus.map((menu) => menu.id)).toEqual([
       "platform-overview",
       "tenants",
+      "platform-settings",
       "platform-usage",
       "platform-audit",
       "health",
@@ -164,6 +166,9 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
         passwordHash: hashPassword(PASSWORD),
       })
     ).id;
+    // Alpha 开局就是 3 个成员，正好用满免费档的席位，后面每个「加人成功」的用例都会先撞额度。
+    // 席位闸自己有专门的一条用例（Beta 留在免费档），所以这里升到标准档，让各条用例只测自己那件事。
+    await changeTenantPlan(db, platformId, tenantId, "standard");
     await createPlatformOperator(db, {
       username: "owner",
       displayName: "Separate platform identity",
@@ -315,7 +320,134 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     expect((await request("/manage/members", owner, "POST", body)).status).toBe(409);
   });
 
-  it("updates profile, rejects bad password, then revokes all old sessions on password change/logout", async () => {
+  it("席位满了就拒绝：免费档 3 席加第 4 个成员被额度拦下，原因说清哪一格", async () => {
+    const betaOwner = await login("owner@example.com", "beta", "beta-owner-password");
+    const res = await request("/manage/members", betaOwner, "POST", {
+      email: "fourth@example.com",
+      displayName: "Fourth",
+      password: PASSWORD,
+      role: "viewer",
+    });
+    expect(res.status).toBe(409);
+    const text = JSON.stringify(await data(res));
+    expect(text).toContain("成员数已达该档上限（3/3");
+    expect(text).toContain("平台台");
+  });
+
+  it("额度可见但改不了：租户台读到档位与上限，改档只有平台台能做并留审计", async () => {
+    const quota = await data(await request("/manage/quota", viewer));
+    expect(quota).toMatchObject({
+      plan: "standard",
+      limits: { seats: 20, rendersPerMonth: 1_000, publishesPerMonth: 300 },
+    });
+    const usage = (await data(await request("/manage/quota", viewer))).usage as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(usage).sort()).toEqual(["publishes", "renders", "seats"]);
+    const opCookie = await platformLogin();
+    expect(
+      (await request(`/platform/tenants/${tenantId}/plan`, viewer, "PATCH", { plan: "free" }))
+        .status,
+    ).toBe(401);
+    const changed = await request(`/platform/tenants/${tenantId}/plan`, opCookie, "PATCH", {
+      plan: "enterprise",
+    });
+    expect(changed.status).toBe(200);
+    expect(await data(changed)).toMatchObject({ id: tenantId, plan: "enterprise" });
+    expect(await data(await request("/manage/quota", viewer))).toMatchObject({
+      plan: "enterprise",
+      limits: { seats: 100 },
+    });
+    // 不认识的档位在契约层就拒掉，不会写进库再被 CHECK 拦成 500
+    expect(
+      (
+        await request(`/platform/tenants/${tenantId}/plan`, opCookie, "PATCH", {
+          plan: "platinum",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(`/platform/tenants/${randomUUID()}/plan`, opCookie, "PATCH", {
+          plan: "free",
+        })
+      ).status,
+    ).toBe(404);
+    // 改回标准档：后面按标准档的额度走
+    expect(
+      (
+        await request(`/platform/tenants/${tenantId}/plan`, opCookie, "PATCH", {
+          plan: "standard",
+        })
+      ).status,
+    ).toBe(200);
+    const audit = await data(await request("/platform/audit?q=tenant.plan_changed", opCookie));
+    expect(audit.total as number).toBeGreaterThanOrEqual(3);
+    expect((audit.items as Record<string, unknown>[])[0]).toMatchObject({
+      action: "tenant.plan_changed",
+      targetId: tenantId,
+      detail: { from: "enterprise", to: "standard" },
+    });
+  });
+
+  it("keeps platform defaults behind the platform audience and validates each key", async () => {
+    const opCookie = await platformLogin();
+    const defaults = (body: Record<string, unknown>) => {
+      const items = body.items as { key: string; value: string; isDefault: boolean }[];
+      return Object.fromEntries(items.map((item) => [item.key, item]));
+    };
+    const empty = defaults(await data(await request("/platform/settings", opCookie)));
+    expect(Object.keys(empty)).toHaveLength(4);
+    expect(Object.values(empty).every((item) => item.isDefault)).toBe(true);
+    // 租户 cookie 进不了平台通道：这是两个受众，不是两级权限
+    expect((await request("/platform/settings", owner)).status).toBe(401);
+    expect((await request("/platform/settings", owner, "PUT", { values: {} })).status).toBe(401);
+    // 坏值在契约层就拒，并点名是哪一项——「保存失败」四个字帮不上填表的人
+    const bad = await request("/platform/settings", opCookie, "PUT", {
+      values: { default_retention_days: "0" },
+    });
+    expect(bad.status).toBe(400);
+    expect(JSON.stringify(await data(bad))).toContain("默认成片保留天数");
+
+    const putRes = await request("/platform/settings", opCookie, "PUT", {
+      values: { default_model_name: "qiniu/conatus-free", default_retention_days: "14" },
+    });
+    expect(putRes.status).toBe(200);
+    const saved = defaults(await data(putRes));
+    expect(Object.keys(saved).sort()).toEqual([
+      "default_model_base_url",
+      "default_model_name",
+      "default_plan",
+      "default_retention_days",
+    ]);
+    expect(saved.default_model_name).toMatchObject({
+      value: "qiniu/conatus-free",
+      isDefault: false,
+      updatedBy: platformId,
+    });
+    expect(saved.default_retention_days).toMatchObject({ value: "14", isDefault: false });
+    expect(saved.default_plan).toMatchObject({ isDefault: true });
+    const audit = await data(await request("/platform/audit?q=platform_setting.updated", opCookie));
+    expect(audit.total).toBeGreaterThanOrEqual(2);
+    // 审计里要能看出「改成了什么」：detail.to 是那一格的新值，不是一句「已更新」
+    const rows = audit.items as Array<{ action: string; detail: Record<string, unknown> }>;
+    expect(rows[0]?.action).toBe("platform_setting.updated");
+    expect(typeof rows[0]?.detail.to).toBe("string");
+
+    // 空串恢复默认：别把默认值留在库里影响后面的用例
+    const restored = defaults(
+      await data(
+        await request("/platform/settings", opCookie, "PUT", {
+          values: { default_model_name: "", default_retention_days: "" },
+        }),
+      ),
+    );
+    expect(restored.default_model_name?.isDefault).toBe(true);
+    expect(restored.default_retention_days?.isDefault).toBe(true);
+  });
+
+  it("updates profile, rejects bad password, then revokes every session on password change but only its own on logout", async () => {
     const old = await login("new@example.com");
     const other = await login("new@example.com");
     const profile = await data(
@@ -361,7 +493,56 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     expect(logout.headers.getSetCookie()[0]).toContain("Path=/;");
     expectLegacyCleared(logout);
     expect((await request("/auth/me", fresh)).status).toBe(401);
-    expect((await request("/auth/me", sibling)).status).toBe(401);
+    // 退出登录只关自己这一条：另一台设备上的会话照常在线。
+    // 以前是一把拉高 session_version，等于「退出登录顺手把手机上的我也踢了」，多设备登录就成了互相顶号。
+    expect((await request("/auth/me", sibling)).status).toBe(200);
+  });
+
+  it("在线会话：成员只看得见自己的，强退别人的要 session.manage", async () => {
+    type Row = { id: string; userId: string; userEmail: string; current: boolean; self: boolean };
+    const memberA = await login("viewer@example.com");
+    const memberB = await login("viewer@example.com");
+    const ownerC = await login("owner@example.com");
+
+    const mine = await request("/manage/sessions?pageSize=50", memberA);
+    expect(mine.status).toBe(200);
+    const own = (await data(mine)).items as Row[];
+    // 没有 session.manage 的人这一份列表就是「我的登录」，不是「空间的登录」
+    expect(own.every((row) => row.userEmail === "viewer@example.com")).toBe(true);
+    expect(own.filter((row) => row.current)).toHaveLength(1);
+    expect(own.every((row) => row.self)).toBe(true);
+    const thisOne = own.find((row) => row.current)!;
+    const other = own.find((row) => !row.current)!;
+
+    // 自己那条随时能退；退掉之后只有它失效，手上这张照常在线
+    const self = await request(`/manage/sessions/${other.id}`, memberA, "DELETE");
+    expect(self.status).toBe(200);
+    expect(await data(self)).toMatchObject({ id: other.id, self: true });
+    expect((await request("/auth/me", memberB)).status).toBe(401);
+    expect((await request("/auth/me", memberA)).status).toBe(200);
+
+    // 别人的会话：拒，且理由说清是被权限挡住的（不是「会话不存在」）
+    const ownerSessions = await data(await request("/manage/sessions?q=owner@example.com", ownerC));
+    const ownerRow = (ownerSessions.items as Row[]).find((row) => !row.current)!;
+    const denied = await request(`/manage/sessions/${ownerRow.id}`, memberA, "DELETE");
+    expect(denied.status).toBe(403);
+    expect((await request("/auth/me", ownerC)).status).toBe(200);
+
+    // 有 session.manage 的人强退别人：被退的那张票下一个请求就失效
+    const forced = await request(`/manage/sessions/${thisOne.id}`, ownerC, "DELETE");
+    expect(forced.status).toBe(200);
+    expect(await data(forced)).toMatchObject({
+      id: thisOne.id,
+      userId: thisOne.userId,
+      self: false,
+    });
+    expect((await request("/auth/me", memberA)).status).toBe(401);
+
+    // 强退要留痕：审计里能按 session.revoked 查到，目标就是那条会话
+    const audit = await data(await request("/manage/audit?q=session.revoked", ownerC));
+    const rows = audit.items as Array<{ action: string; targetId: string | null }>;
+    expect(rows.map((row) => row.targetId)).toEqual(expect.arrayContaining([other.id, thisOne.id]));
+    expect(rows.every((row) => row.action === "session.revoked")).toBe(true);
   });
 
   it("compares full Origins, supports secure TLS termination and never trusts forwarded headers", async () => {
@@ -421,13 +602,28 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     [
       "owner",
       "alpha",
-      ["task.claim", "review.confirm", "settings.write", "aigc.set", "user.manage", "usage.read"],
+      [
+        "task.claim",
+        "review.confirm",
+        "settings.write",
+        "aigc.set",
+        "user.manage",
+        "usage.read",
+        "session.manage",
+      ],
       ["members", "feeds", "settings", "audit"],
     ],
     [
       "admin",
       "alpha",
-      ["task.claim", "review.confirm", "settings.write", "aigc.set", "usage.read"],
+      [
+        "task.claim",
+        "review.confirm",
+        "settings.write",
+        "aigc.set",
+        "usage.read",
+        "session.manage",
+      ],
       ["feeds", "settings", "audit"],
     ],
     ["reviewer", "beta", ["task.claim", "review.confirm", "usage.read"], []],
@@ -460,6 +656,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
           "proto",
           "roles",
           "usage",
+          "sessions",
           "profile",
           ...privilegedMenus,
         ].sort(),

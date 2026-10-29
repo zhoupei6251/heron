@@ -31,6 +31,7 @@ const SESSION: ConsoleSession = {
   menus: [],
 };
 const BODY = { tenant: "acme", identifier: USER.email, password: "correct-horse-battery" };
+const UA = "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0";
 
 function makeController(login: unknown) {
   const cookie = vi.fn();
@@ -50,9 +51,12 @@ function makeController(login: unknown) {
 describe("POST /api/auth/login", () => {
   it("成功：token 进 HttpOnly 的会话 cookie，响应体里只有会话表", async () => {
     const signed = { token: "jwt-token", session: SESSION };
-    const { controller, cookie, clearCookie, res } = makeController(() => Promise.resolve(signed));
+    const login = vi.fn(() => Promise.resolve(signed));
+    const { controller, cookie, clearCookie, res } = makeController(login);
 
-    await expect(controller.login(BODY, res)).resolves.toEqual(SESSION);
+    await expect(controller.login(BODY, UA, res)).resolves.toEqual(SESSION);
+    // UA 只随登录进 sessions 行（「这台设备是哪台」），不进票、不参与判据
+    expect(login).toHaveBeenCalledWith(BODY, UA);
 
     const [name, value, options] = cookie.mock.calls[0] as unknown as [
       string,
@@ -81,7 +85,7 @@ describe("POST /api/auth/login", () => {
     try {
       const signed = { token: "jwt-token", session: SESSION };
       const { controller, cookie, res } = makeController(() => Promise.resolve(signed));
-      await controller.login(BODY, res);
+      await controller.login(BODY, UA, res);
       const options = cookie.mock.calls[0]?.[2] as { secure?: boolean };
       expect(options.secure).toBe(true);
     } finally {
@@ -91,11 +95,11 @@ describe("POST /api/auth/login", () => {
 
   it("口令错：401 + 统一文案，且一个 cookie 都不下发", async () => {
     const { controller, cookie, clearCookie, res } = makeController(() => Promise.resolve(null));
-    await expect(controller.login(BODY, res)).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(controller.login(BODY, UA, res)).rejects.toBeInstanceOf(UnauthorizedException);
     expect(cookie).not.toHaveBeenCalled();
     expect(clearCookie).not.toHaveBeenCalled();
     // 「用户不存在」与「口令错」必须是同一句话，否则响应就成了「这个账号注册过」的证词
-    const error = (await controller.login(BODY, res).catch((e: unknown) => e)) as {
+    const error = (await controller.login(BODY, UA, res).catch((e: unknown) => e)) as {
       response?: { message?: string };
     };
     expect(error.response?.message).toBe("账号或口令不正确");

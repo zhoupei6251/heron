@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Inject,
   Param,
@@ -45,8 +46,11 @@ import {
   listPublishes,
   listAudit,
   listUsage,
+  quotaStatus,
+  listSessions,
+  revokeSession,
 } from "@heron/db/pg";
-import { hashPassword } from "@heron/domain";
+import { can, hashPassword } from "@heron/domain";
 import type { Response } from "express";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { RequireAction } from "../common/decorators/require-action.decorator";
@@ -66,6 +70,12 @@ export class ManageController {
   @Get("overview")
   overview(@CurrentUser() user: AuthUser) {
     return withTenant(this.db, user.tenantId, workspaceOverview);
+  }
+
+  /** 任何成员都能看自己的额度：写稿的人得知道这个月还能不能再渲一条。 */
+  @Get("quota")
+  quota(@CurrentUser() user: AuthUser) {
+    return withTenant(this.db, user.tenantId, (t) => quotaStatus(t));
   }
 
   @Get("members")
@@ -98,6 +108,31 @@ export class ManageController {
     @Body(new ZodValidationPipe(UpdateMemberBodySchema)) body: UpdateMemberBody,
   ) {
     return withTenant(this.db, user.tenantId, (t) => updateMember(t, user.id, id, body));
+  }
+
+  /**
+   * 在线会话。没有 session.manage 的人只拿到自己的那几条——过滤在查询里，不在界面上。
+   * current 由服务端比对 ticket 的 sid，界面不用（也不能）自己判「这条是不是我」。
+   */
+  @Get("sessions")
+  sessions(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(PageQuerySchema)) query: PageQuery,
+  ) {
+    return withTenant(this.db, user.tenantId, (t) =>
+      listSessions(
+        t,
+        { id: user.id, canManage: can(user.role, "session.manage") },
+        query,
+        user.sessionId,
+      ),
+    );
+  }
+
+  /** 单条强退。自己的那条谁都能退（那是退出登录），别人的要 session.manage——判据在仓库里再判一次。 */
+  @Delete("sessions/:id")
+  revoke(@CurrentUser() user: AuthUser, @Param("id", new ParseUUIDPipe()) id: string) {
+    return withTenant(this.db, user.tenantId, (t) => revokeSession(t, user.id, id));
   }
 
   @Get("workspace")

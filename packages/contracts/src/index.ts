@@ -184,6 +184,8 @@ export const AuthUserSchema = z.object({
   role: z.enum(ROLES),
   /** 缺格 = 空间成员。platform-view 由服务端签发，接口侧只读（见 api 的 RolesGuard）。 */
   scope: z.enum(["member", "platform-view"]).optional(),
+  /** 这次请求是哪个登录会话发出的；旧票与新签的平台票都没有这一格。 */
+  sessionId: z.string().uuid().optional(),
 });
 
 export type AuthUser = z.infer<typeof AuthUserSchema>;
@@ -204,14 +206,67 @@ export const JwtPayloadSchema = z.object({
   role: z.enum(ROLES),
   ver: z.number().int().nonnegative(),
   act: z.literal("platform").optional(),
+  /**
+   * 登录会话 id（sessions.id）。ver 只能整户撤销，逐条强退得知道「这是哪一条」。
+   * 可缺：这个字段上线前签出的票没有它，人被踢的判据仍旧看 ver。
+   */
+  sid: z.string().uuid().optional(),
 });
 
 export type JwtPayload = z.infer<typeof JwtPayloadSchema>;
+
+/**
+ * 档位只差额度，不差功能：功能分档会让以后每条新功能都得先回答「哪一档能用」，
+ * 而自托管场景里没人愿意为了一个开关去维护第二份代码路径。
+ */
+export const PLAN_IDS = ["free", "standard", "enterprise"] as const;
+
+export const PlanSchema = z.enum(PLAN_IDS);
+
+export type PlanId = z.infer<typeof PlanSchema>;
+
+export interface PlanLimits {
+  seats: number;
+  rendersPerMonth: number;
+  publishesPerMonth: number;
+}
+
+/**
+ * 额度的唯一定义处：worker 的拦、控制台的显示、审计记录里的数字都读这一份。
+ * 三处各写一遍的症状是「界面允许、worker 拒绝」——那种不一致没人会当成额度问题去查。
+ */
+export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
+  free: { seats: 3, rendersPerMonth: 100, publishesPerMonth: 30 },
+  standard: { seats: 20, rendersPerMonth: 1_000, publishesPerMonth: 300 },
+  enterprise: { seats: 100, rendersPerMonth: 10_000, publishesPerMonth: 3_000 },
+};
+
+export const PlanLimitsSchema = z.object({
+  seats: z.number().int().nonnegative(),
+  rendersPerMonth: z.number().int().nonnegative(),
+  publishesPerMonth: z.number().int().nonnegative(),
+});
+
+/** 当月用量：座位是当前值，渲染与发布按 UTC 自然月计。 */
+export const PlanUsageSchema = z.object({
+  seats: z.number().int().nonnegative(),
+  renders: z.number().int().nonnegative(),
+  publishes: z.number().int().nonnegative(),
+});
+
+/** 控制台据此显示「本月发布 30/30」并置灰超额的动作。 */
+export const QuotaStatusSchema = z.object({
+  plan: PlanSchema,
+  limits: PlanLimitsSchema,
+  usage: PlanUsageSchema,
+});
+export type QuotaStatus = z.infer<typeof QuotaStatusSchema>;
 
 export const TenantSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
   slug: z.string().min(1),
+  plan: PlanSchema,
   /** 停租是软关闭：数据不许物理删，「当时这个租户还能不能发」必须可回溯。 */
   suspendedAt: z.string().nullable(),
   createdAt: z.string(),
@@ -417,6 +472,26 @@ export const MemberSchema = z.object({
   createdAt: z.string(),
 });
 export type Member = z.infer<typeof MemberSchema>;
+
+/**
+ * 一条在线会话。没有「当前密码可改」这种自我声明：self / current 都由服务端算——
+ * 界面上的「这是我自己」若由前端比对，伪造一个 id 就能把别人的会话标成自己的。
+ */
+export const SessionSchema = z.object({
+  id: z.uuid(),
+  userId: z.uuid(),
+  userName: z.string(),
+  userEmail: z.string(),
+  userRole: z.enum(ROLES),
+  createdAt: z.string(),
+  lastSeenAt: z.string(),
+  userAgent: z.string().nullable(),
+  /** 就是发起这次请求的那条：强退自己等于退出登录，按钮要区别对待。 */
+  current: z.boolean(),
+  /** 属于当前登录的人。没有 session.manage 的人只看得到自己的，所以这条只影响措辞。 */
+  self: z.boolean(),
+});
+export type Session = z.infer<typeof SessionSchema>;
 export const CreateMemberBodySchema = z.object({
   email: ConsoleEmailSchema,
   displayName: DisplayNameSchema,
@@ -501,9 +576,11 @@ export const CONSOLE_MENU_IDS = [
   "settings",
   "usage",
   "audit",
+  "sessions",
   "profile",
   "platform-overview",
   "tenants",
+  "platform-settings",
   "platform-usage",
   "platform-audit",
   "health",
@@ -541,11 +618,133 @@ export const CreateTenantBodySchema = z.object({
 export type CreateTenantBody = z.infer<typeof CreateTenantBodySchema>;
 export const TenantStatusBodySchema = z.object({ suspended: z.boolean() });
 export type TenantStatusBody = z.infer<typeof TenantStatusBodySchema>;
+/** 改档位只有平台侧能做：额度是商务决定，租户自己改等于自己给自己加额度。 */
+export const TenantPlanBodySchema = z.object({ plan: PlanSchema });
+export type TenantPlanBody = z.infer<typeof TenantPlanBodySchema>;
 export const PlatformTenantSchema = TenantSchema.extend({
   userCount: z.number().int().nonnegative(),
   taskCount: z.number().int().nonnegative(),
 });
 export type PlatformTenant = z.infer<typeof PlatformTenantSchema>;
+
+/** 七牛云 AI 推理的 OpenAI 兼容入口。换厂商在平台设置里改，或覆盖 HERON_MODEL_BASE_URL。 */
+export const DEFAULT_MODEL_BASE_URL = "https://api.qnaigc.com/v1";
+
+/**
+ * 平台级默认值：一台机器一份，租户自己没配时才轮到它。
+ *
+ * 这四项**没有一项是密钥**：模型密钥只活在租户设置或环境变量里，进表就等于进了备份与审计导出。
+ * 键名、类型、兜底值也只有这一份——api 的读写、worker 的解析链、页面的表单都读它。
+ */
+export const PLATFORM_SETTING_KEYS = [
+  "default_model_base_url",
+  "default_model_name",
+  "default_retention_days",
+  "default_plan",
+] as const;
+
+export type PlatformSettingKey = (typeof PLATFORM_SETTING_KEYS)[number];
+
+const PlatformModelUrl = z
+  .string()
+  .trim()
+  .max(2048)
+  .url()
+  .refine(
+    (value) => {
+      const url = new URL(value);
+      return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+    },
+    { message: "模型地址必须是不带凭据的 HTTP(S) URL" },
+  )
+  // 与租户设置同一把尺子：请求拼 `${baseUrl}/chat/completions`，结尾多一个斜杠就多一个空段
+  .transform((value) => value.replace(/\/+$/, ""));
+
+const PositiveDays = z
+  .string()
+  .trim()
+  .regex(/^\d+$/, { message: "只能写正整数天数" })
+  .refine((value) => Number(value) >= 1 && Number(value) <= 3650, {
+    message: "在 1–3650 天之间",
+  })
+  .transform((value) => String(Number(value)));
+
+export interface PlatformSettingDef {
+  label: string;
+  hint: string;
+  /** 写入前用它校验；读回来的值也过一遍，坏数据按「未配置」处理，不让流水线因为一行脏数据崩掉。 */
+  schema: z.ZodType<string, string>;
+  /** 库里没有这一行、或值不合法时用它。空串表示「没有默认值」，缺了就得租户自己配。 */
+  fallback: string;
+}
+
+export const PLATFORM_SETTING_DEFS: Record<PlatformSettingKey, PlatformSettingDef> = {
+  default_model_base_url: {
+    label: "默认模型地址",
+    hint: "OpenAI 兼容入口。租户在「工作空间设置」里自己填了地址，就以租户的为准。",
+    schema: PlatformModelUrl,
+    fallback: DEFAULT_MODEL_BASE_URL,
+  },
+  default_model_name: {
+    label: "默认模型名",
+    hint: "租户没配模型时用它写稿。七牛在「AI 大模型广场」复制完整 id。",
+    schema: z.string().trim().min(1).max(200),
+    fallback: "",
+  },
+  default_retention_days: {
+    label: "默认成片保留天数",
+    hint: "租户没设保留天数时用它；到期后成片目录与桶里的对象一起删。",
+    schema: PositiveDays,
+    fallback: "30",
+  },
+  default_plan: {
+    label: "新空间默认档位",
+    hint: "平台台开通新工作空间时用它开局；之后按家改档。",
+    schema: PlanSchema,
+    fallback: "free",
+  },
+};
+
+export function isPlatformSettingKey(value: string): value is PlatformSettingKey {
+  return (PLATFORM_SETTING_KEYS as readonly string[]).includes(value);
+}
+
+/** 一项的当前值与来源：`isDefault` 为真说明库里没有这一行（或值不合法），显示的是兜底值。 */
+export const PlatformSettingItemSchema = z.object({
+  key: z.enum(PLATFORM_SETTING_KEYS),
+  value: z.string(),
+  isDefault: z.boolean(),
+  updatedAt: z.string().nullable(),
+  updatedBy: z.string().nullable(),
+});
+export type PlatformSettingItem = z.infer<typeof PlatformSettingItemSchema>;
+
+export const PlatformSettingsSchema = z.object({ items: z.array(PlatformSettingItemSchema) });
+export type PlatformSettings = z.infer<typeof PlatformSettingsSchema>;
+
+/**
+ * 只收改动过的那几项；空串表示「恢复默认」（删掉这一行）。
+ * 每项的值在这里就按它自己的 schema 判一次：格式不对当场 400 并点名是哪一项，
+ * 而不是写进库、等 worker 下次写稿时才炸。
+ */
+export const PlatformSettingsBodySchema = z
+  .object({ values: z.partialRecord(z.enum(PLATFORM_SETTING_KEYS), z.string().max(2048)) })
+  .superRefine((body, ctx) => {
+    for (const [key, value] of Object.entries(body.values)) {
+      if (!isPlatformSettingKey(key)) continue;
+      const def = PLATFORM_SETTING_DEFS[key];
+      if (value.trim() === "") continue;
+      const parsed = def.schema.safeParse(value);
+      if (!parsed.success) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["values", key],
+          message: `${def.label}${parsed.error.issues[0]?.message ?? "格式不对"}`,
+        });
+      }
+    }
+  });
+export type PlatformSettingsBody = z.infer<typeof PlatformSettingsBodySchema>;
 
 export const CandidateSchema = z.object({
   id: z.uuid(),

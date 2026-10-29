@@ -15,6 +15,7 @@ const labels: Record<Action, string> = {
   "aigc.set": "管理 AI 内容声明",
   "user.manage": "创建成员与分配角色",
   "usage.read": "查看内容与用量",
+  "session.manage": "强退其他成员的登录",
 };
 const rows = ACTIONS.map((action) => ({ action, label: labels[action] }));
 </script>

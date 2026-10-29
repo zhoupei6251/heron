@@ -1,5 +1,6 @@
 export * from "./tenants";
 export * from "./users";
+export * from "./sessions";
 export * from "./identity";
 export * from "./tasks";
 export * from "./artifacts";
@@ -14,6 +15,7 @@ export * from "./management";
  */
 export const TABLES_WITH_TENANT = [
   "users",
+  "sessions",
   "platform_accounts",
   "settings",
   "feed_sources",
@@ -40,4 +42,8 @@ export const TABLES_WITHOUT_TENANT = [
 export const TABLES_TENANT_ROOT = ["tenants"] as const;
 
 /** Platform identity/audit are privileged only, never tenant children. */
-export const TABLES_PLATFORM = ["platform_operators", "platform_audit_logs"] as const;
+export const TABLES_PLATFORM = [
+  "platform_operators",
+  "platform_audit_logs",
+  "platform_settings",
+] as const;

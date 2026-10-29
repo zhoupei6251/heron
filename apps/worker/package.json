@@ -15,6 +15,7 @@
     "@heron/db": "workspace:*",
     "@heron/domain": "workspace:*",
     "@heron/redis": "workspace:*",
+    "@heron/storage": "workspace:*",
     "bullmq": "^6.4.2"
   },
   "devDependencies": {

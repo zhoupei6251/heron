@@ -95,7 +95,9 @@ async function cleanup(home: string): Promise<void> {
       errors.push(cause);
     }
   }
-  rmSync(home, { recursive: true, force: true });
+  // Windows 上刚被 taskkill 掉的进程要过一两百毫秒才放开目录句柄，而 rmSync 默认一次不成就抛：
+  // 一次 EPERM 会让「清理失败」冒充「被测行为失败」（这条用例本来就故意留了一个活着的子进程）。
+  rmSync(home, { recursive: true, force: true, maxRetries: 30, retryDelay: 100 });
   if (errors.length) throw new AggregateError(errors, "Failed to clean up test processes");
 }
 

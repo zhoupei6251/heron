@@ -146,6 +146,34 @@ describe("platform console repositories (real PGlite)", () => {
     expect((await repo.listPlatformAudit(db, { q: "tenant.provisioned" })).total).toBe(2);
   });
 
+  it("records both ends of a plan change and stays silent on a no-op", async () => {
+    const op = await operator();
+    const tenant = await repo.provisionTenant(db, op.id, { ...input, slug: "plan-co" });
+    expect(tenant.plan).toBe("free");
+    expect((await repo.listPlatformTenants(db)).items[0]).toMatchObject({ plan: "free" });
+    expect(await repo.changeTenantPlan(db, op.id, tenant.id, "standard")).toMatchObject({
+      plan: "standard",
+    });
+    // 两个值都记：只有一个新档位的话，事后对不出「原来是什么」
+    expect((await repo.listPlatformAudit(db, { q: "tenant.plan_changed" })).items[0]).toMatchObject(
+      {
+        operatorId: op.id,
+        targetId: tenant.id,
+        detail: { from: "free", to: "standard" },
+      },
+    );
+    // 同档位不改：审计里不该多出一条 free → free 的噪声
+    await repo.changeTenantPlan(db, op.id, tenant.id, "standard");
+    expect((await repo.listPlatformAudit(db, { q: "tenant.plan_changed" })).total).toBe(1);
+    await expect(repo.changeTenantPlan(db, op.id, randomUUID(), "free")).rejects.toMatchObject({
+      code: "not_found",
+    });
+    // 租户成员的 id 不是平台操作员，不能给自己升档
+    await expect(repo.changeTenantPlan(db, tenant.id, tenant.id, "free")).rejects.toMatchObject({
+      code: "forbidden",
+    });
+  });
+
   it("denies all platform table access under withTenant, even after RLS reapplication", async () => {
     const op = await operator();
     const tenant = await repo.provisionTenant(db, op.id, input);
@@ -167,10 +195,18 @@ describe("platform console repositories (real PGlite)", () => {
       ),
     ).rejects.toMatchObject({ cause: { code: "42501" } });
     for (const table of repo.TABLES_PLATFORM) {
+      // UPDATE 必须指名一列才走得到权限判定（列不存在会先报 42703）；主键从目录里取，
+      // 平台表不都是 id 一把 UUID 主键，platform_settings 折成了 key/value。
+      const primaryKey = await db.execute(
+        sql`SELECT a.attname FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = ${table}::regclass AND i.indisprimary`,
+      );
+      const pk = (primaryKey.rows[0] as { attname: string }).attname;
       for (const statement of [
         `SELECT * FROM ${table}`,
         `DELETE FROM ${table}`,
-        `UPDATE ${table} SET id = id`,
+        `UPDATE ${table} SET ${pk} = ${pk}`,
         `INSERT INTO ${table} DEFAULT VALUES`,
       ]) {
         await expect(

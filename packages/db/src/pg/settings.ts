@@ -43,10 +43,17 @@ async function writeSetting(tdb: TenantDb, key: string, value: string): Promise<
     });
 }
 
-export async function getRetentionDays(tdb: TenantDb): Promise<number> {
+/**
+ * 保留天数：租户自己设了就用它，否则用 fallback（平台设置的默认值），再否则用内置默认。
+ * 迁进来的是坏值（"0"、"-1"、空串）也走同一条回落——坏数据不该让清理把成片全删了。
+ */
+export async function getRetentionDays(
+  tdb: TenantDb,
+  fallback: number = DEFAULT_RETENTION_DAYS,
+): Promise<number> {
   const raw = await readSetting(tdb, RETENTION_SETTING_KEY);
   const parsed = raw === null ? Number.NaN : Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_RETENTION_DAYS;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export async function setRetentionDays(tdb: TenantDb, days: number): Promise<void> {

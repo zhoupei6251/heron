@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { GateName, GateVerdict, PublishStatus, Rejection } from "@heron/contracts";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { nowIso } from "../time";
 import { requireTenantUser } from "./identity";
@@ -82,6 +82,10 @@ export interface NewRender {
   fps?: number | null;
   durationMs?: number | null;
   aigcSidecarPath?: string | null;
+  /** 对象存储里的键。没配存储（本地驱动）时留空，路径列就是唯一真相。 */
+  mp4Key?: string | null;
+  contactSheetKey?: string | null;
+  aigcSidecarKey?: string | null;
   timings?: readonly { stage: string; seconds: number }[];
 }
 
@@ -111,6 +115,9 @@ export async function insertRender(tdb: TenantDb, input: NewRender): Promise<str
     fps: input.fps ?? null,
     durationMs: input.durationMs ?? null,
     aigcSidecarPath: input.aigcSidecarPath ?? null,
+    mp4Key: input.mp4Key ?? null,
+    contactSheetKey: input.contactSheetKey ?? null,
+    aigcSidecarKey: input.aigcSidecarKey ?? null,
     timings: [...(input.timings ?? [])],
     createdAt: nowIso(),
   });
@@ -208,6 +215,37 @@ export async function listExpiredTaskDirs(tdb: TenantDb, cutoff: string): Promis
     .groupBy(renders.taskId)
     .having(sql`max(${renders.createdAt}) < ${cutoff}`);
   return rows.map((row) => row.taskId);
+}
+
+/**
+ * 过期清理要删的远端对象：按任务取全部版本、全部类型的 key。
+ *
+ * 按 renders 行取而不是「按约定拼出 key」：渲染行不随清理删除（发布记录指着它），
+ * 所以这份清单下一轮还能再拿到——远端删除失败是自愈的，不需要失败队列。
+ */
+export async function listRenderObjectKeys(
+  tdb: TenantDb,
+  taskIds: readonly string[],
+): Promise<Map<string, string[]>> {
+  if (taskIds.length === 0) return new Map();
+  const rows = await tdb.db
+    .select({
+      taskId: renders.taskId,
+      mp4: renders.mp4Key,
+      sheet: renders.contactSheetKey,
+      sidecar: renders.aigcSidecarKey,
+    })
+    .from(renders)
+    .where(inArray(renders.taskId, [...taskIds]));
+
+  const grouped = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const keys = grouped.get(row.taskId) ?? new Set<string>();
+    // 同一 key 可能在多行重复（重渲后同一版本号不会，但跨行去重便宜且必要：删两次会 612）
+    for (const key of [row.mp4, row.sheet, row.sidecar]) if (key) keys.add(key);
+    grouped.set(row.taskId, keys);
+  }
+  return new Map([...grouped].map(([taskId, keys]) => [taskId, [...keys]]));
 }
 
 export interface NewPublish {

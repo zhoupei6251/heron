@@ -25,6 +25,7 @@ export const MENU_ROUTES: Record<ConsoleMenu["id"], RouteRecordRaw> = {
   settings: { path: "/settings", component: () => import("../pages/console/Settings.vue") },
   usage: { path: "/usage", component: () => import("../pages/console/UsageView.vue") },
   audit: { path: "/audit", component: () => import("../pages/console/AuditView.vue") },
+  sessions: { path: "/sessions", component: () => import("../pages/console/SessionsView.vue") },
   profile: { path: "/profile", component: () => import("../pages/console/ProfileView.vue") },
   "platform-overview": {
     path: "/platform",
@@ -33,6 +34,10 @@ export const MENU_ROUTES: Record<ConsoleMenu["id"], RouteRecordRaw> = {
   tenants: {
     path: "/platform/tenants",
     component: () => import("../pages/platform/PlatformTenantsView.vue"),
+  },
+  "platform-settings": {
+    path: "/platform/settings",
+    component: () => import("../pages/platform/PlatformSettingsView.vue"),
   },
   "platform-usage": {
     path: "/platform/usage",
@@ -51,6 +56,7 @@ export const MENU_ROUTES: Record<ConsoleMenu["id"], RouteRecordRaw> = {
 const PLATFORM_IDS: ReadonlySet<ConsoleMenu["id"]> = new Set([
   "platform-overview",
   "tenants",
+  "platform-settings",
   "platform-usage",
   "platform-audit",
   "health",

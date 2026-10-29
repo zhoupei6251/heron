@@ -17,6 +17,7 @@ describe("RBAC 纯函数", () => {
       "proto",
       "roles",
       "usage",
+      "sessions",
       "profile",
     ]);
     expect(consoleAccess("admin").menus.map((menu) => menu.id)).toContain("settings");
@@ -33,6 +34,7 @@ describe("RBAC 纯函数", () => {
     expect(access.menus.map((menu) => menu.id)).toEqual([
       "platform-overview",
       "tenants",
+      "platform-settings",
       "platform-usage",
       "platform-audit",
       "health",
@@ -87,7 +89,7 @@ describe("RBAC 纯函数", () => {
     }
   });
 
-  it("六个动作是闭合名单，一个不多一个不少", () => {
+  it("七个动作是闭合名单，一个不多一个不少", () => {
     expect(ACTIONS).toEqual([
       "task.claim",
       "review.confirm",
@@ -95,6 +97,7 @@ describe("RBAC 纯函数", () => {
       "aigc.set",
       "user.manage",
       "usage.read",
+      "session.manage",
     ]);
   });
 

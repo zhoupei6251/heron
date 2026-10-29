@@ -70,3 +70,16 @@ export const platformAuditLogs = pgTable(
   },
   (t) => [index("ix_platform_audit_logs_time").on(sql`${t.createdAt} DESC`, t.id)],
 );
+
+/**
+ * 平台级默认值，一台机器一份。**不是租户表**：heron_app 读不到，只走特权通道。
+ *
+ * 值一律存文本，键的类型由 contracts 的 PLATFORM_SETTING_DEFS 定义——表只负责存，
+ * 类型只在一处定义，加一项不用改表。这里也**不存密钥**：模型密钥只在租户设置或环境变量里。
+ */
+export const platformSettings = pgTable("platform_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  updatedBy: uuid("updated_by").references(() => platformOperators.id, { onDelete: "restrict" }),
+});

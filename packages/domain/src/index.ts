@@ -4,6 +4,7 @@ export * from "./proto";
 export * from "./error-reason";
 export * from "./password";
 export * from "./rbac";
+export * from "./plan";
 export * from "./gates/dedupe";
 export * from "./gates/contract";
 export * from "./gates/refusal";
