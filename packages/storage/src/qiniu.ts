@@ -1,3 +1,4 @@
+import { createHash, createHmac } from "node:crypto";
 import { statSync } from "node:fs";
 
 import * as qiniu from "qiniu";
@@ -14,8 +15,8 @@ export interface QiniuPort {
   uploadToken(key: string): string;
   /** 从磁盘流式上传（不把 mp4 读进内存）。失败抛错。 */
   putFile(token: string, key: string, localPath: string): Promise<void>;
-  /** 私有空间的签名下载地址。 */
-  downloadUrl(key: string, deadlineSec: number): string;
+  /** 时效直链；ttlSec 是**剩余秒数**。CDN 模式签 Kodo token，S3 模式签 SigV4 预签名。 */
+  downloadUrl(key: string, ttlSec: number): string;
   /** 删除对象；对象本来就不在算成功。 */
   deleteObject(key: string): Promise<void>;
 }
@@ -34,13 +35,16 @@ const ZONES: Record<QiniuRegion, qiniu.conf.Zone> = {
 const UPLOAD_TOKEN_TTL_SEC = 3600;
 /** Kodo 的「文件不存在」错误码：删除与 stat 都会遇到它，重跑清理时它是正常态。 */
 const ERR_NO_SUCH_FILE = 612;
+/** SigV4 的 X-Amz-Expires 上限：7 天。 */
+const S3_MAX_TTL_SEC = 604_800;
 
-export function qiniuPort(cfg: QiniuConfig): QiniuPort {
+export function qiniuPort(cfg: QiniuConfig, now: () => number = Date.now): QiniuPort {
   const mac = new qiniu.auth.digest.Mac(cfg.accessKey, cfg.secretKey);
   // 上传域名不写死：zone 自带 up-z2.qiniup.com 一族，SDK 自己挑可用的那个
   const config = new qiniu.conf.Config({ zone: ZONES[cfg.region], useHttpsDomain: true });
   const uploader = new qiniu.form_up.FormUploader(config);
   const manager = new qiniu.rs.BucketManager(mac, config);
+  const download = cfg.download;
 
   return {
     uploadToken: (key) =>
@@ -55,7 +59,13 @@ export function qiniuPort(cfg: QiniuConfig): QiniuPort {
       if (!result.ok()) throw new Error(`七牛上传失败：${describe(result)}`);
     },
 
-    downloadUrl: (key, deadlineSec) => manager.privateDownloadUrl(cfg.domain, key, deadlineSec),
+    // SDK 的第三个参数是「截止时刻」（直接拼进 ?e=），不是剩余秒数：传 600 会签出一张
+    // 1970 年的过期票，拿它去取成片永远是 401。这里把有效期换算成绝对时间戳。
+    downloadUrl:
+      download.kind === "s3"
+        ? (key, ttlSec) => presignS3Url(cfg, key, ttlSec, now())
+        : (key, ttlSec) =>
+            manager.privateDownloadUrl(download.domain, key, Math.floor(now() / 1000) + ttlSec),
 
     async deleteObject(key) {
       const result = await manager.delete(cfg.bucket, key);
@@ -63,6 +73,74 @@ export function qiniuPort(cfg: QiniuConfig): QiniuPort {
         throw new Error(`七牛删除失败：${describe(result)}`);
     },
   };
+}
+
+/**
+ * S3 端点的预签名直链（AWS SigV4，query 签名）。
+ *
+ * 七牛的 `<bucket>.s3.<region>.qiniucs.com` 只认 SigV4：Kodo 的 `?e=&token=` 在它上面是 400
+ * （实测 NotSupportAnonymous / MissingSecurityElement）。换来的是七牛自带的合法证书
+ * （不必先绑自有域名）和「不经过 CDN」——删掉对象立刻 404，签名每次都真校验。
+ */
+export function presignS3Url(
+  cfg: QiniuConfig,
+  key: string,
+  ttlSec: number,
+  nowMs: number = Date.now(),
+): string {
+  if (cfg.download.kind !== "s3") throw new Error("presignS3Url 只用于 s3 下载模式");
+  const { s3Region } = cfg.download;
+  const host = `${cfg.bucket}.s3.${s3Region}.qiniucs.com`;
+  // X-Amz-Expires 上限 7 天，超过它签名会被判非法；截断而不是抛，免得渲染完才发现
+  const expires = Math.min(Math.max(1, Math.floor(ttlSec)), S3_MAX_TTL_SEC);
+  const amzDate = new Date(nowMs)
+    .toISOString()
+    .replace(/\.\d{3}/, "")
+    .replace(/[-:]/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const scope = `${dateStamp}/${s3Region}/s3/aws4_request`;
+  const canonicalUri = `/${key.split("/").map(uriEncode).join("/")}`;
+  const params: Array<[string, string]> = [
+    ["X-Amz-Algorithm", "AWS4-HMAC-SHA256"],
+    ["X-Amz-Credential", `${cfg.accessKey}/${scope}`],
+    ["X-Amz-Date", amzDate],
+    ["X-Amz-Expires", String(expires)],
+    ["X-Amz-SignedHeaders", "host"],
+  ];
+  // 已按参数名排好序，SigV4 要求的就是字典序
+  const query = params.map(([name, value]) => `${uriEncode(name)}=${uriEncode(value)}`).join("&");
+  const canonicalRequest = [
+    "GET",
+    canonicalUri,
+    query,
+    `host:${host}\n`,
+    "host",
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256Hex(canonicalRequest)].join("\n");
+
+  let signingKey = hmac(`AWS4${cfg.secretKey}`, dateStamp);
+  signingKey = hmac(signingKey, s3Region);
+  signingKey = hmac(signingKey, "s3");
+  signingKey = hmac(signingKey, "aws4_request");
+  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+  return `https://${host}${canonicalUri}?${query}&X-Amz-Signature=${signature}`;
+}
+
+/** AWS SigV4 的 uriEncode：只留 A-Za-z0-9-_.~，其余按大写 %XX。 */
+function uriEncode(value: string): string {
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+}
+
+function sha256Hex(data: string): string {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+function hmac(key: string | Buffer, data: string): Buffer {
+  return createHmac("sha256", key).update(data).digest();
 }
 
 /**

@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type { GateVerdict, Stage, Task, TaskEvent } from "@heron/contracts";
 import {
   GateRefusalError,
@@ -10,6 +8,7 @@ import {
 } from "@heron/domain";
 import { and, asc, desc, eq, gt, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import type { AdminDb } from "./admin";
 import { setCandidateStatus } from "./candidates";
@@ -18,7 +17,7 @@ import { requireTenantUser } from "./identity";
 import type { TenantDb } from "./rls";
 import { insertConfirmation, insertGateResult, latestRender } from "./artifacts";
 import type { Db } from "./driver";
-import { taskEvents, candidates, tasks } from "./schema/index";
+import { taskEvents, candidates, tasks, alive } from "./schema/index";
 
 /**
  * 任务与状态机的仓储。两条规矩贯穿全文件：
@@ -60,8 +59,8 @@ function toTask(row: typeof tasks.$inferSelect): Task {
     claimedBy: row.claimedBy,
     claimedAt: row.claimedAt,
     errorReason: row.errorReason,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    createTime: row.createTime,
+    updateTime: row.updateTime,
   };
 }
 
@@ -69,7 +68,7 @@ async function selectTask(db: Db, tenantId: string, id: string): Promise<Task | 
   const rows = await db
     .select()
     .from(tasks)
-    .where(and(eq(tasks.id, id), eq(tasks.tenantId, tenantId)))
+    .where(and(eq(tasks.id, id), eq(tasks.tenantId, tenantId), alive(tasks.delFlag)))
     .limit(1);
   const row = rows[0];
   return row ? toTask(row) : null;
@@ -84,8 +83,8 @@ export async function listTasks(tdb: TenantDb): Promise<Task[]> {
   const rows = await tdb.db
     .select()
     .from(tasks)
-    .where(eq(tasks.tenantId, tdb.tenantId))
-    .orderBy(desc(tasks.createdAt));
+    .where(and(eq(tasks.tenantId, tdb.tenantId), alive(tasks.delFlag)))
+    .orderBy(desc(tasks.createTime));
   return rows.map(toTask);
 }
 
@@ -114,8 +113,8 @@ export async function listReviewQueue(tdb: TenantDb): Promise<ReviewQueueItem[]>
     .select({ taskId: tasks.id, title: candidates.title })
     .from(tasks)
     .leftJoin(candidates, eq(candidates.id, tasks.candidateId))
-    .where(and(eq(tasks.tenantId, tdb.tenantId), eq(tasks.stage, "review")))
-    .orderBy(desc(tasks.updatedAt));
+    .where(and(eq(tasks.tenantId, tdb.tenantId), eq(tasks.stage, "review"), alive(tasks.delFlag)))
+    .orderBy(desc(tasks.updateTime));
 
   const queue: ReviewQueueItem[] = [];
   for (const row of rows) {
@@ -134,18 +133,19 @@ export async function listReviewQueue(tdb: TenantDb): Promise<ReviewQueueItem[]>
 
 /** 台账的一条带上它自己的 id：id 是游标推进的依据，也是「断线补哪一段」的坐标。 */
 export interface TaskEventEntry {
-  id: number;
+  id: string;
   event: TaskEvent;
 }
 
 /**
  * 台账读取（游标式）：SSE 轮询与界面展开「发生过什么」都从这里读。
- * afterId 是 task_events 的 identity 主键——id 升序就是写入顺序，游标才补得出断线那一段。
+ * afterId 是 task_events 的主键——雪花 id 单调递增，id 升序就是写入顺序，
+ * 游标才补得出断线那一段（游标只在服务端用，不进 API 契约）。
  * 租户隔离不靠这里的 WHERE：task_events 不带 tenant_id，靠 applyRls 的 EXISTS 策略。
  */
 export async function listTaskEventsSince(
   tdb: TenantDb,
-  afterId: number,
+  afterId: string,
 ): Promise<TaskEventEntry[]> {
   const rows = await tdb.db
     .select({
@@ -154,7 +154,7 @@ export async function listTaskEventsSince(
       from: taskEvents.fromStage,
       to: taskEvents.toStage,
       reason: taskEvents.reason,
-      createdAt: taskEvents.createdAt,
+      createTime: taskEvents.createTime,
     })
     .from(taskEvents)
     .where(gt(taskEvents.id, afterId))
@@ -167,24 +167,29 @@ export async function listTaskEventsSince(
       from: row.from,
       to: row.to,
       reason: row.reason,
-      at: row.createdAt,
+      at: row.createTime,
     },
   }));
 }
 
-/** 当前最大台账 id：新订阅从这里起游标，不把整个历史重播一遍。 */
-export async function maxTaskEventId(tdb: TenantDb): Promise<number> {
+/**
+ * 当前最大台账 id：新订阅从这里起游标，不把整个历史重播一遍。
+ *
+ * 游标是雪花 id（19 位），所以这里是 numeric 而不是 int——`::int` 会溢出成错误，
+ * 溢出的游标会让「补断线那一段」补出一段错的历史。
+ */
+export async function maxTaskEventId(tdb: TenantDb): Promise<string> {
   const rows = await tdb.db
-    .select({ max: sql<number>`coalesce(max(${taskEvents.id}), 0)::int` })
+    .select({ max: sql<string>`coalesce(max(${taskEvents.id}), 0)::numeric` })
     .from(taskEvents);
-  return rows[0]?.max ?? 0;
+  return rows[0]?.max ?? "0";
 }
 
 export async function createTask(
   tdb: TenantDb,
   input: { capability: string; candidateId: string | null },
 ): Promise<Task> {
-  const id = randomUUID();
+  const id = snowflakeId();
   const at = nowIso();
   await tdb.db.insert(tasks).values({
     id,
@@ -192,8 +197,8 @@ export async function createTask(
     capability: input.capability,
     candidateId: input.candidateId,
     stage: "candidate",
-    createdAt: at,
-    updatedAt: at,
+    createTime: at,
+    updateTime: at,
   });
   const task = await selectTask(tdb.db, tdb.tenantId, id);
   if (!task) throw new Error(`任务写入后读不回：${id}`);
@@ -232,17 +237,24 @@ export async function claimByHuman(tdb: TenantDb, taskId: string, userId: string
   const at = nowIso();
   await tdb.db
     .update(tasks)
-    .set({ stage: "claimed", claimedBy: userId, claimedAt: at, updatedAt: at })
+    .set({
+      stage: "claimed",
+      claimedBy: userId,
+      claimedAt: at,
+      updateBy: userId,
+      updateTime: at,
+    })
     .where(and(eq(tasks.id, taskId), eq(tasks.tenantId, tdb.tenantId)));
   if (task.candidateId) {
-    await setCandidateStatus(tdb, task.candidateId, "selected", at);
+    await setCandidateStatus(tdb, task.candidateId, "selected", at, userId);
   }
   await tdb.db.insert(taskEvents).values({
+    id: snowflakeId(),
     taskId,
     fromStage: task.stage,
     toStage: "claimed",
     reason: `认领人 ${actor.displayName}（${actor.role}）`,
-    createdAt: at,
+    createTime: at,
   });
 
   const next = await selectTask(tdb.db, tdb.tenantId, taskId);
@@ -290,7 +302,7 @@ export async function startProductionFromCandidate(
     throw new ManagementError("conflict", "这条候选已经有在途任务，请到生产任务页继续");
 
   const at = nowIso();
-  const id = randomUUID();
+  const id = snowflakeId();
   await tdb.db.insert(tasks).values({
     id,
     tenantId: tdb.tenantId,
@@ -299,16 +311,17 @@ export async function startProductionFromCandidate(
     stage: "claimed",
     claimedBy: userId,
     claimedAt: at,
-    createdAt: at,
-    updatedAt: at,
+    createTime: at,
+    updateTime: at,
   });
-  await setCandidateStatus(tdb, candidateId, "selected", at);
+  await setCandidateStatus(tdb, candidateId, "selected", at, userId);
   await tdb.db.insert(taskEvents).values({
+    id: snowflakeId(),
     taskId: id,
     fromStage: "candidate",
     toStage: "claimed",
     reason: `从候选开始生产，认领人 ${actor.displayName}（${actor.role}）`,
-    createdAt: at,
+    createTime: at,
   });
 
   const task = await selectTask(tdb.db, tdb.tenantId, id);
@@ -328,21 +341,23 @@ async function writeFailed(
   task: Task,
   reason: string,
   at: string,
+  actorId: string | null,
 ): Promise<void> {
   const touched = await db
     .update(tasks)
-    .set({ stage: "failed", errorReason: reason, updatedAt: at })
+    .set({ stage: "failed", errorReason: reason, updateBy: actorId, updateTime: at })
     .where(
       and(eq(tasks.id, task.id), eq(tasks.tenantId, tenantId), notInArray(tasks.stage, TERMINAL)),
     )
     .returning({ id: tasks.id });
   if (touched.length === 0) return;
   await db.insert(taskEvents).values({
+    id: snowflakeId(),
     taskId: task.id,
     fromStage: task.stage,
     toStage: "failed",
     reason,
-    createdAt: at,
+    createTime: at,
   });
 }
 
@@ -352,10 +367,11 @@ export async function markFailed(
   taskId: string,
   reason: string,
   at: string = nowIso(),
+  actorId: string | null,
 ): Promise<void> {
   const task = await selectTask(tdb.db, tdb.tenantId, taskId);
   if (!task) throw new Error(`任务不存在，无法标记失败：${taskId}`);
-  await writeFailed(tdb.db, tdb.tenantId, task, reason, at);
+  await writeFailed(tdb.db, tdb.tenantId, task, reason, at, actorId);
 }
 
 export interface AdvanceInput {
@@ -402,23 +418,24 @@ export async function advanceTask(tdb: TenantDb, input: AdvanceInput): Promise<T
     await insertGateResult(tdb, { taskId: task.id, gate: verdict.gate, verdict, at });
   }
   if (refusal) {
-    await writeFailed(tdb.db, tdb.tenantId, task, refusal.reason, at);
+    await writeFailed(tdb.db, tdb.tenantId, task, refusal.reason, at, null);
     throw new GateRefusalError(refusal.gate, refusal.reason);
   }
 
   await tdb.db
     .update(tasks)
-    .set({ stage: input.to, updatedAt: at })
+    .set({ stage: input.to, updateBy: null, updateTime: at })
     .where(and(eq(tasks.id, task.id), eq(tasks.tenantId, tdb.tenantId)));
   if (input.to === "published" && task.candidateId) {
-    await setCandidateStatus(tdb, task.candidateId, "published", at);
+    await setCandidateStatus(tdb, task.candidateId, "published", at, null);
   }
   await tdb.db.insert(taskEvents).values({
+    id: snowflakeId(),
     taskId: task.id,
     fromStage: task.stage,
     toStage: input.to,
     reason: gate ? `闸 ${gate} 放行${verdict?.note ? `（${verdict.note}）` : ""}` : null,
-    createdAt: at,
+    createTime: at,
   });
 
   const next = await selectTask(tdb.db, tdb.tenantId, task.id);
@@ -502,7 +519,7 @@ export async function confirmByHuman(tdb: TenantDb, input: ConfirmInput): Promis
   // !render 这半边是给类型收窄用的：verdict 为放行时 render 必然存在，两条条件走的是同一个拒绝分支
   if (!verdict.passed || !render) {
     const reason = formatErrorReason(verdict);
-    await writeFailed(tdb.db, tdb.tenantId, task, reason, at);
+    await writeFailed(tdb.db, tdb.tenantId, task, reason, at, input.userId);
     throw new GateRefusalError(verdict.gate, reason);
   }
 
@@ -514,14 +531,15 @@ export async function confirmByHuman(tdb: TenantDb, input: ConfirmInput): Promis
   });
   await tdb.db
     .update(tasks)
-    .set({ stage: "approved", updatedAt: at })
+    .set({ stage: "approved", updateBy: input.userId, updateTime: at })
     .where(and(eq(tasks.id, task.id), eq(tasks.tenantId, tdb.tenantId)));
   await tdb.db.insert(taskEvents).values({
+    id: snowflakeId(),
     taskId: task.id,
     fromStage: task.stage,
     toStage: "approved",
     reason: `确认人 ${actor.displayName}（${actor.role}）`,
-    createdAt: at,
+    createTime: at,
   });
 
   const next = await selectTask(tdb.db, tdb.tenantId, task.id);
@@ -559,7 +577,7 @@ export async function claimNextTask(
         or(isNull(tasks.leaseOwner), lt(tasks.heartbeat, leaseCutoff(leaseTtlSec))),
       ),
     )
-    .orderBy(asc(tasks.createdAt))
+    .orderBy(asc(tasks.createTime))
     .limit(1)
     .for("update", { of: [tasks], skipLocked: true });
   const row = rows[0];
@@ -568,10 +586,10 @@ export async function claimNextTask(
   const at = nowIso();
   await admin.db
     .update(tasks)
-    .set({ leaseOwner: owner, heartbeat: at, updatedAt: at })
+    .set({ leaseOwner: owner, heartbeat: at, updateBy: null, updateTime: at })
     .where(eq(tasks.id, row.id));
   return {
-    task: toTask({ ...row, leaseOwner: owner, heartbeat: at, updatedAt: at }),
+    task: toTask({ ...row, leaseOwner: owner, heartbeat: at, updateTime: at }),
     tenantId: row.tenantId,
   };
 }
@@ -605,10 +623,10 @@ export async function claimTaskById(
   const at = nowIso();
   await admin.db
     .update(tasks)
-    .set({ leaseOwner: owner, heartbeat: at, updatedAt: at })
+    .set({ leaseOwner: owner, heartbeat: at, updateBy: null, updateTime: at })
     .where(eq(tasks.id, row.id));
   return {
-    task: toTask({ ...row, leaseOwner: owner, heartbeat: at, updatedAt: at }),
+    task: toTask({ ...row, leaseOwner: owner, heartbeat: at, updateTime: at }),
     tenantId: row.tenantId,
   };
 }
@@ -623,7 +641,7 @@ export async function claimTaskById(
 export async function releaseLease(tdb: TenantDb, taskId: string, owner: string): Promise<void> {
   const touched = await tdb.db
     .update(tasks)
-    .set({ leaseOwner: null, heartbeat: null, updatedAt: nowIso() })
+    .set({ leaseOwner: null, heartbeat: null, updateBy: null, updateTime: nowIso() })
     .where(and(eq(tasks.id, taskId), eq(tasks.tenantId, tdb.tenantId), eq(tasks.leaseOwner, owner)))
     .returning({ id: tasks.id });
   if (touched.length === 0) {
@@ -657,7 +675,7 @@ export async function recoverExpiredLeases(
     const at = nowIso();
     await admin.db
       .update(tasks)
-      .set({ attempts, leaseOwner: null, heartbeat: null, updatedAt: at })
+      .set({ attempts, leaseOwner: null, heartbeat: null, updateBy: null, updateTime: at })
       .where(eq(tasks.id, row.id));
     if (attempts >= options.maxAttempts) {
       await writeFailed(
@@ -666,6 +684,7 @@ export async function recoverExpiredLeases(
         toTask(row),
         `租约连续过期 ${attempts} 次，停止自动重试，等人处理（最后停在 ${row.stage}）`,
         at,
+        null,
       );
       failed.push(row.id);
     } else {

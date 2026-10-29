@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import {
   claimByHuman,
   confirmByHuman,
@@ -35,6 +33,7 @@ import { createMutex } from "./queue";
 import { claimNext } from "./scheduler";
 import type { ScriptDeps } from "./scripting";
 import { runTask } from "./tick";
+import { snowflakeId } from "@heron/db";
 
 /**
  * worker 的流水线只验三件事：人的闸前必须停、人确认后必须接着跑完、指纹对不上必须留痕。
@@ -51,7 +50,7 @@ describe("worker 流水线", () => {
   beforeEach(async () => {
     db = openDb("memory");
     await migrate(db);
-    tenantId = randomUUID();
+    tenantId = snowflakeId();
     await createTenant(db, { id: tenantId, name: "测试台", slug: "worker-test" });
     reviewerId = await withTenant(db, tenantId, (t) =>
       createUser(t, {
@@ -121,10 +120,16 @@ describe("worker 流水线", () => {
     const sheet = await withTenant(db, tenantId, (t) =>
       getArtifactForTask(t, taskId, "contact-sheet"),
     );
-    expect(puts).toEqual([
-      `tenants/${tenantId}/tasks/${taskId}/v1/mp4.mp4`,
-      `tenants/${tenantId}/tasks/${taskId}/v1/contact-sheet.png`,
-    ]);
+    // 键里有日期层（年/月/日），所以断言形状而不是逐字比对：
+    // 跑在零点前后时，写死的日期会自己变。
+    const day = /^(tenants\/[^/]+)\/(\d{4}\/\d{2}\/\d{2})\/(.+)$/;
+    const mp4Key = day.exec(puts[0] ?? "");
+    const sheetKey = day.exec(puts[1] ?? "");
+    expect(mp4Key?.[1]).toBe(`tenants/${tenantId}`);
+    expect(mp4Key?.[3]).toBe(`tasks/${taskId}/v1/mp4.mp4`);
+    expect(sheetKey?.[3]).toBe(`tasks/${taskId}/v1/contact-sheet.png`);
+    // 一次上传的三个产物落在同一层日期里：不能一个 10-29 一个 10-30
+    expect(mp4Key?.[2]).toBe(sheetKey?.[2]);
     expect(mp4.key).toBe(puts[0]);
     expect(sheet.key).toBe(puts[1]);
     // 本地路径不许被 key 顶掉：诊断仍然要能在渲染机上看现场
@@ -261,7 +266,7 @@ describe("worker 流水线", () => {
     });
 
     // 队列里躺着一条库里没有的活（清库、换环境）：空转返回 null，不炸消费者
-    expect(await runTask(db, randomUUID())).toBeNull();
+    expect(await runTask(db, snowflakeId())).toBeNull();
   });
 
   const STUB_MODEL = { baseUrl: "http://127.0.0.1:1/v1", apiKey: "", model: "stub-model" };

@@ -85,6 +85,13 @@
       "when": 1793238341008,
       "tag": "0011_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793300000000,
+      "tag": "0012_domain_schema",
+      "breakpoints": true
     }
   ]
 }

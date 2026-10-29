@@ -77,7 +77,7 @@ onMounted(list.load);
           ></ElTableColumn
         >
         <ElTableColumn label="生成时间" min-width="170"
-          ><template #default="{ row }">{{ dateTime(row.createdAt) }}</template></ElTableColumn
+          ><template #default="{ row }">{{ dateTime(row.createTime) }}</template></ElTableColumn
         >
         <ElTableColumn label="操作" width="100" fixed="right"
           ><template #default="{ row }"
@@ -152,7 +152,7 @@ onMounted(list.load);
           }}</ElDescriptionsItem
           ><ElDescriptionsItem label="帧率">{{ selected.fps ?? "未记录" }}</ElDescriptionsItem
           ><ElDescriptionsItem label="生成时间">{{
-            dateTime(selected.createdAt)
+            dateTime(selected.createTime)
           }}</ElDescriptionsItem></ElDescriptions
         >
       </template></ElDrawer

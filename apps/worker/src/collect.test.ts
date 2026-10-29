@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { nowIso } from "@heron/db";
 import {
   candidates,
@@ -13,6 +11,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { collectFeeds } from "./collect";
+import { snowflakeId } from "@heron/db";
 
 function rss(...titles: string[]): string {
   return `<rss><channel>${titles.map((title) => `<item><title>${title}</title></item>`).join("")}</channel></rss>`;
@@ -25,7 +24,7 @@ describe("worker 采集", () => {
   beforeEach(async () => {
     db = openDb("memory");
     await migrate(db);
-    tenantId = randomUUID();
+    tenantId = snowflakeId();
     await createTenant(db, { id: tenantId, name: "采集台", slug: "worker-collect" });
   });
 
@@ -34,7 +33,7 @@ describe("worker 采集", () => {
   });
 
   async function addFeed(name: string, url: string): Promise<string> {
-    const id = randomUUID();
+    const id = snowflakeId();
     await withTenant(db, tenantId, (t) =>
       t.db.insert(feedSources).values({
         id,
@@ -43,7 +42,7 @@ describe("worker 采集", () => {
         url,
         frequencySec: 900,
         enabled: true,
-        createdAt: nowIso(),
+        createTime: nowIso(),
       }),
     );
     return id;

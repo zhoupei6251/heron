@@ -16,14 +16,14 @@ import {
 } from "./index";
 
 /**
- * contracts 只测「自己带判据」的那几件：规范化、边界长度、配对、uuid 形状。
+ * contracts 只测「自己带判据」的那几件：规范化、边界长度、配对、id 形状。
  * 纯名单（STAGES / GATES / ROLES）不在这里断言——它们的形状由 domain 的 rbac.test.ts
  * 与 db 的 schema.test.ts 各自对着真实消费者测，在这儿再抄一遍只会多一处要维护的副本。
  */
 
 const AT = "2026-10-22T00:00:00.000Z";
-const TENANT = "00000000-0000-4000-8000-0000000000aa";
-const USER = "11111111-1111-4111-8111-111111111111";
+const TENANT = "101";
+const USER = "102";
 const SLUG = "acme";
 
 describe("LoginBodySchema", () => {
@@ -108,7 +108,7 @@ describe("AuthUserSchema", () => {
       expect(AuthUserSchema.safeParse({ ...user, role }).success).toBe(true);
   });
 
-  it("非 uuid 的 id 进不来：租户边界上的 id 不许是任意字符串", () => {
+  it("非雪花 id 进不来：租户边界上的 id 不许是任意字符串", () => {
     expect(AuthUserSchema.safeParse({ ...user, tenantId: "default" }).success).toBe(false);
   });
 });
@@ -182,7 +182,7 @@ describe("JwtPayloadSchema", () => {
     }
   });
 
-  it("tid 必须是 uuid：非 uuid 进 set_config 是在 SQL 里炸 22024，不是安静地 401", () => {
+  it("tid 必须是雪花 id：非数字串进 set_config 是在 SQL 里炸 22024，不是安静地 401", () => {
     expect(JwtPayloadSchema.safeParse({ ...payload, tid: "acme" }).success).toBe(false);
     expect(JwtPayloadSchema.safeParse({ ...payload, sub: "周佩" }).success).toBe(false);
   });
@@ -212,8 +212,8 @@ describe("TaskSchema.claimedBy", () => {
     claimedBy: USER,
     claimedAt: AT,
     errorReason: null,
-    createdAt: AT,
-    updatedAt: AT,
+    createTime: AT,
+    updateTime: AT,
   };
 
   it("认领人是 users.id：自由文本过不了契约", () => {

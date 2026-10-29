@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { BadRequestException, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 
@@ -31,6 +30,7 @@ import { hashPassword, verifyPassword } from "@heron/domain";
 
 import { PG_DB } from "../db/pg";
 import { TENANT_AUDIENCE } from "../config/runtime";
+import { snowflakeId } from "@heron/db";
 
 /** Tenant authentication result; the console facade adds access metadata, never another actor. */
 export interface SignedIn {
@@ -141,7 +141,7 @@ export class AuthService {
 
       // 会话行与票在同一个事务里：签出票却没有那一行，下一个请求就是 401。
       // id 同时是票里的 sid——逐条强退要知道「踢的是哪一条」，版本号只能整户踢。
-      const sessionId = randomUUID();
+      const sessionId = snowflakeId();
       await createSession(t, { id: sessionId, userId: user.id, userAgent });
       // tid comes from the locked database snapshot, never from a client-supplied UUID.
       const payload: JwtPayload = {

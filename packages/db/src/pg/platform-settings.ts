@@ -78,7 +78,7 @@ export async function getPlatformSettings(db: Db): Promise<PlatformSettings> {
       const def = PLATFORM_SETTING_DEFS[key];
       const row = byKey.get(key);
       if (!row) {
-        return { key, value: def.fallback, isDefault: true, updatedAt: null, updatedBy: null };
+        return { key, value: def.fallback, isDefault: true, updateTime: null, updateBy: null };
       }
       const parsed = def.schema.safeParse(row.value);
       if (!parsed.success) {
@@ -87,16 +87,16 @@ export async function getPlatformSettings(db: Db): Promise<PlatformSettings> {
           key,
           value: def.fallback,
           isDefault: true,
-          updatedAt: row.updatedAt,
-          updatedBy: row.updatedBy,
+          updateTime: row.updateTime,
+          updateBy: row.updateBy,
         };
       }
       return {
         key,
         value: parsed.data,
         isDefault: false,
-        updatedAt: row.updatedAt,
-        updatedBy: row.updatedBy,
+        updateTime: row.updateTime,
+        updateBy: row.updateBy,
       };
     });
     return { items };
@@ -130,10 +130,17 @@ export async function writePlatformSettings(
       } else {
         await a.db
           .insert(platformSettings)
-          .values({ key, value: next, updatedAt: at, updatedBy: operatorId })
+          .values({
+            key,
+            value: next,
+            createBy: operatorId,
+            createTime: at,
+            updateBy: operatorId,
+            updateTime: at,
+          })
           .onConflictDoUpdate({
             target: platformSettings.key,
-            set: { value: next, updatedAt: at, updatedBy: operatorId },
+            set: { value: next, updateBy: operatorId, updateTime: at },
           });
       }
       await audit(a, operatorId, "platform_setting.updated", key, { from: before, to: next });

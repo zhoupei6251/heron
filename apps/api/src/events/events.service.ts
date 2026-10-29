@@ -25,7 +25,7 @@ interface TenantStream {
   /** 订阅数：没人听的租户连库都不碰——轮询空转是在为不存在的页面花钱。 */
   subscribers: number;
   /** null = 还没起过游标（下个 tick 从当前最大 id 开始，不重播历史）。 */
-  cursor: number | null;
+  cursor: string | null;
 }
 
 /**

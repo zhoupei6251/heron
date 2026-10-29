@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import { hashPassword } from "@heron/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { snowflakeId } from "../id";
 import { withAdmin } from "./admin";
 import {
   type Db,
@@ -35,8 +34,8 @@ import {
  * 4. proto_revisions 不带 tenant_id，隔离靠父表 EXISTS 策略，跨租户读不到。
  */
 
-const TENANT_A = "00000000-0000-4000-8000-0000000000aa";
-const TENANT_B = "00000000-0000-4000-8000-0000000000bb";
+const TENANT_A = "101";
+const TENANT_B = "102";
 const OWNER = "proto-worker-test";
 const PASSWORD_HASH = hashPassword("test-password-1234");
 const PREVIEW_V1 = "a".repeat(64);
@@ -51,7 +50,7 @@ interface Seeded {
 async function newUser(db: Db, tenantId: string): Promise<string> {
   return withTenant(db, tenantId, (t) =>
     createUser(t, {
-      email: `proto-${randomUUID()}@example.com`,
+      email: `proto-${snowflakeId()}@example.com`,
       displayName: "周佩",
       passwordHash: PASSWORD_HASH,
       role: "reviewer",
@@ -82,7 +81,7 @@ async function toReview(db: Db, seeded: Seeded, previewSha256 = PREVIEW_V1): Pro
   await withAdmin(db, (a) => claimNextProtoProject(a, OWNER, 600));
   return withTenant(db, seeded.tenantId, async (t) => {
     const revision = await createProtoRevision(t, seeded.projectId);
-    await updateProtoRevision(t, revision.id, { previewSha256, rpSha256: "c".repeat(64) });
+    await updateProtoRevision(t, revision.id, { previewSha256, rpSha256: "c".repeat(64) }, "1");
     for (const [from, to] of [
       ["draft", "scripting"],
       ["scripting", "compiling"],
@@ -138,11 +137,11 @@ describe("原型项目仓储", () => {
     const seeded = await newProject(db);
     await withAdmin(db, (a) => claimNextProtoProject(a, OWNER, 600));
     await expect(
-      withTenant(db, TENANT_A, (t) => requestProtoGeneration(t, seeded.projectId, 3)),
+      withTenant(db, TENANT_A, (t) => requestProtoGeneration(t, seeded.projectId, 3, "1")),
     ).rejects.toThrow(/当前停在/);
 
     await withTenant(db, TENANT_A, (t) => markProtoFailed(t, seeded.projectId, "模型超时", OWNER));
-    await withTenant(db, TENANT_A, (t) => requestProtoGeneration(t, seeded.projectId, 3));
+    await withTenant(db, TENANT_A, (t) => requestProtoGeneration(t, seeded.projectId, 3, "1"));
     const project = await withTenant(db, TENANT_A, (t) => getProtoProject(t, seeded.projectId));
     expect(project).toMatchObject({ stage: "draft", errorReason: null, attempts: 0 });
   });
@@ -176,9 +175,14 @@ describe("原型项目仓储", () => {
     const seeded = await newProject(db);
     await withTenant(db, TENANT_A, async (t) => {
       const v1 = await createProtoRevision(t, seeded.projectId);
-      await updateProtoRevision(t, v1.id, { previewSha256: PREVIEW_V1 });
+      await updateProtoRevision(t, v1.id, { previewSha256: PREVIEW_V1 }, "1");
       const v2 = await createProtoRevision(t, seeded.projectId);
-      await updateProtoRevision(t, v2.id, { previewSha256: PREVIEW_V2, rpSha256: "c".repeat(64) });
+      await updateProtoRevision(
+        t,
+        v2.id,
+        { previewSha256: PREVIEW_V2, rpSha256: "c".repeat(64) },
+        "1",
+      );
       expect(v2.version).toBe(2);
 
       const revisions = await listProtoRevisions(t, seeded.projectId);

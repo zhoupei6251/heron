@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,6 +28,7 @@ import { walkProto, type ProtoDeps } from "./proto";
 import { runEngine, type EngineRun, type EngineRunner } from "./proto-engine";
 import { claimNextProto, claimProtoById } from "./scheduler";
 import type { ChatFn } from "./scripting";
+import { snowflakeId } from "@heron/db";
 
 /**
  * 原型流水线的红线：
@@ -163,7 +164,7 @@ describe("原型流水线", () => {
   beforeEach(async () => {
     db = openDb("memory");
     await migrate(db);
-    tenantId = randomUUID();
+    tenantId = snowflakeId();
     await createTenant(db, {
       id: tenantId,
       name: "原型测试台",

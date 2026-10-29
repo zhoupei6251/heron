@@ -1,13 +1,12 @@
-import { randomUUID } from "node:crypto";
-
 import { normKey, type FeedEntry } from "@heron/domain";
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import { withAdmin } from "./admin";
 import type { Db } from "./driver";
 import type { TenantDb } from "./rls";
-import { candidates, feedSources } from "./schema/index";
+import { candidates, feedSources, alive } from "./schema/index";
 
 /**
  * 采集的读写。跨租户「谁该抓了」必须走特权通道——调度方不知道下一条属于哪个客户，
@@ -40,7 +39,7 @@ export async function claimDueFeeds(db: Db, at: string = nowIso(), limit = 5): P
         lastAttemptAt: feedSources.lastAttemptAt,
       })
       .from(feedSources)
-      .where(eq(feedSources.enabled, true));
+      .where(and(eq(feedSources.enabled, true), alive(feedSources.delFlag)));
 
     const due = rows
       .filter((row) => {
@@ -55,7 +54,7 @@ export async function claimDueFeeds(db: Db, at: string = nowIso(), limit = 5): P
       const cutoff = nowIso(new Date(now - row.frequencySec * 1000));
       const touched = await admin.db
         .update(feedSources)
-        .set({ lastAttemptAt: at })
+        .set({ lastAttemptAt: at, updateBy: null, updateTime: at })
         .where(
           and(
             eq(feedSources.id, row.id),
@@ -84,6 +83,8 @@ export async function recordFeedAttempt(
       lastAttemptAt: at,
       lastFetchAt: error === null ? at : undefined,
       lastError: error === null ? null : error.slice(0, 500),
+      updateBy: null,
+      updateTime: at,
     })
     .where(and(eq(feedSources.id, feedId), eq(feedSources.tenantId, tdb.tenantId)))
     .returning({ id: feedSources.id });
@@ -124,7 +125,7 @@ export async function mergeFeedEntries(
   if (byKey.size === 0) return 0;
 
   const rows = [...byKey].map(([key, entry]) => ({
-    id: randomUUID(),
+    id: snowflakeId(),
     tenantId: tdb.tenantId,
     title: entry.title,
     summary: entry.summary,
@@ -134,8 +135,8 @@ export async function mergeFeedEntries(
     rankPeak: entry.rank,
     firstSeenAt: at,
     lastSeenAt: at,
-    createdAt: at,
-    updatedAt: at,
+    createTime: at,
+    updateTime: at,
   }));
 
   await tdb.db
@@ -143,10 +144,12 @@ export async function mergeFeedEntries(
     .values(rows)
     .onConflictDoUpdate({
       target: [candidates.tenantId, candidates.normKey],
+      // 与 partial 唯一索引的谓词一致：软删掉的候选不参与去重，也不被这条 upsert 命中
+      targetWhere: sql`${candidates.delFlag} = '0'`,
       set: {
         hits: sql`${candidates.hits} + 1`,
         lastSeenAt: sql`excluded.last_seen_at`,
-        updatedAt: sql`excluded.updated_at`,
+        updateTime: sql`excluded.update_time`,
         sourceId: sql`excluded.source_id`,
         summary: sql`CASE WHEN excluded.summary <> '' THEN excluded.summary ELSE ${candidates.summary} END`,
         // PostgreSQL 的 least/greatest 忽略 NULL：历史上没名次时直接取新的那条
@@ -165,7 +168,13 @@ export async function getFeedSource(
   const rows = await tdb.db
     .select({ id: feedSources.id, url: feedSources.url })
     .from(feedSources)
-    .where(and(eq(feedSources.id, id), eq(feedSources.tenantId, tdb.tenantId)))
+    .where(
+      and(
+        eq(feedSources.id, id),
+        eq(feedSources.tenantId, tdb.tenantId),
+        alive(feedSources.delFlag),
+      ),
+    )
     .limit(1);
   return rows[0] ?? null;
 }

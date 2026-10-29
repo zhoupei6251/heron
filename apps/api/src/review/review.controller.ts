@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Post } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post } from "@nestjs/common";
 import {
   ConfirmBodySchema,
   type AuthUser,
@@ -11,6 +11,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { RequireAction } from "../common/decorators/require-action.decorator";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { ReviewService } from "./review.service";
+import { SnowflakeIdPipe } from "../common/pipes/snowflake-id.pipe";
 
 /**
  * 人的闸在 HTTP 上的两条路由，都收在 /reviews 一处：队列与确认是同一件事的两端，
@@ -30,7 +31,7 @@ export class ReviewController {
   @RequireAction("review.confirm")
   confirm(
     @CurrentUser() user: AuthUser,
-    @Param("taskId", new ParseUUIDPipe()) taskId: string,
+    @Param("taskId", new SnowflakeIdPipe()) taskId: string,
     @Body(new ZodValidationPipe(ConfirmBodySchema)) body: ConfirmBody,
   ): Promise<Task> {
     return this.reviews.confirm(user, taskId, body);

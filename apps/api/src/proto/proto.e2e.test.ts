@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -28,6 +28,7 @@ import { PG_DB } from "../db/pg";
 import { QUEUE, TaskQueueService } from "../redis/redis.module";
 import { PROTO_ROOT } from "./proto.service";
 import { applyTransport } from "../transport";
+import { snowflakeId } from "@heron/db";
 
 /**
  * 原型工坊在真 socket 上的四条线：建项目（幂等 + 并发上限）、确认闸、授权下载、能力探针。
@@ -135,20 +136,25 @@ describe("原型工坊 API（真 socket + PGlite）", () => {
         10,
       );
       const revision = await createProtoRevision(t, project.id);
-      await updateProtoRevision(t, revision.id, {
-        rp1Source: '{"language":"rp/1"}',
-        audit: {
-          gates: {
-            color_ok: true,
-            font_ok: true,
-            semantic_naming_ok: true,
-            group_coverage_ok: true,
+      await updateProtoRevision(
+        t,
+        revision.id,
+        {
+          rp1Source: '{"language":"rp/1"}',
+          audit: {
+            gates: {
+              color_ok: true,
+              font_ok: true,
+              semantic_naming_ok: true,
+              group_coverage_ok: true,
+            },
           },
+          previewSha256: sha(PREVIEW),
+          rpSha256: sha(rpBytes),
+          rpBytes: rpBytes.length,
         },
-        previewSha256: sha(PREVIEW),
-        rpSha256: sha(rpBytes),
-        rpBytes: rpBytes.length,
-      });
+        null,
+      );
       // 夹具把状态摆到 review：这一层不验推进（worker 与仓储的单验了），只验接线。
       // 不带 WHERE 的 UPDATE 靠「新租户只有这一条项目」成立，前提没了就宁可红在夹具上。
       const { total } = await listProtoProjects(t);
@@ -320,7 +326,7 @@ describe("原型工坊 API（真 socket + PGlite）", () => {
     const gone = await get(`${url}audit`, operator);
     expect(gone.status).toBe(404);
     expect(await gone.text()).not.toContain(root);
-    expect((await get(`/proto/${randomUUID()}/revisions/1/artifacts/rp`, operator)).status).toBe(
+    expect((await get(`/proto/${snowflakeId()}/revisions/1/artifacts/rp`, operator)).status).toBe(
       404,
     );
 

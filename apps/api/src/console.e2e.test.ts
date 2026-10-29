@@ -1,3 +1,4 @@
+import { snowflakeId } from "@heron/db";
 import { Controller, Get, type INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Test } from "@nestjs/testing";
@@ -20,7 +21,6 @@ import {
   platformOperators,
   tasks,
 } from "@heron/db/pg";
-import { randomUUID } from "node:crypto";
 import { ConsoleSessionSchema } from "@heron/contracts";
 import { hashPassword } from "@heron/domain";
 import { AppModule } from "./app.module";
@@ -288,7 +288,9 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
       (await request(`/manage/members/${foreignUser}`, owner, "PATCH", { disabled: true })).status,
     ).toBe(404);
     expect((await request(`/manage/feeds/${foreignFeed}`, admin, "PUT", feed)).status).toBe(404);
-    for (const id of ["not-uuid", "1"]) {
+    // 非法 id：不是数字串，或者 0（雪花 id 从 1 起）。
+    // 注意 "1" 现在是**合法**的 id 形状——它正是保留的哨兵租户号。
+    for (const id of ["not-an-id", "0"]) {
       expect(
         (await request(`/manage/members/${id}`, owner, "PATCH", { disabled: true })).status,
       ).toBe(400);
@@ -310,7 +312,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     const created = await request("/manage/members", owner, "POST", body);
     expect(created.status).toBe(201);
     expect(Object.keys(await data(created)).sort()).toEqual([
-      "createdAt",
+      "createTime",
       "disabledAt",
       "displayName",
       "email",
@@ -369,7 +371,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     ).toBe(400);
     expect(
       (
-        await request(`/platform/tenants/${randomUUID()}/plan`, opCookie, "PATCH", {
+        await request(`/platform/tenants/${snowflakeId()}/plan`, opCookie, "PATCH", {
           plan: "free",
         })
       ).status,
@@ -424,7 +426,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     expect(saved.default_model_name).toMatchObject({
       value: "qiniu/conatus-free",
       isDefault: false,
-      updatedBy: platformId,
+      updateBy: platformId,
     });
     expect(saved.default_retention_days).toMatchObject({ value: "14", isDefault: false });
     expect(saved.default_plan).toMatchObject({ isDefault: true });
@@ -900,7 +902,7 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
     ).toBe(401);
     expect(
       (
-        await request(`/reviews/${randomUUID()}/confirm`, platform, "POST", {
+        await request(`/reviews/${snowflakeId()}/confirm`, platform, "POST", {
           contactSheetFingerprint: "fp",
         })
       ).status,
@@ -1132,13 +1134,13 @@ describe("dual console HTTP (isolated PGlite + real socket)", () => {
           heat: i,
         });
         await t.db.insert(tasks).values({
-          id: randomUUID(),
+          id: snowflakeId(),
           tenantId,
           candidateId,
           capability: "demo",
           stage: i < 10 ? "review" : i < 20 ? "failed" : "published",
-          createdAt: at,
-          updatedAt: at,
+          createTime: at,
+          updateTime: at,
         });
       }
     });

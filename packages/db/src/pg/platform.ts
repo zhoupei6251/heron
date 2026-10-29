@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { snowflakeId } from "../id";
 import {
   CreateTenantBodySchema,
   PageQuerySchema,
@@ -28,6 +28,7 @@ import {
   tenants,
   usageRecords,
   users,
+  alive,
 } from "./schema/index";
 
 /** Auth-service only: never return this shape from an HTTP endpoint. */
@@ -35,7 +36,7 @@ export interface PgPlatformOperator extends PlatformUser {
   passwordHash: string;
   sessionVersion: number;
   disabledAt: string | null;
-  createdAt: string;
+  createTime: string;
 }
 export interface NewPlatformOperator {
   username: string;
@@ -54,7 +55,12 @@ export async function findPlatformOperatorByUsername(
     const [row] = await a.db
       .select()
       .from(platformOperators)
-      .where(eq(platformOperators.username, username.trim().toLowerCase()))
+      .where(
+        and(
+          eq(platformOperators.username, username.trim().toLowerCase()),
+          alive(platformOperators.delFlag),
+        ),
+      )
       .limit(1);
     return row ?? null;
   });
@@ -67,7 +73,7 @@ export async function findPlatformOperatorById(
     const [row] = await a.db
       .select()
       .from(platformOperators)
-      .where(eq(platformOperators.id, id))
+      .where(and(eq(platformOperators.id, id), alive(platformOperators.delFlag)))
       .limit(1);
     return row ?? null;
   });
@@ -82,13 +88,13 @@ export async function createPlatformOperator(
   const { displayName } = ProfileBodySchema.parse(input);
   try {
     return await withAdmin(db, async (a) => {
-      const id = randomUUID();
+      const id = snowflakeId();
       await a.db.insert(platformOperators).values({
         id,
         username,
         displayName,
         passwordHash: input.passwordHash,
-        createdAt: nowIso(),
+        createTime: nowIso(),
       });
       return { id, username, displayName };
     });
@@ -102,7 +108,11 @@ export async function revokePlatformSessions(db: Db, operatorId: string): Promis
     await requireOperator(a, operatorId);
     const [row] = await a.db
       .update(platformOperators)
-      .set({ sessionVersion: sql`${platformOperators.sessionVersion} + 1` })
+      .set({
+        sessionVersion: sql`${platformOperators.sessionVersion} + 1`,
+        updateBy: operatorId,
+        updateTime: nowIso(),
+      })
       .where(eq(platformOperators.id, operatorId))
       .returning({ version: platformOperators.sessionVersion });
     if (!row) throw new ManagementError("not_found", "Platform operator not found");
@@ -142,15 +152,20 @@ export async function listPlatformTenants(
     const members = a.db
       .select({ tenantId: users.tenantId, total: count().as("user_count") })
       .from(users)
+      .where(alive(users.delFlag))
       .groupBy(users.tenantId)
       .as("members");
     const jobs = a.db
       .select({ tenantId: tasks.tenantId, total: count().as("task_count") })
       .from(tasks)
+      .where(alive(tasks.delFlag))
       .groupBy(tasks.tenantId)
       .as("jobs");
     const pattern = searchPattern(q.q);
-    const where = or(ilike(tenants.name, pattern), ilike(tenants.slug, pattern));
+    const where = and(
+      or(ilike(tenants.name, pattern), ilike(tenants.slug, pattern)),
+      alive(tenants.delFlag),
+    );
     return readPage(
       q,
       a.db
@@ -160,7 +175,7 @@ export async function listPlatformTenants(
           slug: tenants.slug,
           plan: tenants.plan,
           suspendedAt: tenants.suspendedAt,
-          createdAt: tenants.createdAt,
+          createTime: tenants.createTime,
           userCount: sql<number>`coalesce(${members.total}, 0)::int`,
           taskCount: sql<number>`coalesce(${jobs.total}, 0)::int`,
         })
@@ -168,7 +183,7 @@ export async function listPlatformTenants(
         .leftJoin(members, eq(members.tenantId, tenants.id))
         .leftJoin(jobs, eq(jobs.tenantId, tenants.id))
         .where(where)
-        .orderBy(desc(tenants.createdAt), asc(tenants.id))
+        .orderBy(desc(tenants.createTime), asc(tenants.id))
         .limit(q.pageSize)
         .offset((q.page - 1) * q.pageSize),
       a.db.select({ total: count() }).from(tenants).where(where),
@@ -189,15 +204,15 @@ export async function provisionTenant(
       const { plan } = await readPlatformDefaults(a);
       const at = nowIso();
       const tenant: Tenant = {
-        id: randomUUID(),
+        id: snowflakeId(),
         name: safe.name,
         slug: safe.slug,
         plan,
         suspendedAt: null,
-        createdAt: at,
+        createTime: at,
       };
       await a.db.insert(tenants).values(tenant);
-      const ownerId = randomUUID();
+      const ownerId = snowflakeId();
       await a.db.insert(users).values({
         id: ownerId,
         tenantId: tenant.id,
@@ -205,8 +220,8 @@ export async function provisionTenant(
         displayName: safe.ownerDisplayName,
         passwordHash: input.ownerPasswordHash,
         role: "owner",
-        createdAt: at,
-        updatedAt: at,
+        createTime: at,
+        updateTime: at,
       });
       await audit(a, operatorId, "tenant.provisioned", tenant.id, {
         name: tenant.name,
@@ -231,7 +246,11 @@ export async function changeTenantStatus(
     await requireOperator(a, operatorId);
     const [tenant] = await a.db
       .update(tenants)
-      .set({ suspendedAt: suspended ? nowIso() : null })
+      .set({
+        suspendedAt: suspended ? nowIso() : null,
+        updateBy: operatorId,
+        updateTime: nowIso(),
+      })
       .where(eq(tenants.id, tenantId))
       .returning();
     if (!tenant) throw new ManagementError("not_found", "Workspace not found");
@@ -239,12 +258,16 @@ export async function changeTenantStatus(
     if (suspended) {
       await a.db
         .update(users)
-        .set({ sessionVersion: sql`${users.sessionVersion} + 1`, updatedAt: nowIso() })
+        .set({
+          sessionVersion: sql`${users.sessionVersion} + 1`,
+          updateBy: operatorId,
+          updateTime: nowIso(),
+        })
         .where(eq(users.tenantId, tenantId));
       // 会话行同一口径标掉：列表读这张表，不标就还在显示「在线」
       await a.db
         .update(sessions)
-        .set({ revokedAt: nowIso() })
+        .set({ revokedAt: nowIso(), updateBy: operatorId, updateTime: nowIso() })
         .where(and(eq(sessions.tenantId, tenantId), isNull(sessions.revokedAt)));
     }
     await audit(a, operatorId, "tenant.status_changed", tenantId, { suspended });
@@ -270,7 +293,7 @@ export async function changeTenantPlan(
     if (current.plan === plan) return current;
     const [tenant] = await a.db
       .update(tenants)
-      .set({ plan })
+      .set({ plan, updateBy: operatorId, updateTime: nowIso() })
       .where(eq(tenants.id, tenantId))
       .returning();
     if (!tenant) throw new ManagementError("not_found", "Workspace not found");
@@ -313,12 +336,12 @@ export async function listPlatformAudit(
           action: platformAuditLogs.action,
           targetId: platformAuditLogs.targetId,
           detail: platformAuditLogs.detail,
-          createdAt: platformAuditLogs.createdAt,
+          createTime: platformAuditLogs.createTime,
         })
         .from(platformAuditLogs)
         .leftJoin(platformOperators, eq(platformOperators.id, platformAuditLogs.operatorId))
         .where(where)
-        .orderBy(desc(platformAuditLogs.createdAt), asc(platformAuditLogs.id))
+        .orderBy(desc(platformAuditLogs.createTime), asc(platformAuditLogs.id))
         .limit(q.pageSize)
         .offset((q.page - 1) * q.pageSize),
       a.db.select({ total: count() }).from(platformAuditLogs).where(where),

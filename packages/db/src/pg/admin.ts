@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import { ManagementError } from "./console-query";
 import type { Db } from "./driver";
@@ -62,5 +62,5 @@ export async function audit(
 ): Promise<void> {
   await a.db
     .insert(platformAuditLogs)
-    .values({ id: randomUUID(), operatorId, action, targetId, detail, createdAt: nowIso() });
+    .values({ id: snowflakeId(), operatorId, action, targetId, detail, createTime: nowIso() });
 }

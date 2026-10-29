@@ -119,7 +119,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const events = await withTenant(db, tenantId, (t) => listTaskEventsSince(t, 0));
+  const events = await withTenant(db, tenantId, (t) => listTaskEventsSince(t, "0"));
   const mine = events.filter((entry) => entry.event.taskId === taskId);
   const final = await withTenant(db, tenantId, (t) => getTask(t, taskId));
   if (!final) {

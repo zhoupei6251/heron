@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { snowflakeId } from "../id";
 import { and, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as repo from "./index";
@@ -40,7 +40,7 @@ describe("登录会话（真实 PGlite）", () => {
 
   /** 一条会话 + 它自己的 id，和登录处生成的形状一样。 */
   async function signIn(userId: string, userAgent: string | null = null): Promise<string> {
-    const id = randomUUID();
+    const id = snowflakeId();
     await inTenant((t) => repo.createSession(t, { id, userId, userAgent }));
     return id;
   }
@@ -50,7 +50,10 @@ describe("登录会话（真实 PGlite）", () => {
       t.db
         .select({ action: repo.auditLogs.action, targetId: repo.auditLogs.targetId })
         .from(repo.auditLogs)
-        .where(eq(repo.auditLogs.action, "session.revoked")),
+        .where(eq(repo.auditLogs.action, "session.revoked"))
+        // 顺序按 id 走：id 是单调的雪花，写入顺序就是 id 顺序。
+        // 不写 ORDER BY 的话这断言靠的是堆顺序——改一次列类型就可能换一批行序。
+        .orderBy(repo.auditLogs.id),
     );
   }
 
@@ -62,7 +65,7 @@ describe("登录会话（真实 PGlite）", () => {
     // 拿别人的 userId 换这条 sid 必须是空：sid 与人对不上就等于没登录
     expect(await inTenant((t) => repo.findLiveSession(t, { id, userId: viewer }))).toBeNull();
     expect(
-      await inTenant((t) => repo.findLiveSession(t, { id: randomUUID(), userId: owner })),
+      await inTenant((t) => repo.findLiveSession(t, { id: snowflakeId(), userId: owner })),
     ).toBeNull();
     // 撤销之后同一次读立刻空：单条强退靠的就是这次读，不是票的有效期
     await inTenant((t) => repo.revokeSession(t, owner, id));
@@ -142,9 +145,9 @@ describe("登录会话（真实 PGlite）", () => {
     });
     const audits = await sessionAudits();
     expect(audits.map((row) => row.targetId)).toEqual([mine, owners, again]);
-    await expect(inTenant((t) => repo.revokeSession(t, owner, randomUUID()))).rejects.toMatchObject(
-      { code: "not_found" },
-    );
+    await expect(
+      inTenant((t) => repo.revokeSession(t, owner, snowflakeId())),
+    ).rejects.toMatchObject({ code: "not_found" });
   });
 
   it("整户撤销（改密码 / 一键踢全部 / 停用成员）把会话行一起标掉", async () => {

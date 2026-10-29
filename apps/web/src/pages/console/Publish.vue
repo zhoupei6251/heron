@@ -83,7 +83,7 @@ onMounted(list.load);
           ></ElTableColumn
         >
         <ElTableColumn label="更新时间" min-width="170"
-          ><template #default="{ row }">{{ dateTime(row.updatedAt) }}</template></ElTableColumn
+          ><template #default="{ row }">{{ dateTime(row.updateTime) }}</template></ElTableColumn
         >
         <ElTableColumn label="操作" width="110" fixed="right"
           ><template #default="{ row }"

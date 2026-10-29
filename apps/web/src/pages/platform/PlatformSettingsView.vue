@@ -162,10 +162,10 @@ onMounted(load);
           <li v-for="entry in item" :key="entry.key">
             <span class="mono">{{ entry.key }}</span>
             <ElTag :type="entry.isDefault ? 'info' : 'success'">
-              {{ entry.isDefault ? "内置默认" : `平台设置 · ${dateTime(entry.updatedAt)}` }}
+              {{ entry.isDefault ? "内置默认" : `平台设置 · ${dateTime(entry.updateTime)}` }}
             </ElTag>
-            <span v-if="!entry.isDefault && entry.updatedBy" class="form-hint mono">
-              {{ entry.updatedBy.slice(0, 8) }}
+            <span v-if="!entry.isDefault && entry.updateBy" class="form-hint mono">
+              {{ entry.updateBy.slice(0, 8) }}
             </span>
           </li>
         </ul>

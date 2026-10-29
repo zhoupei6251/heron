@@ -1,6 +1,6 @@
 import "reflect-metadata";
 
-import { randomBytes, randomUUID, createHash } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 import { Test } from "@nestjs/testing";
@@ -26,10 +26,11 @@ import { AppModule } from "../app.module";
 import { API_PORT } from "../config/runtime";
 import { PG_DB } from "../db/pg";
 import { applyTransport } from "../transport";
+import { snowflakeId } from "@heron/db";
 
 // 数据库重启即清空；演示产物落 HERON_HOME，固定 ID 防止重启后重复堆积。
-const DEMO_PROTO_REVIEW_ID = "de000000-0000-4000-8000-000000000001";
-const DEMO_PROTO_FAILED_ID = "de000000-0000-4000-8000-000000000002";
+const DEMO_PROTO_REVIEW_ID = "201";
+const DEMO_PROTO_FAILED_ID = "202";
 /** 一张线框占位图（真 PNG）：预览链接与图片标签都要有能渲染的字节。 */
 const DEMO_PREVIEW_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAPAAAACWCAIAAABvmpKCAAACcElEQVR4nO3aoW0dQBRFwV+daZp2DYYBkcIMDMyTBgL98nWP5+oUsFoNfI8fL7+lTI+nv0D6woBWKqCVCmilAlqpgFYqoJUKaKUCWqmAViqglQpopQJaqYBWKqCVCmilAlqpHu/vnxO9vr5N98f+y4AGOjWggU4NaKBTAxro1IAGOjWggU4NaKBTAxro1IAGOjWggU4NaKBTAxro1IAGOjWggU4NaKBTmwH97I+yjQFtqQFtqQFtqQFtqQFtqQFtqQFtqQFtqQFtqZVB//z1oZWABjoV0ECnAhroVEADnQpooFMBDXQqoIFOBTTQqYAGOhXQQKcCGuhUQAOdCmigUwENdCqggU4FNNCpgAY6FdBApwIa6FRAA50KaKBTAQ10KqCBTgU00KmABjoV0ECnAhroVEADnQpooFMBDXQqoIFOBTTQqYAGOhXQQKcCGuhUQAOdCmigUwENdCqggU4FNNCpgAY6FdBApwIa6FRAA50KaKBTAQ10KqCBTgU00KmABjoV0ECnAhroVEADnQpooFMBDXQqoIFOBTTQqYAGOhXQQKcC2uwfA9pSA9pSA9pSA9pSA9pSA9pSA9pSA9pSA9pSA9pSK4N++n3C1hVEY0DPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieEDPd6BieGXQ9g0HtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKUGtKX2F4LdKN4pyxcGAAAAAElFTkSuQmCC";
@@ -85,15 +86,15 @@ async function main(): Promise<void> {
       });
       const at = new Date().toISOString();
       await t.db.insert(tasks).values({
-        id: randomUUID(),
+        id: snowflakeId(),
         tenantId,
         capability: "p0-fake",
         candidateId,
         stage,
         errorReason:
           stage === "failed" ? "演示诊断：未运行渲染器，未生成成片；没有调用外部发布平台" : null,
-        createdAt: at,
-        updatedAt: at,
+        createTime: at,
+        updateTime: at,
       });
     });
   }
@@ -151,9 +152,9 @@ async function main(): Promise<void> {
         stage: "review",
         errorReason: null,
         attempts: 2,
-        createdBy: userId.get("owner") ?? null,
-        createdAt: demoAt,
-        updatedAt: demoAt,
+        createBy: userId.get("owner") ?? null,
+        createTime: demoAt,
+        updateTime: demoAt,
       },
       {
         id: DEMO_PROTO_FAILED_ID,
@@ -165,15 +166,15 @@ async function main(): Promise<void> {
         stage: "failed",
         errorReason: engineDown,
         attempts: 1,
-        createdBy: userId.get("owner") ?? null,
-        createdAt: demoAt,
-        updatedAt: demoAt,
+        createBy: userId.get("owner") ?? null,
+        createTime: demoAt,
+        updateTime: demoAt,
       },
     ]);
     await t.db.insert(protoRevisions).values([
       {
         // 旧的一版：视觉闸没过，所以没有 .rp 与预览——详情页要能同时呈现「留着的失败版」
-        id: randomUUID(),
+        id: snowflakeId(),
         projectId: DEMO_PROTO_REVIEW_ID,
         version: 1,
         rp1Source: demoSource,
@@ -182,10 +183,10 @@ async function main(): Promise<void> {
         tokensOut: 480,
         failureKind: "visual",
         failureReason: "视觉闸：语义命名未过（semantic_naming_ok=fail（31/39））",
-        createdAt: demoAt,
+        createTime: demoAt,
       },
       {
-        id: randomUUID(),
+        id: snowflakeId(),
         projectId: DEMO_PROTO_REVIEW_ID,
         version: 2,
         rp1Source: demoSource,
@@ -197,15 +198,15 @@ async function main(): Promise<void> {
         rpSha256: sha(demoRp),
         rpBytes: demoRp.length,
         previewSha256: sha(demoPreview),
-        createdAt: demoAt,
+        createTime: demoAt,
       },
       {
-        id: randomUUID(),
+        id: snowflakeId(),
         projectId: DEMO_PROTO_FAILED_ID,
         version: 1,
         failureKind: "engine",
         failureReason: engineDown,
-        createdAt: demoAt,
+        createTime: demoAt,
       },
     ]);
   });

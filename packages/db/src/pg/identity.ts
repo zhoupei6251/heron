@@ -1,14 +1,13 @@
-import { randomUUID } from "node:crypto";
-
 import type { Role } from "@heron/contracts";
 import { and, eq, isNull } from "drizzle-orm";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import { withAdmin } from "./admin";
 import type { TenantDb } from "./rls";
 import type { Db } from "./driver";
 import type { TenantRef } from "./tenants";
-import { tenants, users } from "./schema/index";
+import { tenants, users, alive } from "./schema/index";
 
 export interface NewUser {
   email: string;
@@ -22,9 +21,9 @@ export interface NewUser {
   role?: Role;
 }
 
-/** 建一个租户内的人，返回 id。邮箱在这里规范化，因为 ck_users_email_lower 只认小写。 */
+/** 建一个租户内的人，返回 id。邮箱在这里规范化，因为 ck_sys_user_email_lower 只认小写。 */
 export async function createUser(tdb: TenantDb, input: NewUser): Promise<string> {
-  const id = randomUUID();
+  const id = snowflakeId();
   const at = nowIso();
   await tdb.db.insert(users).values({
     id,
@@ -33,8 +32,8 @@ export async function createUser(tdb: TenantDb, input: NewUser): Promise<string>
     displayName: input.displayName,
     passwordHash: input.passwordHash,
     role: input.role ?? "viewer",
-    createdAt: at,
-    updatedAt: at,
+    createTime: at,
+    updateTime: at,
   });
   return id;
 }
@@ -56,7 +55,14 @@ export async function requireTenantUser(
   const rows = await tdb.db
     .select({ id: users.id, displayName: users.displayName, role: users.role })
     .from(users)
-    .where(and(eq(users.id, userId), eq(users.tenantId, tdb.tenantId), isNull(users.disabledAt)))
+    .where(
+      and(
+        eq(users.id, userId),
+        eq(users.tenantId, tdb.tenantId),
+        isNull(users.disabledAt),
+        alive(users.delFlag),
+      ),
+    )
     .limit(1);
   const user = rows[0];
   if (!user) throw new Error(`操作人不存在、已停用或不属于本租户：${userId}`);
@@ -90,12 +96,18 @@ const USER_COLUMNS = {
   disabledAt: users.disabledAt,
 };
 
-/** 邮箱按规范形查：库里只有小写（ck_users_email_lower），所以查询前自己归一一次，调用方传什么都一样。 */
+/** 邮箱按规范形查：库里只有小写（ck_sys_user_email_lower），所以查询前自己归一一次，调用方传什么都一样。 */
 export async function getUserByEmail(tdb: TenantDb, email: string): Promise<PgUser | null> {
   const rows = await tdb.db
     .select(USER_COLUMNS)
     .from(users)
-    .where(and(eq(users.tenantId, tdb.tenantId), eq(users.email, email.trim().toLowerCase())))
+    .where(
+      and(
+        eq(users.tenantId, tdb.tenantId),
+        eq(users.email, email.trim().toLowerCase()),
+        alive(users.delFlag),
+      ),
+    )
     .limit(1);
   return rows[0] ?? null;
 }
@@ -129,8 +141,15 @@ export async function findLoginTenantsByEmail(db: Db, email: string): Promise<Te
       })
       .from(users)
       .innerJoin(tenants, eq(tenants.id, users.tenantId))
-      .where(and(eq(users.email, normalized), isNull(tenants.suspendedAt)))
-      .orderBy(tenants.createdAt, tenants.id),
+      .where(
+        and(
+          eq(users.email, normalized),
+          isNull(tenants.suspendedAt),
+          alive(users.delFlag),
+          alive(tenants.delFlag),
+        ),
+      )
+      .orderBy(tenants.createTime, tenants.id),
   );
 }
 
@@ -139,6 +158,8 @@ export async function disableUser(
   tdb: TenantDb,
   userId: string,
   at: string = nowIso(),
+  /** 执行停用的人（平台运营或本户管理员）；系统自动停用时传 null。 */
+  actorId: string | null = null,
 ): Promise<void> {
   // 不复用 requireTenantUser：那条把「已停用」也算不存在，重复停用就会报错。
   // 这里只在乎「这个人是不是本租户的」，归属不上的 id 不许静默成功。
@@ -150,6 +171,6 @@ export async function disableUser(
   if (!rows[0]) throw new Error(`停用失败：本租户没有这个人：${userId}`);
   await tdb.db
     .update(users)
-    .set({ disabledAt: at, updatedAt: at })
+    .set({ disabledAt: at, updateBy: actorId, updateTime: at })
     .where(and(eq(users.id, userId), eq(users.tenantId, tdb.tenantId)));
 }

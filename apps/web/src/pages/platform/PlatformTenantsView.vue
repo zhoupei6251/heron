@@ -200,7 +200,7 @@ onMounted(list.load);
           width="95"
         />
         <ElTableColumn label="开通时间" min-width="175"
-          ><template #default="{ row }">{{ dateTime(row.createdAt) }}</template></ElTableColumn
+          ><template #default="{ row }">{{ dateTime(row.createTime) }}</template></ElTableColumn
         >
         <ElTableColumn label="访问管理" width="130" fixed="right"
           ><template #default="{ row }"

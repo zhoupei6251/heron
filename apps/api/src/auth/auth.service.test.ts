@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { snowflakeId } from "@heron/db";
 
 import {
   DEFAULT_TENANT_ID,
@@ -48,7 +48,7 @@ vi.mock("@heron/db/pg", async (importOriginal) => {
  */
 
 const AT = "2026-10-22T00:00:00.000Z";
-const TENANT_B = "00000000-0000-4000-8000-000000000002";
+const TENANT_B = "103";
 const SLUG_A = "Acme";
 const SLUG_B = "beta";
 const EMAIL = "zhoupei@example.com";
@@ -95,7 +95,7 @@ describe("AuthService.login", () => {
 
   /** 库里有这个人的一条活会话。逐条强退的判据读的就是这一行，不是票里的有效期。 */
   async function openSession(tenantId: string, userId: string): Promise<string> {
-    const id = randomUUID();
+    const id = snowflakeId();
     await withTenant(db, tenantId, (t) => createSession(t, { id, userId }));
     return id;
   }
@@ -125,7 +125,7 @@ describe("AuthService.login", () => {
 
   it("停租的租户整个关在门外（suspended_at 是软关闭，数据不许跟着删）", async () => {
     await seedUser(DEFAULT_TENANT_ID);
-    await setTenantSuspended(db, DEFAULT_TENANT_ID, AT);
+    await setTenantSuspended(db, DEFAULT_TENANT_ID, AT, "1");
     expect(await service.login(SLUG_A, EMAIL, PASSWORD)).toBeNull();
   });
 
@@ -250,7 +250,7 @@ describe("AuthService.login", () => {
   it("不带空间码时停租的那个空间不算候选：剩下的唯一一家可以登", async () => {
     await seedUser(DEFAULT_TENANT_ID);
     await seedUser(TENANT_B);
-    await setTenantSuspended(db, TENANT_B, AT);
+    await setTenantSuspended(db, TENANT_B, AT, "1");
     expect((await service.login("", EMAIL, PASSWORD))?.user.tenantSlug).toBe("acme");
   });
 
@@ -279,7 +279,8 @@ describe("AuthService.login", () => {
       aud: "heron-tenant",
     });
     // sid 是「这一次登录」的句柄：逐条强退要知道踢的是哪一条，版本号只能整户踢
-    expect(payload.sid).toMatch(/^[0-9a-f-]{36}$/);
+    // sid 是雪花 id：十进制数字串，不是 uuid
+    expect(payload.sid).toMatch(/^[0-9]{1,19}$/);
     // 邮箱与口令哈希不进 token：它们是会在库里改的字段，改一次就得重签一遍是白付的债
     expect(JSON.stringify(payload)).not.toContain("example.com");
     expect(JSON.stringify(payload)).not.toContain("scrypt");
@@ -356,7 +357,7 @@ describe("AuthService.login", () => {
     it("库里已经没有这个人也返回 null（token 不会随着删号而失效，靠这次复查兜住）", async () => {
       expect(
         await service.userFor({
-          sub: randomUUID(),
+          sub: snowflakeId(),
           tid: DEFAULT_TENANT_ID,
           role: "viewer",
           ver: 0,
@@ -376,7 +377,7 @@ describe("AuthService.login", () => {
       };
       expect(await service.userFor(payload)).not.toBeNull();
 
-      await setTenantSuspended(db, DEFAULT_TENANT_ID, AT);
+      await setTenantSuspended(db, DEFAULT_TENANT_ID, AT, "1");
       expect(await service.userFor(payload)).toBeNull();
     });
   });

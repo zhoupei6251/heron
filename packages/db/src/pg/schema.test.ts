@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { snowflakeId } from "../id";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { sql } from "drizzle-orm";
 import * as schema from "./schema/index";
@@ -29,7 +29,7 @@ import {
 } from "./index";
 
 const AT = "2026-10-22T00:00:00.000Z";
-const TENANT_B = "00000000-0000-4000-8000-000000000002";
+const TENANT_B = "102";
 
 describe("schema v3（多租户）", () => {
   let db: Db | null = null;
@@ -49,9 +49,9 @@ describe("schema v3（多租户）", () => {
         name: "默认租户",
         slug: "default",
         suspendedAt: null,
-        createdAt: AT,
+        createTime: AT,
       },
-      { id: TENANT_B, name: "第二租户", slug: "second", suspendedAt: null, createdAt: AT },
+      { id: TENANT_B, name: "第二租户", slug: "second", suspendedAt: null, createTime: AT },
     ]);
     return opened;
   }
@@ -126,25 +126,25 @@ describe("schema v3（多租户）", () => {
 
   it("租户 slug 也只留一种规范形：登录第一个查询就按它找人", async () => {
     const d = await freshDb();
-    // 与 ck_users_email_lower 成对：写入方（createTenant）会先归一，
+    // 与 ck_sys_user_email_lower 成对：写入方（createTenant）会先归一，
     // 这条断言验的是**归一没做也不会写进去**——否则 B 台可以自称 "Acme"，登录就分不出是谁。
     expect(
       await rejection(() =>
         d.insert(tenants).values({
-          id: randomUUID(),
+          id: snowflakeId(),
           name: "大写 slug",
           slug: "Acme",
           suspendedAt: null,
-          createdAt: AT,
+          createTime: AT,
         }),
       ),
-    ).toMatch(/ck_tenants_slug_lower/);
+    ).toMatch(/ck_sys_tenant_slug_lower/);
   });
 
   it("去重键是租户内的事实：同 norm_key 跨租户可并存，同租户不可", async () => {
     const d = await freshDb();
     const row = (tenantId: string) => ({
-      id: randomUUID(),
+      id: snowflakeId(),
       tenantId,
       title: "同一条热点",
       summary: "",
@@ -156,21 +156,21 @@ describe("schema v3（多租户）", () => {
       status: "candidate" as const,
       firstSeenAt: AT,
       lastSeenAt: AT,
-      createdAt: AT,
-      updatedAt: AT,
+      createTime: AT,
+      updateTime: AT,
     });
     await d.insert(candidates).values(row(DEFAULT_TENANT_ID));
     await d.insert(candidates).values(row(TENANT_B));
     expect(await rejection(() => d.insert(candidates).values(row(DEFAULT_TENANT_ID)))).toMatch(
-      /u_candidates_tenant_norm/,
+      /u_news_candidate_tenant_norm/,
     );
   });
 
   it("settings 主键是 (tenant_id, key)：同 key 跨租户各存一份", async () => {
     const d = await freshDb();
     await d.insert(settings).values([
-      { tenantId: DEFAULT_TENANT_ID, key: "retention_days", value: "30", updatedAt: AT },
-      { tenantId: TENANT_B, key: "retention_days", value: "7", updatedAt: AT },
+      { tenantId: DEFAULT_TENANT_ID, key: "retention_days", value: "30", updateTime: AT },
+      { tenantId: TENANT_B, key: "retention_days", value: "7", updateTime: AT },
     ]);
     expect(
       await rejection(() =>
@@ -178,15 +178,15 @@ describe("schema v3（多租户）", () => {
           tenantId: DEFAULT_TENANT_ID,
           key: "retention_days",
           value: "99",
-          updatedAt: AT,
+          updateTime: AT,
         }),
       ),
-    ).toMatch(/settings_tenant_id_key_pk/);
+    ).toMatch(/news_setting_tenant_id_key_pk/);
   });
 
   /** 建一个库里的人，返回 id。set_by / confirmed_by 都是 uuid 外键，自由文本的「谁」回不来了。 */
   async function seedUser(d: Db, tenantId: string, email: string, role: Role): Promise<string> {
-    const id = randomUUID();
+    const id = snowflakeId();
     await d.insert(users).values({
       id,
       tenantId,
@@ -195,8 +195,8 @@ describe("schema v3（多租户）", () => {
       passwordHash: "!synthetic-not-loginable",
       role,
       disabledAt: null,
-      createdAt: AT,
-      updatedAt: AT,
+      createTime: AT,
+      updateTime: AT,
     });
     return id;
   }
@@ -206,7 +206,7 @@ describe("schema v3（多租户）", () => {
     const ownerA = await seedUser(d, DEFAULT_TENANT_ID, "a@example.com", "admin");
     const ownerB = await seedUser(d, TENANT_B, "b@example.com", "admin");
     const row = (tenantId: string, setBy: string) => ({
-      id: randomUUID(),
+      id: snowflakeId(),
       tenantId,
       renderMode: "full",
       declaration: "required",
@@ -219,7 +219,7 @@ describe("schema v3（多租户）", () => {
     await d.insert(aigcPosture).values(row(TENANT_B, ownerB));
     expect(
       await rejection(() => d.insert(aigcPosture).values(row(DEFAULT_TENANT_ID, ownerA))),
-    ).toMatch(/u_aigc_posture_single_current/);
+    ).toMatch(/u_news_posture_single_current/);
 
     // 回退旧的之后可以再立一条现行：reverted_at 一填，那行就退出唯一约束的范围
     await d
@@ -233,7 +233,7 @@ describe("schema v3（多租户）", () => {
     const d = await freshDb();
     const confirmer = await seedUser(d, DEFAULT_TENANT_ID, "zhoupei@example.com", "reviewer");
     await d.insert(tasks).values({
-      id: randomUUID(),
+      id: snowflakeId(),
       tenantId: DEFAULT_TENANT_ID,
       capability: "news",
       candidateId: null,
@@ -244,12 +244,12 @@ describe("schema v3（多租户）", () => {
       claimedBy: null,
       claimedAt: null,
       errorReason: null,
-      createdAt: AT,
-      updatedAt: AT,
+      createTime: AT,
+      updateTime: AT,
     });
 
     const base = {
-      id: randomUUID(),
+      id: snowflakeId(),
       tenantId: DEFAULT_TENANT_ID,
       taskId: (await d.select({ id: tasks.id }).from(tasks))[0]!.id,
       renderVersion: 1,
@@ -257,13 +257,16 @@ describe("schema v3（多租户）", () => {
       confirmedAt: AT,
     };
     expect(
-      await rejection(() => d.insert(confirmations).values({ ...base, confirmedBy: randomUUID() })),
-    ).toMatch(/confirmations_confirmed_by_users_id_fk/);
+      await rejection(() =>
+        d.insert(confirmations).values({ ...base, confirmedBy: snowflakeId() }),
+      ),
+    ).toMatch(/news_confirmation_confirmed_by_sys_user_id_fk/);
 
     // 旧库那种自由文本（"p0"）连列都进不去：uuid 列拒掉它，不靠口头约定
     expect(
       await rejection(() => d.insert(confirmations).values({ ...base, confirmedBy: "p0" })),
-    ).toMatch(/invalid input syntax for type uuid/);
+      // 列类型已经是 numeric(19,0)：自由文本塞进来报的是数字解析错，不是 uuid 解析错
+    ).toMatch(/invalid input syntax for type numeric/);
 
     // 对上库里那个人才写得进去——确认人这一列现在只能是真实的人
     await d.insert(confirmations).values({ ...base, confirmedBy: confirmer });
@@ -273,41 +276,42 @@ describe("schema v3（多租户）", () => {
     expect(
       await rejection(() =>
         d.insert(users).values({
-          id: randomUUID(),
+          id: snowflakeId(),
           tenantId: DEFAULT_TENANT_ID,
           email: "Boss@Example.com",
           displayName: "坏形状",
           passwordHash: "!synthetic",
           role: "viewer",
           disabledAt: null,
-          createdAt: AT,
-          updatedAt: AT,
+          createTime: AT,
+          updateTime: AT,
         }),
       ),
-    ).toMatch(/ck_users_email_lower/);
+    ).toMatch(/ck_sys_user_email_lower/);
 
     // 退役的角色名同样进不了库：名单只有 contracts 那一份，存储层不认旧写法
     const staleRole: string = "editor";
     expect(
       await rejection(() =>
         d.insert(users).values({
-          id: randomUUID(),
+          id: snowflakeId(),
           tenantId: DEFAULT_TENANT_ID,
           email: "stale@example.com",
           displayName: "旧角色",
           passwordHash: "!synthetic",
           role: staleRole as Role,
           disabledAt: null,
-          createdAt: AT,
-          updatedAt: AT,
+          createTime: AT,
+          updateTime: AT,
         }),
       ),
-    ).toMatch(/ck_users_role_known/);
+    ).toMatch(/ck_sys_user_role_known/);
   });
 
   it("用量台账的 kind 与 unit 必须配对：配错是记账事故，不靠 code review 拦", async () => {
     const d = await freshDb();
     await d.insert(usageRecords).values({
+      id: snowflakeId(),
       tenantId: DEFAULT_TENANT_ID,
       taskId: null,
       kind: "render_seconds",
@@ -319,6 +323,7 @@ describe("schema v3（多租户）", () => {
     expect(
       await rejection(() =>
         d.insert(usageRecords).values({
+          id: snowflakeId(),
           tenantId: DEFAULT_TENANT_ID,
           taskId: null,
           kind: "render_seconds",
@@ -328,12 +333,12 @@ describe("schema v3（多租户）", () => {
           recordedAt: AT,
         }),
       ),
-    ).toMatch(/ck_usage_records_kind_unit_pair/);
+    ).toMatch(/ck_usage_record_kind_unit_pair/);
   });
 
   it("task_events 靠父表 FK 继承租户，自己不存 tenant_id；删任务时台账跟着走", async () => {
     const d = await freshDb();
-    const taskId = randomUUID();
+    const taskId = snowflakeId();
     await d.insert(tasks).values({
       id: taskId,
       tenantId: DEFAULT_TENANT_ID,
@@ -346,15 +351,16 @@ describe("schema v3（多租户）", () => {
       claimedBy: null,
       claimedAt: null,
       errorReason: null,
-      createdAt: AT,
-      updatedAt: AT,
+      createTime: AT,
+      updateTime: AT,
     });
     await d.insert(taskEvents).values({
+      id: snowflakeId(),
       taskId,
       fromStage: "candidate",
       toStage: "claimed",
       reason: "认领人 p0-script",
-      createdAt: AT,
+      createTime: AT,
     });
     await d.delete(tasks).where(sql`${tasks.id} = ${taskId}`);
     expect(await d.select({ id: taskEvents.id }).from(taskEvents)).toEqual([]);

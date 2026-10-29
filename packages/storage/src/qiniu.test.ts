@@ -5,14 +5,20 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { QiniuConfig } from "./config";
-import { createQiniuStore, qiniuPort, type QiniuPort } from "./qiniu";
+import { createQiniuStore, presignS3Url, qiniuPort, type QiniuPort } from "./qiniu";
 
-const cfg: QiniuConfig = {
+const base = {
   accessKey: "ak-test",
   secretKey: "sk-test",
   bucket: "heron-videos",
-  domain: "https://cdn.example.com",
   region: "z2",
+} as const;
+
+const cfg: QiniuConfig = { ...base, download: { kind: "cdn", domain: "https://cdn.example.com" } };
+
+const s3cfg: QiniuConfig = {
+  ...base,
+  download: { kind: "s3", s3Region: "cn-south-1" },
 };
 
 /** 假的 port：只记下被怎么调用，不打网络。 */
@@ -111,12 +117,54 @@ describe("qiniuPort（真 SDK，无网络）", () => {
     expect(Number(policy.deadline)).toBeLessThanOrEqual(now + 3610);
   });
 
-  it("私有空间的下载地址带过期时间与签名", () => {
+  it("私有空间的下载地址带过期时间与签名，且 e= 是绝对截止时刻而不是剩余秒数", () => {
     const port = qiniuPort(cfg);
+    const now = Math.floor(Date.now() / 1000);
     const url = port.downloadUrl("tenants/t/tasks/x/v1/mp4.mp4", 600);
     expect(url.startsWith("https://cdn.example.com/")).toBe(true);
     expect(url).toContain("mp4.mp4");
-    expect(url).toMatch(/[?&]e=\d+/);
     expect(url).toMatch(/token=ak-test:/);
+    // 直接传 600 会签出一张 1970 年的票（真跑时 401），所以这里卡住换算
+    const deadline = Number(/[?&]e=(\d+)/.exec(url)?.[1]);
+    expect(deadline).toBeGreaterThanOrEqual(now + 599);
+    expect(deadline).toBeLessThanOrEqual(now + 601);
+  });
+});
+
+describe("presignS3Url（SigV4，纯函数）", () => {
+  const at = Date.UTC(2026, 9, 29, 10, 30, 0); // 2026-10-29T10:30:00Z
+
+  it("签的是 S3 端点，带全套 X-Amz-* 与签名；同一时刻结果稳定", () => {
+    const url = presignS3Url(s3cfg, "tenants/t/tasks/x/v1/mp4.mp4", 600, at);
+    expect(presignS3Url(s3cfg, "tenants/t/tasks/x/v1/mp4.mp4", 600, at)).toBe(url);
+
+    const parsed = new URL(url);
+    expect(parsed.origin).toBe("https://heron-videos.s3.cn-south-1.qiniucs.com");
+    expect(parsed.pathname).toBe("/tenants/t/tasks/x/v1/mp4.mp4");
+    expect(parsed.searchParams.get("X-Amz-Algorithm")).toBe("AWS4-HMAC-SHA256");
+    expect(parsed.searchParams.get("X-Amz-Credential")).toBe(
+      "ak-test/20261029/cn-south-1/s3/aws4_request",
+    );
+    expect(parsed.searchParams.get("X-Amz-Date")).toBe("20261029T103000Z");
+    expect(parsed.searchParams.get("X-Amz-Expires")).toBe("600");
+    expect(parsed.searchParams.get("X-Amz-SignedHeaders")).toBe("host");
+    expect(parsed.searchParams.get("X-Amz-Signature")).toMatch(/^[0-9a-f]{64}$/);
+    // Kodo 的私有 token 在 S3 端点上不认（实测 400），别混着用
+    expect(parsed.search).not.toContain("token=");
+  });
+
+  it("不会签出超过 7 天的有效期（SigV4 上限）", () => {
+    const parsed = new URL(presignS3Url(s3cfg, "k.mp4", 30 * 24 * 3600, at));
+    expect(parsed.searchParams.get("X-Amz-Expires")).toBe("604800");
+  });
+
+  it("cdn 配置下不允许走 S3 签名", () => {
+    expect(() => presignS3Url(cfg, "k.mp4", 600, at)).toThrowError(/s3 下载模式/);
+  });
+
+  it("qiniuPort 配了 s3Region 时取链自动走 SigV4", () => {
+    const url = qiniuPort(s3cfg, () => at).downloadUrl("tenants/t/tasks/x/v1/mp4.mp4", 600);
+    expect(url.startsWith("https://heron-videos.s3.cn-south-1.qiniucs.com/")).toBe(true);
+    expect(url).toContain("X-Amz-Signature=");
   });
 });

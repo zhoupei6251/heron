@@ -5,7 +5,6 @@ import {
   Get,
   Inject,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Put,
@@ -58,6 +57,7 @@ import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { PG_DB } from "../db/pg";
 import { ArtifactService } from "./artifact.service";
 import { FeedService } from "./feed.service";
+import { SnowflakeIdPipe } from "../common/pipes/snowflake-id.pipe";
 
 @Controller("manage")
 export class ManageController {
@@ -104,7 +104,7 @@ export class ManageController {
   @RequireAction("user.manage")
   updateMember(
     @CurrentUser() user: AuthUser,
-    @Param("id", new ParseUUIDPipe()) id: string,
+    @Param("id", new SnowflakeIdPipe()) id: string,
     @Body(new ZodValidationPipe(UpdateMemberBodySchema)) body: UpdateMemberBody,
   ) {
     return withTenant(this.db, user.tenantId, (t) => updateMember(t, user.id, id, body));
@@ -131,7 +131,7 @@ export class ManageController {
 
   /** 单条强退。自己的那条谁都能退（那是退出登录），别人的要 session.manage——判据在仓库里再判一次。 */
   @Delete("sessions/:id")
-  revoke(@CurrentUser() user: AuthUser, @Param("id", new ParseUUIDPipe()) id: string) {
+  revoke(@CurrentUser() user: AuthUser, @Param("id", new SnowflakeIdPipe()) id: string) {
     return withTenant(this.db, user.tenantId, (t) => revokeSession(t, user.id, id));
   }
 
@@ -171,7 +171,7 @@ export class ManageController {
   @RequireAction("settings.write")
   updateFeed(
     @CurrentUser() user: AuthUser,
-    @Param("id", new ParseUUIDPipe()) id: string,
+    @Param("id", new SnowflakeIdPipe()) id: string,
     @Body(new ZodValidationPipe(FeedSourceBodySchema)) body: FeedSourceBody,
   ) {
     return withTenant(this.db, user.tenantId, (t) => updateFeedSource(t, user.id, id, body));
@@ -179,7 +179,7 @@ export class ManageController {
 
   @Post("feeds/:id/fetch")
   @RequireAction("settings.write")
-  fetchFeed(@CurrentUser() user: AuthUser, @Param("id", new ParseUUIDPipe()) id: string) {
+  fetchFeed(@CurrentUser() user: AuthUser, @Param("id", new SnowflakeIdPipe()) id: string) {
     return this.feedService.fetchNow(user, id);
   }
 
@@ -233,7 +233,7 @@ export class ManageController {
   @Get("artifacts/:taskId/:kind")
   artifact(
     @CurrentUser() user: AuthUser,
-    @Param("taskId", new ParseUUIDPipe()) taskId: string,
+    @Param("taskId", new SnowflakeIdPipe()) taskId: string,
     @Param("kind", new ZodValidationPipe(ArtifactKindSchema)) kind: ArtifactKind,
     @Query("version", new ZodValidationPipe(z.coerce.number().int().positive())) version: number,
     @Res() res: Response,

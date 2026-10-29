@@ -1,14 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Inject,
-  Param,
-  ParseUUIDPipe,
-  Post,
-  Query,
-  Res,
-} from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query, Res } from "@nestjs/common";
 import { z } from "zod";
 import {
   CreateProtoBodySchema,
@@ -31,6 +21,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { RequireAction } from "../common/decorators/require-action.decorator";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { ProtoService } from "./proto.service";
+import { SnowflakeIdPipe } from "../common/pipes/snowflake-id.pipe";
 
 /**
  * 原型工坊的路由。能力探针声明在 `:projectId` 之前——路由按声明顺序匹配，
@@ -70,7 +61,7 @@ export class ProtoController {
   @Get(":projectId")
   detail(
     @CurrentUser() user: AuthUser,
-    @Param("projectId", new ParseUUIDPipe()) projectId: string,
+    @Param("projectId", new SnowflakeIdPipe()) projectId: string,
   ): Promise<ProtoProjectDetail> {
     return this.proto.detail(user, projectId);
   }
@@ -79,7 +70,7 @@ export class ProtoController {
   @RequireAction("task.claim")
   regenerate(
     @CurrentUser() user: AuthUser,
-    @Param("projectId", new ParseUUIDPipe()) projectId: string,
+    @Param("projectId", new SnowflakeIdPipe()) projectId: string,
   ): Promise<ProtoProjectDetail> {
     return this.proto.regenerate(user, projectId);
   }
@@ -88,7 +79,7 @@ export class ProtoController {
   @RequireAction("review.confirm")
   confirm(
     @CurrentUser() user: AuthUser,
-    @Param("projectId", new ParseUUIDPipe()) projectId: string,
+    @Param("projectId", new SnowflakeIdPipe()) projectId: string,
     @Body(new ZodValidationPipe(ProtoConfirmBodySchema)) body: ProtoConfirmBody,
   ): Promise<ProtoProjectDetail> {
     return this.proto.confirm(user, projectId, body);
@@ -97,7 +88,7 @@ export class ProtoController {
   @Get(":projectId/revisions/:version/artifacts/:kind")
   artifact(
     @CurrentUser() user: AuthUser,
-    @Param("projectId", new ParseUUIDPipe()) projectId: string,
+    @Param("projectId", new SnowflakeIdPipe()) projectId: string,
     // 版本号为正整数在这层判：0、小数、非数字都变成 400，而不是拼出一个谁都不存在的目录名
     @Param("version", new ZodValidationPipe(z.coerce.number().int().positive())) version: number,
     @Param("kind", new ZodValidationPipe(ProtoArtifactKindSchema)) kind: ProtoArtifactKind,

@@ -1,7 +1,7 @@
+import { snowflakeId } from "@heron/db";
 import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -41,18 +41,18 @@ describe("protected artifact streaming (real socket + PGlite)", () => {
     key: string | null = null,
   ): Promise<string> {
     return withTenant(db, tid, async (t) => {
-      const id = randomUUID();
+      const id = snowflakeId();
       const at = new Date().toISOString();
       await t.db.insert(tasks).values({
         id,
         tenantId: tid,
         capability: "demo",
         stage: "review",
-        createdAt: at,
-        updatedAt: at,
+        createTime: at,
+        updateTime: at,
       });
       await t.db.insert(renders).values({
-        id: randomUUID(),
+        id: snowflakeId(),
         taskId: id,
         version,
         pack: "demo",
@@ -63,7 +63,7 @@ describe("protected artifact streaming (real socket + PGlite)", () => {
         mp4Key: key,
         contactSheetKey: key,
         aigcSidecarKey: key,
-        createdAt: at,
+        createTime: at,
       });
       return id;
     });
@@ -157,7 +157,7 @@ describe("protected artifact streaming (real socket + PGlite)", () => {
     expect((await fetch(`${base}/api/manage/artifacts/${normal}/mp4?version=1`)).status).toBe(401);
     const foreign = await task(join(videos, "sample.mp4"), outsider);
     expect((await get(foreign)).status).toBe(404);
-    expect((await get(randomUUID())).status).toBe(404);
+    expect((await get(snowflakeId())).status).toBe(404);
     for (const suffix of [
       "mp4",
       "mp4?version=0",
@@ -180,12 +180,12 @@ describe("protected artifact streaming (real socket + PGlite)", () => {
     expect((await get(id)).status).toBe(200);
     await withTenant(db, tenantId, (t) =>
       t.db.insert(renders).values({
-        id: randomUUID(),
+        id: snowflakeId(),
         taskId: id,
         version: 2,
         pack: "demo",
         fingerprint: "fp-v2",
-        createdAt: new Date().toISOString(),
+        createTime: new Date().toISOString(),
       }),
     );
     for (const kind of ["mp4", "contact-sheet", "aigc-sidecar"]) {

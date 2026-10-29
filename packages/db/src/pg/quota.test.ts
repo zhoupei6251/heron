@@ -66,7 +66,7 @@ describe("套餐额度 (real PGlite)", () => {
     await inT((t) =>
       t.db
         .update(repo.renders)
-        .set({ createdAt: LAST_MONTH })
+        .set({ createTime: LAST_MONTH })
         .where(eq(repo.renders.id, oldRender)),
     );
     await inT((t) =>
@@ -86,7 +86,7 @@ describe("套餐额度 (real PGlite)", () => {
     await inT((t) =>
       t.db
         .update(repo.publishes)
-        .set({ createdAt: LAST_MONTH })
+        .set({ createTime: LAST_MONTH })
         .where(eq(repo.publishes.id, oldPublish)),
     );
 
@@ -152,6 +152,6 @@ describe("套餐额度 (real PGlite)", () => {
         (cause: unknown) => cause,
       );
     expect(failure).not.toBeNull();
-    expect(chainMessages(failure)).toContain("ck_tenants_plan_known");
+    expect(chainMessages(failure)).toContain("ck_sys_tenant_plan_known");
   });
 });

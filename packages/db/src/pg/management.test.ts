@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { snowflakeId } from "../id";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as repo from "./index";
@@ -161,7 +161,7 @@ describe("tenant console repositories (real PGlite)", () => {
       repo.withTenant(db, b, (t) => repo.updateFeedSource(t, outsider, row.id, feed)),
     ).rejects.toMatchObject({ code: "not_found" });
     await expect(
-      inA((t) => repo.updateFeedSource(t, owner, randomUUID(), feed)),
+      inA((t) => repo.updateFeedSource(t, owner, snowflakeId(), feed)),
     ).rejects.toMatchObject({ code: "not_found" });
     await expect(inA((t) => repo.createFeedSource(t, owner, feed))).rejects.toMatchObject({
       code: "conflict",
@@ -202,7 +202,7 @@ describe("tenant console repositories (real PGlite)", () => {
         }),
       ),
     ).rejects.toMatchObject({ code: "forbidden" });
-    await repo.setTenantSuspended(db, a, AT);
+    await repo.setTenantSuspended(db, a, AT, "1");
     await expect(inA((t) => repo.updateWorkspace(t, admin, { name: "No" }))).rejects.toMatchObject({
       code: "forbidden",
     });
@@ -260,7 +260,7 @@ describe("tenant console repositories (real PGlite)", () => {
       });
       await repo.createCandidate(t, { title: "Unclaimed news", summary: "", heat: 1 });
       const task = await repo.createTask(t, { capability: "news", candidateId });
-      const renderId = randomUUID();
+      const renderId = snowflakeId();
       await t.db.insert(repo.renders).values({
         id: renderId,
         taskId: task.id,
@@ -272,10 +272,10 @@ describe("tenant console repositories (real PGlite)", () => {
         mp4Bytes: 123,
         contactSheetPath: "/private/contact.png",
         aigcSidecarPath: "/private/aigc.json",
-        createdAt: AT,
+        createTime: AT,
       });
       await t.db.insert(repo.publishes).values({
-        id: randomUUID(),
+        id: snowflakeId(),
         tenantId: a,
         renderId,
         idempotencyKey: "key",
@@ -284,8 +284,8 @@ describe("tenant console repositories (real PGlite)", () => {
         receipt: "secret-receipt",
         credentialPath: "/private/cookie",
         credentialSha256: "secret-sha",
-        createdAt: AT,
-        updatedAt: AT,
+        createTime: AT,
+        updateTime: AT,
       });
       await repo.recordUsage(t, { kind: "render_seconds", unit: "seconds", quantity: "0.1" });
       await repo.recordUsage(t, { kind: "render_seconds", unit: "seconds", quantity: "0.2" });
@@ -334,7 +334,7 @@ describe("tenant console repositories (real PGlite)", () => {
   });
 
   it("applies 0001 once and preserves rows created before the new columns", async () => {
-    const result = await db.execute(sql`SELECT session_version FROM users WHERE id = ${owner}`);
+    const result = await db.execute(sql`SELECT session_version FROM sys_user WHERE id = ${owner}`);
     expect(result.rows[0]).toEqual({ session_version: 0 });
     await repo.migrate(db);
     expect((await inA((t) => repo.getUserById(t, owner)))?.sessionVersion).toBe(0);

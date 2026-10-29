@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { LEASE_TTL_SEC } from "@heron/db";
 import {
   getProtoProject,
@@ -23,6 +21,7 @@ vi.hoisted(() => {
 import { MAX_ATTEMPTS, OWNER } from "./config";
 import { createMutex } from "./queue";
 import { claimNextProto, recoverProtoLeases } from "./scheduler";
+import { snowflakeId } from "@heron/db";
 
 describe("原型调度的租约恢复", () => {
   let db: Db;
@@ -32,7 +31,7 @@ describe("原型调度的租约恢复", () => {
   beforeEach(async () => {
     db = openDb("memory");
     await migrate(db);
-    tenantId = randomUUID();
+    tenantId = snowflakeId();
     await createTenant(db, { id: tenantId, name: "租约测试台", slug: "lease-test" });
     runExclusive = createMutex();
     // 只改 Date，让 Date.now 的截止线与续租写入时间一起推进，不碰数据库的异步定时器。
@@ -50,7 +49,7 @@ describe("原型调度的租约恢复", () => {
   });
 
   async function seed(stage: ProtoProjectRecord["stage"], attempts = 0): Promise<string> {
-    const id = randomUUID();
+    const id = snowflakeId();
     const at = new Date().toISOString();
     await withTenant(db, tenantId, (t) =>
       t.db.insert(protoProjects).values({
@@ -64,8 +63,8 @@ describe("原型调度的租约恢复", () => {
         attempts,
         leaseOwner: "previous-worker",
         heartbeat: at,
-        createdAt: at,
-        updatedAt: at,
+        createTime: at,
+        updateTime: at,
       }),
     );
     return id;
@@ -174,10 +173,10 @@ describe("原型调度的租约恢复", () => {
       });
       expect(statements[0]).toBe("SET LOCAL ROLE heron_owner");
       const selected = statements.filter((sql) =>
-        /^select .* from "proto_projects" where /i.test(sql),
+        /^select .* from "proto_project" where /i.test(sql),
       );
       expect(selected).toHaveLength(1);
-      expect(selected[0]).toMatch(/for update of "proto_projects" skip locked/i);
+      expect(selected[0]).toMatch(/for update of "proto_project" skip locked/i);
       expect(await read(id)).toMatchObject({
         stage: "draft",
         attempts: 1,

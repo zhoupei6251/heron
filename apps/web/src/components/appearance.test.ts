@@ -8,8 +8,8 @@ import type { AuthUser, ConsoleSession } from "@heron/contracts";
 import { useAuthStore } from "../stores/auth";
 
 const USER: AuthUser = {
-  id: "11111111-1111-4111-8111-111111111111",
-  tenantId: "00000000-0000-4000-8000-000000000001",
+  id: "102",
+  tenantId: "101",
   tenantName: "Workspace",
   tenantSlug: "acme",
   email: "owner@example.com",

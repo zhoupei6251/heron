@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import type { GateName, GateVerdict, PublishStatus, Rejection } from "@heron/contracts";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import { requireTenantUser } from "./identity";
 import type { TenantDb } from "./rls";
@@ -13,6 +12,7 @@ import {
   publishes,
   renders,
   scripts,
+  alive,
 } from "./schema/index";
 
 /**
@@ -32,7 +32,7 @@ export async function insertGateResult(
     at?: string;
   },
 ): Promise<string> {
-  const id = randomUUID();
+  const id = snowflakeId();
   await tdb.db.insert(gateResults).values({
     id,
     taskId: input.taskId,
@@ -89,7 +89,7 @@ export interface NewRender {
   timings?: readonly { stage: string; seconds: number }[];
 }
 
-/** 同一任务同一版本只能有一行（u_renders_task_version），所以版本号由这里算，不许调用方猜。 */
+/** 同一任务同一版本只能有一行（u_news_render_task_version），所以版本号由这里算，不许调用方猜。 */
 export async function nextRenderVersion(tdb: TenantDb, taskId: string): Promise<number> {
   const rows = await tdb.db
     .select({ max: sql<number>`coalesce(max(${renders.version}), 0)::int` })
@@ -99,7 +99,7 @@ export async function nextRenderVersion(tdb: TenantDb, taskId: string): Promise<
 }
 
 export async function insertRender(tdb: TenantDb, input: NewRender): Promise<string> {
-  const id = randomUUID();
+  const id = snowflakeId();
   await tdb.db.insert(renders).values({
     id,
     taskId: input.taskId,
@@ -119,7 +119,7 @@ export async function insertRender(tdb: TenantDb, input: NewRender): Promise<str
     contactSheetKey: input.contactSheetKey ?? null,
     aigcSidecarKey: input.aigcSidecarKey ?? null,
     timings: [...(input.timings ?? [])],
-    createdAt: nowIso(),
+    createTime: nowIso(),
   });
   return id;
 }
@@ -169,7 +169,7 @@ export async function insertConfirmation(
   },
 ): Promise<string> {
   await requireTenantUser(tdb, input.confirmedBy);
-  const id = randomUUID();
+  const id = snowflakeId();
   await tdb.db.insert(confirmations).values({
     id,
     tenantId: tdb.tenantId,
@@ -213,7 +213,7 @@ export async function listExpiredTaskDirs(tdb: TenantDb, cutoff: string): Promis
     .select({ taskId: renders.taskId })
     .from(renders)
     .groupBy(renders.taskId)
-    .having(sql`max(${renders.createdAt}) < ${cutoff}`);
+    .having(sql`max(${renders.createTime}) < ${cutoff}`);
   return rows.map((row) => row.taskId);
 }
 
@@ -258,9 +258,9 @@ export interface NewPublish {
   platform?: string;
 }
 
-/** 幂等键租户内唯一（u_publishes_tenant_idempotency）：重试前先拿它查「是不是其实已经发出去了」。 */
+/** 幂等键租户内唯一（u_news_publish_tenant_idempotency）：重试前先拿它查「是不是其实已经发出去了」。 */
 export async function insertPublish(tdb: TenantDb, input: NewPublish): Promise<string> {
-  const id = randomUUID();
+  const id = snowflakeId();
   const at = nowIso();
   await tdb.db.insert(publishes).values({
     id,
@@ -272,8 +272,8 @@ export async function insertPublish(tdb: TenantDb, input: NewPublish): Promise<s
     credentialPath: input.credentialPath ?? null,
     credentialSha256: input.credentialSha256 ?? null,
     status: "pending",
-    createdAt: at,
-    updatedAt: at,
+    createTime: at,
+    updateTime: at,
   });
   return id;
 }
@@ -300,7 +300,9 @@ export async function updatePublish(
       receipt: input.receipt,
       postUrl: input.postUrl,
       verifiedAt: input.verifiedAt,
-      updatedAt: nowIso(),
+      // 发布流水线是系统跑的：人的那一手记在 confirmations（确认人 + 指纹），这里只记状态
+      updateBy: null,
+      updateTime: nowIso(),
     })
     .where(and(eq(publishes.id, id), eq(publishes.tenantId, tdb.tenantId)));
 }
@@ -324,7 +326,7 @@ export interface NewPosture {
   note?: string;
   /** 改姿态的人（uuid 外键）。与确认人同一条规矩：外键不受 RLS 管，归属在这里查。 */
   setBy: string;
-  /** 每租户最多一条现行（u_aigc_posture_single_current），所以旧姿态由调用方先撤销再立新的。 */
+  /** 每租户最多一条现行（u_news_posture_single_current），所以旧姿态由调用方先撤销再立新的。 */
   revertedAt?: string | null;
 }
 
@@ -334,7 +336,7 @@ export interface NewPosture {
  */
 export async function insertPosture(tdb: TenantDb, input: NewPosture): Promise<string> {
   await requireTenantUser(tdb, input.setBy);
-  const id = randomUUID();
+  const id = snowflakeId();
   await tdb.db.insert(aigcPosture).values({
     id,
     tenantId: tdb.tenantId,
@@ -356,15 +358,18 @@ export async function upsertScript(
   await tdb.db
     .insert(scripts)
     .values({
-      id: randomUUID(),
+      id: snowflakeId(),
       taskId: input.taskId,
       model: input.model,
       content: input.content,
-      createdAt: nowIso(),
+      createTime: nowIso(),
     })
     .onConflictDoUpdate({
       target: scripts.taskId,
-      set: { model: input.model, content: input.content, createdAt: nowIso() },
+      // 唯一索引是 partial 的（只对活着的稿唯一），ON CONFLICT 的推断必须带上同一个谓词，
+      // 否则 Postgres 找不到可推断的索引，插入直接报错。
+      targetWhere: sql`${scripts.delFlag} = '0'`,
+      set: { model: input.model, content: input.content, createTime: nowIso() },
     });
 }
 
@@ -373,7 +378,7 @@ export async function getScript(tdb: TenantDb, taskId: string): Promise<unknown>
   const rows = await tdb.db
     .select({ content: scripts.content })
     .from(scripts)
-    .where(eq(scripts.taskId, taskId))
+    .where(and(eq(scripts.taskId, taskId), alive(scripts.delFlag)))
     .limit(1);
   return rows[0]?.content ?? null;
 }

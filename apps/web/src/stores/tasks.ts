@@ -40,7 +40,7 @@ export const useTasksStore = defineStore("tasks", () => {
     tasks.value[index] = {
       ...tasks.value[index]!,
       stage: event.to,
-      updatedAt: event.at,
+      updateTime: event.at,
     };
     // 事件里的 reason 是台账说明（闸放行也写），失败详情只存在 tasks.error_reason 上，
     // 所以落到 failed 时回读一次，别把「闸 contract 放行」渲染成错误。

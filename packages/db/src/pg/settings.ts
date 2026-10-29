@@ -36,10 +36,10 @@ async function writeSetting(tdb: TenantDb, key: string, value: string): Promise<
   const at = nowIso();
   await tdb.db
     .insert(settings)
-    .values({ tenantId: tdb.tenantId, key, value, updatedAt: at })
+    .values({ tenantId: tdb.tenantId, key, value, updateTime: at })
     .onConflictDoUpdate({
       target: [settings.tenantId, settings.key],
-      set: { value, updatedAt: at },
+      set: { value, updateTime: at },
     });
 }
 

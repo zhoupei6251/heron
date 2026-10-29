@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import { inArray } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import { withAdmin } from "./admin";
 import { openDb, type Db } from "./driver";
@@ -19,14 +18,14 @@ const URL = process.env.HERON_IT_DATABASE_URL ?? "";
 function candidateRow(tenantId: string, title: string): typeof candidates.$inferInsert {
   const at = nowIso();
   return {
-    id: randomUUID(),
+    id: snowflakeId(),
     tenantId,
     title,
     normKey: title,
     firstSeenAt: at,
     lastSeenAt: at,
-    createdAt: at,
-    updatedAt: at,
+    createTime: at,
+    updateTime: at,
   };
 }
 
@@ -50,7 +49,7 @@ describe.skipIf(!URL)("真库并发租户隔离", () => {
 
   it("两个租户同时写 candidates：各写各的、互相读不到、越界写被拒", async () => {
     if (!db) throw new Error("HERON_IT_DATABASE_URL 没配");
-    const suffix = `${String(Date.now())}-${randomUUID().slice(0, 8)}`;
+    const suffix = `${String(Date.now())}-${snowflakeId().slice(0, 8)}`;
     const tenantA = await createTenant(db, { name: "并发检查 A", slug: `rls-a-${suffix}` });
     created.push(tenantA);
     const tenantB = await createTenant(db, { name: "并发检查 B", slug: `rls-b-${suffix}` });

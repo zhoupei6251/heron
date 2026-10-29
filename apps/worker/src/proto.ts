@@ -191,11 +191,16 @@ async function markFailure(
     await withTenant(db, tenantId, async (t) => {
       await markProtoFailed(t, projectId, reason, OWNER);
       if (revisionId) {
-        await updateProtoRevision(t, revisionId, {
-          failureKind: kind,
-          failureReason: reason,
-          ...(patch.audit === undefined ? {} : { audit: patch.audit }),
-        });
+        await updateProtoRevision(
+          t,
+          revisionId,
+          {
+            failureKind: kind,
+            failureReason: reason,
+            ...(patch.audit === undefined ? {} : { audit: patch.audit }),
+          },
+          null,
+        );
       }
     });
   } catch (cause) {
@@ -291,13 +296,18 @@ async function generate(
 
     // 费用在模型返回时已发生，后续校验失败不能回滚这笔账。
     await withTenant(db, tenantId, async (t) => {
-      await updateProtoRevision(t, start.revisionId, {
-        rp1Source: reply.content,
-        model: reply.model,
-        engineVersion: engineStatus.version,
-        tokensIn: reply.tokensIn,
-        tokensOut: reply.tokensOut,
-      });
+      await updateProtoRevision(
+        t,
+        start.revisionId,
+        {
+          rp1Source: reply.content,
+          model: reply.model,
+          engineVersion: engineStatus.version,
+          tokensIn: reply.tokensIn,
+          tokensOut: reply.tokensOut,
+        },
+        null,
+      );
       if (reply.tokensIn !== null) {
         await recordUsage(t, {
           kind: "llm_tokens_in",
@@ -392,12 +402,17 @@ async function generate(
     }
 
     await withTenant(db, tenantId, async (t) => {
-      await updateProtoRevision(t, start.revisionId, {
-        audit,
-        rpSha256: sha256(rp),
-        rpBytes: rp.length,
-        previewSha256: sha256(preview),
-      });
+      await updateProtoRevision(
+        t,
+        start.revisionId,
+        {
+          audit,
+          rpSha256: sha256(rp),
+          rpBytes: rp.length,
+          previewSha256: sha256(preview),
+        },
+        null,
+      );
       await advanceProtoProject(t, {
         projectId: project.id,
         from: "compiling",

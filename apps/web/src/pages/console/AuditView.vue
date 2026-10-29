@@ -87,7 +87,7 @@ onMounted(list.load);
     >
       <ElTable :data="list.items" row-key="id">
         <ElTableColumn label="时间" min-width="170"
-          ><template #default="{ row }">{{ dateTime(row.createdAt) }}</template></ElTableColumn
+          ><template #default="{ row }">{{ dateTime(row.createTime) }}</template></ElTableColumn
         >
         <ElTableColumn label="执行人" min-width="150"
           ><template #default="{ row }">{{ actor(row as Entry) }}</template></ElTableColumn
@@ -117,7 +117,7 @@ onMounted(list.load);
             actions[selected.action] ?? selected.action
           }}</ElDescriptionsItem
           ><ElDescriptionsItem label="执行人">{{ actor(selected) }}</ElDescriptionsItem
-          ><ElDescriptionsItem label="时间">{{ dateTime(selected.createdAt) }}</ElDescriptionsItem
+          ><ElDescriptionsItem label="时间">{{ dateTime(selected.createTime) }}</ElDescriptionsItem
           ><ElDescriptionsItem label="目标"
             ><span class="mono">{{ selected.targetId ?? "—" }}</span></ElDescriptionsItem
           ></ElDescriptions

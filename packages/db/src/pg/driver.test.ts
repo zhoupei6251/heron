@@ -1,10 +1,10 @@
-import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import { desc, sql } from "drizzle-orm";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { snowflakeId } from "../id";
 import { DEFAULT_TENANT_ID, migrate, openDb, tenants, type Db } from "./index";
 
 /**
@@ -31,7 +31,7 @@ describe("pg 驱动与迁移", () => {
     expect(raw.rows[0]?.v).toMatch(/^PostgreSQL 18/);
   });
 
-  it("迁移建出 tenants，插入与查询走同一份 schema 定义", async () => {
+  it("迁移建出 sys_tenant，插入与查询走同一份 schema 定义", async () => {
     db = openDb("memory");
     await migrate(db);
 
@@ -40,13 +40,13 @@ describe("pg 驱动与迁移", () => {
       name: "默认租户",
       slug: "default",
       suspendedAt: null,
-      createdAt: "2026-10-22T00:00:00.000Z",
+      createTime: "2026-10-22T00:00:00.000Z",
     });
 
     const rows = await db
       .select({ id: tenants.id, slug: tenants.slug })
       .from(tenants)
-      .orderBy(desc(tenants.createdAt));
+      .orderBy(desc(tenants.createTime));
     expect(rows).toEqual([{ id: DEFAULT_TENANT_ID, slug: "default" }]);
   });
 
@@ -58,7 +58,7 @@ describe("pg 驱动与迁移", () => {
       name: "默认租户",
       slug: "default",
       suspendedAt: null,
-      createdAt: "2026-10-22T00:00:00.000Z",
+      createTime: "2026-10-22T00:00:00.000Z",
     });
 
     await migrate(db);
@@ -67,7 +67,7 @@ describe("pg 驱动与迁移", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("0000 已有数据只追加 0001：默认列回填，旧数据与迁移记账保持", async () => {
+  it("已有数据的库升到新骨架：行不丢、外键还对得上、哨兵租户归一到 1", async () => {
     db = openDb("memory");
     const migrations = readMigrationFiles({ migrationsFolder: join(__dirname, "../../drizzle") });
     const baseline = migrations[0]!;
@@ -80,9 +80,10 @@ describe("pg 驱动与迁移", () => {
     await db.execute(
       sql`INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES (${baseline.hash}, ${baseline.folderMillis})`,
     );
-    const tenantId = randomUUID();
-    const userId = randomUUID();
-    const feedId = randomUUID();
+    // 老库的 id 还是 uuid：这里必须用 uuid 写进去，迁移负责把它们换成 numeric 的雪花 id
+    const tenantId = "00000000-0000-4000-8000-000000000001";
+    const userId = "11111111-1111-4111-8111-111111111111";
+    const feedId = "22222222-2222-4222-8222-222222222222";
     const at = "2026-10-22T00:00:00.000Z";
     await db.execute(
       sql`INSERT INTO tenants (id, name, slug, created_at) VALUES (${tenantId}, 'Existing', 'existing', ${at})`,
@@ -95,15 +96,34 @@ describe("pg 驱动与迁移", () => {
     );
     await migrate(db);
     await migrate(db);
+    // 表名换了、行还在：uuid 被映射成 numeric，值不再长得像 uuid
+    const tenantRows = await db.execute(
+      sql`SELECT id::text, slug FROM sys_tenant WHERE slug = 'existing'`,
+    );
+    expect(tenantRows.rows).toHaveLength(1);
+    const tenantRow = tenantRows.rows[0] as { id: string; slug: string };
+    expect(tenantRow.slug).toBe("existing");
+    // 哨兵租户：老库里那行固定 uuid 映射后落到 4，迁移把它归一到代码里的 DEFAULT_TENANT_ID = 1
+    expect(tenantRow.id).toBe(DEFAULT_TENANT_ID);
+
+    // 外键没断：成员的 tenant_id 与租户行指的是同一个数
+    const memberRows = await db.execute(
+      sql`SELECT display_name, password_hash, session_version, tenant_id::text FROM sys_user WHERE email = 'old@example.com'`,
+    );
+    expect(memberRows.rows).toEqual([
+      {
+        display_name: "Old",
+        password_hash: "!old",
+        session_version: 0,
+        tenant_id: tenantRow.id,
+      },
+    ]);
     expect(
       (
         await db.execute(
-          sql`SELECT display_name, password_hash, session_version FROM users WHERE id = ${userId}`,
+          sql`SELECT name, enabled FROM news_feed_source WHERE url = 'https://example.com'`,
         )
       ).rows,
-    ).toEqual([{ display_name: "Old", password_hash: "!old", session_version: 0 }]);
-    expect(
-      (await db.execute(sql`SELECT name, enabled FROM feed_sources WHERE id = ${feedId}`)).rows,
     ).toEqual([{ name: "Old feed", enabled: true }]);
     expect(
       (await db.execute(sql`SELECT hash FROM drizzle.__drizzle_migrations ORDER BY created_at`))
@@ -119,22 +139,22 @@ describe("pg 驱动与迁移", () => {
       name: "撞名",
       slug: "dup",
       suspendedAt: null,
-      createdAt: "2026-10-22T00:00:00.000Z",
+      createTime: "2026-10-22T00:00:00.000Z",
     };
-    const dup = { ...value, id: randomUUID() };
+    const dup = { ...value, id: snowflakeId() };
     await db.insert(tenants).values(dup);
 
     type SqlError = { message: string; cause?: { message?: string } };
     let err: SqlError = { message: "同 slug 的第二行居然插进去了" };
     try {
-      await db.insert(tenants).values({ ...dup, id: randomUUID() });
+      await db.insert(tenants).values({ ...dup, id: snowflakeId() });
     } catch (e) {
       err = e as SqlError;
     }
     // drizzle 把驱动错误包成「Failed query: …」，真正的 23505 文案在 cause 上——
     // 以后区分唯一冲突与其它 SQL 错误得往 cause 里看，别只看 message。
     expect(`${err.message} ${err.cause?.message ?? ""}`).toMatch(
-      /duplicate key value violates unique constraint "tenants_slug_unique"/,
+      /duplicate key value violates unique constraint "u_sys_tenant_slug"/,
     );
   });
 });

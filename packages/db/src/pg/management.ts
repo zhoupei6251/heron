@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { snowflakeId } from "../id";
 import {
   CreateMemberBodySchema,
   FeedSourceBodySchema,
@@ -46,6 +46,7 @@ import {
   tenants,
   usageRecords,
   users,
+  alive,
 } from "./schema/index";
 
 export { ManagementError } from "./console-query";
@@ -57,7 +58,7 @@ const memberColumns = {
   displayName: users.displayName,
   role: users.role,
   disabledAt: users.disabledAt,
-  createdAt: users.createdAt,
+  createTime: users.createTime,
 };
 const feedColumns = {
   id: feedSources.id,
@@ -68,14 +69,14 @@ const feedColumns = {
   lastFetchAt: feedSources.lastFetchAt,
   lastAttemptAt: feedSources.lastAttemptAt,
   lastError: feedSources.lastError,
-  createdAt: feedSources.createdAt,
+  createTime: feedSources.createTime,
 };
 
 export async function getMember(tdb: TenantDb, id: string): Promise<Member> {
   const [member] = await tdb.db
     .select(memberColumns)
     .from(users)
-    .where(and(eq(users.tenantId, tdb.tenantId), eq(users.id, id)))
+    .where(and(eq(users.tenantId, tdb.tenantId), eq(users.id, id), alive(users.delFlag)))
     .limit(1);
   if (!member) throw new ManagementError("not_found", "Member not found in this workspace");
   return member;
@@ -90,6 +91,7 @@ export async function listMembers(
   const where = and(
     eq(users.tenantId, tdb.tenantId),
     or(ilike(users.email, pattern), ilike(users.displayName, pattern)),
+    alive(users.delFlag),
   );
   return readPage(
     q,
@@ -97,7 +99,7 @@ export async function listMembers(
       .select(memberColumns)
       .from(users)
       .where(where)
-      .orderBy(desc(users.createdAt), asc(users.id))
+      .orderBy(desc(users.createTime), asc(users.id))
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     tdb.db.select({ total: count() }).from(users).where(where),
@@ -110,7 +112,7 @@ async function lockWorkspace(tdb: TenantDb): Promise<void> {
   const [tenant] = await tdb.db
     .select({ id: tenants.id, suspendedAt: tenants.suspendedAt })
     .from(tenants)
-    .where(eq(tenants.id, tdb.tenantId))
+    .where(and(eq(tenants.id, tdb.tenantId), alive(tenants.delFlag)))
     .for("update");
   if (!tenant) throw new ManagementError("not_found", "Workspace not found");
   if (tenant.suspendedAt !== null) throw new ManagementError("forbidden", "Workspace is suspended");
@@ -126,7 +128,14 @@ export async function requireActiveActor(
   const [actor] = await tdb.db
     .select(memberColumns)
     .from(users)
-    .where(and(eq(users.tenantId, tdb.tenantId), eq(users.id, actorId), isNull(users.disabledAt)));
+    .where(
+      and(
+        eq(users.tenantId, tdb.tenantId),
+        eq(users.id, actorId),
+        isNull(users.disabledAt),
+        alive(users.delFlag),
+      ),
+    );
   if (!actor || (action !== undefined && !can(actor.role, action))) {
     throw new ManagementError(
       "forbidden",
@@ -145,13 +154,13 @@ async function audit(
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   await tdb.db.insert(auditLogs).values({
-    id: randomUUID(),
+    id: snowflakeId(),
     tenantId: tdb.tenantId,
     actorId,
     action,
     targetId,
     detail,
-    createdAt: nowIso(),
+    createTime: nowIso(),
   });
 }
 
@@ -172,15 +181,15 @@ export async function createManagedMember(
   });
   if (seatExcess) throw new ManagementError("conflict", excessMessage(plan, seatExcess));
   const at = nowIso();
-  const id = randomUUID();
+  const id = snowflakeId();
   try {
     await tdb.db.insert(users).values({
       ...safe,
       id,
       tenantId: tdb.tenantId,
       passwordHash: input.passwordHash,
-      createdAt: at,
-      updatedAt: at,
+      createTime: at,
+      updateTime: at,
     });
   } catch (error) {
     rethrowConflict(error);
@@ -224,23 +233,27 @@ export async function updateMember(
       displayName: patch.displayName,
       role: patch.role,
       disabledAt: patch.disabled === undefined ? undefined : patch.disabled ? at : null,
+      updateBy: actorId,
       // Re-enabling must not revive tokens issued before disable; role changes revoke too.
       sessionVersion:
         patch.disabled !== undefined || patch.role !== undefined
           ? sql`${users.sessionVersion} + 1`
           : undefined,
-      updatedAt: at,
+      updateTime: at,
     })
     .where(and(eq(users.tenantId, tdb.tenantId), eq(users.id, targetId)));
   if (patch.disabled !== undefined || patch.role !== undefined) {
-    await markSessionsRevoked(tdb, targetId);
+    await markSessionsRevoked(tdb, targetId, actorId);
   }
   await audit(tdb, actorId, "member.updated", targetId, { ...patch });
   return getMember(tdb, targetId);
 }
 
 export async function getWorkspace(tdb: TenantDb): Promise<Tenant> {
-  const [tenant] = await tdb.db.select().from(tenants).where(eq(tenants.id, tdb.tenantId));
+  const [tenant] = await tdb.db
+    .select()
+    .from(tenants)
+    .where(and(eq(tenants.id, tdb.tenantId), alive(tenants.delFlag)));
   if (!tenant) throw new ManagementError("not_found", "Workspace not found");
   return tenant;
 }
@@ -252,7 +265,10 @@ export async function updateWorkspace(
 ): Promise<Tenant> {
   await requireActiveActor(tdb, actorId, "settings.write");
   const { name } = WorkspaceBodySchema.parse(input);
-  await tdb.db.update(tenants).set({ name }).where(eq(tenants.id, tdb.tenantId));
+  await tdb.db
+    .update(tenants)
+    .set({ name, updateBy: actorId, updateTime: nowIso() })
+    .where(eq(tenants.id, tdb.tenantId));
   await audit(tdb, actorId, "workspace.updated", tdb.tenantId, { name });
   return getWorkspace(tdb);
 }
@@ -266,7 +282,7 @@ export async function updateProfile(
   const { displayName } = ProfileBodySchema.parse(input);
   await tdb.db
     .update(users)
-    .set({ displayName, updatedAt: nowIso() })
+    .set({ displayName, updateBy: actorId, updateTime: nowIso() })
     .where(and(eq(users.id, actorId), eq(users.tenantId, tdb.tenantId)));
   await audit(tdb, actorId, "profile.updated", actorId, { displayName });
   return getMember(tdb, actorId);
@@ -276,10 +292,14 @@ export async function updateProfile(
  * 整户撤销（改密码、一键踢全部）时把会话行一起标掉：token 那边靠 session_version 失效，
  * 但列表读的是这张表——不标，人已经被踢下线，页面还写着「在线」。
  */
-async function markSessionsRevoked(tdb: TenantDb, userId: string): Promise<void> {
+async function markSessionsRevoked(
+  tdb: TenantDb,
+  userId: string,
+  actorId: string | null,
+): Promise<void> {
   await tdb.db
     .update(sessions)
-    .set({ revokedAt: nowIso() })
+    .set({ revokedAt: nowIso(), updateBy: actorId, updateTime: nowIso() })
     .where(
       and(
         eq(sessions.tenantId, tdb.tenantId),
@@ -302,7 +322,8 @@ export async function changePassword(
     .set({
       passwordHash: newHash,
       sessionVersion: sql`${users.sessionVersion} + 1`,
-      updatedAt: nowIso(),
+      updateBy: userId,
+      updateTime: nowIso(),
     })
     .where(
       and(
@@ -313,7 +334,7 @@ export async function changePassword(
     )
     .returning({ version: users.sessionVersion });
   if (!row) throw new ManagementError("conflict", "Password changed since verification");
-  await markSessionsRevoked(tdb, userId);
+  await markSessionsRevoked(tdb, userId, userId);
   await audit(tdb, userId, "password.changed", userId);
   return row.version;
 }
@@ -322,11 +343,15 @@ export async function revokeUserSessions(tdb: TenantDb, userId: string): Promise
   await requireActiveActor(tdb, userId);
   const [row] = await tdb.db
     .update(users)
-    .set({ sessionVersion: sql`${users.sessionVersion} + 1`, updatedAt: nowIso() })
+    .set({
+      sessionVersion: sql`${users.sessionVersion} + 1`,
+      updateBy: userId,
+      updateTime: nowIso(),
+    })
     .where(and(eq(users.tenantId, tdb.tenantId), eq(users.id, userId)))
     .returning({ version: users.sessionVersion });
   if (!row) throw new ManagementError("not_found", "Member not found in this workspace");
-  await markSessionsRevoked(tdb, userId);
+  await markSessionsRevoked(tdb, userId, userId);
   await audit(tdb, userId, "sessions.revoked", userId);
   return row.version;
 }
@@ -340,6 +365,7 @@ export async function listFeedSources(
   const where = and(
     eq(feedSources.tenantId, tdb.tenantId),
     or(ilike(feedSources.name, pattern), ilike(feedSources.url, pattern)),
+    alive(feedSources.delFlag),
   );
   return readPage(
     q,
@@ -347,7 +373,7 @@ export async function listFeedSources(
       .select(feedColumns)
       .from(feedSources)
       .where(where)
-      .orderBy(desc(feedSources.createdAt), asc(feedSources.id))
+      .orderBy(desc(feedSources.createTime), asc(feedSources.id))
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     tdb.db.select({ total: count() }).from(feedSources).where(where),
@@ -361,12 +387,12 @@ export async function createFeedSource(
 ): Promise<FeedSource> {
   await requireActiveActor(tdb, actorId, "settings.write");
   const safe = FeedSourceBodySchema.parse(input);
-  const id = randomUUID();
+  const id = snowflakeId();
   let row: FeedSource | undefined;
   try {
     [row] = await tdb.db
       .insert(feedSources)
-      .values({ ...safe, id, tenantId: tdb.tenantId, createdAt: nowIso() })
+      .values({ ...safe, id, tenantId: tdb.tenantId, createTime: nowIso() })
       .returning(feedColumns);
   } catch (error) {
     rethrowConflict(error);
@@ -426,12 +452,12 @@ export async function listAudit(
         action: auditLogs.action,
         targetId: auditLogs.targetId,
         detail: auditLogs.detail,
-        createdAt: auditLogs.createdAt,
+        createTime: auditLogs.createTime,
       })
       .from(auditLogs)
       .leftJoin(users, and(eq(users.id, auditLogs.actorId), eq(users.tenantId, tdb.tenantId)))
       .where(where)
-      .orderBy(desc(auditLogs.createdAt), asc(auditLogs.id))
+      .orderBy(desc(auditLogs.createTime), asc(auditLogs.id))
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     tdb.db.select({ total: count() }).from(auditLogs).where(where),
@@ -471,15 +497,15 @@ export async function workspaceOverview(tdb: TenantDb): Promise<WorkspaceOvervie
   const [candidateCount] = await tdb.db
     .select({ total: count() })
     .from(candidates)
-    .where(eq(candidates.tenantId, tdb.tenantId));
+    .where(and(eq(candidates.tenantId, tdb.tenantId), alive(candidates.delFlag)));
   const [memberCount] = await tdb.db
     .select({ total: count() })
     .from(users)
-    .where(eq(users.tenantId, tdb.tenantId));
+    .where(and(eq(users.tenantId, tdb.tenantId), alive(users.delFlag)));
   const stages = await tdb.db
     .select({ stage: tasks.stage, total: count() })
     .from(tasks)
-    .where(eq(tasks.tenantId, tdb.tenantId))
+    .where(and(eq(tasks.tenantId, tdb.tenantId), alive(tasks.delFlag)))
     .groupBy(tasks.stage);
   return {
     candidates: candidateCount?.total ?? 0,
@@ -513,6 +539,7 @@ export async function listCandidates(
   const where = and(
     eq(candidates.tenantId, tdb.tenantId),
     ilike(candidates.title, searchPattern(q.q)),
+    alive(candidates.delFlag),
   );
   return readPage(
     q,
@@ -529,13 +556,17 @@ export async function listCandidates(
         status: candidates.status,
         firstSeenAt: candidates.firstSeenAt,
         lastSeenAt: candidates.lastSeenAt,
-        createdAt: candidates.createdAt,
-        updatedAt: candidates.updatedAt,
+        createTime: candidates.createTime,
+        updateTime: candidates.updateTime,
       })
       .from(candidates)
       .leftJoin(
         feedSources,
-        and(eq(feedSources.id, candidates.sourceId), eq(feedSources.tenantId, tdb.tenantId)),
+        and(
+          eq(feedSources.id, candidates.sourceId),
+          eq(feedSources.tenantId, tdb.tenantId),
+          alive(feedSources.delFlag),
+        ),
       )
       .where(where)
       .orderBy(desc(candidates.lastSeenAt), asc(candidates.id))
@@ -550,10 +581,15 @@ export async function listTaskSummaries(
   input: Partial<PageQuery> = {},
 ): Promise<Page<TaskSummary>> {
   const q = PageQuerySchema.parse(input);
-  const join = and(eq(candidates.id, tasks.candidateId), eq(candidates.tenantId, tdb.tenantId));
+  const join = and(
+    eq(candidates.id, tasks.candidateId),
+    eq(candidates.tenantId, tdb.tenantId),
+    alive(candidates.delFlag),
+  );
   const where = and(
     eq(tasks.tenantId, tdb.tenantId),
     q.q ? ilike(candidates.title, searchPattern(q.q)) : undefined,
+    alive(tasks.delFlag),
   );
   return readPage(
     q,
@@ -568,13 +604,13 @@ export async function listTaskSummaries(
         claimedBy: tasks.claimedBy,
         claimedAt: tasks.claimedAt,
         errorReason: tasks.errorReason,
-        createdAt: tasks.createdAt,
-        updatedAt: tasks.updatedAt,
+        createTime: tasks.createTime,
+        updateTime: tasks.updateTime,
       })
       .from(tasks)
       .leftJoin(candidates, join)
       .where(where)
-      .orderBy(desc(tasks.createdAt), asc(tasks.id))
+      .orderBy(desc(tasks.createTime), asc(tasks.id))
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     tdb.db.select({ total: count() }).from(tasks).leftJoin(candidates, join).where(where),
@@ -597,7 +633,7 @@ const assetColumns = {
   hasMp4: sql<boolean>`${renders.mp4Path} IS NOT NULL`,
   hasContactSheet: sql<boolean>`${renders.contactSheetPath} IS NOT NULL`,
   hasAigcSidecar: sql<boolean>`${renders.aigcSidecarPath} IS NOT NULL`,
-  createdAt: renders.createdAt,
+  createTime: renders.createTime,
 };
 
 export async function listAssets(
@@ -605,10 +641,15 @@ export async function listAssets(
   input: Partial<PageQuery> = {},
 ): Promise<Page<Asset>> {
   const q = PageQuerySchema.parse(input);
-  const join = and(eq(candidates.id, tasks.candidateId), eq(candidates.tenantId, tdb.tenantId));
+  const join = and(
+    eq(candidates.id, tasks.candidateId),
+    eq(candidates.tenantId, tdb.tenantId),
+    alive(candidates.delFlag),
+  );
   const where = and(
     eq(tasks.tenantId, tdb.tenantId),
     q.q ? ilike(candidates.title, searchPattern(q.q)) : undefined,
+    alive(tasks.delFlag),
   );
   return readPage(
     q,
@@ -618,7 +659,7 @@ export async function listAssets(
       .innerJoin(tasks, eq(tasks.id, renders.taskId))
       .leftJoin(candidates, join)
       .where(where)
-      .orderBy(desc(renders.createdAt), asc(renders.id))
+      .orderBy(desc(renders.createTime), asc(renders.id))
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     tdb.db
@@ -655,15 +696,15 @@ export async function listPublishes(
         declaration: publishes.declaration,
         postUrl: publishes.postUrl,
         verifiedAt: publishes.verifiedAt,
-        createdAt: publishes.createdAt,
-        updatedAt: publishes.updatedAt,
+        createTime: publishes.createTime,
+        updateTime: publishes.updateTime,
       })
       .from(publishes)
       .innerJoin(renders, eq(renders.id, publishes.renderId))
       .innerJoin(tasks, eq(tasks.id, renders.taskId))
       .leftJoin(candidates, join)
       .where(where)
-      .orderBy(desc(publishes.createdAt), asc(publishes.id))
+      .orderBy(desc(publishes.createTime), asc(publishes.id))
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     tdb.db

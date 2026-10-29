@@ -51,11 +51,11 @@ export async function monthlyUsage(tdb: TenantDb, now: Date = new Date()): Promi
   const [renderRow] = await tdb.db
     .select({ total: count() })
     .from(renders)
-    .where(gte(renders.createdAt, since));
+    .where(gte(renders.createTime, since));
   const [publishRow] = await tdb.db
     .select({ total: count() })
     .from(publishes)
-    .where(gte(publishes.createdAt, since));
+    .where(gte(publishes.createTime, since));
   return {
     seats: seatRow?.total ?? 0,
     renders: renderRow?.total ?? 0,

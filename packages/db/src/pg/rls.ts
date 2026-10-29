@@ -24,23 +24,23 @@ const TENANT_CHILD_PARENT: Record<
   (typeof TABLES_WITHOUT_TENANT)[number],
   { parent: string; fk: string }
 > = {
-  task_events: { parent: "tasks", fk: "task_id" },
-  gate_results: { parent: "tasks", fk: "task_id" },
-  renders: { parent: "tasks", fk: "task_id" },
-  scripts: { parent: "tasks", fk: "task_id" },
-  proto_revisions: { parent: "proto_projects", fk: "project_id" },
+  news_task_event: { parent: "news_task", fk: "task_id" },
+  news_gate_result: { parent: "news_task", fk: "task_id" },
+  news_render: { parent: "news_task", fk: "task_id" },
+  news_script: { parent: "news_task", fk: "task_id" },
+  proto_revision: { parent: "proto_project", fk: "project_id" },
 };
 
 /**
  * 从 GUC 取当前租户。写死字面量而不是拼 SET_TENANT_GUC：DDL 里不许有绑定参数。
  * 空串与未设同等对待——都是「没有租户上下文」，比较结果为 NULL，策略判假。
  */
-const TENANT_FROM_GUC = sql`NULLIF(current_setting('app.tenant_id', true), '')::uuid`;
+const TENANT_FROM_GUC = sql`NULLIF(current_setting('app.tenant_id', true), '')::numeric`;
 
 /**
  * 每张租户表三条语句：ENABLE + FORCE + policy。
  *
- * fail-closed 的实现处是 `NULLIF(current_setting('app.tenant_id', true), '')::uuid`：
+ * fail-closed 的实现处是 `NULLIF(current_setting('app.tenant_id', true), '')::numeric`：
  * GUC 没设 / 设成空串 → NULL → 比较结果是 NULL → policy 判假 → 一行都读不到，写入被 WITH CHECK 拒。
  * 那个 NULLIF 不是装饰，是实测补上的：自定义 GUC 只要被 set_config 定义过一次，
  * 事务结束（is_local=true 回退）后它的值就变成**空字符串而不是 NULL**，
@@ -87,14 +87,14 @@ export async function applyRls(db: Db): Promise<void> {
       sql`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE ${sql.identifier(table)} TO heron_app`,
     );
   }
-  await db.execute(sql`REVOKE ALL ON audit_logs, platform_audit_logs FROM heron_owner, PUBLIC`);
-  await db.execute(sql`GRANT SELECT, INSERT ON audit_logs, platform_audit_logs TO heron_owner`);
-  await db.execute(sql`REVOKE ALL ON audit_logs FROM heron_app`);
-  await db.execute(sql`GRANT SELECT, INSERT ON audit_logs TO heron_app`);
+  await db.execute(sql`REVOKE ALL ON sys_audit_log, plat_audit_log FROM heron_owner, PUBLIC`);
+  await db.execute(sql`GRANT SELECT, INSERT ON sys_audit_log, plat_audit_log TO heron_owner`);
+  await db.execute(sql`REVOKE ALL ON sys_audit_log FROM heron_app`);
+  await db.execute(sql`GRANT SELECT, INSERT ON sys_audit_log TO heron_app`);
   // FK actions and TRUNCATE CASCADE must not erase history or attribution indirectly.
   // Runtime identities are soft-disabled; replay this after all blanket/historical grants.
   await db.execute(
-    sql`REVOKE DELETE, TRUNCATE ON users, tenants, platform_operators FROM heron_app, heron_owner, PUBLIC`,
+    sql`REVOKE DELETE, TRUNCATE ON sys_user, sys_tenant, plat_operator FROM heron_app, heron_owner, PUBLIC`,
   );
   // Grant only sequences owned by a tenant table, never by a platform table.
   await db.execute(sql`DO $do$ DECLARE s record; BEGIN
@@ -125,7 +125,7 @@ export async function applyRls(db: Db): Promise<void> {
   for (const table of [...TABLES_WITH_TENANT, ...TABLES_TENANT_ROOT]) {
     const name = sql.identifier(table);
     // tenants 自己按 id 隔离：否则 B 能枚举出「存在一个叫 A 的租户」这件事本身
-    const ownerCol = sql.identifier(table === "tenants" ? "id" : "tenant_id");
+    const ownerCol = sql.identifier(table === "sys_tenant" ? "id" : "tenant_id");
     await db.execute(sql`ALTER TABLE ${name} ENABLE ROW LEVEL SECURITY`);
     // FORCE 连表 owner 也不放过；真库里迁移角色与连接角色分开，靠这条兜住漏网
     await db.execute(sql`ALTER TABLE ${name} FORCE ROW LEVEL SECURITY`);

@@ -46,15 +46,17 @@ async function uploadArtifacts(
   version: number,
   files: { mp4: string; contactSheet?: string; aigcSidecar?: string },
 ): Promise<{ mp4Key: string; contactSheetKey?: string; aigcSidecarKey?: string }> {
-  const mp4Key = objectKey({ tenantId, taskId, version, kind: "mp4" });
+  // 日期只取一次：一次上传的三个产物要落在同一层里，不能一个 10-29 一个 10-30。
+  const at = new Date();
+  const mp4Key = objectKey({ tenantId, taskId, version, kind: "mp4", at });
   await store.put(mp4Key, files.mp4);
   const keys: { mp4Key: string; contactSheetKey?: string; aigcSidecarKey?: string } = { mp4Key };
   if (files.contactSheet) {
-    keys.contactSheetKey = objectKey({ tenantId, taskId, version, kind: "contact-sheet" });
+    keys.contactSheetKey = objectKey({ tenantId, taskId, version, kind: "contact-sheet", at });
     await store.put(keys.contactSheetKey, files.contactSheet);
   }
   if (files.aigcSidecar) {
-    keys.aigcSidecarKey = objectKey({ tenantId, taskId, version, kind: "aigc-sidecar" });
+    keys.aigcSidecarKey = objectKey({ tenantId, taskId, version, kind: "aigc-sidecar", at });
     await store.put(keys.aigcSidecarKey, files.aigcSidecar);
   }
   return keys;

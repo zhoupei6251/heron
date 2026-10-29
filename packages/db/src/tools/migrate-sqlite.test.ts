@@ -23,10 +23,11 @@ import {
   withTenant,
   type Db,
 } from "../pg/index";
+import { legacyUuidToId } from "../id";
 import { importLegacySqlite, retireLegacyDb } from "./migrate-sqlite";
 
 const AT = "2026-10-22T09:12:52.388Z";
-const TENANT_ID = "00000000-0000-4000-8000-0000000000cc";
+const TENANT_ID = "103";
 const TENANT_SLUG = "legacy";
 const CANDIDATE = "8787fee3-72b4-4615-b47b-c3945e8aa03e";
 const TASK_1 = "985a995d-2661-451c-92c4-630502f2ae2d";
@@ -154,7 +155,7 @@ async function makeTarget(): Promise<{ db: Db; tenantId: string }> {
     name: "旧库",
     slug: TENANT_SLUG,
     suspendedAt: null,
-    createdAt: AT,
+    createTime: AT,
   });
   return { db, tenantId: TENANT_ID };
 }
@@ -198,7 +199,7 @@ describe("SQLite → Postgres 导入", () => {
     });
 
     expect(seen.candidate).toMatchObject({
-      id: CANDIDATE,
+      id: legacyUuidToId(CANDIDATE),
       tenantId: TENANT_ID,
       title: "旧库候选",
       normKey: "旧库候选",
@@ -206,21 +207,24 @@ describe("SQLite → Postgres 导入", () => {
     });
     expect(seen.allTasks.map((task) => [task.id, task.stage]).sort()).toEqual(
       [
-        [TASK_1, "published"],
-        [TASK_2, "failed"],
+        [legacyUuidToId(TASK_1), "published"],
+        [legacyUuidToId(TASK_2), "failed"],
       ].sort(),
     );
     expect(seen.events.map((event) => event.reason)).toEqual(["认领人 p0-script", null, null]);
     expect(seen.render).toMatchObject({
-      id: RENDER,
+      id: legacyUuidToId(RENDER),
       fingerprint: FINGERPRINT,
       timings: [{ stage: "render", seconds: 1.5 }],
     });
     expect(seen.gates.find((gate) => gate.passed === false)?.rejections).toEqual([
       { ruleId: "contract.declaration", snippet: "无声明", why: "缺合规声明" },
     ]);
-    expect(seen.confirmation?.id).toBe("ba158257-b2d4-4760-8bc4-ee548dd2dcb9");
-    expect(seen.publish).toMatchObject({ renderId: RENDER, status: "confirmed" });
+    expect(seen.confirmation?.id).toBe(legacyUuidToId("ba158257-b2d4-4760-8bc4-ee548dd2dcb9"));
+    expect(seen.publish).toMatchObject({
+      renderId: legacyUuidToId(RENDER),
+      status: "confirmed",
+    });
     expect(seen.setting).toMatchObject({ tenantId: TENANT_ID, key: "health.last_probe_at" });
   });
 
@@ -233,7 +237,10 @@ describe("SQLite → Postgres 导入", () => {
 
     const seen = await withTenant(db, TENANT_ID, async (t) => {
       const actors = await t.db.select().from(users).where(like(users.email, "legacy+%"));
-      const [task] = await t.db.select().from(tasks).where(eq(tasks.id, TASK_1));
+      const [task] = await t.db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.id, legacyUuidToId(TASK_1)));
       const [confirmation] = await t.db.select().from(confirmations);
       return { actors, task, confirmation };
     });
@@ -258,14 +265,14 @@ describe("SQLite → Postgres 导入", () => {
     const { db } = await makeTarget();
     await withTenant(db, TENANT_ID, (t) =>
       t.db.insert(candidates).values({
-        id: CANDIDATE,
+        id: legacyUuidToId(CANDIDATE),
         tenantId: TENANT_ID,
         title: "已有的行",
         normKey: "已有的行",
         firstSeenAt: AT,
         lastSeenAt: AT,
-        createdAt: AT,
-        updatedAt: AT,
+        createTime: AT,
+        updateTime: AT,
       }),
     );
     const sourcePath = join(tempDir(), "heron.sqlite");

@@ -6,7 +6,6 @@ import {
   Get,
   Inject,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Put,
@@ -49,6 +48,7 @@ import { PG_DB } from "../db/pg";
 import { REDIS, type RedisHandle } from "../redis/redis.module";
 import type { HealthReport } from "../health/health.controller";
 import { CurrentPlatformUser, PlatformGuard } from "./platform.guard";
+import { SnowflakeIdPipe } from "../common/pipes/snowflake-id.pipe";
 
 export interface PlatformHealthReport extends HealthReport {
   /** 含部署路径，仅平台可见；原型依赖不参与整体就绪判定，新闻线不依赖它们。 */
@@ -87,7 +87,7 @@ export class PlatformController {
   @Patch("tenants/:id/status")
   status(
     @CurrentPlatformUser() user: PlatformUser,
-    @Param("id", new ParseUUIDPipe()) id: string,
+    @Param("id", new SnowflakeIdPipe()) id: string,
     @Body(new ZodValidationPipe(TenantStatusBodySchema)) body: TenantStatusBody,
   ) {
     return changeTenantStatus(this.db, user.id, id, body.suspended);
@@ -96,7 +96,7 @@ export class PlatformController {
   @Patch("tenants/:id/plan")
   plan(
     @CurrentPlatformUser() user: PlatformUser,
-    @Param("id", new ParseUUIDPipe()) id: string,
+    @Param("id", new SnowflakeIdPipe()) id: string,
     @Body(new ZodValidationPipe(TenantPlanBodySchema)) body: TenantPlanBody,
   ) {
     return changeTenantPlan(this.db, user.id, id, body.plan);

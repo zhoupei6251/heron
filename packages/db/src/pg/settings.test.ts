@@ -56,12 +56,12 @@ describe("pg settings 仓储", () => {
     expect(await withTenant(db, tenantA, (t) => getRetentionDays(t))).toBe(30);
     const rows = await withTenant(db, tenantA, (t) =>
       t.db
-        .select({ key: settings.key, updatedAt: settings.updatedAt })
+        .select({ key: settings.key, updateTime: settings.updateTime })
         .from(settings)
         .where(eq(settings.key, RETENTION_SETTING_KEY)),
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.updatedAt).toMatch(ISO_Z);
+    expect(rows[0]?.updateTime).toMatch(ISO_Z);
   });
 
   it("0 天与小数都被拒：0 等于「立刻删光成片」，不许由一个输入框写出来", async () => {
@@ -80,7 +80,7 @@ describe("pg settings 仓储", () => {
         tenantId: t.tenantId,
         key: RETENTION_SETTING_KEY,
         value: "abc",
-        updatedAt: nowIso(),
+        updateTime: nowIso(),
       }),
     );
     expect(await withTenant(db, tenantA, (t) => getRetentionDays(t))).toBe(DEFAULT_RETENTION_DAYS);

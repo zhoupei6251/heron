@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import {
   candidates,
@@ -26,7 +25,7 @@ describe("热榜采集", () => {
   beforeEach(async () => {
     db = openDb("memory");
     await migrate(db);
-    tenantId = randomUUID();
+    tenantId = snowflakeId();
     await createTenant(db, { id: tenantId, name: "采集台", slug: "feeds-test" });
   });
 
@@ -40,7 +39,7 @@ describe("热榜采集", () => {
     frequencySec?: number;
     enabled?: boolean;
   }): Promise<string> {
-    const id = randomUUID();
+    const id = snowflakeId();
     await withTenant(db, tenantId, (t) =>
       t.db.insert(feedSources).values({
         id,
@@ -49,7 +48,7 @@ describe("热榜采集", () => {
         url: input.url,
         frequencySec: input.frequencySec ?? 900,
         enabled: input.enabled ?? true,
-        createdAt: nowIso(),
+        createTime: nowIso(),
       }),
     );
     return id;

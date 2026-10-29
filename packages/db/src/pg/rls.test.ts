@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-
+import { snowflakeId } from "../id";
 import { normKey } from "@heron/domain";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -19,20 +18,20 @@ import {
 } from "./index";
 
 const AT = "2026-10-22T00:00:00.000Z";
-const TENANT_A = "00000000-0000-4000-8000-0000000000aa";
-const TENANT_B = "00000000-0000-4000-8000-0000000000bb";
+const TENANT_A = "101";
+const TENANT_B = "102";
 
 function candidate(tenantId: string, title: string) {
   return {
-    id: randomUUID(),
+    id: snowflakeId(),
     tenantId,
     title,
     // 用生产实现，不在测试里复制去重键规则：JS 的 /\W/g 不带 u 标志会把汉字整段吃掉
     normKey: normKey(title),
     firstSeenAt: AT,
     lastSeenAt: AT,
-    createdAt: AT,
-    updatedAt: AT,
+    createTime: AT,
+    updateTime: AT,
   };
 }
 
@@ -64,8 +63,8 @@ describe("行级安全", () => {
     await migrate(db);
     // 建租户是特权动作，必须在降权之前做完
     await db.insert(tenants).values([
-      { id: TENANT_A, name: "A 台", slug: "a", suspendedAt: null, createdAt: AT },
-      { id: TENANT_B, name: "B 台", slug: "b", suspendedAt: null, createdAt: AT },
+      { id: TENANT_A, name: "A 台", slug: "a", suspendedAt: null, createTime: AT },
+      { id: TENANT_B, name: "B 台", slug: "b", suspendedAt: null, createTime: AT },
     ]);
     await db.execute(sql`SET ROLE ${sql.raw(APP_ROLE)}`);
   });
@@ -147,7 +146,7 @@ describe("行级安全", () => {
    * 本租户读得到（策略没把业务关死），别人一行也读不到、也塞不进去（WITH CHECK 顺着 FK 追溯）。
    */
   it("不带 tenant_id 的子表靠父表 FK 继承隔离", async () => {
-    const taskId = randomUUID();
+    const taskId = snowflakeId();
     await withTenant(db, TENANT_A, async (t) => {
       await t.db.insert(tasks).values({
         id: taskId,
@@ -155,18 +154,19 @@ describe("行级安全", () => {
         capability: "news",
         candidateId: null,
         stage: "claimed",
-        createdAt: AT,
-        updatedAt: AT,
+        createTime: AT,
+        updateTime: AT,
       });
       await t.db.insert(taskEvents).values({
+        id: snowflakeId(),
         taskId,
         fromStage: "candidate",
         toStage: "claimed",
         reason: "认领人 周佩",
-        createdAt: AT,
+        createTime: AT,
       });
       await t.db.insert(gateResults).values({
-        id: randomUUID(),
+        id: snowflakeId(),
         taskId,
         gate: "contract",
         renderVersion: null,
@@ -176,13 +176,13 @@ describe("行级安全", () => {
         evaluatedAt: AT,
       });
       await t.db.insert(renders).values({
-        id: randomUUID(),
+        id: snowflakeId(),
         taskId,
         version: 1,
         pack: "demo",
         fingerprint: "sha256:test",
         timings: [],
-        createdAt: AT,
+        createTime: AT,
       });
     });
 
@@ -199,11 +199,12 @@ describe("行级安全", () => {
       await rejectText(() =>
         withTenant(db, TENANT_B, (t) =>
           t.db.insert(taskEvents).values({
+            id: snowflakeId(),
             taskId, // 指着 A 的任务写台账：父表租户不是 B，WITH CHECK 判假
             fromStage: "claimed",
             toStage: "failed",
             reason: "冒名写别人的台账",
-            createdAt: AT,
+            createTime: AT,
           }),
         ),
       ),

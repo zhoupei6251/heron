@@ -7,6 +7,7 @@ import type { CandidateStatus, GateName, PublishStatus, Rejection, Stage } from 
 import { UNUSABLE_PREFIX } from "@heron/domain";
 import { count } from "drizzle-orm";
 
+import { legacyUuidToId, snowflakeId } from "../id";
 import type { Db } from "../pg/driver";
 import { createUser } from "../pg/identity";
 import { withTenant, type TenantDb } from "../pg/rls";
@@ -362,7 +363,7 @@ async function insertAll(
         tenantId,
         key: row.key,
         value: row.value,
-        updatedAt: row.updated_at,
+        updateTime: row.updated_at,
       })),
     );
   }
@@ -370,13 +371,13 @@ async function insertAll(
   if (data.feedSources.length > 0) {
     await t.db.insert(feedSources).values(
       data.feedSources.map((row) => ({
-        id: row.id,
+        id: legacyUuidToId(row.id),
         tenantId,
         name: row.name,
         url: row.url,
         frequencySec: row.frequency_sec,
         lastFetchAt: row.last_fetch_at,
-        createdAt: row.created_at,
+        createTime: row.created_at,
       })),
     );
   }
@@ -384,20 +385,20 @@ async function insertAll(
   if (data.candidates.length > 0) {
     await t.db.insert(candidates).values(
       data.candidates.map((row) => ({
-        id: row.id,
+        id: legacyUuidToId(row.id),
         tenantId,
         title: row.title,
         summary: row.summary,
         normKey: row.norm_key,
-        sourceId: row.source_id,
+        sourceId: row.source_id ? legacyUuidToId(row.source_id) : null,
         heat: row.heat,
         rankPeak: row.rank_peak,
         hits: row.hits,
         status: row.status as CandidateStatus,
         firstSeenAt: row.first_seen_at,
         lastSeenAt: row.last_seen_at,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
+        createTime: row.created_at,
+        updateTime: row.updated_at,
       })),
     );
   }
@@ -405,10 +406,10 @@ async function insertAll(
   if (data.tasks.length > 0) {
     await t.db.insert(tasks).values(
       data.tasks.map((row) => ({
-        id: row.id,
+        id: legacyUuidToId(row.id),
         tenantId,
         capability: row.capability,
-        candidateId: row.candidate_id,
+        candidateId: row.candidate_id ? legacyUuidToId(row.candidate_id) : null,
         stage: row.stage as Stage,
         leaseOwner: row.lease_owner,
         heartbeat: row.heartbeat,
@@ -418,29 +419,30 @@ async function insertAll(
           : null,
         claimedAt: row.claimed_at,
         errorReason: row.error_reason,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
+        createTime: row.created_at,
+        updateTime: row.updated_at,
       })),
     );
   }
 
-  // task_events 的主键是 identity，旧 id 不保留；按旧 id 顺序逐条插，
-  // 让新 identity 的次序与旧库的事件次序一致（事件表没有外部引用，id 本身不是契约）。
+  // task_events 的主键现在是雪花 id，旧 id 不保留；按旧 id 顺序逐条插，
+  // 让新 id 的次序与旧库的事件次序一致（事件表没有外部引用，id 本身不是契约）。
   for (const row of data.taskEvents) {
     await t.db.insert(taskEvents).values({
-      taskId: row.task_id,
+      id: snowflakeId(),
+      taskId: legacyUuidToId(row.task_id),
       fromStage: row.from_stage as Stage,
       toStage: row.to_stage as Stage,
       reason: row.reason,
-      createdAt: row.created_at,
+      createTime: row.created_at,
     });
   }
 
   if (data.renders.length > 0) {
     await t.db.insert(renders).values(
       data.renders.map((row) => ({
-        id: row.id,
-        taskId: row.task_id,
+        id: legacyUuidToId(row.id),
+        taskId: legacyUuidToId(row.task_id),
         version: row.version,
         pack: row.pack,
         mp4Path: row.mp4_path,
@@ -457,7 +459,7 @@ async function insertAll(
           row.timings,
           `渲染 ${row.id} 的 timings`,
         ),
-        createdAt: row.created_at,
+        createTime: row.created_at,
       })),
     );
   }
@@ -465,8 +467,8 @@ async function insertAll(
   if (data.gateResults.length > 0) {
     await t.db.insert(gateResults).values(
       data.gateResults.map((row) => ({
-        id: row.id,
-        taskId: row.task_id,
+        id: legacyUuidToId(row.id),
+        taskId: legacyUuidToId(row.task_id),
         gate: row.gate as GateName,
         renderVersion: row.render_version,
         passed: row.passed !== 0,
@@ -480,9 +482,9 @@ async function insertAll(
   if (data.confirmations.length > 0) {
     await t.db.insert(confirmations).values(
       data.confirmations.map((row) => ({
-        id: row.id,
+        id: legacyUuidToId(row.id),
         tenantId,
-        taskId: row.task_id,
+        taskId: legacyUuidToId(row.task_id),
         renderVersion: row.render_version,
         contactSheetFingerprint: row.contact_sheet_fingerprint,
         confirmedBy: actorOf(row.confirmer, `确认记录 ${row.id} 的 confirmer`),
@@ -494,9 +496,10 @@ async function insertAll(
   if (data.publishes.length > 0) {
     await t.db.insert(publishes).values(
       data.publishes.map((row) => ({
-        id: row.id,
+        id: legacyUuidToId(row.id),
         tenantId,
-        renderId: row.render_id,
+        // 发布一定有渲染（旧库里 render_id 是 NOT NULL），所以这里不做空值兜底
+        renderId: legacyUuidToId(row.render_id),
         platform: row.platform,
         idempotencyKey: row.idempotency_key,
         declaration: row.declaration,
@@ -506,8 +509,8 @@ async function insertAll(
         postUrl: row.post_url,
         receipt: row.receipt,
         verifiedAt: row.verified_at,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
+        createTime: row.created_at,
+        updateTime: row.updated_at,
       })),
     );
   }
@@ -515,7 +518,7 @@ async function insertAll(
   if (data.posture.length > 0) {
     await t.db.insert(aigcPosture).values(
       data.posture.map((row) => ({
-        id: row.id,
+        id: legacyUuidToId(row.id),
         tenantId,
         renderMode: row.render_mode,
         declaration: row.declaration,

@@ -105,7 +105,7 @@ onMounted(load);
               }}</ElTag></template
             ></ElTableColumn
           ><ElTableColumn label="开通时间" min-width="170"
-            ><template #default="{ row }">{{ dateTime(row.createdAt) }}</template></ElTableColumn
+            ><template #default="{ row }">{{ dateTime(row.createTime) }}</template></ElTableColumn
           ></ElTable
         >
       </div>
@@ -120,7 +120,7 @@ onMounted(load);
           <div v-for="entry in audit" :key="entry.id" class="audit-item">
             <strong>{{ entry.operatorName ?? "已删除的账号" }}</strong>
             <p class="mono">{{ entry.action }}</p>
-            <span>{{ dateTime(entry.createdAt) }}</span>
+            <span>{{ dateTime(entry.createTime) }}</span>
           </div>
           <p v-if="!audit.length" class="form-hint">
             {{ loading ? "正在读取…" : "还没有平台管理操作记录。" }}

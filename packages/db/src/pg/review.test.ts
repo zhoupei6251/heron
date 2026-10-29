@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type { Stage, Task } from "@heron/contracts";
 import { GateRefusalError, hashPassword } from "@heron/domain";
 import { asc, eq } from "drizzle-orm";
@@ -7,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { sha256 } from "../hash";
 // 特权通道故意不在 ./index 的导出面上（见 pg/index.ts），包内测试按深路径 import
+import { snowflakeId } from "../id";
 import { withAdmin } from "./admin";
 import {
   type Db,
@@ -43,8 +42,8 @@ import {
  * 第 2 条是规格书 §5「人审 A、系统发 B」的守门位置：确认记录必须绑着当时那一版联络表的指纹。
  */
 
-const TENANT_A = "00000000-0000-4000-8000-0000000000aa";
-const TENANT_B = "00000000-0000-4000-8000-0000000000bb";
+const TENANT_A = "101";
+const TENANT_B = "102";
 const OWNER = "worker-test";
 const PASSWORD_HASH = hashPassword("test-password-1234");
 /** 认领之后 worker 一路推到 review 的中间步。 */
@@ -63,7 +62,7 @@ async function newTask(db: Db, tenantId = TENANT_A, title = "某市开通新航�
   const seeded = await withTenant(db, tenantId, async (t) => {
     // 邮箱在租户内唯一：同一个用例里种两条任务时必须换邮箱，撞键不是这里想测的东西
     const userId = await createUser(t, {
-      email: `zhoupei-${randomUUID()}@example.com`,
+      email: `zhoupei-${snowflakeId()}@example.com`,
       displayName: "周佩",
       passwordHash: PASSWORD_HASH,
       role: "reviewer",

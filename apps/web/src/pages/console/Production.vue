@@ -104,7 +104,7 @@ onMounted(list.load);
         ></ElTableColumn>
         <ElTableColumn prop="attempts" label="尝试次数" width="110" />
         <ElTableColumn label="更新时间" min-width="170"
-          ><template #default="{ row }">{{ dateTime(row.updatedAt) }}</template></ElTableColumn
+          ><template #default="{ row }">{{ dateTime(row.updateTime) }}</template></ElTableColumn
         >
         <ElTableColumn label="操作" width="175" fixed="right"
           ><template #default="{ row }"
@@ -143,7 +143,7 @@ onMounted(list.load);
             dateTime(selected.claimedAt)
           }}</ElDescriptionsItem
           ><ElDescriptionsItem label="更新时间">{{
-            dateTime(selected.updatedAt)
+            dateTime(selected.updateTime)
           }}</ElDescriptionsItem></ElDescriptions
         ><template v-if="selected.errorReason"
           ><h3 style="margin-top: 24px">完整失败原因</h3>

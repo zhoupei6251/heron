@@ -16,8 +16,8 @@ import Review from "./console/Review.vue";
 import Settings from "./console/Settings.vue";
 
 const user: AuthUser = {
-  id: "11111111-1111-4111-8111-111111111111",
-  tenantId: "00000000-0000-4000-8000-000000000001",
+  id: "102",
+  tenantId: "101",
   tenantName: "Original workspace",
   tenantSlug: "acme",
   email: "owner@example.com",
@@ -421,7 +421,7 @@ describe("production refresh", () => {
       title: "Claim me",
       capability: "p0-fake",
       attempts: 0,
-      updatedAt: new Date().toISOString(),
+      updateTime: new Date().toISOString(),
     };
     const fetch = vi.fn((path: string) => {
       if (path.startsWith("/api/manage/tasks"))

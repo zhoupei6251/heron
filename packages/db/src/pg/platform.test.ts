@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { snowflakeId } from "../id";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as repo from "./index";
@@ -41,8 +41,8 @@ describe("platform console repositories (real PGlite)", () => {
     });
     expect(await repo.revokePlatformSessions(db, op.id)).toBe(1);
     expect(await repo.findPlatformOperatorById(db, op.id)).toMatchObject({ sessionVersion: 1 });
-    expect(await repo.findPlatformOperatorById(db, randomUUID())).toBeNull();
-    await expect(repo.revokePlatformSessions(db, randomUUID())).rejects.toMatchObject({
+    expect(await repo.findPlatformOperatorById(db, snowflakeId())).toBeNull();
+    await expect(repo.revokePlatformSessions(db, snowflakeId())).rejects.toMatchObject({
       code: "forbidden",
     });
     await expect(
@@ -93,7 +93,7 @@ describe("platform console repositories (real PGlite)", () => {
     await expect(repo.changeTenantStatus(db, userId, tenant.id, true)).rejects.toMatchObject({
       code: "forbidden",
     });
-    await expect(repo.changeTenantStatus(db, op.id, randomUUID(), true)).rejects.toMatchObject({
+    await expect(repo.changeTenantStatus(db, op.id, snowflakeId(), true)).rejects.toMatchObject({
       code: "not_found",
     });
     expect((await repo.changeTenantStatus(db, op.id, tenant.id, true)).suspendedAt).not.toBeNull();
@@ -165,7 +165,7 @@ describe("platform console repositories (real PGlite)", () => {
     // 同档位不改：审计里不该多出一条 free → free 的噪声
     await repo.changeTenantPlan(db, op.id, tenant.id, "standard");
     expect((await repo.listPlatformAudit(db, { q: "tenant.plan_changed" })).total).toBe(1);
-    await expect(repo.changeTenantPlan(db, op.id, randomUUID(), "free")).rejects.toMatchObject({
+    await expect(repo.changeTenantPlan(db, op.id, snowflakeId(), "free")).rejects.toMatchObject({
       code: "not_found",
     });
     // 租户成员的 id 不是平台操作员，不能给自己升档
@@ -180,18 +180,16 @@ describe("platform console repositories (real PGlite)", () => {
     // Simulate an inherited/default grant and a future identity sequence. Reapplying
     // RLS must remove both direct app privileges and privileges inherited from PUBLIC.
     await db.execute(
-      sql`ALTER TABLE platform_operators ADD COLUMN test_sequence bigint GENERATED ALWAYS AS IDENTITY`,
+      sql`ALTER TABLE plat_operator ADD COLUMN test_sequence bigint GENERATED ALWAYS AS IDENTITY`,
     );
+    await db.execute(sql`GRANT ALL ON plat_operator, plat_audit_log TO heron_app, PUBLIC`);
     await db.execute(
-      sql`GRANT ALL ON platform_operators, platform_audit_logs TO heron_app, PUBLIC`,
-    );
-    await db.execute(
-      sql`GRANT ALL ON SEQUENCE platform_operators_test_sequence_seq TO heron_app, PUBLIC`,
+      sql`GRANT ALL ON SEQUENCE plat_operator_test_sequence_seq TO heron_app, PUBLIC`,
     );
     await repo.applyRls(db);
     await expect(
       repo.withTenant(db, tenant.id, (t) =>
-        t.db.execute(sql`SELECT nextval('platform_operators_test_sequence_seq')`),
+        t.db.execute(sql`SELECT nextval('plat_operator_test_sequence_seq')`),
       ),
     ).rejects.toMatchObject({ cause: { code: "42501" } });
     for (const table of repo.TABLES_PLATFORM) {
@@ -220,7 +218,7 @@ describe("platform console repositories (real PGlite)", () => {
     }
     // Platform tables use UUIDs, not sequences; future identity additions must stay privileged.
     const sequences = await db.execute(
-      sql`SELECT c.relname FROM pg_class c JOIN pg_depend d ON d.objid = c.oid JOIN pg_class t ON t.oid = d.refobjid WHERE c.relkind = 'S' AND t.relname IN ('platform_operators', 'platform_audit_logs') AND CASE WHEN c.relkind = 'S' THEN has_sequence_privilege('heron_app', c.oid, 'USAGE,SELECT,UPDATE') ELSE false END`,
+      sql`SELECT c.relname FROM pg_class c JOIN pg_depend d ON d.objid = c.oid JOIN pg_class t ON t.oid = d.refobjid WHERE c.relkind = 'S' AND t.relname IN ('plat_operator', 'plat_audit_log') AND CASE WHEN c.relkind = 'S' THEN has_sequence_privilege('heron_app', c.oid, 'USAGE,SELECT,UPDATE') ELSE false END`,
     );
     expect(sequences.rows).toEqual([]);
   });

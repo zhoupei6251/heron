@@ -213,7 +213,8 @@ describe("人工确认（真 socket）", () => {
     const guard = vi.spyOn(auth, "userFor").mockImplementationOnce(async (payload) => {
       const stale = await userFor(payload);
       expect(stale?.id).toBe(reviewerId);
-      if (mutation === "suspend") await setTenantSuspended(db, tenantId, new Date().toISOString());
+      if (mutation === "suspend")
+        await setTenantSuspended(db, tenantId, new Date().toISOString(), "1");
       else
         await withTenant(db, tenantId, (t) =>
           updateMember(

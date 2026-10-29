@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
-import { index, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { index, pgTable, text } from "drizzle-orm/pg-core";
 
+import { auditCols, fkCol, idCol } from "./columns";
 import { tenants } from "./tenants";
 import { users } from "./users";
 
@@ -14,16 +15,12 @@ import { users } from "./users";
  * 带 tenant_id：它是租户边界的直接证据，也省得为了列会话去 join users 才知道归属。
  */
 export const sessions = pgTable(
-  "sessions",
+  "sys_session",
   {
-    id: uuid("id").primaryKey(),
-    tenantId: uuid("tenant_id")
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    createdAt: text("created_at").notNull(),
+    ...auditCols(),
+    id: idCol(),
+    tenantId: fkCol("tenant_id", () => tenants.id).notNull(),
+    userId: fkCol("user_id", () => users.id).notNull(),
     lastSeenAt: text("last_seen_at").notNull(),
     // 只用于给人看的「在哪台设备上」，不参与任何判断
     userAgent: text("user_agent"),
@@ -31,8 +28,8 @@ export const sessions = pgTable(
   },
   (t) => [
     // 会话列表：租户等值 + 最近创建，id 兜平同一时刻
-    index("ix_sessions_tenant_recent").on(t.tenantId, sql`${t.createdAt} DESC`, t.id),
+    index("ix_sys_session_tenant_recent").on(t.tenantId, sql`${t.createTime} DESC`, t.id),
     // 只看自己那几条（无 session.manage 的人走这条）
-    index("ix_sessions_tenant_user").on(t.tenantId, t.userId, sql`${t.lastSeenAt} DESC`),
+    index("ix_sys_session_tenant_user").on(t.tenantId, t.userId, sql`${t.lastSeenAt} DESC`),
   ],
 );

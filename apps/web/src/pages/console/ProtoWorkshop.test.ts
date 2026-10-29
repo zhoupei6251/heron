@@ -9,7 +9,7 @@ import { useAuthStore } from "../../stores/auth";
 import ProtoWorkshop from "./ProtoWorkshop.vue";
 
 const project: ProtoProjectDetail = {
-  id: "de000000-0000-4000-8000-000000000001",
+  id: "201",
   title: "工单后台",
   requirement: "查询工单并查看处理记录",
   target: "web",
@@ -17,8 +17,8 @@ const project: ProtoProjectDetail = {
   stage: "review",
   errorReason: null,
   latestVersion: null,
-  createdAt: "2026-10-28T00:00:00.000Z",
-  updatedAt: "2026-10-28T00:00:00.000Z",
+  createTime: "2026-10-28T00:00:00.000Z",
+  updateTime: "2026-10-28T00:00:00.000Z",
   revisions: [],
   gates: [],
 };
@@ -50,8 +50,8 @@ async function mount(stage: ProtoStage, engineReady = true, readOnly = false) {
   useAuthStore(pinia).session = {
     kind: "tenant",
     user: {
-      id: "11111111-1111-4111-8111-111111111111",
-      tenantId: "00000000-0000-4000-8000-000000000001",
+      id: "102",
+      tenantId: "101",
       tenantName: "测试空间",
       tenantSlug: "test",
       email: "owner@example.com",

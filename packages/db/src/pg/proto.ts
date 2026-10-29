@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type {
   Page,
   PageQuery,
@@ -26,13 +24,14 @@ import {
   sql,
 } from "drizzle-orm";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import type { AdminDb } from "./admin";
 import { ManagementError, readPage, searchPattern } from "./console-query";
 import type { Db } from "./driver";
 import { requireTenantUser } from "./identity";
 import type { TenantDb } from "./rls";
-import { protoProjects, protoRevisions, tenants, users } from "./schema/index";
+import { protoProjects, protoRevisions, tenants, users, alive } from "./schema/index";
 
 /**
  * 原型工坊的仓储。与 tasks.ts 同一套规矩：第一个参数是通道句柄（业务 TenantDb / 调度 AdminDb），
@@ -79,7 +78,7 @@ const revisionColumns = {
   axureVerified: protoRevisions.axureVerified,
   axureVerifiedAt: protoRevisions.axureVerifiedAt,
   deliveredAt: protoRevisions.deliveredAt,
-  createdAt: protoRevisions.createdAt,
+  createTime: protoRevisions.createTime,
 };
 
 /**
@@ -90,7 +89,7 @@ async function lockTenant(tdb: TenantDb): Promise<void> {
   await tdb.db
     .select({ id: tenants.id })
     .from(tenants)
-    .where(eq(tenants.id, tdb.tenantId))
+    .where(and(eq(tenants.id, tdb.tenantId), alive(tenants.delFlag)))
     .for("update");
 }
 
@@ -109,7 +108,13 @@ export async function countProtoInflight(tdb: TenantDb): Promise<number> {
   const [row] = await tdb.db
     .select({ total: count() })
     .from(protoProjects)
-    .where(and(eq(protoProjects.tenantId, tdb.tenantId), inArray(protoProjects.stage, INFLIGHT)));
+    .where(
+      and(
+        eq(protoProjects.tenantId, tdb.tenantId),
+        inArray(protoProjects.stage, INFLIGHT),
+        alive(protoProjects.delFlag),
+      ),
+    );
   return row?.total ?? 0;
 }
 
@@ -124,9 +129,9 @@ export interface ProtoProjectSummaryRecord {
   leaseOwner: string | null;
   heartbeat: string | null;
   attempts: number;
-  createdBy: string | null;
-  createdAt: string;
-  updatedAt: string;
+  createBy: string | null;
+  createTime: string;
+  updateTime: string;
   latestVersion: number | null;
 }
 
@@ -138,11 +143,12 @@ export async function listProtoProjects(
   const where = and(
     eq(protoProjects.tenantId, tdb.tenantId),
     ilike(protoProjects.title, searchPattern(q.q)),
+    alive(protoProjects.delFlag),
   );
   // 相关子查询里的外层列必须写全 `proto_projects.id`：drizzle 把 ${protoProjects.id} 拼成裸的 "id"，
   // 在子查询作用域里那会解析成 r.id（子表自己的主键），版本永远数不出来。
   const latestVersion = sql<number | null>`(
-    SELECT max(r.version) FROM proto_revisions r WHERE r.project_id = proto_projects.id
+    SELECT max(r.version) FROM proto_revision r WHERE r.project_id = proto_project.id
   )`;
   return readPage(
     q,
@@ -157,14 +163,14 @@ export async function listProtoProjects(
         leaseOwner: protoProjects.leaseOwner,
         heartbeat: protoProjects.heartbeat,
         attempts: protoProjects.attempts,
-        createdBy: protoProjects.createdBy,
-        createdAt: protoProjects.createdAt,
-        updatedAt: protoProjects.updatedAt,
+        createBy: protoProjects.createBy,
+        createTime: protoProjects.createTime,
+        updateTime: protoProjects.updateTime,
         latestVersion,
       })
       .from(protoProjects)
       .where(where)
-      .orderBy(desc(protoProjects.createdAt), asc(protoProjects.id))
+      .orderBy(desc(protoProjects.createTime), asc(protoProjects.id))
       .limit(q.pageSize)
       .offset((q.page - 1) * q.pageSize),
     tdb.db.select({ total: count() }).from(protoProjects).where(where),
@@ -178,7 +184,13 @@ export async function getProtoProject(
   const [row] = await tdb.db
     .select()
     .from(protoProjects)
-    .where(and(eq(protoProjects.id, projectId), eq(protoProjects.tenantId, tdb.tenantId)))
+    .where(
+      and(
+        eq(protoProjects.id, projectId),
+        eq(protoProjects.tenantId, tdb.tenantId),
+        alive(protoProjects.delFlag),
+      ),
+    )
     .limit(1);
   return row ?? null;
 }
@@ -224,7 +236,8 @@ export async function createProtoProject(
   await assertCapacity(tdb, maxInflight);
   const at = nowIso();
   const row: ProtoProjectRecord = {
-    id: randomUUID(),
+    id: snowflakeId(),
+    delFlag: "0",
     tenantId: tdb.tenantId,
     title: input.title,
     requirement: input.requirement,
@@ -235,9 +248,10 @@ export async function createProtoProject(
     leaseOwner: null,
     heartbeat: null,
     attempts: 0,
-    createdBy: actor.id,
-    createdAt: at,
-    updatedAt: at,
+    createBy: actor.id,
+    createTime: at,
+    updateBy: actor.id,
+    updateTime: at,
   };
   await tdb.db.insert(protoProjects).values(row);
   return row;
@@ -252,6 +266,8 @@ export async function requestProtoGeneration(
   tdb: TenantDb,
   projectId: string,
   maxInflight: number,
+  /** 点「重新生成」的人。 */
+  actorId: string,
 ): Promise<void> {
   await assertCapacity(tdb, maxInflight);
   const [row] = await tdb.db
@@ -274,7 +290,8 @@ export async function requestProtoGeneration(
       attempts: 0,
       leaseOwner: null,
       heartbeat: null,
-      updatedAt: nowIso(),
+      updateBy: actorId,
+      updateTime: nowIso(),
     })
     .where(and(eq(protoProjects.id, projectId), eq(protoProjects.tenantId, tdb.tenantId)));
 }
@@ -302,7 +319,7 @@ async function claimProto(
         or(isNull(protoProjects.leaseOwner), lt(protoProjects.heartbeat, leaseCutoff(leaseTtlSec))),
       ),
     )
-    .orderBy(asc(protoProjects.createdAt))
+    .orderBy(asc(protoProjects.createTime))
     .limit(1)
     .for("update", { of: [protoProjects], skipLocked: true });
   if (!row) return null;
@@ -310,10 +327,10 @@ async function claimProto(
   const at = nowIso();
   await admin.db
     .update(protoProjects)
-    .set({ leaseOwner: owner, heartbeat: at, updatedAt: at })
+    .set({ leaseOwner: owner, heartbeat: at, updateBy: null, updateTime: at })
     .where(eq(protoProjects.id, row.id));
   return {
-    project: { ...row, leaseOwner: owner, heartbeat: at, updatedAt: at },
+    project: { ...row, leaseOwner: owner, heartbeat: at, updateTime: at },
     tenantId: row.tenantId,
   };
 }
@@ -347,7 +364,7 @@ export async function touchProtoLease(
 ): Promise<boolean> {
   const touched = await tdb.db
     .update(protoProjects)
-    .set({ heartbeat: nowIso() })
+    .set({ heartbeat: nowIso(), updateBy: null, updateTime: nowIso() })
     .where(
       and(
         eq(protoProjects.id, projectId),
@@ -377,7 +394,8 @@ export async function advanceProtoProject(
     .update(protoProjects)
     .set({
       stage: input.to,
-      updatedAt: nowIso(),
+      updateBy: null,
+      updateTime: nowIso(),
       ...(input.clearLease === true ? { leaseOwner: null, heartbeat: null } : {}),
     })
     .where(
@@ -410,7 +428,8 @@ async function failProto(
       errorReason: reason,
       leaseOwner: null,
       heartbeat: null,
-      updatedAt: at,
+      updateBy: null,
+      updateTime: at,
     })
     .where(
       and(
@@ -443,7 +462,7 @@ export async function markProtoFailed(
   await failProto(tdb.db, tdb.tenantId, projectId, reason, nowIso());
 }
 
-/** 版本号由这里算：同一项目版本唯一（u_proto_revisions_project_version），调用方不许猜。 */
+/** 版本号由这里算：同一项目版本唯一（u_proto_revision_project_version），调用方不许猜。 */
 export async function createProtoRevision(
   tdb: TenantDb,
   projectId: string,
@@ -451,10 +470,10 @@ export async function createProtoRevision(
   const [row] = await tdb.db
     .select({ max: sql<number>`coalesce(max(${protoRevisions.version}), 0)::int` })
     .from(protoRevisions)
-    .where(eq(protoRevisions.projectId, projectId));
+    .where(and(eq(protoRevisions.projectId, projectId), alive(protoRevisions.delFlag)));
   const version = (row?.max ?? 0) + 1;
-  const id = randomUUID();
-  await tdb.db.insert(protoRevisions).values({ id, projectId, version, createdAt: nowIso() });
+  const id = snowflakeId();
+  await tdb.db.insert(protoRevisions).values({ id, projectId, version, createTime: nowIso() });
   return { id, version };
 }
 
@@ -478,10 +497,12 @@ export async function updateProtoRevision(
   tdb: TenantDb,
   revisionId: string,
   patch: ProtoRevisionPatch,
+  /** 补这些字段的人；worker 写的是系统产物，传 null。 */
+  actorId: string | null,
 ): Promise<void> {
   const touched = await tdb.db
     .update(protoRevisions)
-    .set(patch)
+    .set({ ...patch, updateBy: actorId, updateTime: nowIso() })
     .where(eq(protoRevisions.id, revisionId))
     .returning({ id: protoRevisions.id });
   if (touched.length === 0) throw new Error(`原型版本 ${revisionId} 不存在或不在当前工作区`);
@@ -584,11 +605,13 @@ export async function confirmProtoRevision(
       axureVerified: input.axureVerified,
       axureVerifiedBy: input.axureVerified ? actor.id : null,
       axureVerifiedAt: input.axureVerified ? at : null,
+      updateBy: actorId,
+      updateTime: at,
     })
     .where(eq(protoRevisions.id, input.revisionId));
   const touched = await tdb.db
     .update(protoProjects)
-    .set({ stage: "approved", updatedAt: at })
+    .set({ stage: "approved", updateBy: actorId, updateTime: at })
     .where(
       and(
         eq(protoProjects.id, input.projectId),
@@ -610,7 +633,13 @@ export async function markProtoDelivered(
   const at = nowIso();
   const touched = await tdb.db
     .update(protoProjects)
-    .set({ stage: "delivered", updatedAt: at, leaseOwner: null, heartbeat: null })
+    .set({
+      stage: "delivered",
+      updateBy: null,
+      updateTime: at,
+      leaseOwner: null,
+      heartbeat: null,
+    })
     .where(
       and(
         eq(protoProjects.id, input.projectId),
@@ -676,7 +705,7 @@ export async function recoverExpiredProtoLeases(
         attempts,
         leaseOwner: null,
         heartbeat: null,
-        updatedAt: at,
+        updateTime: at,
       })
       .where(eq(protoProjects.id, row.id));
     returned.push(row.id);

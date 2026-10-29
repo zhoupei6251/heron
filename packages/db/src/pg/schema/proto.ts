@@ -8,7 +8,6 @@ import {
   pgTable,
   text,
   uniqueIndex,
-  uuid,
 } from "drizzle-orm/pg-core";
 import {
   PROTO_FAILURE_KINDS,
@@ -21,6 +20,7 @@ import {
   type ProtoTheme,
 } from "@heron/contracts";
 
+import { auditCols, fkCol, idCol, softDeleteCols } from "./columns";
 import { inEnum } from "./enums";
 import { tenants } from "./tenants";
 import { users } from "./users";
@@ -31,12 +31,12 @@ import { users } from "./users";
  */
 
 export const protoProjects = pgTable(
-  "proto_projects",
+  "proto_project",
   {
-    id: uuid("id").primaryKey(),
-    tenantId: uuid("tenant_id")
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
+    ...auditCols(),
+    ...softDeleteCols(),
+    id: idCol(),
+    tenantId: fkCol("tenant_id", () => tenants.id, { onDelete: "cascade" }).notNull(),
     title: text("title").notNull(),
     /** 需求原文。上限由接口层判（PROTO_REQUIREMENT_MAX），这里不做长度检查，换限不必迁移。 */
     requirement: text("requirement").notNull(),
@@ -49,31 +49,28 @@ export const protoProjects = pgTable(
     leaseOwner: text("lease_owner"),
     heartbeat: text("heartbeat"),
     attempts: integer("attempts").notNull().default(0),
-    createdBy: uuid("created_by").references(() => users.id),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
   },
   (t) => [
     // 领取查询只认这两个阶段：draft 是待生成，approved 是等人确认后待交付（worker 只做落库）
-    index("ix_proto_projects_claimable")
-      .on(t.createdAt)
+    index("ix_proto_project_claimable")
+      .on(t.createTime)
       .where(sql`${t.stage} IN ('draft','approved')`),
-    index("ix_proto_projects_tenant_recent").on(t.tenantId, sql`${t.createdAt} DESC`, t.id),
-    check("ck_proto_projects_stage_known", inEnum(t.stage, PROTO_STAGES)),
-    check("ck_proto_projects_target_known", inEnum(t.target, PROTO_TARGETS)),
-    check("ck_proto_projects_theme_known", inEnum(t.theme, PROTO_THEMES)),
-    check("ck_proto_projects_attempts_nonnegative", sql`${t.attempts} >= 0`),
+    index("ix_proto_project_tenant_recent").on(t.tenantId, sql`${t.createTime} DESC`, t.id),
+    check("ck_proto_project_stage_known", inEnum(t.stage, PROTO_STAGES)),
+    check("ck_proto_project_target_known", inEnum(t.target, PROTO_TARGETS)),
+    check("ck_proto_project_theme_known", inEnum(t.theme, PROTO_THEMES)),
+    check("ck_proto_project_attempts_nonnegative", sql`${t.attempts} >= 0`),
   ],
 );
 
 export const protoRevisions = pgTable(
-  "proto_revisions",
+  "proto_revision",
   {
-    id: uuid("id").primaryKey(),
+    ...auditCols(),
+    ...softDeleteCols(),
+    id: idCol(),
     /** 子表：租户靠父表 FK 继承（见 schema/index.ts 与 rls.ts 的父表映射）。 */
-    projectId: uuid("project_id")
-      .notNull()
-      .references(() => protoProjects.id, { onDelete: "cascade" }),
+    projectId: fkCol("project_id", () => protoProjects.id, { onDelete: "cascade" }).notNull(),
     version: integer("version").notNull(),
     /** 模型原稿。先落库再编译：check 的诊断要对得上模型当时写的那份。 */
     rp1Source: text("rp1_source"),
@@ -90,30 +87,32 @@ export const protoRevisions = pgTable(
     rpBytes: integer("rp_bytes"),
     previewSha256: text("preview_sha256"),
     // 人的闸：确认人、确认时间、当时预览图的指纹；原生闸的勾选也记在版本上
-    confirmedBy: uuid("confirmed_by").references(() => users.id),
+    confirmedBy: fkCol("confirmed_by", () => users.id),
     confirmedAt: text("confirmed_at"),
     axureVerified: boolean("axure_verified").notNull().default(false),
-    axureVerifiedBy: uuid("axure_verified_by").references(() => users.id),
+    axureVerifiedBy: fkCol("axure_verified_by", () => users.id),
     axureVerifiedAt: text("axure_verified_at"),
     deliveredAt: text("delivered_at"),
-    createdAt: text("created_at").notNull(),
   },
   (t) => [
-    uniqueIndex("u_proto_revisions_project_version").on(t.projectId, t.version),
-    index("ix_proto_revisions_project").on(t.projectId, t.version),
-    check("ck_proto_revisions_version_positive", sql`${t.version} > 0`),
+    // 同一项目的版本号唯一，但只对活着的版本唯一：软删掉一个版本之后还能再产出同号版本。
+    uniqueIndex("u_proto_revision_project_version")
+      .on(t.projectId, t.version)
+      .where(sql`${t.delFlag} = '0'`),
+    index("ix_proto_revision_project").on(t.projectId, t.version),
+    check("ck_proto_revision_version_positive", sql`${t.version} > 0`),
     check(
-      "ck_proto_revisions_tokens_nonnegative",
+      "ck_proto_revision_tokens_nonnegative",
       sql`(${t.tokensIn} IS NULL OR ${t.tokensIn} >= 0) AND (${t.tokensOut} IS NULL OR ${t.tokensOut} >= 0)`,
     ),
     check(
-      "ck_proto_revisions_rp_bytes_nonnegative",
-      sql`${t.rpBytes} IS NULL OR ${t.rpBytes} >= 0`,
+      "ck_proto_revision_rp_bytes_nonnegative",
+      sql`(${t.rpBytes} IS NULL OR ${t.rpBytes} >= 0)`,
     ),
-    check("ck_proto_revisions_failure_kind_known", inEnum(t.failureKind, PROTO_FAILURE_KINDS)),
+    check("ck_proto_revision_failure_kind_known", inEnum(t.failureKind, PROTO_FAILURE_KINDS)),
     // 勾了「已在 Axure 打开过」就必须说得出是谁、何时勾的；没勾时两列都必须为空
     check(
-      "ck_proto_revisions_axure_attribution",
+      "ck_proto_revision_axure_attribution",
       sql`(${t.axureVerified} = false AND ${t.axureVerifiedBy} IS NULL AND ${t.axureVerifiedAt} IS NULL)
           OR (${t.axureVerified} = true AND ${t.axureVerifiedBy} IS NOT NULL AND ${t.axureVerifiedAt} IS NOT NULL)`,
     ),

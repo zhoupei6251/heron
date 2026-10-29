@@ -1,12 +1,13 @@
 import { sql } from "drizzle-orm";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import type { AdminDb } from "./admin";
 import type { TenantDb } from "./rls";
 import { usageRecords } from "./schema/index";
 
 /**
- * 用量台账。kind/unit 的合法组合由 ck_usage_records_kind_unit_pair 钉住（见 schema/usage.ts），
+ * 用量台账。kind/unit 的合法组合由 ck_usage_record_kind_unit_pair 钉住（见 schema/usage.ts），
  * 这里不重列一遍 union：写错组合会在运行期红得明明白白，而两份列表迟早会漂移。
  *
  * quantity 用字符串而不是 number：numeric 列是钱与用量的底账，
@@ -24,6 +25,7 @@ export interface NewUsage {
 /** 记账只有一条路：写在租户上下文里，时间戳当场落。事后补不回来，所以也不给「可选时间」。 */
 export async function recordUsage(tdb: TenantDb, input: NewUsage): Promise<void> {
   await tdb.db.insert(usageRecords).values({
+    id: snowflakeId(),
     tenantId: tdb.tenantId,
     taskId: input.taskId ?? null,
     kind: input.kind,

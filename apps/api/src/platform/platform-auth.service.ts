@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { z } from "zod";
+import { snowflakeIdSchema } from "@heron/contracts";
 import type { PlatformUser } from "@heron/contracts";
 import {
   findPlatformOperatorById,
@@ -14,7 +15,7 @@ import { PG_DB } from "../db/pg";
 
 const DUMMY_HASH = hashPassword("platform-timing-equalizer-not-a-login");
 const PayloadSchema = z.object({
-  sub: z.uuid(),
+  sub: snowflakeIdSchema,
   ver: z.number().int().nonnegative(),
   aud: z.literal(PLATFORM_AUDIENCE),
 });

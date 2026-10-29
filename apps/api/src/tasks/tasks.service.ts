@@ -16,6 +16,7 @@ import {
   startProductionFromCandidate,
   withTenant,
 } from "@heron/db/pg";
+import { nowIso } from "@heron/db";
 import { dedupeVerdict, formatErrorReason, normKey } from "@heron/domain";
 
 import { PG_DB } from "../db/pg";
@@ -56,7 +57,7 @@ export class TasksService {
           capability: NEWS_CAPABILITY,
           candidateId: existing,
         });
-        await markFailed(t, blocked.id, formatErrorReason(verdict));
+        await markFailed(t, blocked.id, formatErrorReason(verdict), nowIso(), user.id);
         return (await getTask(t, blocked.id)) ?? blocked;
       }
       const candidateId =

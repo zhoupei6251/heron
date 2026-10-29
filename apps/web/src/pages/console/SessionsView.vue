@@ -112,7 +112,7 @@ onMounted(list.load);
           </template>
         </ElTableColumn>
         <ElTableColumn label="登录时间" min-width="170">
-          <template #default="{ row }">{{ dateTime(row.createdAt) }}</template>
+          <template #default="{ row }">{{ dateTime(row.createTime) }}</template>
         </ElTableColumn>
         <ElTableColumn label="最近活动" min-width="170">
           <template #default="{ row }">{{ dateTime(row.lastSeenAt) }}</template>

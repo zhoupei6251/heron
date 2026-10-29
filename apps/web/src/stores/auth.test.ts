@@ -17,8 +17,8 @@ import { useTasksStore } from "./tasks";
  */
 
 const USER: AuthUser = {
-  id: "11111111-1111-4111-8111-111111111111",
-  tenantId: "00000000-0000-4000-8000-000000000001",
+  id: "102",
+  tenantId: "101",
   tenantName: "A 台",
   tenantSlug: "acme",
   email: "viewer@example.com",
@@ -375,7 +375,7 @@ describe.each(["tenant", "platform"] as const)("%s session interleavings", (scop
 });
 
 describe("切换工作空间（平台运营 view-as）", () => {
-  const OTHER_TENANT = "00000000-0000-4000-8000-000000000002";
+  const OTHER_TENANT = "103";
   /** 服务端的查看态身份固定给 owner：够格读全部页面，写由 scope 拦。 */
   const viewSession = (tenantName: string): ConsoleSession => ({
     kind: "tenant",

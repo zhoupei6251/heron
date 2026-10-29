@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { reviewBlocker } from "./review";
 
 const item: ReviewItem = {
-  taskId: "11111111-1111-4111-8111-111111111111",
+  taskId: "102",
   title: "待审成片",
   renderVersion: 2,
   contactSheetFingerprint: "fingerprint-v2",

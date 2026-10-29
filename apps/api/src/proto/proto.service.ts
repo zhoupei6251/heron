@@ -57,7 +57,7 @@ const ARTIFACT_MEDIA: Record<ProtoArtifactKind, { type: string; ext: string }> =
 /** 列表与详情共用同一条投影：只挑契约里的字段，worker 的调度坐标不出进程。 */
 type SummarySource = Pick<
   ProtoProjectSummary,
-  "id" | "title" | "target" | "theme" | "stage" | "errorReason" | "createdAt" | "updatedAt"
+  "id" | "title" | "target" | "theme" | "stage" | "errorReason" | "createTime" | "updateTime"
 >;
 
 function summaryOf(row: SummarySource, latestVersion: number | null): ProtoProjectSummary {
@@ -68,8 +68,8 @@ function summaryOf(row: SummarySource, latestVersion: number | null): ProtoProje
     theme: row.theme,
     stage: row.stage,
     errorReason: row.errorReason,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    createTime: row.createTime,
+    updateTime: row.updateTime,
     latestVersion,
   };
 }
@@ -123,7 +123,7 @@ export class ProtoService {
   async regenerate(user: AuthUser, projectId: string): Promise<ProtoProjectDetail> {
     await withTenant(this.db, user.tenantId, async (t) => {
       await requireActiveActor(t, user.id, "task.claim");
-      await requestProtoGeneration(t, projectId, protoMaxInflight());
+      await requestProtoGeneration(t, projectId, protoMaxInflight(), user.id);
     });
     await this.queue.push(projectId, "proto");
     return this.detail(user, projectId);

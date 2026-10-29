@@ -1,11 +1,10 @@
-import { randomUUID } from "node:crypto";
-
 import type { GateVerdict, Role, Stage, Task } from "@heron/contracts";
 import { hashPassword } from "@heron/domain";
 import { eq, isNull, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { sha256 } from "../hash";
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import { OWNER_ROLE, withAdmin } from "./admin";
 import {
@@ -69,8 +68,8 @@ import {
 
 const ISO_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const AT = "2026-10-22T00:00:00.000Z";
-const TENANT_A = "00000000-0000-4000-8000-0000000000aa";
-const TENANT_B = "00000000-0000-4000-8000-0000000000bb";
+const TENANT_A = "101";
+const TENANT_B = "102";
 /** worker 领活时的进程身份，不是人（见 schema/tasks.ts 的 lease_owner 注释）。 */
 const OWNER = "worker-test";
 /**
@@ -113,8 +112,8 @@ describe("pg 仓储层（异步 + 双通道）", () => {
     await migrate(db);
     await withAdmin(db, (a) =>
       a.db.insert(tenants).values([
-        { id: TENANT_A, name: "A 台", slug: "a", suspendedAt: null, createdAt: AT },
-        { id: TENANT_B, name: "B 台", slug: "b", suspendedAt: null, createdAt: AT },
+        { id: TENANT_A, name: "A 台", slug: "a", suspendedAt: null, createTime: AT },
+        { id: TENANT_B, name: "B 台", slug: "b", suspendedAt: null, createTime: AT },
       ]),
     );
   });
@@ -200,7 +199,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
   function human(tenantId: string, role: Role = "admin"): Promise<string> {
     return withTenant(db, tenantId, (t) =>
       createUser(t, {
-        email: `posture-${randomUUID()}@example.com`,
+        email: `posture-${snowflakeId()}@example.com`,
         displayName: "姿态操作人",
         passwordHash: PASSWORD_HASH,
         role,
@@ -226,7 +225,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
   it("时间列全是 UTC ISO-8601 带 Z，不带 tenant_id 的子表在租户上下文里读得到", async () => {
     const ref = await claimedTask();
     const task = await readTask(ref);
-    expect(task?.createdAt).toMatch(ISO_Z);
+    expect(task?.createTime).toMatch(ISO_Z);
     expect(task?.claimedAt).toMatch(ISO_Z);
 
     // task_events 靠 applyRls 给它建的那条 EXISTS 策略继承租户：读得到才说明策略真接上了
@@ -234,7 +233,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
       t.db.select().from(taskEvents).where(eq(taskEvents.taskId, ref.taskId)),
     );
     expect(events.map((e) => e.toStage)).toEqual(["claimed"]);
-    for (const row of events) expect(row.createdAt).toMatch(ISO_Z);
+    for (const row of events) expect(row.createTime).toMatch(ISO_Z);
   });
 
   it("认领落下确认人与时间，候选转 selected", async () => {
@@ -304,7 +303,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
     await withTenant(db, TENANT_A, (t) => releaseLease(t, ref.taskId, ref.owner));
     const laterId = await withTenant(db, TENANT_A, async (t) => {
       const userId = await createUser(t, {
-        email: `late-${randomUUID()}@example.com`,
+        email: `late-${snowflakeId()}@example.com`,
         displayName: "晚认领的人",
         passwordHash: PASSWORD_HASH,
         role: "reviewer",
@@ -324,7 +323,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
     // 别的 id 不被连带锁住：ref 没租约、stage 可领，仍然在池子里
     expect(await readTask(ref)).toMatchObject({ stage: "claimed", leaseOwner: null });
     // 队列里躺着一条库里已经没有的 job（任务被删），领不到就算完，不许抛
-    expect(await withAdmin(db, (a) => claimTaskById(a, randomUUID(), OWNER, 60))).toBeNull();
+    expect(await withAdmin(db, (a) => claimTaskById(a, snowflakeId(), OWNER, 60))).toBeNull();
   });
 
   it("按 id 也越不过人的闸：还没人认领的领不到", async () => {
@@ -409,7 +408,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
 
   it("确认人必须是本租户的人：外键不受 RLS 管，归属得自己查", async () => {
     const ref = await claimedTask();
-    // 同一个邮箱在 B 租户是另一个人（u_users_tenant_email 是租户内唯一），拿它的 id 来冒充 A 的确认人
+    // 同一个邮箱在 B 租户是另一个人（u_sys_user_tenant_email 是租户内唯一），拿它的 id 来冒充 A 的确认人
     const foreignUserId = await withTenant(db, TENANT_B, (t) =>
       createUser(t, {
         email: "zhoupei@example.com",
@@ -452,7 +451,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
           }),
         ),
       ),
-    ).toMatch(/u_renders_task_version/);
+    ).toMatch(/u_news_render_task_version/);
     expect(await withTenant(db, TENANT_A, (t) => nextRenderVersion(t, ref.taskId))).toBe(2);
   });
 
@@ -511,7 +510,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
           insertPublish(t, { renderId, idempotencyKey: key, declaration: "内容由AI生成" }),
         ),
       ),
-    ).toMatch(/u_publishes_tenant_idempotency/);
+    ).toMatch(/u_news_publish_tenant_idempotency/);
     expect(
       await rejection(() =>
         withTenant(db, TENANT_A, (t) =>
@@ -523,7 +522,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
           }),
         ),
       ),
-    ).toMatch(/ck_publishes_credential_pair/);
+    ).toMatch(/ck_news_publish_credential_pair/);
 
     // 状态推进不许把已经落进去的 post_url 抹回 NULL：没传的字段不进 SET
     await withTenant(db, TENANT_A, (t) =>
@@ -544,7 +543,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
     expect(rows[0]?.status).toBe("confirmed");
     expect(rows[0]?.postUrl).toContain("douyin");
     expect(rows[0]?.verifiedAt).toBeNull();
-    expect(rows[0]?.updatedAt).toMatch(ISO_Z);
+    expect(rows[0]?.updateTime).toMatch(ISO_Z);
   });
 
   it("最多一条生效中的姿态", async () => {
@@ -554,7 +553,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
       await rejection(() =>
         withTenant(db, TENANT_A, (t) => setPosture(t, "no-badge", null, setBy)),
       ),
-    ).toMatch(/u_aigc_posture_single_current/);
+    ).toMatch(/u_news_posture_single_current/);
   });
 
   it("置为已撤销后可以让位给下一条", async () => {
@@ -616,7 +615,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
   it("终态不被后来的异常改写：published 的任务不能被 markFailed 拖回失败", async () => {
     const ref = await claimedTask();
     await runToPublished(ref);
-    await withTenant(db, TENANT_A, (t) => markFailed(t, ref.taskId, "重复的异常"));
+    await withTenant(db, TENANT_A, (t) => markFailed(t, ref.taskId, "重复的异常", nowIso(), null));
     expect(await readTask(ref)).toMatchObject({ stage: "published", errorReason: null });
     // 台账也不许多出一条没发生过的转移：审计读的就是这一列
     const events = await withTenant(db, TENANT_A, (t) =>
@@ -698,7 +697,7 @@ describe("pg 仓储层（异步 + 双通道）", () => {
         summary: "",
         heat: 1,
       });
-      await setCandidateStatus(t, candidateId, "published", AT);
+      await setCandidateStatus(t, candidateId, "published", AT, null);
       return { userId, candidateId };
     });
     await expect(

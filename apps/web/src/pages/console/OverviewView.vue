@@ -163,7 +163,7 @@ onMounted(load);
             ><template #default="{ row }"
               ><StageTrack :stage="row.stage" dense /></template></ElTableColumn
           ><ElTableColumn label="更新" min-width="160"
-            ><template #default="{ row }">{{ dateTime(row.updatedAt) }}</template></ElTableColumn
+            ><template #default="{ row }">{{ dateTime(row.updateTime) }}</template></ElTableColumn
           ></ElTable
         >
       </div>

@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import { PageQuerySchema, type Page, type PageQuery, type Session } from "@heron/contracts";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import { ManagementError, readPage, searchPattern } from "./console-query";
 import { requireActiveActor } from "./management";
@@ -20,7 +20,7 @@ const sessionColumns = {
   userName: users.displayName,
   userEmail: users.email,
   userRole: users.role,
-  createdAt: sessions.createdAt,
+  createTime: sessions.createTime,
   lastSeenAt: sessions.lastSeenAt,
   userAgent: sessions.userAgent,
 };
@@ -35,7 +35,7 @@ export async function createSession(
     id: input.id,
     tenantId: tdb.tenantId,
     userId: input.userId,
-    createdAt: at,
+    createTime: at,
     lastSeenAt: at,
     userAgent: input.userAgent?.slice(0, 400) ?? null,
   });
@@ -74,7 +74,7 @@ export async function keepSessionAlive(
   if (now - Date.parse(session.lastSeenAt) < TOUCH_INTERVAL_MS) return false;
   await tdb.db
     .update(sessions)
-    .set({ lastSeenAt: nowIso(new Date(now)) })
+    .set({ lastSeenAt: nowIso(new Date(now)), updateBy: null, updateTime: nowIso() })
     .where(and(eq(sessions.tenantId, tdb.tenantId), eq(sessions.id, session.id)));
   return true;
 }
@@ -155,16 +155,16 @@ export async function revokeSession(
   if (target.revokedAt !== null) return { id: target.id, userId: target.userId, self };
   await tdb.db
     .update(sessions)
-    .set({ revokedAt: nowIso() })
+    .set({ revokedAt: nowIso(), updateBy: actorId, updateTime: nowIso() })
     .where(and(eq(sessions.tenantId, tdb.tenantId), eq(sessions.id, target.id)));
   await tdb.db.insert(auditLogs).values({
-    id: randomUUID(),
+    id: snowflakeId(),
     tenantId: tdb.tenantId,
     actorId,
     action: "session.revoked",
     targetId: target.id,
     detail: { userId: target.userId, self },
-    createdAt: nowIso(),
+    createTime: nowIso(),
   });
   return { id: target.id, userId: target.userId, self };
 }

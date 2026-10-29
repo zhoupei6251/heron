@@ -238,8 +238,8 @@ describe("认证传输（真 socket）", () => {
     const forged = await new JwtService({
       secret: "some-other-secret-value-32-chars-long!!",
     }).signAsync({
-      sub: "11111111-1111-4111-8111-111111111111",
-      tid: "00000000-0000-4000-8000-000000000001",
+      sub: "102",
+      tid: "101",
       role: "owner",
       ver: 0,
       aud: "heron-tenant",

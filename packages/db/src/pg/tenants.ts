@@ -1,12 +1,11 @@
-import { randomUUID } from "node:crypto";
-
 import { and, asc, eq, isNull } from "drizzle-orm";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import { withAdmin } from "./admin";
 import type { Db } from "./driver";
 import type { TenantDb } from "./rls";
-import { tenants } from "./schema/index";
+import { tenants, alive } from "./schema/index";
 
 /**
  * 租户的读写全走特权通道（heron_owner / BYPASSRLS），这不是偷懒，是时序决定的：
@@ -26,12 +25,12 @@ export interface TenantRef {
   suspendedAt: string | null;
 }
 
-/** 建租户。slug 在这里规范化，因为 ck_tenants_slug_lower 只认小写。 */
+/** 建租户。slug 在这里规范化，因为 ck_sys_tenant_slug_lower 只认小写。 */
 export async function createTenant(
   db: Db,
   input: { id?: string; name: string; slug: string },
 ): Promise<string> {
-  const id = input.id ?? randomUUID();
+  const id = input.id ?? snowflakeId();
   const slug = input.slug.trim().toLowerCase();
   if (!slug) throw new Error(`建租户失败：slug 是空的：${input.name}`);
   await withAdmin(db, (a) =>
@@ -40,7 +39,7 @@ export async function createTenant(
       name: input.name,
       slug,
       suspendedAt: null,
-      createdAt: nowIso(),
+      createTime: nowIso(),
     }),
   );
   return id;
@@ -52,7 +51,7 @@ export async function createTenant(
  */
 export async function listTenantIds(db: Db): Promise<string[]> {
   const rows = await withAdmin(db, (a) =>
-    a.db.select({ id: tenants.id }).from(tenants).orderBy(tenants.createdAt),
+    a.db.select({ id: tenants.id }).from(tenants).orderBy(tenants.createTime),
   );
   return rows.map((row) => row.id);
 }
@@ -82,6 +81,8 @@ export async function setTenantSuspended(
   db: Db,
   tenantId: string,
   suspendedAt: string | null,
+  /** 执行停租的平台运营。 */
+  operatorId: string,
 ): Promise<void> {
   await withAdmin(db, async (a) => {
     const rows = await a.db
@@ -90,7 +91,10 @@ export async function setTenantSuspended(
       .where(eq(tenants.id, tenantId))
       .limit(1);
     if (!rows[0]) throw new Error(`停租失败：没有这个租户：${tenantId}`);
-    await a.db.update(tenants).set({ suspendedAt }).where(eq(tenants.id, tenantId));
+    await a.db
+      .update(tenants)
+      .set({ suspendedAt, updateBy: operatorId, updateTime: nowIso() })
+      .where(eq(tenants.id, tenantId));
   });
 }
 
@@ -114,7 +118,7 @@ export async function getActiveTenant(
   const query = tdb.db
     .select({ id: tenants.id, name: tenants.name, slug: tenants.slug })
     .from(tenants)
-    .where(and(eq(tenants.id, tdb.tenantId), isNull(tenants.suspendedAt)))
+    .where(and(eq(tenants.id, tdb.tenantId), isNull(tenants.suspendedAt), alive(tenants.delFlag)))
     .limit(1);
   // Login uses the same workspace lock as identity changes and suspension, before reading users.
   const rows = await (options.forUpdate ? query.for("update") : query);

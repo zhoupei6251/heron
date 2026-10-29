@@ -58,6 +58,8 @@ x-app: &app
     QINIU_ACCESS_KEY: ${QINIU_ACCESS_KEY:-}
     QINIU_SECRET_KEY: ${QINIU_SECRET_KEY:-}
     QINIU_BUCKET: ${QINIU_BUCKET:-}
+    # 下载端点二选一：给了 S3 区域就走 SigV4 预签名，否则用 CDN 域名 + Kodo token
+    QINIU_S3_REGION: ${QINIU_S3_REGION:-}
     QINIU_DOMAIN: ${QINIU_DOMAIN:-}
     QINIU_REGION: ${QINIU_REGION:-z2}
   depends_on:
@@ -146,6 +148,8 @@ services:
       QINIU_ACCESS_KEY: ${QINIU_ACCESS_KEY:-}
       QINIU_SECRET_KEY: ${QINIU_SECRET_KEY:-}
       QINIU_BUCKET: ${QINIU_BUCKET:-}
+      # 下载端点二选一：给了 S3 区域就走 SigV4 预签名，否则用 CDN 域名 + Kodo token
+      QINIU_S3_REGION: ${QINIU_S3_REGION:-}
       QINIU_DOMAIN: ${QINIU_DOMAIN:-}
       QINIU_REGION: ${QINIU_REGION:-z2}
     healthcheck:

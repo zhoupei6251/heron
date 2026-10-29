@@ -103,9 +103,9 @@ EXIT=0
 
 ## 7. 不可验证的盲点（主动声明）
 
-- **七牛链路没有真实联网验证。** AK/SK 尚未提供；`qiniu` 驱动只验了「注入 fake 客户端的调用形状」
-  （令牌 scope、区域、私有链接签名）。真上传 / 取私有链 / 删除**必须**由用户拿 AK/SK 手工冒烟一次，
-  在此之前不写成「已验证」。
+- **七牛链路已真实联网验证过**（2026-10-29，用户提供 AK/SK 之后，见 §9、§10）：CDN 与 S3 两条取链都真跑过，
+  真上传 1 MB → 签名签发 → 下载字节一致 → 删除后取不到。最终**取链改走 S3 端点**（§10）。
+  仍未验证的是**真渲染产物**上传（`walkTask` 的上传段目前只有单测）与跨实例发布。
 - **每个受保护请求多一次库读 +（60s 一次）写。** pglite 单连接下测试变慢可见；真实 Postgres 的吞吐影响未实测。
 - **登出语义变了**（只踢当前设备）。多设备用户会以为「已经退了」而另一台还在——靠在线会话页的文案补认知，
   但这是**行为改变**，不是纯内修。
@@ -117,4 +117,107 @@ EXIT=0
 
 ## 8. Git
 
-未提交、未推送。改动全在 `dev` 工作区，等用户显式授权后再 commit / push。
+- A–D 四批与本文（写于提交前）已合成 `0e717d9`，并推到 `origin/dev`（`a43ec6f..0e717d9`）。
+- 本文写成之后的联网冒烟又修了 `packages/storage/src/qiniu.ts` 的签名截止时刻（§9.1），
+  并按用户「哪个能通就用哪个」把取链换成 S3 端点（§10）。这批**尚未提交**：
+  `packages/storage/src/{config,qiniu}{,.test}.ts`、`.env.example`、`deploy/docker-compose.yml`、本文件。
+
+## 9. 真实联网冒烟（2026-10-29）
+
+凭据只放在被 gitignore 的 `.env`（`.gitignore:7`，`git check-ignore` 已验证）：空间 `oss-heron`、区域 `z2`、
+绑定域名 `tnjyf0hmp.hn-bkt.clouddn.com`（七牛测试域名）。临时脚本跑完即删，工作区没有留下它。
+
+| 步骤                                                                  | 结果                               |
+| --------------------------------------------------------------------- | ---------------------------------- |
+| `put` 1 MB 随机内容 → `tenants/smoke-tenant/tasks/smoke-*/v1/mp4.mp4` | ✅ 返回 `bytes=1048576`            |
+| Kodo `stat` 该 key                                                    | ✅ 200                             |
+| 裸链（未签名，**且是第一个请求**）                                    | ✅ 401（空间 `private: 1`）        |
+| `url(key, 600)` 签名直链                                              | ✅ 200，sha256 与本地文件一致      |
+| `remove` 两次                                                         | ✅ 第二次也成功；之后 `stat` = 612 |
+| 残留清理（`listPrefix tenants/smoke-tenant/`）                        | ✅ 空                              |
+
+### 9.1 签名截止时刻传错（已修）
+
+SDK 的 `BucketManager.privateDownloadUrl(domain, key, deadline)` 第三个参数是**绝对截止时刻**
+（原样拼进 `?e=`），不是剩余秒数。原实现把 `ttlSec = 600` 原样传进去，等于签出一张 1970 年就到期的票，
+**所有成片直链必 401**。现在换算成 `Math.floor(Date.now() / 1000) + ttlSec`。
+
+单测以前是绿的，因为 `qiniu.test.ts` 注入的 fake port 把真 SDK 整个换掉了，`e=\d+` 对 600 也成立；
+现已收紧为 `e ≈ now + ttl`（区间 599–601）。这条断言在原实现下会红。
+
+### 9.2 边缘缓存会绕过签名（部署必须处理）
+
+实测同一路径的四种状态：
+
+```
+裸链（第一次，未签名）  401      ← 私有在源站确实生效
+签名直链                200      ← 拿到内容
+裸链（签名之后）        200      ← 边缘缓存命中，跳过了签名校验
+删掉对象后裸链          200      ← 缓存里还在
+```
+
+只要域名开着「忽略查询参数」，10 分钟的私有 TTL 就只在缓存未命中时成立。
+部署时必须二选一：**关掉该域名的「忽略查询参数」**，或让 api 反代取流、不把直链交给浏览器。
+`.env.example` 里已写明这条前提。
+
+### 9.3 七牛测试域名不支持 HTTPS
+
+`https://tnjyf0hmp.hn-bkt.clouddn.com` 握手失败：证书 altnames 里没有该域名
+（`ERR_TLS_CERT_ALTNAME_INVALID`）。`.env` 里暂时写 `http://`；上线必须绑定自有域名 + 证书，
+否则 HTTPS 页面里的签名直链会被浏览器按混合内容拦掉。
+
+## 10. 取链改用 S3 端点（2026-10-29，用户指示「哪个能通就用哪个」）
+
+用户在控制台看到空间还有一条 **S3 协议的外网访问**：`http(s)://oss-heron.s3.cn-south-1.qiniucs.com`。
+把四条路都真打了一遍（同一对象、同一 AK/SK）：
+
+| #   | 取链方式                                            | 结果                                                 |
+| --- | --------------------------------------------------- | ---------------------------------------------------- |
+| 1   | `tnjyf0hmp.hn-bkt.clouddn.com` + Kodo token（HTTP） | ✅ 200——但 §9.2 的缓存绕过签名、§9.3 的无 HTTPS 都在 |
+| 2   | 同上，HTTPS                                         | ❌ TLS 证书 altnames 不含该域名                      |
+| 3   | `oss-heron.s3.cn-south-1.qiniucs.com` 裸链          | ❌ 400 `NotSupportAnonymous`（这个端点不接受匿名）   |
+| 4   | 同上 + Kodo 的 `?e=&token=`                         | ❌ 400 `MissingSecurityElement`（只认 AWS SigV4）    |
+| 5   | 同上 + AWS SigV4 预签名                             | ✅ 200，字节与本地一致                               |
+
+**结论：走 5。** S3 端点自带七牛签发的合法证书（不必先绑自有域名）、不经过 CDN（删掉即 404，
+签名每次都真校验）；代价是没有 CDN 加速——成片给的是 10 分钟直链，影响有限。
+
+### 10.1 实现
+
+- `QiniuConfig.download` 变成判别联合：`{kind:"cdn",domain}` / `{kind:"s3",s3Region}`，二选一由环境变量决定。
+- `presignS3Url()`（`packages/storage/src/qiniu.ts`）用 `node:crypto` 手写 SigV4 query 签名：
+  canonical request → string-to-sign → `AWS4<SK>`→date→region→`s3`→`aws4_request` 逐级 HMAC。
+  `X-Amz-Expires` 截到 7 天上限（超过它签名会被判非法，截断而不是抛，免得渲染完才炸）。
+- `qiniuPort()` 按 `download.kind` 分派：s3 走 `presignS3Url`，cdn 仍走 `privateDownloadUrl`（§9.1 的换算保留）。
+- `readDownload()`：配了 `QINIU_S3_REGION` 就以 S3 为准（留着一个不生效的 `QINIU_DOMAIN` 只会让
+  「为什么改了没反应」变成谜）；两个都没给 → 启动即失败并点名。
+- `deploy/docker-compose.yml` 的 api 与 worker 两个块都加了 `QINIU_S3_REGION`。
+
+### 10.2 联网冒烟（真跑，脚本跑完即删）
+
+```
+config.download = {"kind":"s3","s3Region":"cn-south-1"}
+1 put          = 1048576 bytes  expect 1048576
+2 sign         = https://oss-heron.s3.cn-south-1.qiniucs.com/tenants/smoke-s3/tasks/smoke-…/v1/mp4.mp4?X-Amz-Algori…
+3 signed GET   = 200 sha256 一致: true (1048576 bytes)
+4 bare GET     = 400 （未签名，应被拒）
+5 tampered GET = 403 （改签名，应被拒）
+6 remove       = done
+7 signed GET   = 404 （删后，应 404）
+8 remove again = done（对象不在也算成功）
+```
+
+第 7 行是这条路相对 CDN 的实质收益：删掉就是 404，不再有边缘缓存里还能取到的窗口。
+
+### 10.3 单测
+
+`config.test.ts` 扩到 11 条（S3 区域优先、S3 区域写了整条 URL 要抛、两者全缺要抛）；
+`qiniu.test.ts` 新增 4 条：固定时钟下签名稳定、`X-Amz-*` 全参与 64 位十六进制签名、7 天截断、
+cdn 配置下拒绝走 S3，以及 `qiniuPort` 按配置分派。**单测只证形状与稳定性，算法正确性的证据是上面那次联网 200。**
+
+`pnpm check` 全绿：**573 通过 / 2 跳过**（存储包 19 → 26）。
+
+### 10.4 本地 `.env` 已切到 S3
+
+`HERON_STORAGE=qiniu`、`QINIU_S3_REGION=cn-south-1`，`QINIU_DOMAIN` 注释保留以备切回。
+`.env` 被 gitignore + dockerignore 排除，AK/SK 仍只活在那里。

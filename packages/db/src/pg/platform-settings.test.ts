@@ -31,7 +31,7 @@ interface SettingAudit {
 async function settingAudits(database: Db): Promise<SettingAudit[]> {
   const result = await withAdmin(database, (a) =>
     a.db.execute(
-      sql`SELECT action, target_id, detail FROM platform_audit_logs
+      sql`SELECT action, target_id, detail FROM plat_audit_log
           WHERE action = 'platform_setting.updated' ORDER BY target_id`,
     ),
   );
@@ -58,7 +58,7 @@ describe("平台级默认值", () => {
     const settings = await repo.getPlatformSettings(database);
     expect(settings.items.map((item) => item.key)).toEqual([...PLATFORM_SETTING_KEYS]);
     for (const item of settings.items) {
-      expect(item).toMatchObject({ isDefault: true, updatedAt: null, updatedBy: null });
+      expect(item).toMatchObject({ isDefault: true, updateTime: null, updateBy: null });
       expect(item.value).toBe(PLATFORM_SETTING_DEFS[item.key].fallback);
     }
     expect(await repo.platformDefaults(database)).toEqual({
@@ -81,7 +81,7 @@ describe("平台级默认值", () => {
     expect(byKey.get("default_model_base_url")).toMatchObject({
       value: "https://api.example.com/v1",
       isDefault: false,
-      updatedBy: operator.id,
+      updateBy: operator.id,
     });
     expect(byKey.get("default_retention_days")?.value).toBe("7");
     expect(byKey.get("default_plan")?.value).toBe("standard");
@@ -135,8 +135,8 @@ describe("平台级默认值", () => {
       a.db.insert(repo.platformSettings).values({
         key: "default_retention_days",
         value: "0",
-        updatedAt: "2026-10-01T00:00:00.000Z",
-        updatedBy: operator.id,
+        updateTime: "2026-10-01T00:00:00.000Z",
+        updateBy: operator.id,
       }),
     );
     const item = (await repo.getPlatformSettings(database)).items.find(
@@ -146,7 +146,7 @@ describe("平台级默认值", () => {
     expect(item).toMatchObject({
       value: PLATFORM_SETTING_DEFS.default_retention_days.fallback,
       isDefault: true,
-      updatedBy: operator.id,
+      updateBy: operator.id,
     });
     expect((await repo.platformDefaults(database)).retentionDays).toBeNull();
   });

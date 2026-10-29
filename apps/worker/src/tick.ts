@@ -1,3 +1,4 @@
+import { nowIso } from "@heron/db";
 import {
   type ClaimedTask,
   type Db,
@@ -71,7 +72,7 @@ async function walk(db: Db, claimed: ClaimedTask): Promise<string> {
     const reason =
       cause instanceof QuotaRefusalError ? cause.message : `worker 异常：${describe(cause)}`;
     try {
-      await withTenant(db, tenantId, (t) => markFailed(t, task.id, reason));
+      await withTenant(db, tenantId, (t) => markFailed(t, task.id, reason, nowIso(), null));
     } catch (markCause) {
       // 连失败原因都写不回去时，两段都得出现在输出里，别让人只看到后半句
       return `${label} failed 未落库 · ${reason}；写失败原因时又出错：${describe(markCause)}`;

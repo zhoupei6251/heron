@@ -1,5 +1,33 @@
 import { z } from "zod";
 
+/**
+ * 主键与所有实体 id 都是标准 64 位雪花 id，十进制字符串。
+ *
+ * 为什么是字符串而不是 number：雪花 id 量级在 2^53 以上，JS number 会丢精度——
+ * 两个不同的 id 会变成同一个数，查询就拿错了行。库里存 `numeric(19,0)`，
+ * node-postgres 原样读成字符串，于是 JS 侧与过去的 uuid 一样是不透明字符串。
+ *
+ * 格式规则只此一份：packages/db 的生成器 import 同一个 pattern 自检，两边各写一遍正则迟早会飘。
+ */
+export const SNOWFLAKE_ID_PATTERN = /^[0-9]{1,19}$/;
+
+/** 2^63-1：数据库 numeric(19,0) 的上界，也是雪花 id 的取值上界。 */
+const SNOWFLAKE_ID_MAX = 9223372036854775807n;
+
+export const snowflakeIdSchema = z
+  .string()
+  .regex(SNOWFLAKE_ID_PATTERN, "id 必须是十进制数字串")
+  .refine((value) => {
+    // 正则失败时 refine 照样会跑，所以 BigInt 要自己兜住：这里抛异常会把
+    // 「校验失败」变成「进程崩了」——契约层不能因为一个脏字段炸掉。
+    try {
+      const parsed = BigInt(value);
+      return parsed > 0n && parsed <= SNOWFLAKE_ID_MAX;
+    } catch {
+      return false;
+    }
+  }, "雪花 id 必须在 1..2^63-1 之间");
+
 export const STAGES = [
   "candidate",
   "claimed",
@@ -111,13 +139,13 @@ export const TaskSchema = z.object({
   attempts: z.number().int().nonnegative(),
   /**
    * N5 的审计列：谁把这条候选变成生产任务的。认领动作不能只活在台账文案里。
-   * v3 之后它是 users.id（uuid）；旧的 SQLite 层还在写自由文本，T8 切完就一致了。
+   * 它是 users.id（雪花 id）。
    */
-  claimedBy: z.string().uuid().nullable(),
+  claimedBy: snowflakeIdSchema.nullable(),
   claimedAt: z.string().nullable(),
   errorReason: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  createTime: z.string(),
+  updateTime: z.string(),
 });
 
 export type Task = z.infer<typeof TaskSchema>;
@@ -169,11 +197,11 @@ export type LoginBodyInput = z.input<typeof LoginBodySchema>;
 
 /** 会话确立后前端能拿到的「我是谁」：不含口令哈希，也不含 disabled_at——能拿到这张表就说明已经验过。 */
 export const AuthUserSchema = z.object({
-  id: z.string().uuid(),
-  tenantId: z.string().uuid(),
+  id: snowflakeIdSchema,
+  tenantId: snowflakeIdSchema,
   /**
    * 租户名与 slug 跟着身份一起发：顶栏要显示「在哪个工作空间、什么岗位」，
-   * 而界面自己算不出 tenant——它只拿得到 token 里的 tid，那是个给人看的 uuid。
+   * 而界面自己算不出 tenant——它只拿得到 token 里的 tid，那是个给人看的租户 id。
    * 这两列只用于展示，任何判据都不许读它们。
    */
   tenantName: z.string().min(1),
@@ -185,7 +213,7 @@ export const AuthUserSchema = z.object({
   /** 缺格 = 空间成员。platform-view 由服务端签发，接口侧只读（见 api 的 RolesGuard）。 */
   scope: z.enum(["member", "platform-view"]).optional(),
   /** 这次请求是哪个登录会话发出的；旧票与新签的平台票都没有这一格。 */
-  sessionId: z.string().uuid().optional(),
+  sessionId: snowflakeIdSchema.optional(),
 });
 
 export type AuthUser = z.infer<typeof AuthUserSchema>;
@@ -195,14 +223,14 @@ export type AuthUser = z.infer<typeof AuthUserSchema>;
  * 改名、换邮箱都不必重签 token，
  * 所以 email 与 password_hash 一步都不许进来（进了就等于每次改名都要撤销重发）。
  *
- * sub / tid 在这里就判 uuid：守卫拿 tid 开租户上下文，非 uuid 连 set_config 之后的
+ * sub / tid 在这里就判雪花 id：守卫拿 tid 开租户上下文，非数字串连 set_config 之后的
  * 策略求值都过不去，那是在 SQL 里炸 22024，而不是在这儿安静地返回 401。
  * act=platform 的票属于平台运营查看某个空间：audience 与租户票相同（所以 tid 仍旧是
  * 服务端签进去的唯一租户坐标），但 sub 是 platform_operators.id，写动作在闸口被拒。
  */
 export const JwtPayloadSchema = z.object({
-  sub: z.string().uuid(),
-  tid: z.string().uuid(),
+  sub: snowflakeIdSchema,
+  tid: snowflakeIdSchema,
   role: z.enum(ROLES),
   ver: z.number().int().nonnegative(),
   act: z.literal("platform").optional(),
@@ -210,7 +238,7 @@ export const JwtPayloadSchema = z.object({
    * 登录会话 id（sessions.id）。ver 只能整户撤销，逐条强退得知道「这是哪一条」。
    * 可缺：这个字段上线前签出的票没有它，人被踢的判据仍旧看 ver。
    */
-  sid: z.string().uuid().optional(),
+  sid: snowflakeIdSchema.optional(),
 });
 
 export type JwtPayload = z.infer<typeof JwtPayloadSchema>;
@@ -263,13 +291,13 @@ export const QuotaStatusSchema = z.object({
 export type QuotaStatus = z.infer<typeof QuotaStatusSchema>;
 
 export const TenantSchema = z.object({
-  id: z.string().uuid(),
+  id: snowflakeIdSchema,
   name: z.string().min(1),
   slug: z.string().min(1),
   plan: PlanSchema,
   /** 停租是软关闭：数据不许物理删，「当时这个租户还能不能发」必须可回溯。 */
   suspendedAt: z.string().nullable(),
-  createdAt: z.string(),
+  createTime: z.string(),
 });
 
 export type Tenant = z.infer<typeof TenantSchema>;
@@ -303,8 +331,8 @@ export const USAGE_KIND_UNITS: Record<UsageKind, UsageUnit> = {
 
 export const UsageRecordSchema = z
   .object({
-    tenantId: z.string().uuid(),
-    taskId: z.string().uuid().nullable(),
+    tenantId: snowflakeIdSchema,
+    taskId: snowflakeIdSchema.nullable(),
     kind: z.enum(USAGE_KINDS),
     /** numeric 列的形状就是十进制字符串：浮点进账本，每一次四舍五入都是一笔对不平的账。 */
     quantity: z.string().regex(/^\d+(\.\d+)?$/),
@@ -364,7 +392,7 @@ export type CreateTaskInput = z.infer<typeof CreateTaskInputSchema>;
  * 对不上就拒，这是「人审 A、系统发 B」在接口形状上的拦截位置。
  */
 export const ReviewItemSchema = z.object({
-  taskId: z.string().uuid(),
+  taskId: snowflakeIdSchema,
   /** 候选标题；任务可以不带候选（candidate_id 为空），界面要能显示这种行。 */
   title: z.string().nullable(),
   /** 没有渲染版本时为 null：这一行没法确认，界面显示原因而不是藏起来。版本号从 1 起。 */
@@ -464,12 +492,12 @@ const WorkspaceNameSchema = z.string().trim().min(1).max(100);
 const NewPasswordSchema = z.string().min(MIN_PASSWORD_LENGTH).max(128);
 
 export const MemberSchema = z.object({
-  id: z.uuid(),
+  id: snowflakeIdSchema,
   email: z.email(),
   displayName: z.string(),
   role: z.enum(ROLES),
   disabledAt: z.string().nullable(),
-  createdAt: z.string(),
+  createTime: z.string(),
 });
 export type Member = z.infer<typeof MemberSchema>;
 
@@ -478,12 +506,12 @@ export type Member = z.infer<typeof MemberSchema>;
  * 界面上的「这是我自己」若由前端比对，伪造一个 id 就能把别人的会话标成自己的。
  */
 export const SessionSchema = z.object({
-  id: z.uuid(),
-  userId: z.uuid(),
+  id: snowflakeIdSchema,
+  userId: snowflakeIdSchema,
   userName: z.string(),
   userEmail: z.string(),
   userRole: z.enum(ROLES),
-  createdAt: z.string(),
+  createTime: z.string(),
   lastSeenAt: z.string(),
   userAgent: z.string().nullable(),
   /** 就是发起这次请求的那条：强退自己等于退出登录，按钮要区别对待。 */
@@ -539,11 +567,11 @@ export const FeedSourceBodySchema = z.object({
 });
 export type FeedSourceBody = z.infer<typeof FeedSourceBodySchema>;
 export const FeedSourceSchema = FeedSourceBodySchema.extend({
-  id: z.uuid(),
+  id: snowflakeIdSchema,
   lastFetchAt: z.string().nullable(),
   lastAttemptAt: z.string().nullable(),
   lastError: z.string().nullable(),
-  createdAt: z.string(),
+  createTime: z.string(),
 });
 export type FeedSource = z.infer<typeof FeedSourceSchema>;
 
@@ -553,13 +581,13 @@ export const PlatformLoginBodySchema = z.object({
 });
 export type PlatformLoginBody = z.infer<typeof PlatformLoginBodySchema>;
 export const PlatformUserSchema = z.object({
-  id: z.uuid(),
+  id: snowflakeIdSchema,
   username: PlatformUsernameSchema,
   displayName: z.string(),
 });
 export type PlatformUser = z.infer<typeof PlatformUserSchema>;
 /** 平台运营进入某个工作空间查看。只收 id：空间坐标由服务端回库确认，不接名字与 slug。 */
-export const WorkspaceViewBodySchema = z.object({ tenantId: z.uuid() });
+export const WorkspaceViewBodySchema = z.object({ tenantId: snowflakeIdSchema });
 export type WorkspaceViewBody = z.infer<typeof WorkspaceViewBodySchema>;
 
 export const CONSOLE_MENU_IDS = [
@@ -714,8 +742,8 @@ export const PlatformSettingItemSchema = z.object({
   key: z.enum(PLATFORM_SETTING_KEYS),
   value: z.string(),
   isDefault: z.boolean(),
-  updatedAt: z.string().nullable(),
-  updatedBy: z.string().nullable(),
+  updateTime: z.string().nullable(),
+  updateBy: z.string().nullable(),
 });
 export type PlatformSettingItem = z.infer<typeof PlatformSettingItemSchema>;
 
@@ -747,10 +775,10 @@ export const PlatformSettingsBodySchema = z
 export type PlatformSettingsBody = z.infer<typeof PlatformSettingsBodySchema>;
 
 export const CandidateSchema = z.object({
-  id: z.uuid(),
+  id: snowflakeIdSchema,
   title: z.string(),
   summary: z.string(),
-  sourceId: z.uuid().nullable(),
+  sourceId: snowflakeIdSchema.nullable(),
   sourceName: z.string().nullable(),
   heat: z.number(),
   rankPeak: z.number().nullable(),
@@ -758,8 +786,8 @@ export const CandidateSchema = z.object({
   status: z.enum(CANDIDATE_STATUSES),
   firstSeenAt: z.string(),
   lastSeenAt: z.string(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  createTime: z.string(),
+  updateTime: z.string(),
 });
 export type Candidate = z.infer<typeof CandidateSchema>;
 export const TaskSummarySchema = TaskSchema.omit({ leaseOwner: true, heartbeat: true }).extend({
@@ -783,8 +811,8 @@ export const ARTIFACT_KINDS = ["mp4", "contact-sheet", "aigc-sidecar"] as const;
 export const ArtifactKindSchema = z.enum(ARTIFACT_KINDS);
 export type ArtifactKind = z.infer<typeof ArtifactKindSchema>;
 export const AssetSchema = z.object({
-  id: z.uuid(),
-  taskId: z.uuid(),
+  id: snowflakeIdSchema,
+  taskId: snowflakeIdSchema,
   title: z.string().nullable(),
   version: z.number().int().positive(),
   pack: z.string(),
@@ -798,13 +826,13 @@ export const AssetSchema = z.object({
   hasMp4: z.boolean(),
   hasContactSheet: z.boolean(),
   hasAigcSidecar: z.boolean(),
-  createdAt: z.string(),
+  createTime: z.string(),
 });
 export type Asset = z.infer<typeof AssetSchema>;
 export const PublishSummarySchema = z.object({
-  id: z.uuid(),
-  taskId: z.uuid(),
-  renderId: z.uuid(),
+  id: snowflakeIdSchema,
+  taskId: snowflakeIdSchema,
+  renderId: snowflakeIdSchema,
   title: z.string().nullable(),
   renderVersion: z.number().int().positive(),
   platform: z.string(),
@@ -812,8 +840,8 @@ export const PublishSummarySchema = z.object({
   declaration: z.string(),
   postUrl: z.string().nullable(),
   verifiedAt: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  createTime: z.string(),
+  updateTime: z.string(),
 });
 export type PublishSummary = z.infer<typeof PublishSummarySchema>;
 export const UsageSummarySchema = z.object({
@@ -823,25 +851,25 @@ export const UsageSummarySchema = z.object({
 });
 export type UsageSummary = z.infer<typeof UsageSummarySchema>;
 export const PlatformUsageSummarySchema = UsageSummarySchema.extend({
-  tenantId: z.uuid(),
+  tenantId: snowflakeIdSchema,
   tenantName: z.string(),
 });
 export type PlatformUsageSummary = z.infer<typeof PlatformUsageSummarySchema>;
 export const AuditLogSchema = z.object({
-  id: z.uuid(),
-  actorId: z.uuid().nullable(),
+  id: snowflakeIdSchema,
+  actorId: snowflakeIdSchema.nullable(),
   actorName: z.string().nullable(),
   action: z.string(),
   targetId: z.string().nullable(),
   detail: z.record(z.string(), z.unknown()),
-  createdAt: z.string(),
+  createTime: z.string(),
 });
 export type AuditLog = z.infer<typeof AuditLogSchema>;
 export const PlatformAuditLogSchema = AuditLogSchema.omit({
   actorId: true,
   actorName: true,
 }).extend({
-  operatorId: z.uuid().nullable(),
+  operatorId: snowflakeIdSchema.nullable(),
   operatorName: z.string().nullable(),
 });
 export type PlatformAuditLog = z.infer<typeof PlatformAuditLogSchema>;
@@ -867,21 +895,21 @@ export const CreateProtoBodySchema = z
 export type CreateProtoBody = z.infer<typeof CreateProtoBodySchema>;
 
 export const ProtoProjectSummarySchema = z.object({
-  id: z.uuid(),
+  id: snowflakeIdSchema,
   title: z.string(),
   target: z.enum(PROTO_TARGETS),
   theme: z.enum(PROTO_THEMES),
   stage: z.enum(PROTO_STAGES),
   errorReason: z.string().nullable(),
   latestVersion: z.number().int().positive().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  createTime: z.string(),
+  updateTime: z.string(),
 });
 export type ProtoProjectSummary = z.infer<typeof ProtoProjectSummarySchema>;
 
 export const ProtoRevisionSchema = z.object({
-  id: z.uuid(),
-  projectId: z.uuid(),
+  id: snowflakeIdSchema,
+  projectId: snowflakeIdSchema,
   version: z.number().int().positive(),
   model: z.string().nullable(),
   tokensIn: z.number().int().nonnegative().nullable(),
@@ -896,13 +924,13 @@ export const ProtoRevisionSchema = z.object({
   hasAudit: z.boolean(),
   hasPreview: z.boolean(),
   hasRp: z.boolean(),
-  confirmedBy: z.uuid().nullable(),
+  confirmedBy: snowflakeIdSchema.nullable(),
   confirmedByName: z.string().nullable(),
   confirmedAt: z.string().nullable(),
   axureVerified: z.boolean(),
   axureVerifiedAt: z.string().nullable(),
   deliveredAt: z.string().nullable(),
-  createdAt: z.string(),
+  createTime: z.string(),
 });
 export type ProtoRevision = z.infer<typeof ProtoRevisionSchema>;
 
@@ -916,7 +944,7 @@ export type ProtoProjectDetail = z.infer<typeof ProtoProjectDetailSchema>;
 
 /** 原生闸的勾选是「人证」：不勾也能交付，但这一版会永久带着「未在 Axure 验证」。 */
 export const ProtoConfirmBodySchema = z.object({
-  revisionId: z.uuid(),
+  revisionId: snowflakeIdSchema,
   previewSha256: z.string().min(1),
   axureVerified: z.boolean().default(false),
 });

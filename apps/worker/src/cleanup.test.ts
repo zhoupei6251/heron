@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,6 +18,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { cleanupArtifacts } from "./cleanup";
+import { snowflakeId } from "@heron/db";
 
 describe("worker 保留清理", () => {
   let db: Db;
@@ -28,7 +28,7 @@ describe("worker 保留清理", () => {
   beforeEach(async () => {
     db = openDb("memory");
     await migrate(db);
-    tenantId = randomUUID();
+    tenantId = snowflakeId();
     await createTenant(db, { id: tenantId, name: "清理台", slug: "worker-cleanup" });
     root = mkdtempSync(join(tmpdir(), "heron-cleanup-"));
   });
@@ -43,20 +43,20 @@ describe("worker 保留清理", () => {
   /** 一个带目录与一版渲染的任务。.keep 是渲染失败留给人的现场。 */
   async function seedTask(
     owner: string,
-    createdAt: string,
+    createTime: string,
     keep = false,
     mp4Key: string | null = null,
   ): Promise<string> {
     return withTenant(db, owner, async (t) => {
       const task = await createTask(t, { capability: "news", candidateId: null });
       await t.db.insert(renders).values({
-        id: randomUUID(),
+        id: snowflakeId(),
         taskId: task.id,
         version: 1,
         pack: "demo",
         fingerprint: "fp-test",
         mp4Key,
-        createdAt,
+        createTime,
       });
       mkdirSync(join(root, task.id), { recursive: true });
       writeFileSync(join(root, task.id, "fake.mp4"), "x");
@@ -105,12 +105,12 @@ describe("worker 保留清理", () => {
     const taskId = await seedTask(tenantId, daysAgo(5));
     await withTenant(db, tenantId, (t) =>
       t.db.insert(renders).values({
-        id: randomUUID(),
+        id: snowflakeId(),
         taskId,
         version: 2,
         pack: "demo",
         fingerprint: "fp-v2",
-        createdAt: daysAgo(0),
+        createTime: daysAgo(0),
       }),
     );
 
@@ -124,7 +124,7 @@ describe("worker 保留清理", () => {
   });
 
   it("保留天数是每租户各自一档", async () => {
-    const relaxed = randomUUID();
+    const relaxed = snowflakeId();
     await createTenant(db, { id: relaxed, name: "长保留台", slug: "worker-cleanup-long" });
     await withTenant(db, tenantId, (t) => setRetentionDays(t, 1));
     const strictTask = await seedTask(tenantId, daysAgo(3));

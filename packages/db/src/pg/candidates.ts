@@ -1,12 +1,11 @@
-import { randomUUID } from "node:crypto";
-
 import type { CandidateStatus } from "@heron/contracts";
 import { normKey } from "@heron/domain";
 import { and, eq } from "drizzle-orm";
 
+import { snowflakeId } from "../id";
 import { nowIso } from "../time";
 import type { TenantDb } from "./rls";
-import { candidates } from "./schema/index";
+import { candidates, alive } from "./schema/index";
 
 /**
  * 建一条候选，返回 id。去重键在这里算——normKey 只有一份实现，
@@ -22,7 +21,7 @@ export async function createCandidate(
   const rows = await tdb.db
     .insert(candidates)
     .values({
-      id: randomUUID(),
+      id: snowflakeId(),
       tenantId: tdb.tenantId,
       title: input.title,
       summary: input.summary,
@@ -30,8 +29,8 @@ export async function createCandidate(
       heat: input.heat,
       firstSeenAt: at,
       lastSeenAt: at,
-      createdAt: at,
-      updatedAt: at,
+      createTime: at,
+      updateTime: at,
     })
     .returning({ id: candidates.id });
   const id = rows[0]?.id;
@@ -39,7 +38,7 @@ export async function createCandidate(
   return id;
 }
 
-/** 租户内查同一条热点（u_candidates_tenant_norm）：别的租户撞同一个热点是正常业务，不算重复。 */
+/** 租户内查同一条热点（u_news_candidate_tenant_norm）：别的租户撞同一个热点是正常业务，不算重复。 */
 export async function findCandidateByNormKey(tdb: TenantDb, key: string): Promise<string | null> {
   const rows = await tdb.db
     .select({ id: candidates.id })
@@ -60,7 +59,9 @@ export async function getCandidate(tdb: TenantDb, id: string): Promise<Candidate
   const rows = await tdb.db
     .select({ id: candidates.id, title: candidates.title, summary: candidates.summary })
     .from(candidates)
-    .where(and(eq(candidates.id, id), eq(candidates.tenantId, tdb.tenantId)))
+    .where(
+      and(eq(candidates.id, id), eq(candidates.tenantId, tdb.tenantId), alive(candidates.delFlag)),
+    )
     .limit(1);
   return rows[0] ?? null;
 }
@@ -74,10 +75,12 @@ export async function setCandidateStatus(
   candidateId: string,
   status: CandidateStatus,
   at: string,
+  /** 谁把候选推到这个状态：人点的是认领人的 id，系统推进的是 null。 */
+  actorId: string | null,
 ): Promise<void> {
   await tdb.db
     .update(candidates)
-    .set({ status, updatedAt: at })
+    .set({ status, updateBy: actorId, updateTime: at })
     .where(
       and(
         eq(candidates.id, candidateId),
