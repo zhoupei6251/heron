@@ -1,243 +1,176 @@
-# heron
+# Heron
 
-自主部署的多租户新闻视频工作室，以人工确认连接选题、生产、审片与发布。
+基于 RuoYi-Vue-Plus 的业务管理系统。产品名称使用 Heron，若依基座模块、Maven 坐标与开源许可保持不变。
 
-**当前可用：** 统一登录与权限菜单、工作空间与平台管理、成员与角色管理、热榜定时采集、候选直接开始生产、写稿模型（OpenAI 兼容，页面上按租户配模型与密钥，环境变量兜底）、写稿产出的字段与排版前置契约闸、任务与审片界面、用量和审计、成片按天保留清理、Postgres 行级隔离、Docker Compose 部署。
+- 业务模块：`ruoyi-modules/ruoyi-heron`，包名 `org.dromara.heron`，由 `ruoyi-admin` 统一启动。
+- 主数据库：`heron`。先创建空库，再将 `script/sql/ry_vue.sql` 导入该库；按需导入原有工作流脚本。扩展服务的独立库保持原名。
+- 修改连接配置或 `MYSQL_DATABASE` 不会重命名、迁移已有数据库；已有 MySQL 数据目录也不会重新执行初始化。迁移前请备份，勿删除数据目录。
+- 后端构建：`mvn -pl ruoyi-admin -am package`，启动产物为 `ruoyi-admin/target/heron.jar`。
+- 主服务镜像：构建后执行 `docker build -t heron-server:6.0.0 ruoyi-admin`，再使用部署配置。该名称是本地构建标签，不是已发布镜像地址。
 
-**仍在建设：** 真实渲染与发布平台接入、契约闸之外的视觉/合规两道闸、计费。演示任务不会调用外部发布平台；生产门禁未就绪时，不应把演示流程视为可用于真实发布的生产线。
+## 若依基座简介
 
-规格书在 `docs/plans/`：
+[![码云Gitee](https://gitee.com/dromara/RuoYi-Vue-Plus/badge/star.svg?theme=blue)](https://gitee.com/dromara/RuoYi-Vue-Plus)
+[![GitHub](https://img.shields.io/github/stars/dromara/RuoYi-Vue-Plus?style=social&label=Github%20Stars)](https://github.com/dromara/RuoYi-Vue-Plus)
+[![Star](https://gitcode.com/dromara/RuoYi-Vue-Plus/star/badge.svg)](https://gitcode.com/dromara/RuoYi-Vue-Plus)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://gitee.com/dromara/RuoYi-Vue-Plus/blob/6.X/LICENSE)
+<br>
+[![RuoYi-Vue-Plus](https://img.shields.io/badge/RuoYi_Vue_Plus-6.0.0-success.svg)](https://gitee.com/dromara/RuoYi-Vue-Plus)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-blue.svg)]()
+[![JDK-21](https://img.shields.io/badge/JDK-21-green.svg)]()
+[![JDK-25](https://img.shields.io/badge/JDK-25-green.svg)]()
 
-- `2026-10-22-heron-news-webapp-design.md` — 决策记录 N1–N6、状态机、五道闸语义、分期判据（冲突时以它为准）
-- `2026-10-22-heron-stack-v2-design.md` — 技术栈定案版本、目录与架构、数据模型 v2、P0 实测结论与围栏
+> Dromara RuoYi-Vue-Plus 是重写 RuoYi-Vue 针对 `分布式集群` 场景全方位升级(不兼容原框架)
 
-## 快速开始
+> 项目代码、文档 均开源免费可商用 遵循开源协议在项目中保留开源协议文件即可<br>
+> 活到老写到老 为兴趣而开源 为学习而开源 为让大家真正可以学到技术而开源
 
-需要 Node **24.22.1**（`.nvmrc`）与 pnpm 12（`.npmrc` 开 `engine-strict`）。
+> 系统演示: [传送门](https://plus-doc.dromara.org/#/common/demo_system)
 
-```bash
-nvm use
-pnpm install
-cp .env.example .env        # POSTGRES_PASSWORD / DATABASE_URL / HERON_JWT_SECRET 现在必填
-pnpm web:build              # 先出前端产物，api 直接托管它
-pnpm api:dev                # http://127.0.0.1:3000
-pnpm worker:dev             # 另开一个终端：串行 worker（等 api 把 schema 建出来）
-pnpm p0                     # 不启动任何进程：开内存 pglite，跑一条假任务走完十态
-```
+> 官方前端项目地址: 基于 Vue + ElementPlus 版本前端项目 [gitee](https://gitee.com/JavaLionLi/plus-ui) - [github](https://github.com/CrazyLionCat/plus-ui) - [gitcode](https://gitcode.com/dromara/plus-ui)<br>
+> 官方前端项目地址: 基于 React + Ant Design 版本前端项目 [plus-ui-react](https://gitee.com/JavaLionLi/plus-ui/tree/6.X-React/)
+> 成员前端项目地址: 基于vben5 [ruoyi-plus-vben5](https://github.com/imdap/ruoyi-plus-vben5)<br>
+> 成员前端项目地址: 基于soybean [ruoyi-plus-soybean](https://gitee.com/xlsea/ruoyi-plus-soybean)<br>
+> 成员项目地址: 删除多租户与工作流 [RuoYi-Vue-Plus-Single](https://gitee.com/ColorDreams/RuoYi-Vue-Plus-Single)<br>
 
-前端热更新用 `pnpm web:dev`（5173，`/api` 代理到 3000）。
+> 文档地址: [plus-doc](https://plus-doc.dromara.org) 国内加速: [plus-doc.top](https://plus-doc.top)
 
-API 默认要求登录。本机连接 Postgres 前，需要先启动数据库并创建初始工作空间所有者：
+## 赞助商
 
-```bash
-docker compose -f deploy/docker-compose.yml --env-file .env up -d db
-# .env 里填 HERON_OWNER_EMAIL / HERON_OWNER_PASSWORD（跑完这两行可以删）
-pnpm db:seed-owner
-```
+MaxKey 业界领先单点登录产品 - https://gitee.com/dromara/MaxKey <br>
+CCFlow 驰聘低代码-流程-表单 - https://gitee.com/opencc/RuoYi-JFlow <br>
+数舵科技 软件定制开发APP小程序等 - https://www.shuduokeji.com/ <br>
+Mall4J 高质量Java商城系统 - https://www.mall4j.com/cn/?statId=11 <br>
+aizuda flowlong 工作流 - https://gitee.com/aizuda/flowlong <br>
+Ruoyi-Plus-Uniapp - https://ruoyi.plus <br>
+Topiam IAM/IDaaS身份管理平台 - https://www.topiam.cn/ <br>
+稳定低价的大模型中转站 - https://aicodelink.top/register?aff=pHeG <br>
 
-所有账号都在 `/login` 登录：工作空间成员填写工作空间标识、邮箱与密码；平台管理员将工作空间留空，用用户名与密码登录。登录后按服务端返回的角色、权限与菜单进入首页，不需要选择控制台。相同邮箱不代表相同账号，系统不会跨工作空间尝试登录，也不会把工作空间所有者自动提升为平台管理员。
+[如何成为赞助商 加群联系作者详谈 每日PV2500-3000 IP1700-2500](https://plus-doc.dromara.org/#/common/add_group)
 
-要创建初始平台管理员，显式配置 `HERON_PLATFORM_PASSWORD`（10–128 位），按需覆盖 `HERON_PLATFORM_USERNAME`（默认 `admin`）与 `HERON_PLATFORM_NAME`，再运行 `pnpm db:seed-platform`。引导命令不会重置已有账号的密码，完成后应移除引导密码配置。
+# 本框架与RuoYi的功能差异
 
-### 不连接业务数据库的界面开发
+| 功能          | 本框架                                                                                                               | RuoYi                                                                              |
+|-------------|-------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------|
+| 前端项目        | 采用 Vue3 + TS + ElementPlus 重写                                                                                     | 基于Vue2/Vue3 + JS                                                                   | 
+| 后端项目结构      | 采用插件化 + 扩展包形式 结构解耦 易于扩展                                                                                           | 模块相互注入耦合严重难以扩展                                                                     | 
+| 后端代码风格      | 参考 Alibaba 规范与项目统一配置的代码格式化                                                                                        | 代码书写与常规结构不同阅读障碍大                                                                   |
+| Web容器       | 采用 Jetty 基于 Netty 的高性能容器                                                                                          | 采用 Tomcat                                                                          |
+| 权限认证        | 采用 Sa-Token、Jwt 静态使用功能齐全 低耦合 高扩展                                                                                  | Spring Security 配置繁琐扩展性极差                                                          |
+| 权限注解        | 采用 Sa-Token 支持注解 登录校验、角色校验、权限校验、二级认证校验、HttpBasic校验、忽略校验<br/>角色与权限校验支持多种条件 如 `AND` `OR` 或 `权限 OR 角色` 等复杂表达式        | 只支持是否存在匹配                                                                          |
+| 三方鉴权        | 采用 JustAuth 第三方登录组件 支持微信、钉钉等数十种三方认证                                                                               | 无                                                                                  |
+| 关系数据库支持     | 原生支持 MySQL、Oracle、PostgreSQL、SQLServer<br/>可同时使用异构切换(支持其他 mybatis-plus 支持的所有数据库 只需要增加jdbc依赖即可使用 达梦金仓等均有成功案例)      | 支持 Mysql、Oracle 不支持同时使用、不支持异构切换                                                    |
+| 缓存数据库       | 支持 Redis >= 6 支持大部分新功能特性 如 分布式限流、分布式队列                                                                            | Redis 简单 get set 支持                                                                |
+| Redis客户端    | 采用 Redisson Redis官方推荐 基于Netty的客户端工具<br/>支持Redis 90%以上的命令 底层优化规避很多不正确的用法 例如: keys被转换为scan<br/>支持单机、哨兵、单主集群、多主集群等模式 | Lettuce + RedisTemplate 支持模式少 工具使用繁琐<br/>连接池采用 common-pool Bug多经常性出问题              |
+| 缓存注解        | 采用 Spring-Cache 注解 对其扩展了实现支持了更多功能<br/>例如 过期时间 最大空闲时间 组最大长度等 只需一个注解即可完成数据自动缓存                                      | 需手动编写Redis代码逻辑                                                                     |
+| ORM框架       | 采用 Mybatis-Plus 基于对象几乎不用写SQL全java操作 功能强大插件众多<br/>例如分页插件 乐观锁插件等等                                                   | 采用 Mybatis 基于XML需要手写SQL                                                            |
+| SQL监控       | 内置 MyBatis 完整 SQL 输出工具，可输出完整SQL、Mapper ID与执行时间监控                                                                  | log输出 需手动拼接sql与参数无法快速查看调试问题                                                        |
+| 数据分页        | 采用 Mybatis-Plus 分页插件<br/>框架对其进行了扩展 对象化分页对象 支持多种方式传参 支持前端多排序 复杂排序                                                  | 采用 PageHelper 仅支持单查询分页 参数只能从param传 只能单排序 功能扩展性差 体验不好                               |
+| 数据权限        | 采用 Mybatis-Plus 插件 自行分析拼接SQL 无感式过滤<br/>只需为Mapper设置好注解条件 支持多种自定义 不限于部门角色                                           | 采用 注解+aop 实现 基于部门角色 生成的sql兼容性差 不支持其他业务扩展<br/>生成sql后需手动拼接到具体业务sql上 对于多个Mapper查询不起作用 |
+| 数据脱敏        | 采用 注解 + jackson 序列化期间脱敏 支持不同模块不同的脱敏条件<br/>支持多种策略 如身份证、手机号、地址、邮箱、银行卡等 可自行扩展                                        | 无                                                                                  |
+| 数据加解密       | 采用 注解 + mybatis 拦截器 对存取数据期间自动加解密<br/>支持多种策略 如BASE64、AES、RSA、SM2、SM4等                                              | 无                                                                                  |
+| 接口传输加密      | 采用 动态 AES + RSA 加密请求 body 每一次请求秘钥都不同大幅度降低可破解性                                                                     | 无                                                                                  |
+| 数据翻译        | 采用 注解 + jackson 序列化期间动态修改数据 数据进行翻译<br/>支持多种模式: `映射翻译` `直接翻译` `其他扩展条件翻译` 接口化两步即可完成自定义扩展 内置多种翻译实现                   | 无                                                                                  |
+| 多数据源框架      | 采用 dynamic-datasource 支持市面大部分数据库<br/>通过yml配置即可动态管理异构不同种类的数据库 也可通过前端页面添加数据源<br/>支持spel表达式从请求头参数等条件切换数据源            | 基于 druid 手动编写代码配置数据源 配置繁琐 支持性差                                                     |
+| 多数据源事务      | 采用 dynamic-datasource 支持多数据源不同种类的数据库事务回滚                                                                          | 不支持                                                                                |
+| 数据库连接池      | 采用 HikariCP Spring官方内置连接池 配置简单 以性能与稳定性闻名天下                                                                        | 采用 druid bug众多 社区维护差 活跃度低 配置众多繁琐性能一般                                               |
+| 数据库主键       | 采用 雪花ID 基于时间戳的 有序增长 唯一ID 再也不用为分库分表 数据合并主键冲突重复而发愁                                                                  | 采用 数据库自增ID 支持数据量有限 不支持多数据源主键唯一                                                     |
+| WebSocket协议 | 基于 Spring 封装的 WebSocket 协议 扩展了Token鉴权与分布式会话同步 不再只是基于单机的废物                                                         | 无                                                                                  |
+| SSE推送       | 采用 Spring SSE 实现 扩展了Token鉴权与分布式会话同步                                                                               | 无                                                                                  |
+| 序列化         | 采用 Jackson Spring官方内置序列化 靠谱!!!                                                                                    | 采用 fastjson bugjson 远近闻名                                                           | 
+| 分布式幂等       | 参考美团GTIS防重系统简化实现(细节可看文档)                                                                                          | 手动编写注解基于aop实现                                                                      |
+| 分布式锁        | 采用 Lock4j 底层基于 Redisson                                                                                           | 无                                                                                  |
+| 分布式任务调度     | 采用 SnailJob 天生支持分布式 统一的管理中心 支持多种数据库 支持分片重试DAG任务流等                                                                 | 采用 Quartz 基于数据库锁性能差 集群需要做很多配置与改造                                                   | 
+| 文件存储        | 采用 Minio、RustFS 分布式文件存储 天生支持多机、多硬盘、多分片、多副本存储<br/>支持权限管理 安全可靠 文件可加密存储                                              | 采用 本机文件存储 文件裸漏 易丢失泄漏 不支持集群有单点效应                                                    |
+| 云存储         | 采用 AWS S3 协议客户端 支持 七牛、阿里、腾讯 等一切支持S3协议的厂家                                                                          | 不支持                                                                                |
+| 短信          | 采用 sms4j 短信融合包 支持数十种短信厂家 只需在yml配置好厂家密钥即可使用 可多厂家共用                                                                 | 不支持                                                                                |
+| 邮件          | 采用 mail-api 通用协议支持大部分邮件厂商                                                                                         | 不支持                                                                                |
+| 接口文档        | 采用 SpringDoc、javadoc 无注解零入侵基于java注释<br/>只需把注释写好 无需再写一大堆的文档注解了                                                     | 采用 Springfox 已停止维护 需要编写大量的注解来支持文档生成                                                | 
+| 校验框架        | 采用 Validation 支持注解与工具类校验 注解支持国际化                                                                                  | 仅支持注解 且注解不支持国际化                                                                    |
+| Excel框架     | 采用 Apache Fesod(原Alibaba EasyExcel) 基于插件化<br/>框架对其增加了很多功能 例如 自动合并相同内容 自动排列布局 字典翻译等                                | 基于 POI 手写实现 功能有限 复杂 扩展性差                                                           |
+| 工作流支持       | 采用 WarmFlow 支持各种复杂审批 转办 委派 加减签 会签 或签 票签 等功能                                                                       | 无                                                                                  |
+| 工具类框架       | 采用 Hutool、Lombok 上百种工具覆盖90%的使用需求 基于注解自动生成 get set 等简化框架大量代码                                                       | 手写工具稳定性差易出问题 工具数量有限 代码臃肿需自己手写 get set 等                                            | 
+| 监控框架        | 采用 SpringBoot-Admin 基于SpringBoot官方 actuator 探针机制<br/>实时监控服务状态 框架还为其扩展了在线日志查看监控                                    | 无                                                                                  | 
+| 链路追踪        | 采用 Apache SkyWalking 还在为请求不知道去哪了 到哪出了问题而烦恼吗<br/>用了它即可实时查看请求经过的每一处每一个节点                                            | 无                                                                                  |
+| 代码生成器       | 只需设计好表结构 一键生成所有crud代码与页面<br/>降低80%的开发量 把精力都投入到业务设计上<br/>框架为其适配MP、SpringDoc规范化代码 同时支持动态多数据源代码生成                    | 代码生成原生结构 只支持单数据源生成                                                                 |
+| 部署方式        | 支持 Docker 编排 一键搭建所有环境 让开发人员从此不再为搭建环境而烦恼                                                                           | 原生jar部署 其他环境需手动下载安装 自行搭建                                                           | 
+| 项目路径修改      | 提供详细的修改方案文档 并为其做了一些改动 非常简单即可修改成自己想要的                                                                              | 需要做很多改造 文档说明有限                                                                     |
+| 国际化         | 基于请求头动态返回不同语种的文本内容 开发难度低 有对应的工具类 支持大部分注解内容国际化                                                                     | 只提供基础功能 其他需自行编写扩展                                                                  |
+| 代码单例测试      | 提供单例测试 使用方式编写方法与maven多环境单测插件                                                                                      | 只提供基础功能 其他需自行编写扩展                                                                  |
+| Demo案例      | 提供框架功能的实际使用案例 单独一个模块提供了很多很全                                                                                       | 无                                                                                  |
 
-在本地环境提供一次性的 `HERON_DEMO_PASSWORD`（10–128 位，无内置默认值），然后使用两个终端：
+## 本框架与RuoYi的业务差异
 
-```bash
-# 终端 1：完整 API 路由，数据库使用内存 PGlite
-PORT=3101 pnpm api:dev:pglite
-# 终端 2：Vite，仅代理到上述开发 API
-HERON_DEV_API_URL=http://127.0.0.1:3101 pnpm web:dev
-```
+| 业务     | 功能说明                                                                 | 本框架 | RuoYi            |
+|--------|----------------------------------------------------------------------|-----|------------------|
+| 客户端管理  | 系统内对接的所有客户端管理 如: pc端、小程序端等<br>支持动态授权登录方式 如: 短信登录、密码登录等 支持动态控制token时效 | 支持  | 无                |
+| 用户管理   | 用户的管理配置 如:新增用户、分配用户所属部门、角色、岗位等                                       | 支持  | 支持               |
+| 部门管理   | 配置系统组织机构（公司、部门、小组） 树结构展现支持数据权限                                       | 支持  | 支持               |
+| 岗位管理   | 配置系统用户所属担任职务                                                         | 支持  | 支持               |
+| 菜单管理   | 配置系统菜单、操作权限、按钮权限标识等                                                  | 支持  | 支持               |
+| 角色管理   | 角色菜单权限分配、设置角色按机构进行数据范围权限划分                                           | 支持  | 支持               |
+| 字典管理   | 对系统中经常使用的一些较为固定的数据进行维护                                               | 支持  | 支持               |
+| 参数管理   | 对系统动态配置常用参数                                                          | 支持  | 支持               |
+| 通知公告   | 系统通知公告信息发布维护                                                         | 支持  | 支持               |
+| 操作日志   | 系统正常操作日志记录和查询 系统异常信息日志记录和查询                                          | 支持  | 支持               |
+| 登录日志   | 系统登录日志记录查询包含登录异常                                                     | 支持  | 支持               |
+| 文件管理   | 系统文件展示、上传、下载、删除等管理                                                   | 支持  | 无                |
+| 文件配置管理 | 系统文件上传、下载所需要的配置信息动态添加、修改、删除等管理                                       | 支持  | 无                |
+| 在线用户管理 | 已登录系统的在线用户信息监控与强制踢出操作                                                | 支持  | 支持               |
+| 定时任务   | 运行报表、任务管理(添加、修改、删除)、日志管理、执行器管理等                                      | 支持  | 仅支持任务与日志管理       |
+| 代码生成   | 多数据源前后端代码的生成（java、html、xml、sql）支持CRUD下载                              | 支持  | 仅支持单数据源          |
+| 系统接口   | 根据业务代码自动生成相关的api接口文档                                                 | 支持  | 支持               |
+| 服务监控   | 监视集群系统CPU、内存、磁盘、堆栈、在线日志、Spring相关配置等                                  | 支持  | 仅支持单机CPU、内存、磁盘监控 |
+| 缓存监控   | 对系统的缓存信息查询，命令统计等。                                                    | 支持  | 支持               |
+| 使用案例   | 系统的一些功能案例                                                            | 支持  | 不支持              |
 
-演示工作空间标识为 `default`，账号为 `owner@example.com`、`reviewer@example.com`、`viewer@example.com`；独立平台账号的用户名为 `platform`。密码均使用你显式提供的演示密码。重启 API 后数据清空；此方式不启动 worker，也不进行真实发布。环境加载逻辑仍与普通开发相同，演示环境不要使用生产密钥。
+## 参考文档
 
-### 前端与控制台
+使用框架前请仔细阅读文档重点注意事项
+<br>
+>[初始化项目 必看](https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/init)
+>> [https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/init](https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/init)
+>
+>[专栏与视频 入门必看](https://plus-doc.dromara.org/#/common/column)
+>> [https://plus-doc.dromara.org/#/common/column](https://plus-doc.dromara.org/#/common/column)
+>
+>[部署项目 必看](https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/deploy)
+>> [https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/deploy](https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/deploy)
+>
+>[如何加群](https://plus-doc.dromara.org/#/common/add_group)
+>> [https://plus-doc.dromara.org/#/common/add_group](https://plus-doc.dromara.org/#/common/add_group)
+>
+>[参考文档 Wiki](https://plus-doc.dromara.org)
+>> [https://plus-doc.dromara.org](https://plus-doc.dromara.org)
 
-只有 **一个 Vue 前端应用、一套登录与会话、一套管理布局**。参考 plus-ui 的用户信息与权限路由模式，服务端返回当前账号的 `roles`、`permissions` 和 `menus`；前端只从本地组件白名单注册允许的页面，侧栏和快捷导航共用这份菜单。
+## 软件架构图
 
-| 入口     | 功能                                                                                         |
-| -------- | -------------------------------------------------------------------------------------------- |
-| 工作空间 | 概览、候选、生产、审片、发布记录、成片库、成员、权限、数据源配置、设置、用量、审计、个人安全 |
-| 平台运营 | 概览、租户开通/停用/恢复、全局用量、平台审计、服务健康                                       |
+![Plus部署架构图](https://foruda.gitee.com/images/1678981882624240692/ae2a3f3e_1766278.png "Plus部署架构图.png")
 
-成员管理只对工作空间所有者开放，数据源、设置和审计要求管理员及以上。页面可见性与操作权限分别控制：例如只读成员可看审片队列，但不能确认。平台账号不因此获得租户内容操作权限；服务端仍独立鉴权并执行 RLS，隐藏菜单不替代安全检查。
+## 如何参与贡献
 
-视频版式在 `apps/web/src/entries/` 单独构建，不是第三套管理后台。
+[参与贡献的方式 https://plus-doc.dromara.org/#/common/contribution](https://plus-doc.dromara.org/#/common/contribution)
 
-- 顶栏支持明亮、深色、跟随系统三种配色；偏好保存在当前浏览器，不存储任何登录凭证。
-- `Ctrl+K` / `⌘K` 打开快捷导航，按页面名称、分组或路径搜索；方向键选择，Enter 进入，Esc 关闭。快捷导航只显示当前账号获准访问的页面。
-- 表格、抽屉和审片工作台适配窄屏；动画尊重系统的减少动态效果设置。
-- 用量统计不是账单，健康检查不是外部发布服务的可用性证明。启用的数据源由 worker 每 30 秒按各自间隔采集，也可以在同一页点「立即采集」；失败原因留在数据源的「上次尝试」列，不静默。
+## 捐献作者
 
-## 命令
+作者为兼职做开源,平时还需要工作,如果帮到了您可以请作者吃个盒饭  
+<img src="https://foruda.gitee.com/images/1678975784848381069/d8661ed9_1766278.png" width="300px" height="450px" />
+<img src="https://foruda.gitee.com/images/1678975801230205215/6f96229d_1766278.png" width="300px" height="450px" />
 
-| 命令                           | 作用                                                                                  |
-| ------------------------------ | ------------------------------------------------------------------------------------- |
-| `pnpm check`                   | 出口判据：`format:check → lint → typecheck → test`，四步全绿才算过                    |
-| `pnpm typecheck`               | 七个包各自 `tsc -p`，web 走 `vue-tsc`                                                 |
-| `pnpm lint` / `lint:fix`       | ESLint 10 flat config，带类型感知；`reference/` 不扫                                  |
-| `pnpm format` / `format:check` | Prettier，`docs/` 不动（规格书的排版是手排的）                                        |
-| `pnpm test`                    | vitest：domain 判定 + db 约束 + api 会话 + worker 流水线（review 停/人确认/发布幂等） |
-| `pnpm web:build`               | 两次 vite 构建：应用与版式包分开出                                                    |
-| `pnpm db:seed-owner`           | 建第一个租户与 owner（幂等；已存在的账号不改口令）                                    |
-| `pnpm db:seed-platform`        | 创建独立平台管理员（显式密码；不修改已有账号）                                        |
-| `pnpm p0`                      | P0 出口判据：空 capability 也能跑完一条假任务                                         |
-| `pnpm api:dev:pglite`          | 浏览器验证用开发台：真 API 路由 + 内存 pglite（需 `HERON_DEMO_PASSWORD`；重启即清空） |
+## 演示图例
 
-## 进程与目录
-
-只有两个进程，分界是故障隔离不是微服务：Chromium / ffmpeg 崩溃不应带走 API。
-
-```
-apps/api/         NestJS：REST + SSE 进度 + 托管 web/dist；按域分目录（auth / tasks / review / manage /
-                  platform / gates / settings / events / health / tools），dev 下是 pglite 开发台
-apps/worker/      单 worker：领租约 → 写稿 / 截图 / 合成 / 发布；到 review 放租约等人，确认后接着跑
-apps/web/         Vite + Vue 3 + Tailwind 4 + Element Plus；pages/console 与 pages/platform 是两套台，
-                  entries/demo 是版式 SFC 的独立入口
-packages/contracts/  zod 契约：DTO + 十态状态机 + 判定类型（前后端同一份）
-packages/domain/     五道闸纯函数与状态机规则（闸只有这一份实现，api 与 worker 都读它）
-packages/db/         Postgres + Drizzle + RLS（`@heron/db/pg`）；包根只剩路径、时间、指纹、设置键
-packages/redis/      连接与探针；BullMQ 派发与登录失败计数，不配 Redis 就退回轮询
-capabilities/news/   这一个 capability 的 manifest：pipeline、闸名与写稿提示词键已声明，layouts 还空着
-Dockerfile           单阶段镜像，api 与 worker 共用；apps/web/dist 在镜像里
-deploy/              docker-compose.yml（db + redis + api + worker）
-```
-
-## 状态机与五道闸
-
-```
-candidate → claimed → scripting → factcheck → rendering → review → approved → publishing → published
-                                                                    ↘ failed(带原因)
-```
-
-`factcheck`、`review` 是**闸**不是步骤。闸挂在转移上：去重（`norm_key`）、契约、视觉几何、
-合规三件套（mp4 元数据 `AIGC` + 声明「内容由AI生成」）、人工确认。
-
-`capabilities/news` 声明了写稿提示词后，`scripting` 会真调模型并把稿子写进 `scripts`，
-`factcheck → rendering` 的契约闸判这张稿子：缺稿、字段形状不对、title 与屏句重复都会拒，并写明哪条、哪段。
-与版式有关的几条契约（字号、填幅、领句位几何）要等 layouts 落地才能判，现在不冒充已实现。
-
-**当前门禁位：视觉与合规两道闸的尺子还在 harness-factory，`GET /api/gates` 报 `open:false`，界面的「发布」按钮必须置灰。**
-worker 里这两道仍是显式占位放行，台账会写明「占位放行：尺子还在 harness-factory」；人的闸不在 worker 里，
-只能由确认动作（`confirmByHuman`）产出，worker 领不到 review 阶段的任务。
-
-## 数据
-
-只有一条数据面：**Postgres + Drizzle + RLS**（`@heron/db/pg`）。租户业务通过 `withTenant` 的
-`SET LOCAL ROLE heron_app` + `set_config('app.tenant_id', …)` 隔离；平台管理、身份引导和跨租户调度使用
-受控的特权仓储入口，不向客户端开放任意 SQL 或任意租户绕过能力。包根（`@heron/db`）只保留路径、时间、
-指纹与设置键，不 import 驱动也不开库。
-
-成片与诊断产物在 `${HERON_HOME:-data}/videos/<task-id>/`（DB 只存路径与指纹）。worker 每小时按各租户
-`video_retention_days` 清理过期目录；渲染失败留下 `.keep` 的目录不清，只清「最后一版渲染也已过期」的任务。
-渲染行不删——发布单指着它，审计仍要回答当时发的是哪一版。所有 `*_at` 列一律 UTC ISO-8601 带 `Z`，
-由 `packages/db/src/time.ts` 单点写入。
-表名与列的设计依据见 stack-v2 §7。
-
-`.env` 由 `packages/db/src/home.ts` 读取（api 与 worker 共用同一处路径计算）；
-真环境变量优先于文件。两个进程都读 `DATABASE_URL`（没配就拒绝启动，不给默认值），
-api 另读 `HERON_JWT_SECRET`（没配或短于 32 字符同样拒绝启动）与 `HERON_COOKIE_SECURE`，
-worker 读 `HERON_MODEL_BASE_URL` / `HERON_MODEL_API_KEY` / `HERON_MODEL_NAME`（默认地址指向七牛云），
-但「工作空间设置 → 写稿模型」里按租户配的优先：地址与模型名以页面为准，密钥页面留空则用环境变量那把。
-换任何 OpenAI 兼容服务都只改这三项，不碰代码；缺模型名时只有写稿那一步报错，不影响进程启动。
-
-## 部署
-
-```bash
-cp .env.example .env                                                  # 必填 POSTGRES_PASSWORD 与 HERON_JWT_SECRET
-docker compose -f deploy/docker-compose.yml --env-file .env build
-docker compose -f deploy/docker-compose.yml --env-file .env up -d
-pnpm db:seed-owner                                                    # 在宿主跑：走 .env 里那条 127.0.0.1:5432
-```
-
-`--env-file .env` 不能省：compose 只在 compose 文件所在目录找 `.env`，而仓库的那份在根上。
-
-- 四个服务：`db`（postgres:18-alpine，命名卷 `pg_data`）、`redis`（redis:8-alpine，AOF 开、卷 `redis_data`）、
-  `api`、`worker`。**api 与 worker 同一个镜像**（`Dockerfile` 单阶段，只是入口命令不同）——拆开就得把
-  `packages/*` 发成 npm 包。
-- `api` 顺带静态托管 `apps/web/dist`，所以不需要 nginx 才能看界面。
-- 端口只绑回环（`127.0.0.1:3000`、`127.0.0.1:5432`、`127.0.0.1:6379`；`REDIS_PORT` 可改，这台机器用
-  6380 避开另一个项目的 redis）；要公网访问是你自己改 compose，不是默认。
-- `heron_data` 卷被 api 与 worker 共享：成片要能被 api 直接读出来给前端。
-- `worker` 等 `api` 的 healthcheck 通过才启动（`depends_on: service_healthy`）：迁移由 api 独占，
-  worker 连上太早只会报 relation 不存在；它自己也有 `waitForSchema` 兜底。
-- 会话是 cookie 里的 JWT（`HttpOnly` + `SameSite=Lax` + `Path=/`，故意不带 Expires），口令用 node 内置
-  scrypt 校验；`HERON_COOKIE_SECURE=1` 才是 `Secure`，因为默认这台机器是 `http://127.0.0.1` 上自己用。
-  安全头走 Nest 12 原生 `useSecurityHeaders()`，**CSP 目前只 report-only**（摘掉之前先按 T9 的违例清单收紧）。
-- pg 主版本钉在 18 是硬要求：测试用的 pglite 实测报 `PostgreSQL 18.6`，对齐才叫测的就是生产行为。
-- **当前状态**：compose 已在 WSL2（Ubuntu-22.04）的 Docker 28.5.1 + compose 2.40.0 上真跑过
-  `build` / `up -d`：db 与 api healthy、worker 启动即领任务、`GET /api/health` 报 `PostgreSQL 18.6`，
-  真 HTTP 登录与 `/api/auth/me` 往返通过；`heron_data` 卷属主是 `node`。镜像里没有 ffmpeg 与 Chromium，
-  P4 接真渲染时才补进 base；反向代理、TLS 与备份随计划 2/3 补。
-- 容器内 api 绑 `0.0.0.0`（compose 注入 `HOST`），对外仍由 `ports: 127.0.0.1` 收口；
-  容器内绑回环会让宿主的端口映射收到空响应，而容器自己的 healthcheck 还是绿的。
-- 多租户改造前留下的 SQLite 开发库用 `pnpm db:import-sqlite` 一次性导入：目标租户必须没有业务行，
-  成功后旧库改名为 `<source>.pre-multi-tenant`（不删，便于对账）；合成 actor 不可登录。
-
-### 自动构建与发版（阿里云 ACR）
-
-镜像仓库 `registry.cn-shanghai.aliyuncs.com/heron-docker/heron`（ACR 个人版，cn-shanghai）。
-链路是 **push → ACR 云端构建 → 宿主 cron 拉取重建**，人只在第一次动手：
-
-ACR 的构建**必须开「海外构建」**：内地节点 `git clone github.com` 稳定失败
-（实测 `Empty reply from server` / `Encountered end of file`，5s 与 90s 各断一次），换地域也一样；
-开了海外构建，同一个仓库 clone 只要 1s。
-
-1. 控制台（一次性，只有账号能做）：仓库「访问凭证」里设一个**固定密码**（不是阿里云登录密码）。
-   构建规则按分支产出 tag（`main`→`latest`、`dev`→`dev`，内置 `tags:release-v$version`→版本号），
-   构建上下文目录 `/`（仓库根，就是 `/Dockerfile`；控制台不接受 `.`）、Dockerfile 文件名 `Dockerfile`；
-   「触发器」里打开「代码变更自动构建」，并确认构建走**海外**节点。
-2. 宿主（一次性）：`docker login registry.cn-shanghai.aliyuncs.com`——凭据落 `~/.docker/config.json`，cron 才拿得到。
-3. 部署 `.env` 加一行：`HERON_IMAGE=registry.cn-shanghai.aliyuncs.com/heron-docker/heron:latest`。
-   是**连字符** `heron-docker`，不是控制台弹窗里显示的下划线 `heron_docker`——后者 pull 会报
-   `repository does not exist`（实测）。
-4. cron 每 5 分钟跑一次 `deploy/pull-latest.sh`：
-
-```
-*/5 * * * * HERON_DEPLOY_DIR=/docker/heron PATH=/usr/local/bin:/usr/bin:/bin bash /docker/heron/src/deploy/pull-latest.sh >> /docker/heron/data/pull-latest.log 2>&1
-```
-
-cron 不继承登录 shell 的 PATH，所以写死一份：这台机器上 `docker` 恰好落在默认的 `/usr/bin`，
-不写也能跑，但换台机器（docker 在 `/usr/local/bin`）就是每 5 分钟积一条失败日志。
-
-- compose 里镜像写成 `${HERON_IMAGE:-heron:local}`：设了就是只拉不建，没设还是本地 build——
-  **不接仓库的自部署者照样起**，ACR 因此是加速器不是前提（与 Redis 同一条规矩）。
-- `dev` 是日常开发分支，`main` 才是发版线：ACR 不跑测试，推上去就构建、构建完就被拉走，
-  所以 `main` 只接住过了 `pnpm check` 的提交。想把这台机器切成开发线，把 `HERON_IMAGE` 换成 `:dev`。
-- 发版是「换容器」不是「原地更新」：新容器起不来，旧的一直服务到它起来为止。回滚就是把 `HERON_IMAGE`
-  改回上一个版本号（`latest` 本身只有一个，改它等于没有回滚），版本号靠打 tag 产出：
-  `git tag release-v0.1.0 && git push --tags` → 内置规则出 `:0.1.0`。
-- 个人版构建超时 30 分钟，实测冷构建 **1 分 31 秒**（`--no-cache` 跑仓库根的 `Dockerfile`），离上限很远。
-  `.npmrc` 没配国内源，`pnpm install` 走 registry.npmjs.org；真嫌慢就加
-  `registry=https://registry.npmmirror.com` 一行——lockfile 只存 integrity、不存 tarball 地址，换源不用重生成它。
-- 拉取失败时**不要**顺手 `docker compose up -d`：服务里有 `build:`，`up` 会退到本地构建并把仓库地址
-  打上 tag，于是「跑的是仓库里的哪一版」这件事就再也问不出来了。`pull` 自己不会 build（实测只留一句
-  `Warning: ... must be built from source by running: docker compose build api`），所以脚本里 `pull` 在
-  `up` 前面、拉不到就 `set -e` 退出（实测 `pull access denied ... or may require 'docker login'` → EXIT=1，
-  六个容器 uptime 不变）。
-
-## 安全边界（硬约束）
-
-- `reference/` 是 oracle：heron 代码不 import 它，构建不读它，CI 不跑它。
-- 会话只在同一个 HttpOnly cookie 里，响应体与 token 都不带口令哈希。一次会话只对应一个账号；租户与平台保留不同 JWT audience、账号记录及后端权限边界，不跨身份域合并。旧平台 cookie 不再用于认证。
-  守卫每次请求都复查启用状态与 `sessionVersion`。修改密码、角色、停用或退出会使旧会话失效，不依赖等待 JWT 到期。
-- 同源写请求校验 `Origin` 与服务端看到的协议/Host；反向代理必须保留 Host，公网部署必须配置 HTTPS 与安全 cookie。
-- 抖音登录态在 `~/.heron/state/douyin/`，仓库与 DB 都不存 cookie 本体；DB 只存路径 + sha256 指纹，
-  指纹不匹配就红，**绝不静默用一份来源不明的旧登录态去发东西**。
-- 模型密钥只走环境变量或在「工作空间设置」页按租户配置，调用集中在 `apps/worker/src/model.ts` 一个模块；
-  密钥进 settings 表（租户隔离、RLS 保护）但接口只回显「已配置」，审计台账与日志里都没有它。
-  落库的只有稿子与供应商返回的 token 用量（没返回就记空，不拿 0 充数）。
-- 数据源地址由租户管理员填写，worker 会去请求它：当前**不做**出口地址白名单/解析后 IP 校验。
-  单租户自部署可以接受；开放注册或对外提供多租户托管前，必须补上 SSRF 防护（拒绝内网与云元数据地址）。
-- 发布重试前必须先核实"是不是其实已经发出去了"（`publishes.verified_at`），回执丢失不等于没发出去。
-
-## 不做
-
-微服务（拆库不等于拆服务，仍是 api + worker 两个进程）· Next.js/Nuxt（会把前端与版式拆成两套世界观）·
-serverless（V8 isolate 没有子进程与 ffmpeg/Chromium）· 无人值守自动直发。
-
-翻过的案：Postgres、Docker、多租户原本都在这份否决名单里，2026-10-22 按「往 SaaS 主流形态做」重议后
-改为落地——决策、代价与顺序见 [docs/plans/2026-10-22-saas-multi-tenant-plan-1.md](docs/plans/2026-10-22-saas-multi-tenant-plan-1.md)。
-队列中间件（Redis + BullMQ）同批翻案，但只让它当派发：job 里只有一个 taskId，状态机、租约、尝试次数
-与闸痕全在 Postgres 的 tasks 表；REDIS_URL 不配时 worker 退回自己轮询，Redis 因此不是前提。
+|                                                                                            |                                                                                            |
+|--------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
+| ![输入图片说明](https://foruda.gitee.com/images/1780299033689126697/868ef1ea_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299052163404649/8d94165d_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299074949590692/27f5bfb5_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299108816841231/619a7c57_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299089818500856/862ba805_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299173744267947/95cb0cd3_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299193694706123/28257dc1_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299147525013883/ebcd9dfe_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299220007761523/dc7e27c9_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299235966983519/35b047e1_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299250884681522/e5731314_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299267028602229/230d5428_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299293149732467/19abcf6c_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299311267192779/e665c668_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299327888096947/283a177f_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299348897579356/caac864e_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299376680669014/452585fb_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299843158459866/ceebbb63_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299432356918392/07abdf6a_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299465584172180/a2b2be12_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299491233431530/d88bfa35_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299513358913413/f2f90032_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299527419238776/549cb852_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299553918371792/43bd3bff_1766278.png "屏幕截图") |
+| ![输入图片说明](https://foruda.gitee.com/images/1780299586662735625/1107a3ee_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299613342135530/526d7859_1766278.png "屏幕截图") |

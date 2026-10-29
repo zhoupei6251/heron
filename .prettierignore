@@ -1,9 +1,0 @@
-node_modules/
-dist/
-data/
-coverage/
-reference/
-harness-factory/
-pnpm-lock.yaml
-*.sqlite
-docs/
