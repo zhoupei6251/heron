@@ -121,7 +121,10 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
             if (kind.equals("mp4")) Files.write(file, realTestMp4());
             else if (kind.equals("contact_sheet")) {
                 BufferedImage image = new BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB);
-                image.setRGB(0, 0, (int) run.versionId());
+                // TYPE_INT_RGB 丢弃 alpha 字节，单像素只能带 24 位；按 4 位步长铺满 64 位版本号，指纹才不会撞车
+                for (int column = 0; column < 16; column++) {
+                    image.setRGB(column, 0, (int) ((run.versionId() >>> (4 * column)) & 0xFF) * 0x010101);
+                }
                 ImageIO.write(image, "png", file.toFile());
             } else Files.writeString(file, kind.equals("checks") ? checksJson() : kind.equals("script") ? scriptJson()
                 : kind.equals("subtitles") ? "1\n00:00:00,000 --> 00:00:01,000\n测试\n" : "{}");
