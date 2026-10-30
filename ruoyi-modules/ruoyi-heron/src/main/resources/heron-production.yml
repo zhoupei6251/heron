@@ -1,0 +1,17 @@
+heron:
+  production:
+    # 任务卷与产物同卷；相对路径以应用工作目录为基准
+    data-root: ./data
+    news-max-bytes: 209715200
+    prototype-max-bytes: 52428800
+    # 平台门禁未通过前保持关闭，只有受控 Linux 环境显式打开
+    worker-enabled: false
+    # 清理仅生成候选清单，不自动删除
+    cleanup-retention-days: 7
+    python: python3
+    node: node
+    ffmpeg: ffmpeg
+    ffprobe: ffprobe
+    zee-rp: zee-rp
+    # Axure RP9 空白模板未提供时原型线报告不可用
+    prototype-template: null

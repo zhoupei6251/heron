@@ -1,0 +1,92 @@
+-- N1 news business schema; UTC timestamps, no tenant or duplicate execution state.
+-- Apply once via the authorized migration process; never drop existing business data.
+CREATE TABLE heron_news_source (
+  source_id bigint NOT NULL,
+  name varchar(100) NOT NULL,
+  source_type varchar(12) NOT NULL,
+  url varchar(2048) NOT NULL,
+  interval_seconds int NOT NULL,
+  enabled char(1) NOT NULL DEFAULT '0',
+  last_attempt_at datetime(3) NULL,
+  last_success_at datetime(3) NULL,
+  next_fetch_at datetime(3) NULL,
+  fetch_token char(36) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  fetch_lease_until datetime(3) NULL,
+  failure_count int NOT NULL DEFAULT 0,
+  error_code varchar(64) NULL,
+  error_reason varchar(2000) NULL,
+  create_dept bigint NULL, create_by bigint NULL, create_time datetime(3) NOT NULL,
+  update_by bigint NULL, update_time datetime(3) NOT NULL,
+  PRIMARY KEY (source_id),
+  KEY ix_news_source_due (enabled,next_fetch_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE heron_news_candidate (
+  candidate_id bigint NOT NULL,
+  title varchar(200) NOT NULL,
+  summary text NOT NULL,
+  evidence json NOT NULL,
+  dedup_key char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  normalized_title varchar(200) NOT NULL,
+  hit_count bigint NOT NULL DEFAULT 1,
+  heat_score bigint NOT NULL DEFAULT 1,
+  best_rank int NULL,
+  first_seen_at datetime(3) NOT NULL,
+  last_seen_at datetime(3) NOT NULL,
+  claimed_by bigint NULL,
+  claimed_at datetime(3) NULL,
+  active_task_id bigint NULL,
+  published_at datetime(3) NULL COMMENT 'Read-only reserved publication fact; N1 never writes this field',
+  create_dept bigint NULL, create_by bigint NULL, create_time datetime(3) NOT NULL,
+  update_by bigint NULL, update_time datetime(3) NOT NULL,
+  PRIMARY KEY (candidate_id),
+  UNIQUE KEY uk_news_candidate_dedup (dedup_key),
+  KEY ix_news_candidate_seen (last_seen_at,candidate_id),
+  KEY ix_news_candidate_claim (claimed_by,last_seen_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE heron_news_work (
+  work_id bigint NOT NULL,
+  candidate_id bigint NOT NULL,
+  owner_id bigint NOT NULL,
+  title varchar(200) NOT NULL,
+  draft text NOT NULL,
+  revision bigint NOT NULL DEFAULT 1,
+  template_key varchar(80) NOT NULL,
+  voice_key varchar(80) NOT NULL,
+  next_version int NOT NULL DEFAULT 1,
+  current_version_id bigint NULL,
+  active_task_id bigint NULL,
+  create_dept bigint NULL, create_by bigint NULL, create_time datetime(3) NOT NULL,
+  update_by bigint NULL, update_time datetime(3) NOT NULL,
+  PRIMARY KEY (work_id),
+  UNIQUE KEY uk_news_work_candidate (candidate_id),
+  KEY ix_news_work_owner (owner_id,update_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE heron_video_version (
+  version_id bigint NOT NULL,
+  work_id bigint NOT NULL,
+  owner_id bigint NOT NULL,
+  version_no int NOT NULL,
+  task_id bigint NOT NULL,
+  input_snapshot json NOT NULL,
+  script json NULL,
+  artifact_manifest json NULL,
+  checks json NULL,
+  duration_ms bigint NULL,
+  review_status varchar(12) NOT NULL DEFAULT 'pending',
+  review_by bigint NULL,
+  review_at datetime(3) NULL,
+  review_reason varchar(1000) NULL,
+  review_contact_sha char(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  review_video_sha char(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  cleanup_started_at datetime(3) NULL,
+  cleaned_at datetime(3) NULL,
+  create_dept bigint NULL, create_by bigint NULL, create_time datetime(3) NOT NULL,
+  update_by bigint NULL, update_time datetime(3) NOT NULL,
+  PRIMARY KEY (version_id),
+  UNIQUE KEY uk_video_version_no (work_id,version_no),
+  UNIQUE KEY uk_video_version_task (task_id),
+  KEY ix_video_version_review (owner_id,review_status,create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
