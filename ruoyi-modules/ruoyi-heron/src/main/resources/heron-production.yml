@@ -15,3 +15,8 @@ heron:
     zee-rp: zee-rp
     # Axure RP9 空白模板未提供时原型线报告不可用
     prototype-template: null
+  news:
+    # 采集白名单只接受部署侧精确主机名；空清单表示不开放任何网络来源
+    allowed-hosts: []
+    # 来源逐条人工核对与安全验证通过前保持关闭
+    collection-enabled: false

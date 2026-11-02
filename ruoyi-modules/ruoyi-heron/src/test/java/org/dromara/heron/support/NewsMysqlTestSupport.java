@@ -70,7 +70,9 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         grantPermissions(actor, "heron:newsCandidate:manual", "heron:newsCandidate:claim",
             "heron:newsCandidate:list", "heron:newsCandidate:query", "heron:newsWork:list",
             "heron:newsWork:query", "heron:newsWork:edit", "heron:newsWork:generate",
-            "heron:newsWork:review", "heron:newsWork:reviewPreview", "heron:newsWork:download");
+            "heron:newsWork:review", "heron:newsWork:reviewPreview", "heron:newsWork:download",
+            "heron:newsSource:list", "heron:newsSource:query", "heron:newsSource:add",
+            "heron:newsSource:edit", "heron:newsSource:remove", "heron:newsSource:fetch");
     }
 
     protected void allowProduction() {

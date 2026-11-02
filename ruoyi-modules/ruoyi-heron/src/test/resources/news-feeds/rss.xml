@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>测试频道</title>
+    <item>
+      <title>某地 发布 新规</title>
+      <link>https://feed.example.test/a1?utm_source=rss&amp;keep=1</link>
+      <guid>feed-a1</guid>
+      <description>自述条款第一条，数字锚点 12.5。</description>
+    </item>
+    <item>
+      <title>某地发布新规 12.5 条</title>
+      <link>https://feed.example.test/a2</link>
+      <guid>feed-a2</guid>
+      <description>同一话题但数字不同，必须保持独立候选。</description>
+    </item>
+  </channel>
+</rss>

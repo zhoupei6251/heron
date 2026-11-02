@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>测试订阅</title>
+  <entry>
+    <title>某地发布新规！</title>
+    <link href="https://other.example.test/b1?fbclid=xyz"/>
+    <id>atom-b1</id>
+    <updated>2026-10-30T00:00:00Z</updated>
+    <summary>与 RSS 首条同一话题，仅标点不同。</summary>
+  </entry>
+  <entry>
+    <title>　</title>
+    <link href="https://other.example.test/b2"/>
+    <id>atom-b2</id>
+    <summary>标题为空，必须被拒绝而不是写入。</summary>
+  </entry>
+</feed>

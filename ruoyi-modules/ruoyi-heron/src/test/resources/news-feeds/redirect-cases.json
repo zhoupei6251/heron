@@ -1,0 +1,58 @@
+[
+  {
+    "name": "公开到公开，允许两跳",
+    "hops": ["https://feed.example.test/rss", "https://feed.example.test/feed2"],
+    "expect": "ok"
+  },
+  {
+    "name": "转向云元数据在出网前拒绝",
+    "hops": ["https://feed.example.test/rss", "http://127.0.0.1/latest/meta-data/"],
+    "expect": "news_source_blocked"
+  },
+  {
+    "name": "转向内网段在出网前拒绝",
+    "hops": ["https://feed.example.test/rss", "http://10.0.0.5/feed"],
+    "expect": "news_source_blocked"
+  },
+  {
+    "name": "转向共享地址段云元数据被拒绝",
+    "hops": ["https://feed.example.test/rss", "http://100.100.100.100/latest/meta-data/"],
+    "expect": "news_source_blocked"
+  },
+  {
+    "name": "IPv4 映射 IPv6 环回被拒绝",
+    "hops": ["https://feed.example.test/rss", "http://[::ffff:127.0.0.1]/latest/meta-data/"],
+    "expect": "news_source_blocked"
+  },
+  {
+    "name": "站点本地 IPv6 唯一本地地址被拒绝",
+    "hops": ["https://feed.example.test/rss", "http://[fc00::1]/feed"],
+    "expect": "news_source_blocked"
+  },
+  {
+    "name": "HTTPS 降级为 HTTP 被拒绝",
+    "hops": ["https://feed.example.test/rss", "http://feed.example.test/plain"],
+    "expect": "news_source_scheme"
+  },
+  {
+    "name": "跳出白名单被拒绝",
+    "hops": ["https://feed.example.test/rss", "https://evil.example.test/feed"],
+    "expect": "news_source_host"
+  },
+  {
+    "name": "非 80/443 端口被拒绝",
+    "hops": ["https://feed.example.test:8443/rss"],
+    "expect": "news_source_port"
+  },
+  {
+    "name": "带 userinfo 的地址被拒绝",
+    "hops": ["https://user:pass@feed.example.test/rss"],
+    "expect": "news_source_url"
+  },
+  {
+    "name": "第四跳被拒绝",
+    "hops": ["https://feed.example.test/rss", "https://feed.example.test/h1", "https://feed.example.test/h2",
+      "https://feed.example.test/h3", "https://feed.example.test/h4"],
+    "expect": "news_source_redirect_limit"
+  }
+]

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE rss [
+  <!ENTITY secret SYSTEM "http://127.0.0.1.1/latest/meta-data/">
+]>
+<rss version="2.0">
+  <channel>
+    <title>恶意频道</title>
+    <item>
+      <title>标题包含 &secret;</title>
+      <link>https://feed.example.test/evil</link>
+      <guid>evil-1</guid>
+      <description>若外部实体被解析，标题里会出现被引用的内容。</description>
+    </item>
+  </channel>
+</rss>

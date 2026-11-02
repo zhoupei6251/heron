@@ -23,17 +23,13 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
-import tools.jackson.databind.JsonNode;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.text.Normalizer;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.regex.Pattern;
 
 /** 新闻短事务：lane → candidate → work → task → version。清理标记分事务持久化。 */
 @Slf4j
@@ -41,7 +37,6 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class NewsWorkServiceImpl implements INewsWorkService {
     private static final ProductionBizType TYPE = ProductionBizType.news_video;
-    private static final Pattern NUMBERS = Pattern.compile("[0-9]+(?:[.][0-9]+)?");
     private final HeronNewsCandidateMapper candidateMapper;
     private final HeronNewsWorkMapper workMapper;
     private final HeronVideoVersionMapper versionMapper;
@@ -85,7 +80,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         text(bo.getSummary(), 16000, "摘要");
         String title = bo.getTitle().strip();
         String summary = bo.getSummary().replace("\r\n", "\n").replace('\r', '\n').strip();
-        String normalized = normalizedTitle(title);
+        String normalized = NewsDedup.normalizedTitle(title);
         if (normalized.isEmpty() || normalized.length() > 200) throw invalid("规范化标题为空或过长");
         String key = DigestUtil.sha256Hex(normalized);
         String contentHash = DigestUtil.sha256Hex(normalized + "\n" + summary);
@@ -96,7 +91,8 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             var recent = candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
                 .ge(HeronNewsCandidate::getLastSeenAt, now().minusHours(48))
                 .orderByDesc(HeronNewsCandidate::getLastSeenAt, HeronNewsCandidate::getCandidateId).last("LIMIT 5000").build());
-            candidate = recent.stream().filter(c -> sameNews(normalized, c.getNormalizedTitle())).findFirst().orElse(null);
+            candidate = recent.stream().filter(c -> NewsDedup.sameNews(normalized, c.getNormalizedTitle()))
+                .findFirst().orElse(null);
         }
         Map<String, Object> evidence = new LinkedHashMap<>();
         evidence.put("sourceId", null);
@@ -126,25 +122,13 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             if (candidateMapper.insert(candidate) != 1) throw conflict("candidate_write", "候选保存失败");
         } else {
             candidate = candidateMapper.lockById(candidate.getCandidateId());
-            JsonNode stored = JsonUtils.getJsonMapper().readTree(candidate.getEvidence());
-            List<Map<String, Object>> items = new ArrayList<>();
-            boolean repeated = false;
-            for (JsonNode item : stored.path("items")) {
-                if (contentHash.equals(item.path("contentSha256").asText()) && item.path("manual").asBoolean()) repeated = true;
-                items.add(new LinkedHashMap<>(JsonUtils.parseMap(JsonUtils.toJsonString(item))));
-            }
-            boolean truncated = stored.path("evidenceTruncated").asBoolean();
-            if (!repeated) items.add(evidence);
-            while (items.size() > 100 || JsonUtils.toJsonString(items).getBytes(StandardCharsets.UTF_8).length > 240 * 1024) {
-                // Preserve the first and newest evidence, discard intermediate entries only.
-                if (items.size() <= 2) throw invalid("来源证据过大");
-                items.remove(1);
-                truncated = true;
-            }
-            candidateMapper.lambda().set(HeronNewsCandidate::getEvidence,
-                    JsonUtils.toJsonString(Map.of("items", items, "evidenceTruncated", truncated)))
-                .set(HeronNewsCandidate::getHitCount, repeated ? candidate.getHitCount() : Math.addExact(candidate.getHitCount(), 1L))
-                .set(HeronNewsCandidate::getHeatScore, repeated ? candidate.getHeatScore() : Math.addExact(candidate.getHeatScore(), 1L))
+            var merged = NewsDedup.merge(candidate.getEvidence(), evidence,
+                (stored, incoming) -> contentHash.equals(stored.get("contentSha256")) && Boolean.TRUE.equals(stored.get("manual")));
+            candidateMapper.lambda().set(HeronNewsCandidate::getEvidence, merged.evidence())
+                .set(HeronNewsCandidate::getHitCount,
+                    merged.repeated() ? candidate.getHitCount() : Math.addExact(candidate.getHitCount(), 1L))
+                .set(HeronNewsCandidate::getHeatScore,
+                    merged.repeated() ? candidate.getHeatScore() : Math.addExact(candidate.getHeatScore(), 1L))
                 .set(HeronNewsCandidate::getLastSeenAt, now()).set(HeronNewsCandidate::getUpdateBy, access.requireActor())
                 .set(HeronNewsCandidate::getUpdateTime, now()).eq(HeronNewsCandidate::getCandidateId, candidate.getCandidateId()).update();
         }
@@ -468,28 +452,4 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private HeronBusinessException invalid(String message) { return new HeronBusinessException(400, "news_invalid_input", message); }
     private HeronBusinessException conflict(String code, String message) { return new HeronBusinessException(409, "news_" + code, message); }
 
-    private String normalizedTitle(String title) {
-        // Numeric punctuation is an anchor: stripping 1.2 into 12 would merge different facts.
-        return Normalizer.normalize(title, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT)
-            .replaceAll("[\\p{Z}\\s]+", "")
-            .replaceAll("(?<![0-9])[\\p{P}]|[\\p{P}](?![0-9])", "");
-    }
-    private boolean sameNews(String left, String right) {
-        if (left.equals(right)) return true;
-        if (left.codePointCount(0, left.length()) < 6 || right.codePointCount(0, right.length()) < 6
-            || !anchors(left).equals(anchors(right))) return false;
-        Set<String> a = trigrams(left), b = trigrams(right);
-        Set<String> intersection = new HashSet<>(a);
-        intersection.retainAll(b);
-        Set<String> union = new HashSet<>(a);
-        union.addAll(b);
-        return !union.isEmpty() && (double) intersection.size() / union.size() >= 0.88;
-    }
-    private Set<String> anchors(String title) { return new HashSet<>(NUMBERS.matcher(title).results().map(match -> match.group()).toList()); }
-    private Set<String> trigrams(String title) {
-        int[] points = title.codePoints().toArray();
-        Set<String> result = new HashSet<>();
-        for (int i = 0; i <= points.length - 3; i++) result.add(new String(points, i, 3));
-        return result;
-    }
 }
