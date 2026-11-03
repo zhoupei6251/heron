@@ -14,8 +14,14 @@ heron:
     ffprobe: ffprobe
     # zee-rp 引擎根目录（内含 scripts/proto.mjs），不是可执行文件名；部署侧覆盖为镜像内绝对路径
     zee-rp: zee-rp
+    # hyperframes 以 node <入口.mjs> 调用；未配置时能力检查报 tool_missing:hyperframes
+    hyperframes: null
+    # 监护脚本只在 Linux 生效；Windows 开发机必须显式设 false，不做平台自动探测
+    guard-enabled: true
     # Axure RP9 空白模板未提供时原型线报告不可用
     prototype-template: null
+    # 新闻 composition 模板目录（不进 Git，部署侧放只读卷）；缺失时能力检查报 template_missing
+    news-template: ./data/templates/news-9x16
   prototype:
     # 原生闸比对基准；本产品只有 RP9（zee-rp 两个后端都出不了 RP11，见需求文档 §4.1），留空则永远判不过
     target-axure-version: Axure RP 9
@@ -26,3 +32,5 @@ heron:
     allowed-hosts: []
     # 来源逐条人工核对与安全验证通过前保持关闭
     collection-enabled: false
+    # 模板、渲染器、字体与音色都锁定后才注册新闻流水线 bean
+    pipeline-enabled: false

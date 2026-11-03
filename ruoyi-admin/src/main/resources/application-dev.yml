@@ -102,7 +102,7 @@ spring:
           driverClassName: com.mysql.cj.jdbc.Driver
           # jdbc 所有参数配置参考 https://lionli.blog.csdn.net/article/details/122018562
           # rewriteBatchedStatements=true 批处理优化 大幅提升批量插入更新删除性能(对数据库有性能损耗 使用批量操作应考虑性能问题)
-          url: jdbc:mysql://localhost:3306/heron?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8&autoReconnect=true&rewriteBatchedStatements=true&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true
+          url: jdbc:mysql://localhost:3307/heron?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8&autoReconnect=true&rewriteBatchedStatements=true&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true
           username: root
           password: heron!2026
 #        # 从库数据源
@@ -153,7 +153,7 @@ spring.data:
     # 地址
     host: localhost
     # 端口，默认为6379
-    port: 6379
+    port: 6380
     # 数据库索引
     database: 0
     # redis 密码必须配置
@@ -323,3 +323,17 @@ justauth:
       client-id: 10**********6
       client-secret: 1f7d08**********5b7**********29e
       redirect-uri: ${justauth.address}/social-callback?source=gitea
+
+--- # Heron 本机开发覆盖（Windows 直跑渲染，见 docs/plans/2026-11-03-heron-implementation-design.md §4）
+heron:
+  production:
+    # PATH 上没有 python3.exe；监护脚本只在 Linux 生效，开发机显式关闭而不是自动降级
+    python: python
+    guard-enabled: false
+    hyperframes: D:/zhoupei/heron/heron/data/tools/node_modules/hyperframes/bin/hyperframes.mjs
+    news-template: D:/zhoupei/heron/heron/data/templates/news-9x16
+    worker-enabled: true
+  news:
+    pipeline-enabled: true
+    # 模板、字体与音色清单的实算哈希；改模板后必须同步这一行，否则 assets 闸判不一致
+    production-assets: '{"templateKey":"news-9x16","templateVersion":"1","fontSha256":"2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b","voiceKey":"zh-CN-XiaoxiaoNeural","voiceVersion":"1","assetManifestSha256":"4100ca23bb3c8c34c45abfe4435bdb73c632624b04600bf4892a7b9add150bfd"}'

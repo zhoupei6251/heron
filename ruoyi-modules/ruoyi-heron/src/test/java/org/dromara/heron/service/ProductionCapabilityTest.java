@@ -42,6 +42,10 @@ class ProductionCapabilityTest {
         Files.createDirectories(tempDir.resolve("zee-rp").resolve("scripts"));
         Files.createFile(tempDir.resolve("zee-rp").resolve("scripts").resolve("proto.mjs"));
         properties.setZeeRp(tempDir.resolve("zee-rp").toString());
+        Files.createFile(tempDir.resolve("hyperframes.mjs"));
+        properties.setHyperframes(tempDir.resolve("hyperframes.mjs").toString());
+        Files.createDirectories(tempDir.resolve("templates").resolve("news-9x16"));
+        properties.setNewsTemplate(tempDir.resolve("templates").resolve("news-9x16"));
         context = new GenericApplicationContext();
         context.registerBean("newsProductionPipeline", IProductionPipeline.class,
             () -> run -> null);
@@ -58,6 +62,21 @@ class ProductionCapabilityTest {
         assertTrue(news.available());
         assertTrue(news.reasons().isEmpty());
         assertEquals(1, news.capacity());
+    }
+
+    @Test
+    @DisplayName("缺渲染器入口或新闻模板目录时报具体原因，而不是运行期才炸")
+    void newsReportsMissingRendererAndTemplate() {
+        properties.setHyperframes(null);
+        properties.setNewsTemplate(tempDir.resolve("absent-template"));
+
+        ProductionCapabilitiesVo.Capability news =
+            new ProductionCapabilityService(context, properties).getCapabilities().news();
+
+        assertFalse(news.configured());
+        assertFalse(news.available());
+        assertTrue(news.reasons().contains("tool_missing:hyperframes"), news.reasons().toString());
+        assertTrue(news.reasons().contains("template_missing"), news.reasons().toString());
     }
 
     @Test

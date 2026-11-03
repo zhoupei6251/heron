@@ -27,7 +27,8 @@ public class ProductionCapabilityService {
 
     public ProductionCapabilitiesVo getCapabilities() {
         return new ProductionCapabilitiesVo(
-            capability("newsProductionPipeline", List.of("node", "ffmpeg", "ffprobe"), null, 1),
+            capability("newsProductionPipeline", List.of("node", "python", "ffmpeg", "ffprobe", "hyperframes"),
+                properties.getNewsTemplate(), 1),
             capability("prototypeProductionPipeline", List.of("python", "zee-rp"),
                 properties.getPrototypeTemplate(), ProductionServiceImpl.PROTOTYPE_CAPACITY));
     }
@@ -46,8 +47,8 @@ public class ProductionCapabilityService {
                 reasons.add("tool_missing:" + tool);
             }
         }
-        boolean templateRequired = pipelineBean.startsWith("prototype");
-        if (templateRequired && (template == null || !Files.isRegularFile(template))) {
+        // 两条线都从锁定模板渲染：原型是一个 .rp 文件，新闻是一个 composition 目录。
+        if (template == null || !Files.exists(template)) {
             reasons.add("template_missing");
         }
         boolean configured = reasons.stream().noneMatch(reason ->
@@ -66,10 +67,14 @@ public class ProductionCapabilityService {
             case "ffmpeg" -> properties.getFfmpeg();
             case "ffprobe" -> properties.getFfprobe();
             case "python" -> properties.getPython();
+            case "hyperframes" -> properties.getHyperframes();
             default -> properties.getZeeRp();
         };
+        if (configured == null || configured.isBlank()) {
+            return false;
+        }
         Path path = Path.of(configured);
-        // 引擎只作 oracle，调用形态固定为 node <root>/scripts/proto.mjs，所以按引擎根判定。
+        // 引擎与渲染器都只作 oracle，调用形态固定为 node <入口>，所以按入口文件所在根判定。
         if ("zee-rp".equals(tool)) {
             return Files.isRegularFile(path.resolve("scripts").resolve("proto.mjs"));
         }

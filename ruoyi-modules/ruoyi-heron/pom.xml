@@ -13,7 +13,7 @@
     <description>Heron 业务模块</description>
 
     <properties>
-        <heron.test.excludedGroups>exclude,mysql</heron.test.excludedGroups>
+        <heron.test.excludedGroups>exclude,mysql,render</heron.test.excludedGroups>
     </properties>
 
     <dependencies>

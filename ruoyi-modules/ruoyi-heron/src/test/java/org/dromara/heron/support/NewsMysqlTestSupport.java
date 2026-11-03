@@ -61,6 +61,10 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         properties.setNode(java);
         properties.setFfmpeg(java);
         properties.setFfprobe(java);
+        // 新闻线现在要求渲染器入口与模板目录在场，测试上下文同样只满足能力检查，不真的起进程。
+        properties.setPython(java);
+        properties.setHyperframes(java);
+        properties.setNewsTemplate(Files.createTempDirectory("heron_it_template_"));
         grantNews(OWNER);
         grantNews(OTHER);
         loginAs(OWNER);

@@ -37,7 +37,7 @@ public class ProductionProcessService {
     private static final int MAX_OUTPUT_BYTES = 1024 * 1024;
     private static final int MAX_ARGUMENTS = 64;
     private static final int MAX_ARGUMENT_LENGTH = 2048;
-    private static final int MAX_TIMEOUT_SECONDS = 240;
+    private static final int MAX_TIMEOUT_SECONDS = 600;
     private static final int STOP_GRACE_SECONDS = 10;
     private static final int MAX_ENV_VALUE_LENGTH = 4096;
     private static final Pattern ENV_NAME = Pattern.compile("[A-Z][A-Z0-9_]{0,63}");
@@ -61,15 +61,22 @@ public class ProductionProcessService {
 
     public ProductionProcessVo run(ProductionRunVo run, ProductionProcessBo command) {
         int timeoutSeconds = validate(run, command);
+        boolean guarded = properties.isGuardEnabled();
         Path work = artifacts.prepareWorkDirectory(run);
         Path identity = work.resolve("guard-identity.json");
-        List<String> argv = new ArrayList<>(List.of(
-            properties.getPython(),
-            guardScript().toString(),
-            "--timeout", Integer.toString(timeoutSeconds),
-            "--identity", identity.toString(),
-            "--",
-            toolPath(command.tool())));
+        List<String> argv = new ArrayList<>();
+        if (guarded) {
+            argv.addAll(List.of(
+                properties.getPython(),
+                guardScript().toString(),
+                "--timeout", Integer.toString(timeoutSeconds),
+                "--identity", identity.toString(),
+                "--",
+                toolPath(command.tool())));
+        } else {
+            // shortcut: 绕过监护脚本只用于 Windows 开发机，失去内存/CPU/文件 rlimit 与进程组终止，也失去终止确认能力。
+            argv.add(toolPath(command.tool()));
+        }
         argv.addAll(command.arguments() == null ? List.of() : command.arguments());
 
         Process process;
@@ -80,7 +87,7 @@ public class ProductionProcessService {
         } catch (IOException e) {
             throw new HeronBusinessException(503, "production_guard_unavailable", "受控执行不可用");
         }
-        if (!persistIdentity(run, identity)) {
+        if (guarded && !persistIdentity(run, identity)) {
             terminate(process);
             throw new HeronBusinessException(503, "production_identity_unavailable", "执行身份不可用");
         }
@@ -118,7 +125,7 @@ public class ProductionProcessService {
         }
 
         int exitCode = process.exitValue();
-        Map<String, Object> result = identityResult(identity);
+        Map<String, Object> result = guarded ? identityResult(identity) : null;
         if (result != null) {
             exitCode = number(result.get("exitCode"), exitCode);
             timedOut = timedOut || Boolean.TRUE.equals(result.get("timedOut"));

@@ -1,0 +1,32 @@
+# Heron 本机开发专用隔离栈：与 admin 上已在跑的 mysql / redis 完全分开，只换端口与容器名。
+# 口令沿用仓库里已明文的开发口令 heron!2026，不引入新密钥；这两个容器只服务本机开发。
+services:
+  mysql:
+    image: mysql:8.0.42
+    container_name: heron-dev-mysql
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: heron!2026
+      MYSQL_DATABASE: heron
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      - --explicit_defaults_for_timestamp=true
+      - --lower_case_table_names=1
+      - --default-authentication-plugin=mysql_native_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - heron-dev-mysql-data:/var/lib/mysql
+
+  redis:
+    image: redis:7.2.8
+    container_name: heron-dev-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "heron!2026", "--appendonly", "no"]
+    ports:
+      - "6380:6379"
+
+volumes:
+  heron-dev-mysql-data:

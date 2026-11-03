@@ -32,5 +32,12 @@ public class HeronProductionProperties {
 
     private String zeeRp = "zee-rp";
 
+    private String hyperframes;
+
+    /** Windows 开发机上 Linux 监护脚本跑不起来，只能显式关掉；关掉就没有 rlimit 三项，不做平台自动探测。 */
+    private boolean guardEnabled = true;
+
     private Path prototypeTemplate;
+
+    private Path newsTemplate;
 }

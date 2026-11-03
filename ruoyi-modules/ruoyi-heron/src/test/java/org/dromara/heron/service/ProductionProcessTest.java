@@ -54,7 +54,7 @@ class ProductionProcessTest {
         HeronBusinessException arguments = assertThrows(HeronBusinessException.class, () ->
             service.run(run, new ProductionProcessBo("node", List.of("a\nb"), null, null)));
         HeronBusinessException timeout = assertThrows(HeronBusinessException.class, () ->
-            service.run(run, new ProductionProcessBo("node", List.of("x"), null, Duration.ofSeconds(300))));
+            service.run(run, new ProductionProcessBo("node", List.of("x"), null, Duration.ofSeconds(700))));
 
         assertEquals("production_invalid_tool", tool.getCode());
         assertEquals("production_invalid_arguments", arguments.getCode());
@@ -146,6 +146,30 @@ class ProductionProcessTest {
                 Duration.ofSeconds(20))));
 
         assertEquals("production_output_limit", error.getCode());
+    }
+
+    /** 绕过监护脚本是显式开关而不是平台自动探测，所以这条路径必须本机就能跑，不能只靠 Linux 用例。 */
+    @Test
+    @DisplayName("关闭监护时直接起子进程，仍保留超时与输出上限")
+    void runsChildWithoutGuard() {
+        HeronProductionProperties properties = new HeronProductionProperties();
+        properties.setDataRoot(tempDir);
+        properties.setGuardEnabled(false);
+        // 用测试自己的 JVM 当假工具：任何平台都有，且不依赖 node 在不在 PATH 上。
+        properties.setNode(Path.of(System.getProperty("java.home"), "bin",
+            System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java").toString());
+        ProductionProcessService unguarded = new ProductionProcessService(properties,
+            new ProductionArtifactService(properties));
+
+        ProductionRunVo run = run();
+        ProductionProcessVo result = unguarded.run(run, new ProductionProcessBo(
+            "node", List.of("-version"), null, Duration.ofSeconds(60)));
+
+        assertEquals(0, result.exitCode());
+        assertFalse(result.timedOut());
+        assertTrue(result.stdout().contains("version") || result.stderr().contains("version"));
+        assertFalse(java.nio.file.Files.exists(artifacts.prepareWorkDirectory(run).resolve("guard-identity.json")),
+            "关闭监护时不落运行身份");
     }
 
     private ProductionRunVo run() {

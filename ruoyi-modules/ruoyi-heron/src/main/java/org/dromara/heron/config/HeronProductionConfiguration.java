@@ -2,7 +2,9 @@ package org.dromara.heron.config;
 
 import org.dromara.common.core.factory.YmlPropertySourceFactory;
 import org.dromara.heron.service.IProductionExecutionService;
+import org.dromara.heron.service.NewsScriptAuthor;
 import org.dromara.heron.service.ProtoRp1Author;
+import org.dromara.heron.service.impl.NewsProductionPipeline;
 import org.dromara.heron.service.impl.ProtoProductionPipeline;
 import org.dromara.heron.service.impl.ProductionArtifactService;
 import org.dromara.heron.service.impl.ProductionProcessService;
@@ -49,5 +51,17 @@ public class HeronProductionConfiguration {
                                                               ProductionArtifactService artifacts,
                                                               HeronProductionProperties properties) {
         return new ProtoProductionPipeline(author, processes, artifacts, properties);
+    }
+
+    /**
+     * 新闻流水线同理：bean 名由 ProductionRunner 与 ProductionRecoveryService 双向硬编码，改名等于没注册。
+     */
+    @Bean("newsProductionPipeline")
+    @ConditionalOnProperty(prefix = "heron.news", name = "pipeline-enabled", havingValue = "true")
+    public NewsProductionPipeline newsProductionPipeline(NewsScriptAuthor author,
+                                                         ProductionProcessService processes,
+                                                         ProductionArtifactService artifacts,
+                                                         HeronProductionProperties properties) {
+        return new NewsProductionPipeline(author, processes, artifacts, properties);
     }
 }

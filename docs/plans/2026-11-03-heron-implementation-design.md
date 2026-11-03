@@ -45,7 +45,11 @@
 | F11 | §4.2 Windows 绕 guard 的代价 | 补一条：`stopAndConfirm()` 在非 POSIX 平台第一步就 `return false`（`File.separatorChar != '/'`），Windows 上**终止无法确认**，恢复流程只能等租约超时 | `ProductionProcessService.java:164-166` |
 | F12 | §4.1 「`npx --no-install` 解析到 0.9.6」 | 当时是**报错**：`npx canceled due to missing packages`，hyperframes 本机没装。npm 上存在 0.9.6，但「已装」是假的。当前激活 Node 20.9.0，nvm 里有 22.20.0 / 24.22.1 / 26.8.2 | 本机实测 |
 | F13 | §3.2 步 1 失败类 `model` | 真实 token：`503 model_not_configured`、`503 model_failed`、`409 news_script_source`、`409 news_script_contract`（`author()` 返回 **JSON String**，不是对象） | `NewsScriptAuthor.java:10`、`NewsModelScriptAuthor.java:43,56` |
-| F14 | §3.2/§3.6 音频如何进成片 | 原文没写。成片要有 1 路音频（验收 2），必须：模板内固定 `<audio src="narration.mp3">`（带作者态 fallback src，否则 lint `media_variable_src_no_fallback`），流水线把 TTS 产物落成同名文件 | `hyperframes-core/references/variables-and-media.md` |
+| F14 | §3.2/§3.6 音频如何进成片 | 原文没写。成片要有 1 路音频（验收 2），必须：模板内固定 `<audio src="narration.mp3">`（带作者态 fallback src，否则 lint `media_variable_src_no_fallback`），流水线把 TTS 产物落成同名文件。**已实测走通**：样片 ffprobe 回 `h264 1080x1920@30 + aac` | `hyperframes-core/references/variables-and-media.md`、本机 render 样片 |
+| F15 | §3.2 步 9 / §3.7 `ffmpeg -i in -c copy -metadata AIGC=…` | mp4 容器**默认不写用户元数据**：同一份样片不加 flag 时 `format_tags` 里根本没有 AIGC（只有 major_brand/encoder 等），加上 `-movflags +use_metadata_tags` 才回 `TAG:AIGC=内容由 AI 生成`。原形状会「命令退出 0、闸却永远判不过」——所以步 9 的判定必须读回 ffprobe，不能只看退出码 | 本机同文件两次 ffmpeg/ffprobe 对比 |
+| F16 | §3.5 `visual` 闸用 `check --strict` | `--strict` 把 warning 也判失败，而模板自检就有 14 条 warning：3 条 `line_unread`（600 字正文 7 秒读不完，是契约的算术后果）+ 10 条「拆子工程/轨道太密」的 Studio 风格建议。版式闸改为判 `errors==0` 且 `contrast/runtime/motion` 三段为空，warning 只计数 | 本机 `check --json` 实测输出 |
+| F17 | §3.4「未用槽位填空串，模板隐藏」 | 只靠 `scene_count` 隐藏**不够**：`check` 不带变量跑（F2），用的是模板默认 `scene_count=6`，未用槽位仍带旧时点挂在同一条轨道上，与已用槽位时间重叠 → `content_overlap` 判失败，真渲染第一次就死在这里。补丁必须把未用槽位一并挪到时间轴末尾（`data-start=总长`、`data-duration=0.01`） | `NewsProductionPipelineRenderTest` 首跑失败原文 |
+| F18 | §3.5 `measured.checkFindings` 之类的计数 | `check --json` 每一段是对象 `{ok, errorCount, warningCount, infoCount, findings:[…]}`，**不是数组**。按 findings 遍历去数 severity 会把 `errorCount` 等数字字段也算进去（真跑数出 38 条 error 而 `ok=true`）。计数一律用 CLI 自己的 `errorCount/warningCount` | 第二次真跑 `版式闸未过：errors=38 blankFrames=0` 与 `ok=true` 自相矛盾 |
 
 ---
 
@@ -203,7 +207,7 @@ public NewsProductionPipeline newsProductionPipeline(...)
 | `schema` | `NewsScriptContract.violations(script)` 为空 | `script` | `{violations: 0}` | 退回写稿，条目进 `error_reason` |
 | `evidence` | 出处三字段存在（`source_url`/`fetched_at`/`body_sha256`，且哈希为完整 SHA-256） | `script.source_url` | `{sourceUrl: true, fetchedAt: true, bodySha: true}` | 失败，指出缺项 |
 | `audio` | edge-tts 退出 0 + ffprobe 音频时长 > 0 | `narration.mp3` | `{audioMs, voiceBytes}` | `audio` 失败，**无兜底** |
-| `subtitles` | VTT cue 非空且末条 `endMs` 覆盖音频时长（**cue 级**，E8） | `subs.vtt` | `{cues, coveredMs}` | `subtitles` 失败 |
+| `subtitles` | VTT 末条 cue 覆盖 **≥ 90%** 实测音频（真跑实测：52 s 音频末条 cue 落在 50.2 s，卡绝对差会误判） | `subs.vtt` | `{cues, coveredMs, audioMs}` | `subtitles` 失败 |
 | `render` | hyperframes 退出 0 + 产物非空 | `out.mp4` | `{exitCode, bytes}` | `render` 失败，现场进 `error_reason` |
 | `decode` | ffprobe 容器/尺寸/时长/fps/流数 | `final.mp4:stream.0` | `{durationMs, fps, videoStreams, audioStreams}` | `decode` 失败 |
 | `visual` | `check --json` 退出 0 且 `errors==0` 且 `contrast/runtime/motion` 为空 + 接触表采样帧非空白 | `composition/index.html` | `{checkErrors, checkWarnings, blankFrames}` | `visual` 失败 |
@@ -241,7 +245,7 @@ node <hyperframes-cli> check composition --json
 node <hyperframes-cli> render composition --variables-file vars.json --strict-variables
         --quality looks --workers 1 --no-best-effort --quiet --output out.mp4
 ffprobe -v error -show_format -show_streams out.mp4
-ffmpeg -i out.mp4 -c copy -metadata AIGC=内容由 AI 生成 final.mp4
+ffmpeg -i out.mp4 -c copy -movflags +use_metadata_tags -metadata AIGC=内容由 AI 生成 final.mp4
 ffmpeg -i final.mp4 -vf "select=...,scale=...,tile=3x2" -frames:v 1 contact.png
 ```
 
@@ -368,6 +372,7 @@ ffmpeg -i final.mp4 -vf "select=...,scale=...,tile=3x2" -frames:v 1 contact.png
 - `heron-production.yml`：新开关与 hyperframes 路径
 - `application-dev.yml`：`python: python`、`guard-enabled: false`、`pipeline-enabled`、`news.production-assets`
 - `script/sql/heron/005-model-config.sql`：模型三键 seed
+- `ruoyi-heron/pom.xml:16`：默认排除组由 `exclude,mysql` 扩为 `exclude,mysql,render` —— 真渲染测试要几分钟起 Chrome/ffmpeg，不挂在每次构建上。跑法：`mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude,mysql -Dtest=NewsProductionPipelineRenderTest`
 
 **模板（不进 Git）**
 - `data/templates/news-9x16/`：`index.html`、样式、字体、`*.motion.json`、`assets-manifest.json`（固定 `<audio src="narration.mp3">`，无初始化脚本）
@@ -378,6 +383,25 @@ ffmpeg -i final.mp4 -vf "select=...,scale=...,tile=3x2" -frames:v 1 contact.png
 **依赖（本轮实测待办）**
 - `nvm use 24.22.1`（Node 22+）、安装并钉版 hyperframes 到 `data/tools/`、Chromium（由 hyperframes 取）；edge-tts 7.3.1 已装、FFmpeg 已装
 - 不新增 Java/Maven 依赖
+
+### 6.1 M2 落地实况与设计条目的差异（实现后回填）
+
+| 设计条目 | 实际落地 | 原因 |
+|---|---|---|
+| 新增 `NewsTemplateVariables` / `NewsCompositionPatch` / `NewsAssetService` 三个类 | **只新增 1 个类** `NewsProductionPipeline`，映射与补丁是它的包级静态方法（`templateVariables`、`timeCompositionString`、`subtitleJson`） | 三个类都只被流水线调一次；原型线就是一个类装全部（`ProtoProductionPipeline` 191 行），照 house pattern 走 |
+| §3.4 变量表含 `scene{n}_seconds` | 取消。段落秒数只写进磁盘 HTML，不进变量 | 根时长编译期读一次（F1），发出去也没人读 |
+| §3.4 变量表含 `accent` | 不发。模板默认值 `#1b6c80` 生效，CSS 用 `var(--accent)` | 单一品牌色没有运行期变化，发它只多一个必对项 |
+| §3.1 能力检查「新闻工具清单加两项」 | 除清单外还改了 `resolvable()`（加 `case "hyperframes"` 并对 null 直接判不可用）与模板判据（由 `startsWith("prototype")` 改为两条线都要求模板在场） | 不改这两处，hyperframes 会被拿去探测 zee-rp 根目录、新闻模板缺失永远报不出来（F6/F7） |
+| §3.5 `visual` 闸用 `--strict` | 改为 `check --json` 判 `errors==0` 且 `contrast/runtime/motion` 为空，warning 只进 `measured.checkWarnings`（F16） | 模板自检固有 14 条 warning，挂 strict 等于永远红 |
+| §3.5 `aigc_metadata` 判定 | 额外强制**读回** `ffprobe format_tags=AIGC` 并逐字比对声明文本 | 不带 `+use_metadata_tags` 时 ffmpeg 退出 0 而标签根本没写（F15），只看退出码会放行无声明成片 |
+| §3.6 `subtitles` 产物 | 内容为 `[{text,startMs,endMs}]` 的 cue 列表（不是 `word`） | edge-tts CLI 只给整句 cue（E8/F3） |
+| §4.3 `worker-enabled` 到 N3 才打开 | dev yml 现在就置 `true` | 不打开就没有 `ProductionRunner` bean，M3 提交的任务永远不会被执行，N1 无法验 |
+| §7 M0 出口「一条 commit」 | 已提交 `de6822a6e`（63 文件）；前端固定键改动发生在其后，随 M2 一起走 | — |
+| §8 验收 9「checks 自证单测」 | **未做**：`validateChecks` 经 `JsonUtils` 静态初始化，脱离 Spring 就 `ExceptionInInitializerError`，纯单测借不到它 | 该契约改由 M3 真实跑（提交→完成全流程过 `complete()`）验证；不为它单独起一个 Spring 测试上下文 |
+
+新增单测覆盖：`NewsProductionPipelineTest`（映射确定性、时间轴缩放与末段余量、缺槽位即失败、cue 解析）、`ProductionProcessTest.runsChildWithoutGuard`（no-guard 分支在任意平台真起子进程且不落 `guard-identity.json`）、`ProductionCapabilityTest.newsReportsMissingRendererAndTemplate`（`tool_missing:hyperframes` + `template_missing`）；`rejectsInvalidCommandsBeforeStart` 的越界样本由 300 s 改 700 s（常量抬到 600 的连带改动）。
+
+M3 还缺的两件都不在代码里：`sys_config` 里 `heron.model.*` 的真实值（E3 由用户填），以及 `heron.news.allowed-hosts` 至少一个泛资讯域名（否则 `NewsSourceFetcher` 的地址闸直接拒绝抓取）。
 
 ---
 
@@ -418,14 +442,16 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 
 副作用要记：中途 `TaskStop` 只杀了 mvn，surefire 的 fork JVM（命令行里带 `surefirebooter-`）活着继续跑并占着库连接 —— 下一轮开跑前必须确认 `information_schema.INNODB_TRX` 与 `processlist WHERE db='heron_it_local'` 都为 0，否则又是一轮假故障。
 
-**本机可用入口（2026-11-03 实测跑通的那条）**：
+**本机可用入口（2026-11-03 起改为隔离栈）**：
 
-- MySQL 不在 Windows 上，跑在 WSL2 `Ubuntu-22.04` 的 docker 容器 `mysql`（`mysql:8.0.42`），Windows 经 IPNAT 走 `localhost:3306` 进得去。`zhoupei` 在 docker 组，`docker exec` 不需要 sudo。
-- **`root@'%'` 与 `root@'localhost'` 本来就存在**，之前从 Windows 连失败不是 host 授权，是容器 `MYSQL_ROOT_PASSWORD` 与 yml 里的 `heron!2026` 不一致。**2026-11-03 已按用户授权把容器 root 改回 `heron!2026`**（两条 host 一起改，`FLUSH PRIVILEGES`），改后从 Windows 侧 `127.0.0.1` 认证通过、`heron` 库 59 张表可见。真口令没有进 Git，`dev / prod / redis-local.conf` 三处仍一致。
-- 注意 Redis **不吃这个共用口令**：dev yml 的 `spring.data.redis.password` 是 `${REDIS_PASSWORD}` 占位（不是明文），而运行中的 `redis` 容器对 `heron!2026` 回 `WRONGPASS`。后端要起得来，必须在启动环境里把 `REDIS_PASSWORD` 设成该容器现役 requirepass；这属部署侧环境变量，不改仓库、不进 Git。别照「DB/Redis/超管共用一条口令」的旧假设推断。
-- 隔离库 `heron_it_local` 已存在（上一轮遗留 14 张表，harness 每次自己 `DROP` 再按 `001-production.sql` / `002-news.sql` / `003-prototype.sql` 重建）。
-- 口令正则要求 URL 形如 `jdbc:mysql://<host>/<heron_it_[a-z0-9_]+>(\?.*)?`，实测可用参数：`useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=GMT%2B8&zeroDateTimeBehavior=convertToNull&nullCatalogMeansCurrent=true`。
-- Redis 走 WSL 里的 `redis` 容器（`0.0.0.0:6379` 已发布到 Windows）；另有 `heron-ruoyi-redis-test` 只绑 WSL 内 `127.0.0.1:6381`。
+- **不要动用户正在跑的 `mysql` / `redis` 容器。** 那台 `mysql` 里同时有 `heron`、`ry_vue`、`xy_wh` 等无关库，`root@'%'` 是他多套工具共用的凭据；我曾按授权把它改成 yml 里的 `heron!2026`，随即发现打断了用户的其它连接并已回滚原值。**纪律：不改任何现有账号口令，不在别人的实例上建库。**
+- 替代做法：另起一套隔离开发栈 `script/docker/docker-compose.dev-isolated.yml`（容器 `heron-dev-mysql` / `heron-dev-redis`，端口 **3307 / 6380**，独立卷，口令沿用仓库里已明文的 `heron!2026`，不引入新密钥）。起法：`docker compose -f script/docker/docker-compose.dev-isolated.yml up -d`。
+- 该实例已灌入 `script/sql/ry_vue.sql` + `ry_ai.sql` + `heron/001–005`（57 张表、143 条菜单、6 条 `sys_config`），并另建空库 `heron_it_local` 供集成测试自举。
+- `application-dev.yml` 的 datasource 端口改 3307、redis 端口改 6380（DB 口令那行不动，仍是仓库里已有的明文）；跑后端只需 `REDIS_PASSWORD=heron!2026`。用户自己那套 3306/6379 与其中 `heron` 库**保持原样**（我曾往里应用过 001–004/005，新增 10 表 + 34 菜单 + 3 配置行，未删改任何既有对象）。
+- 集成测试 URL 必须匹配 `jdbc:mysql://<host>/<heron_it_[a-z0-9_]+>(\?.*)?`（`HeronMysqlTestSupport:41-45,178-180`），实测可用参数：`useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=GMT%2B8&zeroDateTimeBehavior=convertToNull&nullCatalogMeansCurrent=true`。harness 每类 `@BeforeEach` 自己 `DROP` 再按 001/002/003 重建，空库即可。
+- 中途 `TaskStop` 只杀 mvn，surefire 的 fork JVM（命令行含 `surefirebooter-`）会活着继续占库连接；下一轮开跑前先确认 `information_schema.INNODB_TRX` 与 `processlist WHERE db='heron_it_local'` 归零。
+
+
 
 ### 7.2 M0 实测结果（2026-11-03 本机）
 
@@ -446,6 +472,19 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 | 版本快照 | **已落** | `HeronProtoVersion.inputSnapshot`（:23）+ `ProtoVersionTransactionTest` |
 
 → 本轮原型线**没有需要补的功能**，P2 三项都在；需求文档 §7 的 P2 验收里「用量页有记录」按内嵌表口径验收。
+
+### 7.4 M1 / M2 出口实测（2026-11-03）
+
+| 判据 | 实测 |
+|---|---|
+| 模板过闸 | `lint` 0 error / 9 warning；`check --json` `ok=true`，`motion/contrast/runtime` 三段 `errorCount=0` |
+| 不经模型的完整链路 | `NewsProductionPipelineRenderTest`：固定稿件 → 真 `edge-tts` → `ffprobe` → 磁盘时间轴补丁 → `check` → `render` → decode → AIGC → 联络表 → 六类产物定稿，**121 s 通过** |
+| 成片实测 | `1080x1920`、`30 fps`、1 视频 + 1 音频、`duration=54.43 s`、`TAG:AIGC=内容由 AI 生成`、`TAG:hyperframes_version=0.9.6`（需求文档 §6「渲染版本进产物记录」由容器自带标签满足） |
+| 十道闸 measured | `audio{audioMs:54408,voiceBytes:326448}`、`subtitles{cues:10,coveredMs:50200,audioMs:54408}`、`decode{durationMs:54433,fps:30,videoStreams:1,audioStreams:1}`、`render{bytes:3328701,exitCode:0}`、`visual{checkErrors:0,checkWarnings:9,blankFrames:0}`、`aigc_visible{motionSamples:300,badgeAssertion:true}`、`assets` 三项 true、`schema{violations:0}`、`evidence` 三项 true、`aigc_metadata{aigcTag:true}` |
+| U5 渲染耗时 | 整条链路 121 s（含 TTS 与 check），**超出需求文档 §3.1「渲染 ≤60 秒」目标**；认领→可审仍在 5 分钟内。要么降 `--quality`/调 `--workers`，要么把 60 秒改成实测口径 —— 需用户定 |
+| 字幕覆盖 | 末条 cue 50.2 s ÷ 音频 54.4 s = 92.2%，按 ≥90% 判据通过 |
+
+测试产物落在被忽略的 `data/it-render/<uuid>/videos/10/v5/a1-<token>/`（六件齐全，可直接放给人工看片）。这不是任务产物路径，只是测试落点；真任务仍走 `ProductionArtifactService` 的 `videos/<workId>/v<versionId>/a<attempt>-<runToken>/`。
 
 ---
 
