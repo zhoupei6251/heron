@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -73,9 +74,21 @@ class ProductionArtifactTest {
     }
 
     @Test
+    @DisplayName("原型清单契约要求的下划线产物类型可定稿")
+    void finalizesUnderscoreKindsRequiredByManifest() throws IOException {
+        ProductionRunVo run = run(ProductionBizType.prototype);
+        Path work = service.prepareWorkDirectory(run);
+
+        for (String kind : List.of("native_rp", "engine_check", "page_preview", "preview_summary")) {
+            Path file = Files.writeString(work.resolve(kind + ".png"), "x");
+
+            service.verify(service.finalizeFile(run, kind, file, "image/png", 3L));
+        }
+    }
+
+    @Test
     @DisplayName("尝试目录外的文件不可定稿")
-    void rejectsFileOutsideAttemptDirectory() throws IOException {
-        ProductionRunVo run = run(ProductionBizType.news_video);
+    void rejectsFileOutsideAttemptDirectory() throws IOException {        ProductionRunVo run = run(ProductionBizType.news_video);
         service.prepareWorkDirectory(run);
         Path outside = Files.writeString(tempDir.resolve("escape.json"), "{}");
 

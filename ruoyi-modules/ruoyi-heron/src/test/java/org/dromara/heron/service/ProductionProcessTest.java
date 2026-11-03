@@ -19,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -68,6 +69,28 @@ class ProductionProcessTest {
                 tempDir.resolve("other"), Duration.ofSeconds(10))));
 
         assertEquals("production_invalid_workdir", error.getCode());
+    }
+
+    @Test
+    @DisplayName("环境变量名不合法时在启动前拒绝")
+    void rejectsInvalidEnvironmentBeforeStart() {
+        HeronBusinessException error = assertThrows(HeronBusinessException.class, () ->
+            service.run(run(), new ProductionProcessBo("node", List.of("x"), null, null,
+                Map.of("BAD NAME", "value"))));
+
+        assertEquals("production_invalid_environment", error.getCode());
+    }
+
+    @Test
+    @Tag("process")
+    @EnabledOnOs(OS.LINUX)
+    @DisplayName("Linux：环境变量透传到子进程")
+    void passesEnvironmentToChildOnLinux() {
+        ProductionProcessVo result = service.run(run(), new ProductionProcessBo("python",
+            List.of("-c", "import os;print(os.environ['HERON_PROBE'])"), null, Duration.ofSeconds(20),
+            Map.of("HERON_PROBE", "heron-env")));
+
+        assertEquals("heron-env", result.stdout().trim());
     }
 
     @Test

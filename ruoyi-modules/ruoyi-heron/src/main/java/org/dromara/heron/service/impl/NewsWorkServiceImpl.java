@@ -24,11 +24,14 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /** 新闻短事务：lane → candidate → work → task → version。清理标记分事务持久化。 */
@@ -259,6 +262,52 @@ public class NewsWorkServiceImpl implements INewsWorkService {
 
     @Override
     @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    public NewsVideoVersionVo publish(long workId, long versionId, NewsPublishBo bo) {
+        HeronVideoVersion version = lockVersion(workId, versionId, "publish");
+        if (bo == null || bo.publishedAt() == null || !sha(bo.videoSha256()) || !douyinUrl(bo.workUrl())) {
+            throw invalid("作品链接、发布时间或成片指纹不合法");
+        }
+        text(bo.account(), 120, "账号标识");
+        // datetime(3) 只留毫秒；先截断，回执重放才能与已存事实逐位相等
+        LocalDateTime publishedAt = bo.publishedAt().truncatedTo(ChronoUnit.MILLIS);
+        if (publishedAt.isAfter(now())) throw conflict("publish_time", "发布时间不能晚于当前时间");
+        List<ProductionArtifactVo> files = readyFiles(version);
+        ProductionArtifactVo video = byKind(files, "mp4"), contact = byKind(files, "contact_sheet");
+        if (!"approved".equals(version.getReviewStatus())
+            || !Objects.equals(version.getReviewVideoSha(), video.sha256())
+            || !Objects.equals(version.getReviewContactSha(), contact.sha256())) throw conflict("publish_unapproved", "需审核通过且确认指纹仍与成片一致");
+        if (!video.sha256().equals(bo.videoSha256())) throw conflict("publish_hash", "回执指纹与该版本成片不一致");
+        HeronNewsWork work = workMapper.selectById(version.getWorkId());
+        HeronNewsCandidate candidate = candidateMapper.selectById(work.getCandidateId());
+        if (candidate == null) throw new HeronAccessException();
+        if (version.getPublishAt() != null) {
+            if (Objects.equals(version.getPublishUrl(), bo.workUrl())
+                && Objects.equals(version.getPublishAccount(), bo.account().strip())
+                && Objects.equals(version.getPublishAt(), publishedAt)
+                && Objects.equals(version.getPublishVideoSha(), bo.videoSha256())) return versionView(version);
+            throw conflict("publish_conflict", "该版本已回填发布回执");
+        }
+        // 一个候选只有一条已发布事实；换版本重渲不能覆盖它，只能人工先处置
+        if (candidate.getPublishedAt() != null) throw conflict("publish_conflict", "该候选已有发布记录");
+        long actor = access.requireActor();
+        if (versionMapper.lambda().set(HeronVideoVersion::getPublishSource, "manual").set(HeronVideoVersion::getPublishUrl, bo.workUrl())
+            .set(HeronVideoVersion::getPublishAccount, bo.account().strip()).set(HeronVideoVersion::getPublishAt, publishedAt)
+            .set(HeronVideoVersion::getPublishBy, actor).set(HeronVideoVersion::getPublishVideoSha, bo.videoSha256())
+            .set(HeronVideoVersion::getUpdateBy, actor).set(HeronVideoVersion::getUpdateTime, now())
+            .eq(HeronVideoVersion::getVersionId, versionId).eq(HeronVideoVersion::getReviewStatus, "approved")
+            .isNull(HeronVideoVersion::getPublishAt).isNull(HeronVideoVersion::getCleanupStartedAt).updateCount() != 1) {
+            throw conflict("publish_conflict", "发布回执已变化");
+        }
+        if (candidateMapper.lambda().set(HeronNewsCandidate::getPublishedAt, publishedAt)
+            .set(HeronNewsCandidate::getUpdateBy, actor).set(HeronNewsCandidate::getUpdateTime, now())
+            .eq(HeronNewsCandidate::getCandidateId, work.getCandidateId()).isNull(HeronNewsCandidate::getPublishedAt).updateCount() != 1) {
+            throw conflict("publish_conflict", "候选发布状态已变化");
+        }
+        return versionView(versionMapper.selectById(versionId));
+    }
+
+    @Override
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
     public NewsFileVo preview(long workId, long versionId, String artifactId) {
         HeronVideoVersion version = lockVersion(workId, versionId, "reviewPreview");
         ProductionArtifactVo selected = byId(parseManifest(version), artifactId);
@@ -446,6 +495,19 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private void lockLane() { if (laneMapper.lockByType(TYPE) == null) throw new HeronBusinessException(503, "news_lane_missing", "新闻生产线未初始化"); }
     private LocalDateTime now() { return LocalDateTime.now(clocks.getIfAvailable(Clock::systemUTC)); }
     private boolean sha(String value) { return value != null && value.matches("[0-9a-f]{64}"); }
+    /** 只认 douyin.com 的 https 作品链接，拒绝任何可伪装成它的形状。 */
+    private boolean douyinUrl(String value) {
+        if (value == null || value.indexOf('\0') >= 0 || value.length() > 2048) return false;
+        try {
+            URI uri = new URI(value);
+            String host = uri.getHost();
+            return "https".equals(uri.getScheme()) && uri.getUserInfo() == null && uri.getPort() == -1
+                && host != null && (host.equals("douyin.com") || host.endsWith(".douyin.com"))
+                && uri.getPath() != null && uri.getPath().length() > 1;
+        } catch (URISyntaxException e) {
+            return false;
+        }
+    }
     private void text(String value, int max, String name) {
         if (value == null || value.isBlank() || value.length() > max || value.indexOf('\0') >= 0) throw invalid(name + "为空或超长");
     }

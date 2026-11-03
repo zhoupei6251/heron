@@ -41,6 +41,11 @@
             <groupId>org.dromara</groupId>
             <artifactId>ruoyi-common-ai</artifactId>
         </dependency>
+        <!-- 模型三项配置读基座参数表：只用 org.dromara.system.api.ConfigService 接口 -->
+        <dependency>
+            <groupId>org.dromara</groupId>
+            <artifactId>ruoyi-api</artifactId>
+        </dependency>
         <!-- 版本由 spring-boot-dependencies 管理，新闻来源只走受控 HTTP 客户端 -->
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>

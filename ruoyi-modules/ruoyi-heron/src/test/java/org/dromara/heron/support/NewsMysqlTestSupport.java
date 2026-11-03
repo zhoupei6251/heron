@@ -70,7 +70,7 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         grantPermissions(actor, "heron:newsCandidate:manual", "heron:newsCandidate:claim",
             "heron:newsCandidate:list", "heron:newsCandidate:query", "heron:newsWork:list",
             "heron:newsWork:query", "heron:newsWork:edit", "heron:newsWork:generate",
-            "heron:newsWork:review", "heron:newsWork:reviewPreview", "heron:newsWork:download",
+            "heron:newsWork:review", "heron:newsWork:reviewPreview", "heron:newsWork:download", "heron:newsWork:publish",
             "heron:newsSource:list", "heron:newsSource:query", "heron:newsSource:add",
             "heron:newsSource:edit", "heron:newsSource:remove", "heron:newsSource:fetch");
     }
@@ -137,8 +137,14 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         return files;
     }
 
+    /** 事务 fixture 用的合规稿件：出处三字段是假值，只证明契约闸在完整链路上生效。 */
     protected static String scriptJson() {
-        return JsonUtils.toJsonString(Map.of("title", "测试新闻", "scenes", List.of()));
+        return """
+            {"title":"测试新闻","closing":"结尾一句话","source_name":"测试来源",\
+            "source_url":"https://feed.example.test/news/1","fetched_at":"2026-11-02T10:00:00Z","body_sha256":"%s",\
+            "scenes":[{"lead":"领句一","body":"正文一","duration_s":15},\
+            {"lead":"领句二","body":"正文二","duration_s":15},\
+            {"lead":"领句三","body":"正文三","duration_s":15}]}""".formatted("a".repeat(64));
     }
 
     protected static String checksJson() {

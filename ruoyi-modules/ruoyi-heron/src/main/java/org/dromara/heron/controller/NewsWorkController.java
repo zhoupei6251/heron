@@ -54,6 +54,12 @@ public class NewsWorkController extends BaseController {
         return R.ok(news.review(id, versionId, bo));
     }
 
+    @Log(title = "人工发布回执", businessType = BusinessType.UPDATE, isSaveRequestData = false, isSaveResponseData = false)
+    @PostMapping("/{id}/versions/{versionId}/publish")
+    public R<NewsVideoVersionVo> publish(@PathVariable long id, @PathVariable long versionId, @RequestBody NewsPublishBo bo) {
+        return R.ok(news.publish(id, versionId, bo));
+    }
+
     @GetMapping("/{id}/versions/{versionId}/preview/{artifactId}")
     public void preview(@PathVariable long id, @PathVariable long versionId, @PathVariable String artifactId,
                         HttpServletResponse response) throws IOException {

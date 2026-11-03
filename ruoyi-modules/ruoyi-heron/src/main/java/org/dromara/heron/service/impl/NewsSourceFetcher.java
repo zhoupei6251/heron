@@ -1,5 +1,6 @@
 package org.dromara.heron.service.impl;
 
+import cn.hutool.crypto.digest.DigestUtil;
 import lombok.RequiredArgsConstructor;
 import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.domain.HeronBusinessException;
@@ -18,6 +19,8 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
@@ -33,6 +36,7 @@ public class NewsSourceFetcher {
     static final int MAX_RAW_BYTES = 1 << 20;
     static final int MAX_TEXT_BYTES = 2 << 20;
     static final int MAX_ITEMS = 200;
+    static final int ARTICLE_CODE_POINTS = 12_000;
     private static final int TITLE_CODE_POINTS = 80;
 
     private final NewsTransport transport;
@@ -47,6 +51,17 @@ public class NewsSourceFetcher {
             case "text" -> parseText(body);
             default -> throw new HeronBusinessException(400, "news_source_type", "未知的来源类型: " + source.getSourceType());
         };
+    }
+
+    /** 正文抓取沿用采集的白名单、逐跳解析与地址闸：失败就是失败，不换源、不退回标题、不猜正文。 */
+    public NewsArticleBody fetchArticle(URI url) {
+        URI target = NewsUrlPolicy.normalize(url.toString());
+        byte[] body = decode(request(target));
+        String html = new String(body, StandardCharsets.UTF_8);
+        int cut = html.length() <= ARTICLE_CODE_POINTS ? html.length() : html.offsetByCodePoints(0, ARTICLE_CODE_POINTS);
+        // shortcut: 哈希取整篇、喂模型的是截断前缀；正文噪声大到影响出稿时再引正文抽取库
+        return new NewsArticleBody(NewsUrlPolicy.canonical(target.toString()), LocalDateTime.now(ZoneOffset.UTC),
+            html.substring(0, cut), DigestUtil.sha256Hex(body));
     }
 
     private NewsTransport.Response request(URI start) {

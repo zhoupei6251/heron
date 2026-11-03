@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -38,6 +39,8 @@ public class ProductionProcessService {
     private static final int MAX_ARGUMENT_LENGTH = 2048;
     private static final int MAX_TIMEOUT_SECONDS = 240;
     private static final int STOP_GRACE_SECONDS = 10;
+    private static final int MAX_ENV_VALUE_LENGTH = 4096;
+    private static final Pattern ENV_NAME = Pattern.compile("[A-Z][A-Z0-9_]{0,63}");
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final HeronProductionProperties properties;
@@ -71,7 +74,9 @@ public class ProductionProcessService {
 
         Process process;
         try {
-            process = new ProcessBuilder(argv).directory(work.toFile()).start();
+            ProcessBuilder builder = new ProcessBuilder(argv).directory(work.toFile());
+            builder.environment().putAll(command.environment());
+            process = builder.start();
         } catch (IOException e) {
             throw new HeronBusinessException(503, "production_guard_unavailable", "受控执行不可用");
         }
@@ -256,6 +261,14 @@ public class ProductionProcessService {
         int timeout = command.timeout() == null ? MAX_TIMEOUT_SECONDS : (int) command.timeout().toSeconds();
         if (timeout < 1 || timeout > MAX_TIMEOUT_SECONDS) {
             throw new HeronBusinessException(400, "production_invalid_timeout", "超时不在允许范围");
+        }
+        for (Map.Entry<String, String> variable : command.environment().entrySet()) {
+            String value = variable.getValue();
+            if (variable.getKey() == null || !ENV_NAME.matcher(variable.getKey()).matches()
+                || value == null || value.length() > MAX_ENV_VALUE_LENGTH
+                || value.indexOf('\0') >= 0 || value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0) {
+                throw new HeronBusinessException(400, "production_invalid_environment", "环境变量不合法");
+            }
         }
         if (command.workDirectory() != null) {
             Path expected = artifacts.prepareWorkDirectory(run).toAbsolutePath().normalize();

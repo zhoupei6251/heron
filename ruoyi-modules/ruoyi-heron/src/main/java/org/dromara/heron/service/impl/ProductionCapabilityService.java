@@ -69,6 +69,10 @@ public class ProductionCapabilityService {
             default -> properties.getZeeRp();
         };
         Path path = Path.of(configured);
+        // 引擎只作 oracle，调用形态固定为 node <root>/scripts/proto.mjs，所以按引擎根判定。
+        if ("zee-rp".equals(tool)) {
+            return Files.isRegularFile(path.resolve("scripts").resolve("proto.mjs"));
+        }
         boolean posix = File.separatorChar == '/';
         if (path.isAbsolute() || tool.indexOf('/') >= 0 || tool.indexOf('\\') >= 0) {
             return Files.isRegularFile(path) && (!posix || Files.isExecutable(path));

@@ -4,6 +4,8 @@ server:
     context-path: /snail-ai
 
 spring:
+  config:
+    import: optional:file:./.env[.properties]
   application:
     name: ruoyi-snailai-server
   profiles:

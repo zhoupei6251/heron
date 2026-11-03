@@ -18,6 +18,8 @@ public interface INewsWorkService {
     PageResult<NewsVideoVersionVo> versions(long workId, PageQuery page);
     NewsVideoVersionVo version(long workId, long versionId);
     NewsVideoVersionVo review(long workId, long versionId, NewsReviewBo bo);
+    /** 人工发布回执：只写已审且指纹仍匹配的版本，同一版本重复回填不产生第二条发布事实。 */
+    NewsVideoVersionVo publish(long workId, long versionId, NewsPublishBo bo);
     /** 审片专用文件入口，不赋予正式下载权。 */
     NewsFileVo preview(long workId, long versionId, String artifactId);
     /** 仅返回已审且双指纹仍匹配的 MP4。调用方负责关闭返回句柄。 */

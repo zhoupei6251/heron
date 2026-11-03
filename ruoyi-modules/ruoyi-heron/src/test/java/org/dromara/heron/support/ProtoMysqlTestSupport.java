@@ -103,7 +103,8 @@ public abstract class ProtoMysqlTestSupport extends HeronMysqlTestSupport {
         var run = execution.claim(ProductionBizType.prototype).orElseThrow();
         if (run.taskId() != receipt.taskId()) throw new AssertionError("Fixture claimed an unrelated task");
         var files = new ArrayList<ProductionArtifactVo>();
-        var rp1 = fixtureFile(run, "rp1", "application/json", "json", "{\"pages\":[{\"id\":\"home\"},{\"id\":\"detail\"}]}");
+        var rp1 = fixtureFile(run, "rp1", "text/plain", "rp1",
+            "rp/1 target=9 name=\"fixture\" domain=web theme=enterprise-light\npage #home name=\"首页\"\npage #detail name=\"详情\"\n");
         files.add(rp1);
         var p1 = fixtureFile(run, "page_preview", "image/png", "png", "fixture-image-home");
         var p2 = fixtureFile(run, "page_preview", "image/png", "png", "fixture-image-detail");

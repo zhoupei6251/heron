@@ -7,6 +7,9 @@
 - 修改连接配置或 `MYSQL_DATABASE` 不会重命名、迁移已有数据库；已有 MySQL 数据目录也不会重新执行初始化。迁移前请备份，勿删除数据目录。
 - 后端构建：`mvn -pl ruoyi-admin -am package`，启动产物为 `ruoyi-admin/target/heron.jar`。
 - 主服务镜像：构建后执行 `docker build -t heron-server:6.0.0 ruoyi-admin`，再使用部署配置。该名称是本地构建标签，不是已发布镜像地址。
+- 运行口令：在启动工作目录的 `.env` 中设置 `HERON_PASSWORD`，或通过环境变量注入；主应用及扩展应用的数据源使用它，主应用的 Redis 同用该值。`.env` 已忽略，不会打入 JAR。
+- Redis 私密配置：在 `script/docker/redis/conf/redis-local.conf` 写入 `requirepass "你的口令"`，与 `HERON_PASSWORD` 保持一致；部署时将该文件和 `redis.conf` 一起放到 `/docker/redis/conf/`。私密文件已忽略，缺少时 Redis 拒绝启动。
+- Compose 从仓库根目录执行：`docker compose --env-file .env -f script/docker/docker-compose.yml up -d`。已有 MySQL 账号、运行中 Redis 和已有 `admin` 不会因修改初始化配置而自动改密，须单独更新。
 
 ## 若依基座简介
 

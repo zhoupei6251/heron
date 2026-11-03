@@ -51,5 +51,14 @@ nbdist/
 
 .flattened-pom.xml
 
+.env
+redis-local.conf
 application-local.yml
 application-ga.yml
+
+######################################################################
+# Heron 产物与 Axure 素材
+# 产物目录只跟仓库根（data-root: ./data）；素材是商业软件产物，不进仓库
+/data/
+*.rp
+*.rplib

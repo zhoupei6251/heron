@@ -1,5 +1,6 @@
 package org.dromara.heron.service;
 
+import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.bo.*;
@@ -8,6 +9,7 @@ import org.dromara.heron.support.NewsMysqlTestSupport;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
@@ -91,6 +93,12 @@ class NewsWorkTransactionTest extends NewsMysqlTestSupport {
         var files = fixtureFiles(run);
         assertThrows(HeronBusinessException.class,
             () -> execution.succeed(run, new ProductionResultVo(files.subList(0, 1), "{}")));
+        // 清单齐但稿件不过契约：同样不得入库，且报错要能指出退回条目
+        HeronBusinessException contract = assertThrows(HeronBusinessException.class, () -> execution.succeed(run,
+            new ProductionResultVo(files, JsonUtils.toJsonString(Map.of("script", Map.of("title", "短"),
+                "checks", JsonUtils.parseObject(checksJson(), Object.class), "durationMs", 1000)))));
+        assertEquals("news_script_contract", contract.getCode());
+        assertTrue(contract.getMessage().contains("缺字段 source_url"), contract.getMessage());
         assertEquals("running", jdbc.queryForObject("SELECT status FROM heron_production_task WHERE task_id=?", String.class, receipt.taskId()));
         assertNull(jdbc.queryForObject("SELECT artifact_manifest FROM heron_video_version WHERE version_id=?", String.class, receipt.versionId()));
     }

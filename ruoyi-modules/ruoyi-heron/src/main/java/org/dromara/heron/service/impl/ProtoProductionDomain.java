@@ -228,10 +228,11 @@ public class ProtoProductionDomain implements IProductionDomain, IProductionObje
         return new ValidatedManifest(List.copyOf(files), evidence, rp, summary);
     }
 
-    private static boolean mediaMatches(ProductionArtifactVo file) {
+    static boolean mediaMatches(ProductionArtifactVo file) {
         if (file.kind() == null) return false;
         return switch (file.kind()) {
-            case "rp1", "audit", "engine_check" -> "application/json".equals(file.mediaType());
+            case "rp1" -> "text/plain".equals(file.mediaType());
+            case "audit", "engine_check" -> "application/json".equals(file.mediaType());
             case "native_rp" -> "application/octet-stream".equals(file.mediaType());
             case "page_preview", "preview_summary" -> "image/png".equals(file.mediaType());
             default -> false;

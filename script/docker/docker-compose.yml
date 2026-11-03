@@ -6,7 +6,7 @@ services:
       # 时区上海
       TZ: Asia/Shanghai
       # root 密码
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: ${HERON_PASSWORD:?请通过环境变量或 --env-file 指定 HERON_PASSWORD}
       # 初始化数据库(后续的初始化sql会在这个库执行)
       MYSQL_DATABASE: heron
     ports:
@@ -102,6 +102,7 @@ services:
     environment:
       # 时区上海
       TZ: Asia/Shanghai
+      HERON_PASSWORD: ${HERON_PASSWORD:?请通过环境变量或 --env-file 指定 HERON_PASSWORD}
       SERVER_PORT: 8080
       SNAIL_JOB_PORT: 28080
       SNAIL_AI_PORT: 38080
@@ -119,6 +120,7 @@ services:
     environment:
       # 时区上海
       TZ: Asia/Shanghai
+      HERON_PASSWORD: ${HERON_PASSWORD:?请通过环境变量或 --env-file 指定 HERON_PASSWORD}
       SERVER_PORT: 8081
       SNAIL_JOB_PORT: 28081
       SNAIL_AI_PORT: 38081
@@ -148,6 +150,8 @@ services:
     environment:
       # 时区上海
       TZ: Asia/Shanghai
+      HERON_PASSWORD: ${HERON_PASSWORD:?请通过环境变量或 --env-file 指定 HERON_PASSWORD}
+      SPRING_DATASOURCE_PASSWORD: ${HERON_PASSWORD:?请通过环境变量或 --env-file 指定 HERON_PASSWORD}
     ports:
       - "8800:8800"
       - "17888:17888"
@@ -162,6 +166,8 @@ services:
     environment:
       # 时区上海
       TZ: Asia/Shanghai
+      HERON_PASSWORD: ${HERON_PASSWORD:?请通过环境变量或 --env-file 指定 HERON_PASSWORD}
+      SPRING_DATASOURCE_PASSWORD: ${HERON_PASSWORD:?请通过环境变量或 --env-file 指定 HERON_PASSWORD}
       # Docling 与 PaddleOCR 服务需单独部署；host 网络模式下默认通过宿主机端口访问
       SNAIL_AI_RAG_DOCLING_ENABLED: ${SNAIL_AI_RAG_DOCLING_ENABLED:-true}
       SNAIL_AI_RAG_DOCLING_URL: ${SNAIL_AI_RAG_DOCLING_URL:-http://127.0.0.1:5100}

@@ -28,6 +28,12 @@ public class HeronVideoVersion extends BaseEntity {
     private String reviewReason;
     private String reviewContactSha;
     private String reviewVideoSha;
+    private String publishSource;
+    private String publishUrl;
+    private String publishAccount;
+    private LocalDateTime publishAt;
+    private Long publishBy;
+    private String publishVideoSha;
     private LocalDateTime cleanupStartedAt;
     private LocalDateTime cleanedAt;
 }

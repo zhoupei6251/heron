@@ -222,6 +222,8 @@ draft → scripting → compiling → review → approved → delivered
 
 ### 4.8 当前阻塞
 
+> **状态更新（2026-11-02）**：空白模板阻塞已解除（本机已装 Axure RP9，由其新建单页空白工程另存）；动态面板与输入框/Repeater 仍缺安装自带的 `RP9 Tour.rp` 与 `Default.rplib`，见新文档 §4.2 与 §8-U1。
+
 - 尚未拿到 Axure RP9 空白模板 → 阶段 A（生成一份可在 Axure 打开的多页 `.rp`）无法开始。
 - 原生验收只能由人完成；系统不得写「已验证」。
 
@@ -345,6 +347,8 @@ draft → scripting → compiling → review → approved → delivered
 
 ## 8. 现状盘点（2026-10-29）
 
+> **本节已过期（2026-11-02）**：「heron 业务代码 0 行」「渲染执行器无」「原型引擎未接」等结论不再成立——两条线的状态机、表、闸、权限与操作台均已实现，缺的是渲染、模型调用、发布、zee-rp 调用四条外部效果接缝。现状与缺口以 [2026-11-02 两条业务线需求文档](2026-11-02-heron-two-line-requirements.md) §1 为准，勿按本节排期。
+
 | 项 | 现状 | 说明 |
 |---|---|---|
 | 后端基座 | RuoYi-Vue-Plus 6.0.0 已导入，未提交 | Spring Boot 4.1.2 / JDK 21 / MyBatis-Plus / Sa-Token |
@@ -385,6 +389,8 @@ draft → scripting → compiling → review → approved → delivered
 
 ## 10. 未决决策
 
+> **本节已结案（2026-11-02）**：D1–D6 全部有定论（渲染改本地 HyperFrames 固定模板+变量、发布 v1 走人工回执回填、模型走自建 OpenAI 兼容 client、版式一套 9:16、存储本地盘），决策与理由见 [2026-11-02 两条业务线需求文档](2026-11-02-heron-two-line-requirements.md) §2。下表仅作历史对照。
+
 | # | 决策 | 选项 | 建议 |
 |---|---|---|---|
 | D1 | 发布落点 | 抖音开放平台 vs Playwright 网页上传 | 开放平台；Playwright 仅降级并写明脆弱点 |
@@ -422,4 +428,4 @@ draft → scripting → compiling → review → approved → delivered
 
 ---
 
-**待确认的三件事**：D1 发布落点、D2 模型供应商、D4 渲染执行器。其余可按本文直接排期。
+**待确认的三件事**：~~D1 发布落点、D2 模型供应商、D4 渲染执行器~~ 已于 2026-11-02 全部结案，见 [2026-11-02 两条业务线需求文档](2026-11-02-heron-two-line-requirements.md) §2。

@@ -4,6 +4,8 @@ server:
     context-path: /snail-job
 
 spring:
+  config:
+    import: optional:file:./.env[.properties]
   application:
     name: ruoyi-snailjob-server
   profiles:

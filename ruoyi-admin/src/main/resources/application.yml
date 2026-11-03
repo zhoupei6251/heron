@@ -45,6 +45,8 @@ user:
 
 # Spring配置
 spring:
+  config:
+    import: optional:file:./.env[.properties]
   application:
     name: heron
   threads:

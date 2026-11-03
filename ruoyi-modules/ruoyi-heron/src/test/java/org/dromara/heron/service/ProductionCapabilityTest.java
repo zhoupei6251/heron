@@ -32,13 +32,15 @@ class ProductionCapabilityTest {
         properties = new HeronProductionProperties();
         properties.setDataRoot(tempDir);
         properties.setWorkerEnabled(true);
-        for (String tool : List.of("node", "ffmpeg", "ffprobe", "python3", "zee-rp")) {
+        for (String tool : List.of("node", "ffmpeg", "ffprobe", "python3")) {
             Files.createFile(tempDir.resolve(tool));
         }
         properties.setNode(tempDir.resolve("node").toString());
         properties.setFfmpeg(tempDir.resolve("ffmpeg").toString());
         properties.setFfprobe(tempDir.resolve("ffprobe").toString());
         properties.setPython(tempDir.resolve("python3").toString());
+        Files.createDirectories(tempDir.resolve("zee-rp").resolve("scripts"));
+        Files.createFile(tempDir.resolve("zee-rp").resolve("scripts").resolve("proto.mjs"));
         properties.setZeeRp(tempDir.resolve("zee-rp").toString());
         context = new GenericApplicationContext();
         context.registerBean("newsProductionPipeline", IProductionPipeline.class,
@@ -99,5 +101,35 @@ class ProductionCapabilityTest {
         assertFalse(news.available());
         assertTrue(news.reasons().contains("worker_disabled"));
         assertTrue(news.reasons().contains("tool_missing:ffmpeg"));
+    }
+
+    @Test
+    @DisplayName("zee-rp 按引擎根判定：没有 scripts/proto.mjs 就不算具备")
+    void engineRootWithoutProtoScriptIsNotConfigured() {
+        properties.setZeeRp(tempDir.resolve("empty-engine").toString());
+
+        ProductionCapabilitiesVo.Capability prototype =
+            new ProductionCapabilityService(context, properties).getCapabilities().prototype();
+
+        assertFalse(prototype.configured());
+        assertTrue(prototype.reasons().contains("tool_missing:zee-rp"), prototype.reasons().toString());
+    }
+
+    @Test
+    @DisplayName("引擎根、模板与流水线齐备时原型线可用")
+    void prototypeAvailableWhenEngineTemplateAndPipelinePresent() throws IOException {
+        properties.setPrototypeTemplate(Files.createFile(tempDir.resolve("blank-rp9.rp")));
+        GenericApplicationContext engine = new GenericApplicationContext();
+        engine.registerBean("prototypeProductionPipeline", IProductionPipeline.class, () -> run -> null);
+        engine.refresh();
+        try {
+            ProductionCapabilitiesVo.Capability prototype =
+                new ProductionCapabilityService(engine, properties).getCapabilities().prototype();
+
+            assertTrue(prototype.configured());
+            assertTrue(prototype.available(), prototype.reasons().toString());
+        } finally {
+            engine.close();
+        }
     }
 }

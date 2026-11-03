@@ -129,6 +129,8 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         JsonNode content = JsonUtils.getJsonMapper().readTree(result.resultJson());
         if (!content.isObject() || !content.path("script").isObject() || !content.path("durationMs").isIntegralNumber()
             || content.path("durationMs").asLong() <= 0) throw conflict("result_invalid", "脚本或实测时长缺失");
+        List<String> violations = NewsScriptContract.violations(content.path("script"));
+        if (!violations.isEmpty()) throw conflict("script_contract", "稿件退回写稿：" + String.join("；", violations));
         String checks = JsonUtils.toJsonString(content.path("checks"));
         validateChecks(checks);
         validateManifest(version, task, result.artifacts(), true);

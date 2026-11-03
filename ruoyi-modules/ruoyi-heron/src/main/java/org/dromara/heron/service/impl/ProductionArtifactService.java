@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
 @Service
 public class ProductionArtifactService {
 
-    private static final Pattern SAFE_KIND = Pattern.compile("[a-z0-9][a-z0-9-]{0,31}");
+    private static final Pattern SAFE_KIND = Pattern.compile("[a-z0-9][a-z0-9_-]{0,31}");
     private static final Pattern SAFE_EXTENSION = Pattern.compile("[a-z0-9]{1,8}");
     private static final Pattern SAFE_MEDIA_TYPE = Pattern.compile("[a-z]+/[a-z0-9.+-]{1,64}");
 

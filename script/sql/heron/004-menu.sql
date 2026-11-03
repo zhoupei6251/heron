@@ -36,6 +36,7 @@ insert into sys_menu values(1761400000000002044, '人工审片', 176140000000000
 insert into sys_menu values(1761400000000002045, '审片预览', 1761400000000002040, 5, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:newsWork:reviewPreview', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000002046, '成片下载', 1761400000000002040, 6, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:newsWork:download', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000002047, '跨用户访问', 1761400000000002040, 7, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:newsWork:all', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '允许访问他人拥有的新闻对象');
+insert into sys_menu values(1761400000000002048, '人工发布回执', 1761400000000002040, 8, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:newsWork:publish', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '人工在抖音发布后回填作品链接、账号与发布时间');
 
 -- 原型项目
 insert into sys_menu values(1761400000000002050, '原型项目', 1761400000000002000, 5, 'proto', 'heron/proto/index', '', 'N', 'Y', 'C', '0', '0', 'heron:proto:list', 'build', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '需求到 RP 原型的生成与交付');
