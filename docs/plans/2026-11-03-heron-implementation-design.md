@@ -425,6 +425,8 @@ M3 还缺的两件都不在代码里：`sys_config` 里 `heron.model.*` 的真�
 # ① 编译 + 单元测试（默认排除 mysql）
 mvn -pl ruoyi-admin -am package
 # ② MySQL 集成测试（需隔离库，见 §9-R13）
+export HERON_TEST_MYSQL_URL='jdbc:mysql://localhost:3307/heron_it_local?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=GMT%2B8&zeroDateTimeBehavior=convertToNull&nullCatalogMeansCurrent=true'
+export HERON_TEST_MYSQL_USER=root HERON_TEST_MYSQL_PASSWORD='heron!2026'   # 隔离栈的 3307，不是用户那台 3306
 mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude
 ```
 
