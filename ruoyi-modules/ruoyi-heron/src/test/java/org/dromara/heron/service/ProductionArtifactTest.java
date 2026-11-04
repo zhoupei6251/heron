@@ -174,6 +174,7 @@ class ProductionArtifactTest {
         service.removeFile(artifact);
 
         assertFalse(Files.exists(tempDir.resolve(artifact.storageKey())));
+        assertFalse(service.exists(artifact), "清理续跑靠这个探针，不能假设本地路径还在");
     }
 
     private ProductionRunVo run(ProductionBizType type) {

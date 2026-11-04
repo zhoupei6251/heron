@@ -540,9 +540,32 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 |---|---|---|
 | 新认领的作品点「发起生成」必回 503「选择的模板或声音尚未验证」 | `claim` 把 `template_key/voice_key` 写成 `default` 占位，而生成闸拿部署锁定的 `news-9x16` / `zh-CN-XiaoxiaoNeural` 比对；操作员必须先盲点一次「保存草稿」才能生成 | 认领时直接落锁定档位（`NewsProductionDomain.lockedAssetsIfConfigured()`，未配置才留 `default`，不能让编辑认领被生产配置卡住） |
 | 140 秒的真渲染全程显示「执行中 进度 0%」 | `beginStage` 这条通道在核心里早就有，但两条流水线都拿不到 `IProductionExecutionService`，没人回报阶段 | 新增单方法接口 `ProductionStageReporter`，新闻线回报 `script 5 → voice 25 → render 45 → finalize 85`，原型线回报 `check 35 → generate 55 → finalize 85`（写稿腿已有 usage 记账，不再重复报阶段）；`ProtoEnginePipelineTest` 钉住序列与「check 失败后不再回报后续阶段」 |
-| 原型「原生验证声明」永远记为未通过 | `heron.prototype.target-axure-version` 没配，`passed` 的判据是「输入字符串 == 配置值」，操作员无从猜起 | dev 配置补 `Axure RP 9`，并把该值随 `/capabilities` 下发；前端选中版本时自动预填且只读 |
+| 原型「原生验证声明」操作员只能瞎填 | 比对基准 `Axure RP 9` 其实早就在 `heron-production.yml` 里（我一开始误判成没配，dev 里那行重复已删），真正的问题是它不下发到前端，表单只给一个 placeholder 让人猜服务端认识的字符串 | 该值随 `/capabilities` 的 prototype 能力一起下发，前端选中版本时自动预填且只读 |
 
 工作台随之补上静默轮询：任务在途时每 2 秒读一次任务详情（不是重读工作台，避免覆盖正在输入的草稿），到终态才整页刷新一次；页面顶部用一条 alert 显示状态/阶段/进度，失败时把 `errorReason` 原文铺在原地，不用跳任务中心。实测一条新认领的智元机器人新闻：`排队中 → voice 25% → render 45% → finalize → 已完成 100%`，版本行自己变成「v1 已完成 待审片 54 秒」，全程零手动刷新。
+
+### 7.8 七牛接入：模型与对象存储（2026-11-04 傍晚）
+
+**模型腿**是纯配置，不写代码：`OpenAiModelClient` 本来就是 OpenAI 兼容客户端，把 `sys_config` 三行填成 `https://api.qnaigc.com/v1` + `deepseek/deepseek-v4.1-flash-1017` + key（走参数表，不进 Git；改完 `PUT /system/config/updateByKey` 让 Redis 缓存同步）。实测：
+
+| 腿 | 实测 |
+|---|---|
+| 新闻写稿 | 17.8 秒 / 5753 输入 + 1501 输出 tokens，产出 5 场分镜、每场有出处（「Calif 11 月 4 日于 X 平台发布视频」「苹果曾说截至 2026 年 3 月…」）与收尾观点，成片 104 秒 |
+| 原型写 RP/1 | 51.5 秒，产出 `订单管理台`：搜索框 `onClick` 写变量 + 结果提示联动、列表行、详情页与 tab-bar，与冻结需求对得上；`.rp` 从示例的 69,977 B 变成 82,045 B |
+
+**对象存储腿**复用基座的 `ruoyi-common-oss`（AWS SDK v2 的 S3 客户端 + `sys_oss_config` 表，表里本来就带 qiniu 行模板），不自研第二套存储配置。桶 `oss-heron` 在 **cn-south-1**，端点 `s3.cn-south-1.qiniucs.com`，path-style、私有桶、密钥只进 DB。落点划分：
+
+- 定稿产物（`videos/…`、`protos/…`）：`finalizeFile` 算完 sha256 后上传（`Options` 里带 contentType 与 `sha256` 元数据），**上传成功即删本地** —— 磁盘只当工作区，桶是唯一长期落点。
+- 渲染工作区与失败证据（`work/<biz>/<taskId>/a<n>[-token]/`，含 `.keep`）：始终留在本地，ffmpeg/Chrome/Pillow 需要真实文件，`.keep` 语义也不该跟着搬走。
+- 完整性口径随之改一处：`verify()` 在对象存储模式比 HEAD 的 size + 元数据 sha256（不再整段回拉），字节级 sha256 仍在**定稿时**算死并写进清单；人工审核腿保留「操作员自己核对下载文件指纹」，所以端到端可验证性没降级。
+- 读取一律走应用内流式（`openVerified`），不下发公开直链 —— 权限闸与 `X-Content-SHA256` 保持原样。
+- 清理：`removeFile` 改成两种模式都幂等（S3 DeleteObject 对不存在的键也成功），新闻清理去掉本地存在性预检。
+
+真跑撞出两处只有接上桶才会露的本地读依赖，都已修：`verifyReports` 直接 `Files.newInputStream(safePath(file))` 读 script/checks 与库内报告比对（上传即删后读不到 → 任务在 finalize 失败，报「脚本或检查报告不可读」）；`readyFiles` 用 `Files.exists` 判「版本文件已不存在」并回 410（同因误判，且严格版 `validateManifest` 已经覆盖存在性与完整性，这条预检是多余的）。
+
+实测（桶 + 真模型）：新闻 211 秒 queued→succeeded，125 秒成片；从七牛取回的 mp4 `7,129,015 B`，sha256 `33132b28a277…` 与清单逐位相同。原型 7 件产物全部落在 `protos/<projectId>/v4/…`，`.rp` / `rp1` / 汇总图取回哈希一致。
+
+已知代价：Range 在对象存储模式下是从 0 起跳读，远端区间会把前缀重拉一遍（末 500 B 实测 4 秒）；前端目前取整段 blob 播放走不到这条分支，升级办法是带 `range` 的 GetObject。失败尝试已上传的对象与本地孤儿目录是同一个问题（R15 的对象存储版本），本轮未修。
 
 
 ---
@@ -587,6 +610,8 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 | R20 | 新闻预览不支持分段请求：审片拖进度条要整段 3.3 MB 重传 | 已解：`NewsWorkController.stream` 认单段 Range，回 206 + `Content-Range`，越界回 416，无 Range 与原来逐字节一致。**注意**：当前前端是 axios 取 blob 再播，走不到这条分支，价值在断点续传与直接链接播放 |
 | R21 | 本会话的 shell 会把口令里的 `!` 转义成 `\!`，`export HERON_TEST_MYSQL_PASSWORD='heron!2026'` 静默送出错口令，三组 IT 全红（`Access denied ... using password: YES`），看着像代码回归 | 用 `$(printf 'heron\0412026')` 注入；IT 报红先核对 `env | grep HERON_TEST` 的实际字节，再怀疑被测代码 |
 | R22 | 修 claim 之前建的作品仍带着 `template_key=default`，生成照样被闸拒（本机已有一条：荣威那条 work） | 不写迁移脚本：这类作品点一次「保存草稿」就会落到锁定档位；开源前若要清历史数据，一条 UPDATE 足够，但要用户单独授权 |
+| R23 | 基座自带的 `/resource/oss/upload`（头像等）读的是 Redis 里的「默认配置键」，本实例里该键为空，直接报「文件存储服务类型无法找到」；heron 走 `OssFactory.instance("qiniu")` 显式键，不受影响 | 属基座侧启动初始化缺口（`SysOssConfigServiceImpl.init` 只在 status=Y 时写该键）。要么在 OSS 配置页点一次「设为默认」，要么部署清单里补这一步 |
+| R24 | 七牛桶里还有前作多租户设计的遗留对象（`tenants/<id>/tasks/…`，42 B / 16 B 的占位件） | 不是本轮产生的数据，未擅自删除；确认无用后由用户清理 |
 
 ---
 

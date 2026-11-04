@@ -19,8 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
-import java.nio.channels.Channels;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Clock;
@@ -203,7 +201,9 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         for (String kind : List.of("script", "checks")) {
             ProductionArtifactVo file = files.stream().filter(a -> kind.equals(a.kind())).findFirst().orElseThrow();
             if (file.bytes() > 256 * 1024) throw conflict("report_oversized", "脚本或检查报告超过上限");
-            try (var input = Files.newInputStream(safePath(file), LinkOption.NOFOLLOW_LINKS)) {
+            safePath(file);
+            // 字节来源交给产物服务：对象存储模式下本地定稿文件已上传即删。
+            try (var input = artifacts.openVerified(file)) {
                 byte[] bytes = input.readNBytes(256 * 1024 + 1);
                 if (bytes.length != file.bytes() || !DigestUtil.sha256Hex(bytes).equals(file.sha256())
                     || !JsonUtils.getJsonMapper().readTree(bytes).equals(JsonUtils.getJsonMapper().readTree("script".equals(kind) ? script : checks))) {
@@ -263,23 +263,12 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         return path;
     }
 
-    /** 在版本锁内校验并打开；响应读取仍持有同一文件句柄。 */
+    /** 在版本锁内校验并打开：这里只钉死新闻产物的键形状，字节来源交给产物服务（本地盘或对象存储）。 */
     public NewsFileVo openFile(HeronVideoVersion version, ProductionArtifactVo file) {
-        Path path = safePath(file);
-        artifacts.verify(file);
-        try {
-            FileChannel channel = FileChannel.open(path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
-            try {
-                if (channel.size() != file.bytes() || !DigestUtil.sha256Hex(Channels.newInputStream(channel)).equals(file.sha256())) {
-                    throw conflict("file_corrupt", "文件长度或哈希不符");
-                }
-                safePath(file);
-                channel.position(0);
-                String name = "news-" + version.getWorkId() + "-v" + version.getVersionNo()
-                    + ("mp4".equals(file.kind()) ? ".mp4" : "-contact.png");
-                return new NewsFileVo(name, file.mediaType(), file.bytes(), file.sha256(), Channels.newInputStream(channel));
-            } catch (RuntimeException | IOException e) { channel.close(); throw e; }
-        } catch (IOException | cn.hutool.core.io.IORuntimeException e) { throw conflict("file_unreadable", "产物不可读"); }
+        safePath(file);
+        String name = "news-" + version.getWorkId() + "-v" + version.getVersionNo()
+            + ("mp4".equals(file.kind()) ? ".mp4" : "-contact.png");
+        return new NewsFileVo(name, file.mediaType(), file.bytes(), file.sha256(), artifacts.openVerified(file));
     }
 
     /** 任一人工保留标记或失败证据都阻止新闻保留期清理。 */

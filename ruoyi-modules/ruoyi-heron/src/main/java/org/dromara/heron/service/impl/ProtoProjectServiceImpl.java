@@ -23,16 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.Channels;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.text.Normalizer;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -333,43 +326,18 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
     }
 
     private ProtoFile openVerifiedFile(HeronProtoVersion version, ProductionArtifactVo file) {
-        artifacts.verify(file);
         Path root = properties.getDataRoot().toAbsolutePath().normalize();
         Path path = root.resolve(file.storageKey()).normalize();
         if (!path.startsWith(root)) conflict("产物文件路径不合法");
-        try {
-            // shortcut: SP1 仅提供 evidence 流，正式产物同句柄接口补齐后收敛此处。
-            for (Path component = path; component != null; component = component.getParent()) {
-                if (Files.isSymbolicLink(component)) conflict("产物文件不能使用符号链接");
-            }
-            if (!path.toRealPath().startsWith(root.toRealPath())) conflict("产物文件路径不合法");
-            FileChannel channel = FileChannel.open(path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
-            try {
-                MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                ByteBuffer buffer = ByteBuffer.allocate(8192);
-                while (channel.read(buffer) != -1) {
-                    buffer.flip();
-                    digest.update(buffer);
-                    buffer.clear();
-                }
-                if (channel.size() != file.bytes() || !HexFormat.of().formatHex(digest.digest()).equals(file.sha256())) {
-                    conflict("产物文件长度或哈希不符");
-                }
-                channel.position(0);
-                String extension = file.kind().equals("native_rp") ? ".rp"
-                    : file.mediaType().equals("image/png") ? ".png" : ".json";
-                String name = "prototype-" + version.getProjectId() + "-v" + version.getVersionNo()
-                    + "-" + file.kind() + extension;
-                return new ProtoFile(name, file.mediaType(), file.bytes(), file.sha256(), Channels.newInputStream(channel));
-            } catch (RuntimeException | IOException | NoSuchAlgorithmException e) {
-                channel.close();
-                throw e;
-            }
-        } catch (IOException e) {
-            throw new HeronBusinessException(409, "proto_file_invalid", "产物文件不可读");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
+        // shortcut: 只拒符号链接链，不校验真实存在；对象存储模式下这条路径本就不落盘。
+        for (Path component = path; component != null; component = component.getParent()) {
+            if (Files.isSymbolicLink(component)) conflict("产物文件不能使用符号链接");
         }
+        String extension = file.kind().equals("native_rp") ? ".rp"
+            : file.mediaType().equals("image/png") ? ".png" : ".json";
+        String name = "prototype-" + version.getProjectId() + "-v" + version.getVersionNo()
+            + "-" + file.kind() + extension;
+        return new ProtoFile(name, file.mediaType(), file.bytes(), file.sha256(), artifacts.openVerified(file));
     }
 
     private HeronProtoProject requireProject(long projectId, String action, boolean lock) {

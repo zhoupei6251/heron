@@ -262,7 +262,8 @@ public class ProtoProductionDomain implements IProductionDomain, IProductionObje
                 && e.getKey().matches("[A-Za-z0-9_-]{1,80}") && isHash(e.getValue()))
             && ready.supportedWidgets() != null && !ready.supportedWidgets().isEmpty()
             && ready.supportedWidgets().stream().allMatch(w -> w != null && w.matches("[A-Za-z0-9_-]{1,80}"))
-            && ready.modelConfigId() != null && ready.modelConfigId().matches("[A-Za-z0-9_-]{1,80}");
+            // 模型档位只进快照 JSON，不参与路径拼接，所以允许厂商名里的点与斜杠（如 deepseek/xxx）。
+            && ready.modelConfigId() != null && ready.modelConfigId().matches("[A-Za-z0-9._/-]{1,80}");
     }
 
     static InputSnapshot readInput(String json) { return readJson(json, InputSnapshot.class); }

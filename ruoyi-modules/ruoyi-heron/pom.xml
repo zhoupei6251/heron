@@ -41,6 +41,11 @@
             <groupId>org.dromara</groupId>
             <artifactId>ruoyi-common-ai</artifactId>
         </dependency>
+        <!-- 定稿产物落对象存储：复用基座 sys_oss_config 与 S3 客户端，不自建第二套存储配置 -->
+        <dependency>
+            <groupId>org.dromara</groupId>
+            <artifactId>ruoyi-common-oss</artifactId>
+        </dependency>
         <!-- 模型三项配置读基座参数表：只用 org.dromara.system.api.ConfigService 接口 -->
         <dependency>
             <groupId>org.dromara</groupId>

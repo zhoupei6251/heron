@@ -22,6 +22,8 @@ heron:
     prototype-template: null
     # 新闻 composition 模板目录（不进 Git，部署侧放只读卷）；缺失时能力检查报 template_missing
     news-template: ./data/templates/news-9x16
+    # 指向基座 sys_oss_config 的 config_key；留空即本地产物盘模式（渲染工作区与失败证据始终留在本地）
+    oss-config-key: null
   prototype:
     # 原生闸比对基准；本产品只有 RP9（zee-rp 两个后端都出不了 RP11，见需求文档 §4.1），留空则永远判不过
     target-axure-version: Axure RP 9

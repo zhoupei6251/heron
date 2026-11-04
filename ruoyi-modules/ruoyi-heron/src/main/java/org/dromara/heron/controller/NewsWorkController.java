@@ -108,6 +108,8 @@ public class NewsWorkController extends BaseController {
         response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
         long start = range[0];
         long end = range[1];
+        // shortcut: 对象存储模式下这里从 0 起跳读，远端 Range 会把前缀重新拉一遍（实测 7 MB 片段的末 500 B 约 4 秒）。
+        // 前端目前取整段 blob 播放，走不到这条分支；要做断点续传就改成带 range 的 GetObject。
         response.setContentLengthLong(end - start + 1);
         response.setHeader("Content-Range", "bytes " + start + "-" + end + "/" + total);
         InputStream input = file.content();

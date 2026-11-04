@@ -339,13 +339,13 @@ heron:
     # Axure RP9 空白基底，在两仓库之外；引擎读它需要 AXURE_BLANK_TEMPLATE_RP9，由 Java 注入子进程
     prototype-template: D:/zhoupei/heron/axure/blank-rp9.rp
     worker-enabled: true
+    # 定稿产物落七牛 Kodo（S3 兼容）；桶名与密钥在 sys_oss_config 的 qiniu 行里，不进 Git
+    oss-config-key: qiniu
   prototype:
     # 装配流水线：引擎根 + 模板卷 + 模型都到位才打开
     engine-enabled: true
     # 人工核对过的引擎能力声明（tag v0.2.1 的提交号）；启动时仍要比引擎目录实际 HEAD 与模板实算哈希
     engine-assets: '{"engineCommit":"74f286fead2e2524fb5f710b36e2e1db9e861df5","supportedWidgets":["page","group","button","text","image","input","dynamicPanel","repeater"]}'
-    # 人工原生验证要比对的 Axure 版本，必须与操作员本机实际安装的一致（本机装在 D:\Program Files (x86)\Axure\Axure RP 9）
-    target-axure-version: Axure RP 9
   news:
     pipeline-enabled: true
     # 泛资讯源白名单（时政不进）；本机开发与 N3 闭环验收用这两家实测可达的 RSS

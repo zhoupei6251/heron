@@ -27,7 +27,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -360,8 +359,8 @@ public class NewsWorkServiceImpl implements INewsWorkService {
                     if (!cleanupEligible(version) || version.getCleanupStartedAt() == null) return false;
                     // Partial previous deletion is resumable; existing files must still pass the core verification.
                     for (ProductionArtifactVo file : parseManifest(version)) {
-                        Path path = domain.safePath(file);
-                        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) artifacts.removeFile(file);
+                        domain.safePath(file);
+                        if (artifacts.exists(file)) artifacts.removeFile(file);
                     }
                     if (versionMapper.lambda().set(HeronVideoVersion::getCleanedAt, now()).set(HeronVideoVersion::getUpdateTime, now())
                         .eq(HeronVideoVersion::getVersionId, version.getVersionId()).isNotNull(HeronVideoVersion::getCleanupStartedAt)
@@ -433,7 +432,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         List<ProductionArtifactVo> files = parseManifest(version);
         domain.validateManifest(version, task, files, false);
         for (ProductionArtifactVo file : files) {
-            if (!Files.exists(domain.safePath(file), LinkOption.NOFOLLOW_LINKS)) {
+            if (!artifacts.exists(file)) {
                 throw new HeronBusinessException(410, "news_files_expired", "版本文件已不存在");
             }
         }

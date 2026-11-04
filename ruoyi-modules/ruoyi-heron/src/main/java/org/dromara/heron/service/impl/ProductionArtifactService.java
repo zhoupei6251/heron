@@ -1,5 +1,12 @@
 package org.dromara.heron.service.impl;
 
+import org.dromara.common.oss.client.OssClient;
+import org.dromara.common.oss.exception.S3StorageException;
+import org.dromara.common.oss.factory.OssFactory;
+import org.dromara.common.oss.model.GetObjectResult;
+import org.dromara.common.oss.model.Options;
+import software.amazon.awssdk.core.async.AsyncResponseTransformer;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.ProductionBizType;
@@ -22,6 +29,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -93,6 +101,7 @@ public class ProductionArtifactService {
                 throw new HeronBusinessException(409, "production_file_invalid", "产物已存在");
             }
             Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+            uploadIfConfigured(target, mediaType, sha256);
         } catch (AtomicMoveNotSupportedException e) {
             throw new HeronBusinessException(409, "production_atomic_move_required", "不支持同卷原子定稿");
         } catch (IOException e) {
@@ -132,6 +141,20 @@ public class ProductionArtifactService {
         if (artifact == null) {
             throw new HeronBusinessException(400, "production_invalid_artifact", "产物描述缺失");
         }
+        OssClient oss = oss();
+        if (oss != null) {
+            GetObjectResult object = head(oss, artifact.storageKey());
+            if (object == null) {
+                throw new HeronBusinessException(409, "production_file_missing", "产物文件不存在");
+            }
+            if (object.size() != artifact.bytes()) {
+                throw new HeronBusinessException(409, "production_file_corrupt", "产物长度不符");
+            }
+            if (object.metadata() == null || !artifact.sha256().equals(object.metadata().get("sha256"))) {
+                throw new HeronBusinessException(409, "production_file_corrupt", "产物哈希不符");
+            }
+            return;
+        }
         Path file = resolveStorageKey(artifact.storageKey());
         if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
             throw new HeronBusinessException(409, "production_file_missing", "产物文件不存在");
@@ -144,12 +167,86 @@ public class ProductionArtifactService {
         }
     }
 
+    /**
+     * 校验后交给 controller 的字节流。对象存储模式返回阻塞流，由调用方（NewsFileVo / ProtoFile）关闭。
+     */
+    public InputStream openVerified(ProductionArtifactVo artifact) {
+        verify(artifact);
+        OssClient oss = oss();
+        if (oss != null) {
+            String bucket = oss.config().bucket().orElseThrow(() -> new HeronBusinessException(
+                503, "production_object_store_failed", "对象存储未配置桶名"));
+            return oss.doCustomDownload(builder -> builder.bucket(bucket).key(artifact.storageKey()),
+                AsyncResponseTransformer.toBlockingInputStream(), null);
+        }
+        try {
+            return Files.newInputStream(resolveStorageKey(artifact.storageKey()),
+                StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException e) {
+            throw new HeronBusinessException(409, "production_file_unreadable", "产物不可读");
+        }
+    }
+
+    /**
+     * 产物字节当前在不在：本地看文件，对象存储看元数据请求。清理要能续跑，不能假设本地路径还存在。
+     */
+    public boolean exists(ProductionArtifactVo artifact) {
+        OssClient oss = oss();
+        if (oss != null) {
+            return head(oss, artifact.storageKey()) != null;
+        }
+        try {
+            return Files.exists(storageCandidate(artifact.storageKey()), LinkOption.NOFOLLOW_LINKS);
+        } catch (HeronBusinessException e) {
+            return false;
+        }
+    }
+
     public void removeFile(ProductionArtifactVo artifact) {
         verify(artifact);
+        OssClient oss = oss();
+        if (oss != null) {
+            oss.delete(artifact.storageKey());
+            return;
+        }
         try {
             Files.delete(resolveStorageKey(artifact.storageKey()));
         } catch (IOException e) {
             throw new IllegalStateException("删除产物失败", e);
+        }
+    }
+
+    /** 配置了 oss-config-key 才走对象存储；留空即本地产物盘，测试与未接桶的部署行为完全不变。 */
+    private OssClient oss() {
+        String configKey = properties.getOssConfigKey();
+        return configKey == null || configKey.isBlank() ? null : OssFactory.instance(configKey);
+    }
+
+    /** 定稿即上传、上传成功才删本地：磁盘只当工作区，桶才是产物的长期落点。 */
+    private void uploadIfConfigured(Path target, String mediaType, String sha256) {
+        OssClient oss = oss();
+        if (oss == null) {
+            return;
+        }
+        try {
+            oss.upload(storageKey(target), target, Options.create()
+                .setContentType(mediaType).setMetadata(Map.of("sha256", sha256)));
+            Files.delete(target);
+        } catch (IOException | RuntimeException e) {
+            throw new HeronBusinessException(503, "production_object_store_failed",
+                "产物上传对象存储失败: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** 只取元数据：拿到响应头就结束，S3 不会把整段成片拉回本机。 */
+    private static GetObjectResult head(OssClient oss, String key) {
+        try {
+            return oss.download(key, (meta, content) -> meta);
+        } catch (S3StorageException e) {
+            if (e.getCause() instanceof NoSuchKeyException) {
+                return null;
+            }
+            throw e;
         }
     }
 
@@ -245,6 +342,20 @@ public class ProductionArtifactService {
     }
 
     private Path resolveStorageKey(String storageKey) {
+        Path candidate = storageCandidate(storageKey);
+        try {
+            Path real = candidate.toRealPath();
+            if (!real.startsWith(realDirectory(dataRoot()))) {
+                throw new HeronBusinessException(409, "production_file_missing", "产物路径越界");
+            }
+            return real;
+        } catch (IOException e) {
+            throw new HeronBusinessException(409, "production_file_missing", "产物文件不存在");
+        }
+    }
+
+    /** 只做形状与越界检查，不要求文件存在：存在性与合法性必须分开判，否则符号链接会被误报成「已清理」。 */
+    private Path storageCandidate(String storageKey) {
         if (storageKey == null || storageKey.isBlank() || storageKey.indexOf('\\') >= 0) {
             throw new HeronBusinessException(409, "production_file_missing", "产物路径不合法");
         }
@@ -257,15 +368,7 @@ public class ProductionArtifactService {
         if (!candidate.startsWith(root)) {
             throw new HeronBusinessException(409, "production_file_missing", "产物路径越界");
         }
-        try {
-            Path real = candidate.toRealPath();
-            if (!real.startsWith(realDirectory(root))) {
-                throw new HeronBusinessException(409, "production_file_missing", "产物路径越界");
-            }
-            return real;
-        } catch (IOException e) {
-            throw new HeronBusinessException(409, "production_file_missing", "产物文件不存在");
-        }
+        return candidate;
     }
 
     private Path realFile(Path file) {
