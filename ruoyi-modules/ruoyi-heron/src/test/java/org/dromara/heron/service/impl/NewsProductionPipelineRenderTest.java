@@ -25,6 +25,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -66,6 +67,8 @@ class NewsProductionPipelineRenderTest {
         properties.setNewsTemplate(template);
         properties.setHyperframes(cli.toString());
         properties.setGuardEnabled(false);
+        // PATH 上的 node 可能被同机其它会话切成 20.x，而 hyperframes 要求 >=22：与部署侧一样用绝对路径钉住。
+        properties.setNode(System.getenv().getOrDefault("HERON_TEST_NODE", "node"));
         NewsProductionPipeline pipeline = new NewsProductionPipeline(
             fixedAuthor(SCRIPT), new ProductionProcessService(properties,
             new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties);
@@ -91,6 +94,13 @@ class NewsProductionPipelineRenderTest {
         for (JsonNode gate : checks) {
             assertTrue(gate.path("passed").asBoolean(), gate.path("gate").asString("") + " 未通过");
             assertTrue(gate.path("measured").size() > 0, gate.path("gate").asString("") + " 没有实测值");
+        }
+        for (JsonNode gate : checks) {
+            String locator = gate.path("inputLocator").asString("");
+            String reason = gate.path("reason").asString("");
+            // 生产域禁这两个字段带路径分隔符；在这里挡住，别让任务白跑两分钟。
+            assertFalse(locator.contains("/") || locator.contains("\\"), gate + " 的定位符带路径");
+            assertFalse(reason.contains("/") || reason.contains("\\"), gate + " 的理由带路径");
         }
         JsonNode visual = find(checks, "visual");
         assertEquals(0, visual.path("measured").path("blankFrames").asInt(), "联络表出现空白帧");

@@ -266,7 +266,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
         measured.put("blankFrames", blank);
         measured.put("checkErrors", errors);
         measured.put("checkWarnings", warnings);
-        return new Gate("visual", "composition/index.html", "check 无 error 且联络表逐格非空白", measured);
+        // inputLocator 与 reason 都禁含路径分隔符（NewsProductionDomain.validateChecks），只能用 # 定位。
+        return new Gate("visual", "composition#index.html", "check 无 error 且联络表逐格非空白", measured);
     }
 
     private static Gate aigcVisibleGate(JsonNode check, Path composition) {
@@ -341,9 +342,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
         ProductionProcessVo result = processes.run(run, new ProductionProcessBo("node",
             List.of(cliEntry(), "check", COMPOSITION_DIR, "--json"), work, CHECK_TIMEOUT));
         if (result.exitCode() != 0) {
-            // check 的报告把 ok 与各段 errorCount 放在开头，截尾会把失败原因切掉。
             throw new HeronBusinessException(409, "news_check_failed",
-                "版式闸失败：" + safeHead(result.stdout()));
+                "版式闸失败：" + safeHead(result.stdout() + " " + result.stderr()));
         }
         return JSON.readTree(result.stdout().substring(result.stdout().indexOf('{')));
     }

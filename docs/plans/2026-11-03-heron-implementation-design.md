@@ -50,6 +50,8 @@
 | F16 | §3.5 `visual` 闸用 `check --strict` | `--strict` 把 warning 也判失败，而模板自检就有 14 条 warning：3 条 `line_unread`（600 字正文 7 秒读不完，是契约的算术后果）+ 10 条「拆子工程/轨道太密」的 Studio 风格建议。版式闸改为判 `errors==0` 且 `contrast/runtime/motion` 三段为空，warning 只计数 | 本机 `check --json` 实测输出 |
 | F17 | §3.4「未用槽位填空串，模板隐藏」 | 只靠 `scene_count` 隐藏**不够**：`check` 不带变量跑（F2），用的是模板默认 `scene_count=6`，未用槽位仍带旧时点挂在同一条轨道上，与已用槽位时间重叠 → `content_overlap` 判失败，真渲染第一次就死在这里。补丁必须把未用槽位一并挪到时间轴末尾（`data-start=总长`、`data-duration=0.01`） | `NewsProductionPipelineRenderTest` 首跑失败原文 |
 | F18 | §3.5 `measured.checkFindings` 之类的计数 | `check --json` 每一段是对象 `{ok, errorCount, warningCount, infoCount, findings:[…]}`，**不是数组**。按 findings 遍历去数 severity 会把 `errorCount` 等数字字段也算进去（真跑数出 38 条 error 而 `ok=true`）。计数一律用 CLI 自己的 `errorCount/warningCount` | 第二次真跑 `版式闸未过：errors=38 blankFrames=0` 与 `ok=true` 自相矛盾 |
+| F19 | §3.5 `visual` 闸的 `inputLocator` 写 `composition/index.html` | 该字段字符集不含 `/` 与反斜杠（`NewsProductionDomain.java:229`），任务一路跑到 `complete()` 才被 `409 news_gate_failed` 拒掉 —— 两分钟真渲染白跑。定位符改成 `composition#index.html`，并在渲染测试里断言十闸的 `inputLocator`/`reason` 都不带路径分隔符 | 真跑第 3 次失败原文「检查闸缺失、失败或报告不安全」 |
+| F20 | §4.1「`node: node` 就够」 | 后端从 PATH 解析 `node`，而 nvm-windows 的 `node` 是机器级符号链接，会被同机其它会话切回 20.x；hyperframes 直接拒绝并打印 `requires Node.js >= 22`，而我的失败消息只带 stdout，把这句丢了，排查绕了一圈。现在 dev 覆盖成绝对路径 `D:/Users/zhoupei/AppData/Local/nvm/v24.22.1/node.exe`（含本机用户名，换机器要改），失败消息同时带 stdout 与 stderr | 真跑第 2 次失败 + 手工复现时 `node -v` = 20.9.0 |
 
 ---
 
@@ -372,7 +374,7 @@ ffmpeg -i final.mp4 -vf "select=...,scale=...,tile=3x2" -frames:v 1 contact.png
 - `heron-production.yml`：新开关与 hyperframes 路径
 - `application-dev.yml`：`python: python`、`guard-enabled: false`、`pipeline-enabled`、`news.production-assets`
 - `script/sql/heron/005-model-config.sql`：模型三键 seed
-- `ruoyi-heron/pom.xml:16`：默认排除组由 `exclude,mysql` 扩为 `exclude,mysql,render` —— 真渲染测试要几分钟起 Chrome/ffmpeg，不挂在每次构建上。跑法：`mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude,mysql -Dtest=NewsProductionPipelineRenderTest`
+- `ruoyi-heron/pom.xml:16`：默认排除组由 `exclude,mysql` 扩为 `exclude,mysql,render` —— 真渲染测试要几分钟起 Chrome/ffmpeg，不挂在每次构建上。跑法：`mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude,mysql -Dtest=NewsProductionPipelineRenderTest`；`HERON_TEST_NODE` 指向绝对 node 路径，否则 PATH 上的 20.x 会被 hyperframes 拒（F20）
 
 **模板（不进 Git）**
 - `data/templates/news-9x16/`：`index.html`、样式、字体、`*.motion.json`、`assets-manifest.json`（固定 `<audio src="narration.mp3">`，无初始化脚本）
@@ -488,6 +490,24 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 
 测试产物落在被忽略的 `data/it-render/<uuid>/videos/10/v5/a1-<token>/`（六件齐全，可直接放给人工看片）。这不是任务产物路径，只是测试落点；真任务仍走 `ProductionArtifactService` 的 `videos/<workId>/v<versionId>/a<attempt>-<runToken>/`。
 
+### 7.5 M3 / M4 真闭环实测（2026-11-04）
+
+走的是真后端 + 真浏览器，不是单测：
+
+| 步骤 | 实测 |
+|---|---|
+| 采集 | 来源页新增 `IT之家 数码快讯` → `https://www.ithome.com/rss/`，「立即采集」落库 **60 条候选**（走 `NewsUrlPolicy` + 地址闸 + DNS 钉死那套共享代码） |
+| 认领→草稿→提交 | 认领首条（汽车类，非时政）→ 保存草稿（模板/音色为锁定只读值）→ `generate` 返回 `taskId` + `status=queued` |
+| 自动生产 | worker 领取后真跑到成片：**140 秒 succeeded**。落库 `duration_ms=54408`、`checks` 10 项、`artifact_manifest` 6 件、`script` 存稿件原文 |
+| 失败不留半份 | 前 3 个版本（抓取不可达 / 版式闸 / 定位符违规）在 `heron_video_version` 里 `script`、`checks`、`duration_ms` 全为 NULL |
+| 人工确认 | `review approved` 必须带 `contactSha256` + `videoSha256` 两个完整哈希，通过 |
+| 人工发布 | `publish` 写 `publish_source=manual`、`publish_at=2026-11-04 02:29:47.906`，候选 `published_at` 同一毫秒值；真实浏览器列表页显示「**v4 · 已通过　人工已发布**」 |
+
+**本轮写稿用的是本地假 OpenAI 端点**（`data/tools/model-stub.mjs`，返回固定稿件，只服务本机验证、不进 Git）。因此已被证实的是接缝：HTTP 往返、契约闸、用量记账、渲染链、闸报告、落库与人工腿。**未验证的是模型真实写稿质量**（需求文档 §8-U6 的一次通过率仍未测）—— `heron.model.*` 填真值后重跑同一条候选即可。
+
+遗留一条真缺陷：失败任务已 `finalizeFile` 搬进 `videos/<workId>/v<versionId>/a<attempt>-<token>/` 的产物，在被 `complete()` 拒收后成为**无人引用的孤儿目录**（清理服务按任务清单找候选，扫不到它们）。不属本轮范围，记为 R19。
+
+
 ---
 
 ## 8. 验收判据（可执行）
@@ -520,8 +540,11 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 | R10 | hyperframes 匿名 telemetry / `feedback` 上报 | 自部署开源产品默认关掉（`doctor`/`telemetry` 具体开关 M1 实测确认），不进我们脚本的自动上报路径 |
 | R11 | `sweep_static`：全程静止的时间轴会让 `check` 直接失败且一切绿判定不可信 | 模板保留一个持续运动元素；M1 首条样片验 |
 | R12 | 15 个 MySQL 集成测试类默认被 `heron.test.excludedGroups=exclude,mysql` 排除（`ruoyi-heron/pom.xml:16`） | M0 必须跑第二段命令（§7.1），否则「测试绿」只覆盖 10 个单元测试类 |
-| R13 | 集成测试要 `HERON_TEST_MYSQL_URL/USER/PASSWORD` 且库名以 `heron_it_` 前缀隔离；本机 2026-11-03 未配 → 137 errors，Docker Desktop 未运行 | 由用户给隔离库与凭据，或单独授权我建库；不配则 M2/M4 的「闸行为 + 版本互不覆盖」只能靠单测假象，**不得当通过** |
-| R14 | `guard-enabled=false` 这条新路径在 Windows 上零测试覆盖（Linux 用例恒跳过） | M2 补本机可跑的用例，见 §6 测试改动 |
+| R13 | 集成测试要 `HERON_TEST_MYSQL_URL/USER/PASSWORD` 且库名 `heron_it_` 前缀 | 已解：隔离栈 3307 上建 `heron_it_local`，三组分别跑，137 项全绿 |
+| R14 | `guard-enabled=false` 这条新路径的覆盖 | 已补 `ProductionProcessTest.runsChildWithoutGuard`（任意平台真起子进程、不落 guard-identity）；仍缺超时与 1MiB 两条分支的 no-guard 用例 |
+| R15 | 失败任务已搬进 `videos/…/a<attempt>-<token>/` 的产物，被 `complete()` 拒收后成为无人引用的孤儿目录 | 清理服务按任务清单取候选，扫不到它们。本轮不修（属清理侧范围），要避开就先让 checks 过再 finalizeFile |
+| R16 | 渲染耗时目标 60 秒 vs 实测：测试链路 121 秒、真任务 140 秒（`looks` + `--workers 1`） | 没有擅自降到 `draft`（画质换速度不该由实现侧决定）。要么把目标改成实测口径，要么 `draft` 出草片、`looks` 只用于定稿 |
+| R17 | hyperframes 的匿名 telemetry / `feedback` 上报仍未逐条核实关法 | M1 只确认 `doctor` 可跑；部署前把上报关掉并记录开关名 |
 
 ---
 

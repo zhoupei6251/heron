@@ -330,10 +330,17 @@ heron:
     # PATH 上没有 python3.exe；监护脚本只在 Linux 生效，开发机显式关闭而不是自动降级
     python: python
     guard-enabled: false
+    # nvm-windows 的 node 是机器级符号链接，会被别的会话切回 20.x，而 hyperframes 要求 Node ≥22
+    node: D:/Users/zhoupei/AppData/Local/nvm/v24.22.1/node.exe
     hyperframes: D:/zhoupei/heron/heron/data/tools/node_modules/hyperframes/bin/hyperframes.mjs
     news-template: D:/zhoupei/heron/heron/data/templates/news-9x16
     worker-enabled: true
   news:
     pipeline-enabled: true
+    # 泛资讯源白名单（时政不进）；本机开发与 N3 闭环验收用这两家实测可达的 RSS
+    collection-enabled: true
+    allowed-hosts:
+      - www.ithome.com
+      - 36kr.com
     # 模板、字体与音色清单的实算哈希；改模板后必须同步这一行，否则 assets 闸判不一致
     production-assets: '{"templateKey":"news-9x16","templateVersion":"1","fontSha256":"2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b","voiceKey":"zh-CN-XiaoxiaoNeural","voiceVersion":"1","assetManifestSha256":"4100ca23bb3c8c34c45abfe4435bdb73c632624b04600bf4892a7b9add150bfd"}'
