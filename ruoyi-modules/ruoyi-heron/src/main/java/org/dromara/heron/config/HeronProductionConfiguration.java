@@ -48,9 +48,10 @@ public class HeronProductionConfiguration {
                                              ProductionProcessService processes,
                                              ProductionRecoveryService recovery,
                                              ProductionUsageService usage,
+                                             ProductionArtifactService artifacts,
                                              @Qualifier("scheduledExecutorService")
                                              ScheduledExecutorService scheduler) {
-        return new ProductionRunner(pipelines, execution, processes, recovery, usage, scheduler);
+        return new ProductionRunner(pipelines, execution, processes, recovery, usage, artifacts, scheduler);
     }
 
     /**

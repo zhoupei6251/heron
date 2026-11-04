@@ -7,6 +7,7 @@ import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.bo.ProductionSubmitBo;
 import org.dromara.heron.domain.vo.ProductionArtifactVo;
 import org.dromara.heron.domain.vo.ProductionResultVo;
+import org.dromara.heron.service.impl.ProductionArtifactService;
 import org.dromara.heron.service.impl.ProductionProcessService;
 import org.dromara.heron.service.impl.ProductionRecoveryService;
 import org.dromara.heron.service.impl.ProductionRunner;
@@ -48,6 +49,9 @@ class ProductionWorkerTest extends HeronMysqlTestSupport {
     private ProductionProcessService processes;
 
     @Autowired
+    private ProductionArtifactService artifacts;
+
+    @Autowired
     private ProductionRecoveryService recoveryService;
 
     @Autowired
@@ -70,7 +74,7 @@ class ProductionWorkerTest extends HeronMysqlTestSupport {
         loginAs(ADMIN);
         scheduler = Executors.newSingleThreadScheduledExecutor();
         runner = new ProductionRunner(context, executionService, processes, recoveryService,
-            usageService, scheduler);
+            usageService, artifacts, scheduler);
     }
 
     @AfterEach

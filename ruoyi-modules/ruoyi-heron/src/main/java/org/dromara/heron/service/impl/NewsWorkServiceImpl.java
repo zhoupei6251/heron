@@ -466,6 +466,8 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         domain.requireTask(version, task);
         NewsVideoVersionVo vo = MapstructUtils.convert(version, NewsVideoVersionVo.class);
         vo.setTaskStatus(task.getStatus());
+        vo.setTaskErrorCode(task.getErrorCode());
+        vo.setTaskErrorReason(task.getErrorReason());
         List<ProductionArtifactVo> files = parseManifest(version);
         if (!files.isEmpty()) domain.validateManifest(version, task, files, false);
         boolean retained = version.getCleanedAt() == null && version.getCleanupStartedAt() == null;

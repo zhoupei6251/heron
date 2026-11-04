@@ -36,5 +36,7 @@ public class NewsVideoVersionVo implements Serializable {
     private LocalDateTime cleanedAt;
     private LocalDateTime createTime;
     private String taskStatus;
+    private String taskErrorCode;
+    private String taskErrorReason;
     private List<ProductionFileVo> artifacts;
 }

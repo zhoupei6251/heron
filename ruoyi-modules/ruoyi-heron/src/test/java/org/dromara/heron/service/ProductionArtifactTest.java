@@ -177,6 +177,24 @@ class ProductionArtifactTest {
         assertFalse(service.exists(artifact), "清理续跑靠这个探针，不能假设本地路径还在");
     }
 
+    @Test
+    @DisplayName("尝试没落库就回收已定稿产物，落库了只清记账")
+    void releasesUnlandedAttemptArtifacts() throws IOException {
+        ProductionRunVo landed = run(ProductionBizType.news_video);
+        ProductionArtifactVo kept = service.finalizeFile(landed, "script",
+            Files.writeString(service.prepareWorkDirectory(landed).resolve("a.json"), "{}"), "application/json");
+        service.releaseAttempt(landed, true);
+        assertTrue(Files.exists(tempDir.resolve(kept.storageKey())), "落库成功不能碰产物");
+
+        ProductionRunVo failed = new ProductionRunVo(9002L, ProductionBizType.news_video, 10L, 5L, 1,
+            UUID.randomUUID().toString(), null, null);
+        ProductionArtifactVo dropped = service.finalizeFile(failed, "script",
+            Files.writeString(service.prepareWorkDirectory(failed).resolve("b.json"), "{}"), "application/json");
+        service.releaseAttempt(failed, false);
+        assertFalse(Files.exists(tempDir.resolve(dropped.storageKey())), "失败尝试不该留下无人引用的字节");
+        assertFalse(service.exists(dropped));
+    }
+
     private ProductionRunVo run(ProductionBizType type) {
         return new ProductionRunVo(9001L, type, 10L, 5L, 1,
             UUID.randomUUID().toString(), "{}", null);

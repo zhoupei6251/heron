@@ -368,6 +368,8 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
         requireTask(version, task);
         var vo = MapstructUtils.convert(version, ProtoVersionVo.class);
         vo.setStatus(task.getStatus());
+        vo.setErrorCode(task.getErrorCode());
+        vo.setErrorReason(task.getErrorReason());
         vo.setInput(ProtoProductionDomain.readInput(version.getInputSnapshot()));
         vo.setArtifacts(version.getArtifactManifest() == null ? List.of()
             : ProtoProductionDomain.readArtifacts(version.getArtifactManifest()).stream()

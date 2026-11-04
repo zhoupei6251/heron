@@ -565,7 +565,17 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 
 实测（桶 + 真模型）：新闻 211 秒 queued→succeeded，125 秒成片；从七牛取回的 mp4 `7,129,015 B`，sha256 `33132b28a277…` 与清单逐位相同。原型 7 件产物全部落在 `protos/<projectId>/v4/…`，`.rp` / `rp1` / 汇总图取回哈希一致。
 
-已知代价：Range 在对象存储模式下是从 0 起跳读，远端区间会把前缀重拉一遍（末 500 B 实测 4 秒）；前端目前取整段 blob 播放走不到这条分支，升级办法是带 `range` 的 GetObject。失败尝试已上传的对象与本地孤儿目录是同一个问题（R15 的对象存储版本），本轮未修。
+已知代价：Range 在对象存储模式下是从 0 起跳读，远端区间会把前缀重拉一遍（末 500 B 实测 4 秒）；前端目前取整段 blob 播放走不到这条分支，升级办法是带 `range` 的 GetObject。失败尝试已上传的对象与本地孤儿目录（R15 的对象存储版本）在 §7.9 第 3 条修掉了。
+
+### 7.9 精致化：时间、失败态与不留垃圾（2026-11-04 晚）
+
+三条都是操作员天天撞的，补完这两条线的界面才谈得上「精致」：
+
+1. **时间按浏览器时区显示。** 服务端写的是 UTC 墙钟（`Clock.systemUTC` 的 `LocalDateTime`），五个 heron 页面原来直接 `parseTime(value)`，本机 UTC+8 就把 13:49 显示成 05:49。新增 `src/views/heron/heron-time.ts` 的 `utcText()`（naive 串补 `Z` 再交给 `parseTime`），替换全部时间渲染点。写侧不用动：发布回执本来就有 `toUtcText` 把操作员填的本地时间转成 UTC 再提交 —— 我一度据此判断「发布腿被时区阻断」，实测后更正：UI 路径是好的，只有裸 API 填本地时间才会被 `发布时间不能晚于当前时间` 拒。
+2. **失败版本不再假装可审。** 原来 `审片/审核` 列无条件渲染 `reviewStatus`，失败版本显示「待审片」，点进去还挂着提交审片按钮（后端会拒，但界面在骗人）。现在版本 VO 直接带任务的错误码与原因（新闻 `taskErrorCode/taskErrorReason`，原型 `errorCode/errorReason`）：失败版本的审核列显示 `-`，选中后是一条错误 alert —— 实测文案「这一版没有可审的成片（任务状态 失败，news_report_unreadable）　脚本或检查报告不可读」；任务状态标签带 `title`，鼠标停上去就是原因。
+3. **失败尝试不留无人引用的字节。** 本轮真跑时我亲手从桶里删过 6 个失败尝试上传的对象，所以从根上补：`ProductionArtifactService` 按 `taskId:attemptNo` 记本次定稿的键，runner 在 `finally` 里 `releaseAttempt(run, landed)` —— 落库成功只清记账，没落库就把这些键删掉（本地删文件、桶里删对象）；失败证据在 `work/.../.keep` 下，不在这份清单里，不会被误删。`ProductionArtifactTest` 钉住两种结局。
+
+有意没做：前端仍硬编码一份 `news-9x16` / `zh-CN-XiaoxiaoNeural`。它不只是显示 —— 老数据里 `template_key=default` 的行正是靠「保存草稿」把锁定值写回去才自愈的，改成只回填会把那些行永远卡在生成失败。要动就得配一次性数据修正或把锁定对下发到 capabilities，不该混在本轮。
 
 
 ---
@@ -602,7 +612,7 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 | R12 | 15 个 MySQL 集成测试类默认被 `heron.test.excludedGroups=exclude,mysql` 排除（`ruoyi-heron/pom.xml:16`） | M0 必须跑第二段命令（§7.1），否则「测试绿」只覆盖 10 个单元测试类 |
 | R13 | 集成测试要 `HERON_TEST_MYSQL_URL/USER/PASSWORD` 且库名 `heron_it_` 前缀 | 已解：隔离栈 3307 上建 `heron_it_local`，三组分别跑。2026-11-04 复测：A 组 110、B 组 73（含真渲染 84 秒）、C 组 27 全绿，另有 78 项单元测试 |
 | R14 | `guard-enabled=false` 这条新路径的覆盖 | 已补 `ProductionProcessTest.runsChildWithoutGuard`（任意平台真起子进程、不落 guard-identity）；仍缺超时与 1MiB 两条分支的 no-guard 用例 |
-| R15 | 失败任务已搬进 `videos/…/a<attempt>-<token>/` 的产物，被 `complete()` 拒收后成为无人引用的孤儿目录 | 清理服务按任务清单取候选，扫不到它们。本轮不修（属清理侧范围），要避开就先让 checks 过再 finalizeFile |
+| R15 | 失败任务已搬进 `videos/…/a<attempt>-<token>/` 的产物，被 `complete()` 拒收后成为无人引用的孤儿目录 | 已解（§7.9 第 3 条）：runner 收尾按尝试记账回收，本地删文件、对象存储删键，落库成功只清记账；清理服务仍只出候选清单 |
 | R16 | 渲染耗时目标 60 秒 vs 实测：测试链路 121 秒、真任务 140 秒（`looks` + `--workers 1`） | 没有擅自降到 `draft`（画质换速度不该由实现侧决定）。要么把目标改成实测口径，要么 `draft` 出草片、`looks` 只用于定稿 |
 | R17 | hyperframes 的匿名 telemetry / `feedback` 上报仍未逐条核实关法 | M1 只确认 `doctor` 可跑；部署前把上报关掉并记录开关名 |
 | R18 | 原型线在产品内**永远 503**：`reserve()` 要 `ProtoProductionDomain.CapabilitySnapshot` bean，但主源码里没人提供它，`/capabilities` 报 `available:true` 也照样跑不了 | 已解：`HeronProductionConfiguration.prototypeCapabilitySnapshot` 由 `heron.prototype.engine-assets` 提供，且拿声明 commit 比引擎实际 `.git/HEAD`、把空白模板实算哈希进 `templateManifest`、模型档位缺失即启动失败；缺配置就不注册 bean，保持 fail-closed |

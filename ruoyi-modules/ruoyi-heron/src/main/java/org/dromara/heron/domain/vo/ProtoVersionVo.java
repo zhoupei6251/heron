@@ -19,6 +19,8 @@ public class ProtoVersionVo implements Serializable {
     private Integer versionNo;
     private Long taskId;
     private String status;
+    private String errorCode;
+    private String errorReason;
     private String engineCommit;
     private String reviewStatus;
     private Long reviewBy;

@@ -1,5 +1,6 @@
 package org.dromara.heron.service.impl;
 
+import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.oss.client.OssClient;
 import org.dromara.common.oss.exception.S3StorageException;
 import org.dromara.common.oss.factory.OssFactory;
@@ -27,15 +28,20 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
  * 尝试目录内的产物定稿、校验与内部清理；不暴露 HTTP 路径。
  */
+@Slf4j
 @Service
 public class ProductionArtifactService {
 
@@ -43,6 +49,8 @@ public class ProductionArtifactService {
     private static final Pattern SAFE_EXTENSION = Pattern.compile("[a-z0-9]{1,8}");
     private static final Pattern SAFE_MEDIA_TYPE = Pattern.compile("[a-z]+/[a-z0-9.+-]{1,64}");
 
+    /** 本次尝试已定稿的存储键：任务没落库时按它回收，否则桶和磁盘都会留下无人引用的产物。 */
+    private final Map<String, List<String>> finalized = new ConcurrentHashMap<>();
     private final HeronProductionProperties properties;
 
     public ProductionArtifactService(HeronProductionProperties properties) {
@@ -107,7 +115,13 @@ public class ProductionArtifactService {
         } catch (IOException e) {
             throw new IllegalStateException("产物定稿失败", e);
         }
-        return new ProductionArtifactVo(artifactId, kind, storageKey(target), size, sha256, mediaType);
+        return record(new ProductionArtifactVo(artifactId, kind, storageKey(target), size, sha256, mediaType), run);
+    }
+
+    private ProductionArtifactVo record(ProductionArtifactVo artifact, ProductionRunVo run) {
+        finalized.computeIfAbsent(run.taskId() + ":" + run.attemptNo(),
+            key -> Collections.synchronizedList(new ArrayList<>())).add(artifact.storageKey());
+        return artifact;
     }
 
     /**
@@ -319,6 +333,29 @@ public class ProductionArtifactService {
             .resolve(run.bizType().name())
             .resolve(Long.toString(run.taskId()))
             .resolve("a" + run.attemptNo() + "-" + UUID.fromString(run.runToken()));
+    }
+
+    /**
+     * 尝试收尾：落库成功只清记账；没落库就把本次已定稿的字节收走，不留无人引用的产物。
+     * 失败证据在 work/.keep 下，不在这份清单里，不会被误删。
+     */
+    public void releaseAttempt(ProductionRunVo run, boolean landed) {
+        List<String> keys = finalized.remove(run.taskId() + ":" + run.attemptNo());
+        if (landed || keys == null || keys.isEmpty()) {
+            return;
+        }
+        OssClient oss = oss();
+        for (String key : keys) {
+            try {
+                if (oss != null) {
+                    oss.delete(key);
+                } else {
+                    Files.deleteIfExists(resolveStorageKey(key));
+                }
+            } catch (RuntimeException | IOException e) {
+                log.warn("回收失败尝试产物未成功: key={}, cause={}", key, e.getClass().getSimpleName());
+            }
+        }
     }
 
     private Path finalDirectory(ProductionRunVo run, Long versionNo) {

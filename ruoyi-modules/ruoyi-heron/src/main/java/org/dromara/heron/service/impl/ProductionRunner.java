@@ -39,6 +39,7 @@ public class ProductionRunner {
     private final ProductionProcessService processes;
     private final ProductionRecoveryService recovery;
     private final ProductionUsageService usage;
+    private final ProductionArtifactService artifacts;
     private final ScheduledExecutorService scheduler;
     private final ExecutorService workers = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS,
         new ArrayBlockingQueue<>(2), runnable -> {
@@ -53,12 +54,14 @@ public class ProductionRunner {
                             ProductionProcessService processes,
                             ProductionRecoveryService recovery,
                             ProductionUsageService usage,
+                            ProductionArtifactService artifacts,
                             @Qualifier("scheduledExecutorService") ScheduledExecutorService scheduler) {
         this.pipelines = pipelines;
         this.execution = execution;
         this.processes = processes;
         this.recovery = recovery;
         this.usage = usage;
+        this.artifacts = artifacts;
         this.scheduler = scheduler;
         for (ProductionBizType type : ProductionBizType.values()) {
             busy.put(type, new AtomicBoolean());
@@ -168,6 +171,7 @@ public class ProductionRunner {
             applied = failWithUsage(run, "production_pipeline_error", "流水线执行失败");
         } finally {
             heartbeat.cancel(false);
+            artifacts.releaseAttempt(run, applied);
         }
 
         if (!applied) {
