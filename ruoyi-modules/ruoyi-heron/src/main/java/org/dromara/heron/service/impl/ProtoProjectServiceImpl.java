@@ -84,7 +84,17 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
 
     @Override
     public ProtoProjectVo queryById(long projectId) {
-        return MapstructUtils.convert(requireProject(projectId, "query", false), ProtoProjectVo.class);
+        ProtoProjectVo vo = MapstructUtils.convert(requireProject(projectId, "query", false), ProtoProjectVo.class);
+        if (vo.getActiveTaskId() == null) {
+            return vo;
+        }
+        HeronProductionTask task = taskMapper.selectById(vo.getActiveTaskId());
+        if (task == null || !ProductionBizType.prototype.name().equals(task.getBizType())
+            || !Objects.equals(task.getBizId(), vo.getProjectId()) || !Objects.equals(task.getOwnerId(), vo.getOwnerId())) {
+            throw new HeronAccessException();
+        }
+        vo.setActiveTask(MapstructUtils.convert(task, ProductionTaskVo.class));
+        return vo;
     }
 
     @Override

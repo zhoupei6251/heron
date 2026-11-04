@@ -7,7 +7,8 @@ import java.util.List;
  */
 public record ProductionCapabilitiesVo(Capability news, Capability prototype) {
 
+    /** targetAxureVersion 只给原型线：人工验证要逐字比对部署配置的目标 Axure 版本，不能让人猜字符串。 */
     public record Capability(boolean configured, boolean available,
-                             List<String> reasons, int capacity) {
+                             List<String> reasons, int capacity, String targetAxureVersion) {
     }
 }

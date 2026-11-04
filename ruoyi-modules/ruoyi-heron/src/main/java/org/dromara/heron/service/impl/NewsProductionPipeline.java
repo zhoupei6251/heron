@@ -10,6 +10,7 @@ import org.dromara.heron.domain.vo.ProductionResultVo;
 import org.dromara.heron.domain.vo.ProductionRunVo;
 import org.dromara.heron.service.IProductionPipeline;
 import org.dromara.heron.service.NewsScriptAuthor;
+import org.dromara.heron.service.ProductionStageReporter;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -65,19 +66,24 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private final ProductionProcessService processes;
     private final ProductionArtifactService artifacts;
     private final HeronProductionProperties properties;
+    private final ProductionStageReporter stages;
 
     public NewsProductionPipeline(NewsScriptAuthor author, ProductionProcessService processes,
-                                  ProductionArtifactService artifacts, HeronProductionProperties properties) {
+                                  ProductionArtifactService artifacts, HeronProductionProperties properties,
+                                  ProductionStageReporter stages) {
         this.author = author;
         this.processes = processes;
         this.artifacts = artifacts;
         this.properties = properties;
+        this.stages = stages;
     }
 
     @Override
     public ProductionResultVo execute(ProductionRunVo run) {
         JsonNode input = JSON.readTree(run.inputJson());
         List<Gate> gates = new ArrayList<>();
+        // 阶段回报只给操作员看进度；租约已易主时返回 false，交给 runner 收尾，这里不因此失败。
+        stages.beginStage(run, "script", 5);
         JsonNode script = JSON.readTree(author.author(run));
         gates.add(contractGate(script));
         gates.add(evidenceGate(script));
@@ -88,17 +94,20 @@ public class NewsProductionPipeline implements IProductionPipeline {
         gates.add(assetsGate(composition, input.path("assets"), properties.getNewsTemplate().toAbsolutePath().normalize()));
 
         Path voice = composition.resolve(VOICE_FILE);
+        stages.beginStage(run, "voice", 25);
         speak(run, work, script, input.path("assets").path("voiceKey").asString(""));
         double audioSeconds = probeDuration(run, voice);
         gates.add(voiceGate(voice, audioSeconds));
         gates.add(subtitleGate(composition.resolve(SUBTITLES_FILE), audioSeconds));
 
+        stages.beginStage(run, "render", 45);
         timeComposition(composition, script, audioSeconds);
         JsonNode check = checkComposition(run, work);
         render(run, work);
         gates.add(renderGate(work.resolve(RAW_FILE)));
         gates.add(decodeGate(decode(run, work.resolve(RAW_FILE)), audioSeconds));
 
+        stages.beginStage(run, "finalize", 85);
         Path finalFile = tagAigc(run, work);
         gates.add(aigcMetadataGate(run, finalFile));
         Path sheet = contactSheet(run, work, finalFile);

@@ -444,6 +444,8 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 ... -Dtest='Proto*Test'
 ```
 
+`-Dheron.test.excludedGroups=exclude` 是把 `render` 也放开了（默认值 `exclude,mysql,render` 被整体覆盖），所以 B 组会连真渲染一起跑 —— 那条用例要 `HERON_TEST_NODE` 指向 24.x，否则 PATH 上的 20.x 让版式闸报 `Node.js >= 22`，看着像代码回归（F20 同源）。只想跑 mysql 不跑渲染就写 `-Dheron.test.excludedGroups=exclude,render`。
+
 副作用要记：中途 `TaskStop` 只杀了 mvn，surefire 的 fork JVM（命令行里带 `surefirebooter-`）活着继续跑并占着库连接 —— 下一轮开跑前必须确认 `information_schema.INNODB_TRX` 与 `processlist WHERE db='heron_it_local'` 都为 0，否则又是一轮假故障。
 
 **本机可用入口（2026-11-03 起改为隔离栈）**：
@@ -454,6 +456,13 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 - `application-dev.yml` 的 datasource 端口改 3307、redis 端口改 6380（DB 口令那行不动，仍是仓库里已有的明文）；跑后端只需 `REDIS_PASSWORD=heron!2026`。用户自己那套 3306/6379 与其中 `heron` 库**保持原样**（我曾往里应用过 001–004/005，新增 10 表 + 34 菜单 + 3 配置行，未删改任何既有对象）。
 - 集成测试 URL 必须匹配 `jdbc:mysql://<host>/<heron_it_[a-z0-9_]+>(\?.*)?`（`HeronMysqlTestSupport:41-45,178-180`），实测可用参数：`useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=GMT%2B8&zeroDateTimeBehavior=convertToNull&nullCatalogMeansCurrent=true`。harness 每类 `@BeforeEach` 自己 `DROP` 再按 001/002/003 重建，空库即可。
 - 中途 `TaskStop` 只杀 mvn，surefire 的 fork JVM（命令行含 `surefirebooter-`）会活着继续占库连接；下一轮开跑前先确认 `information_schema.INNODB_TRX` 与 `processlist WHERE db='heron_it_local'` 归零。
+
+**Windows 开发机要补的 macOS 形状（引擎硬编码 macOS 路径，不是我们的代码问题）**：
+
+- `AXURE_APP_RP9` 指向按 `.app/Contents/Resources/DefaultSettings` 形状搭出的 junction 树（`D:\zhoupei\heron\axure\rp9-app`，见 2026-11-02 需求文档），后端进程带上它，子进程继承。
+- 原型预览 PNG 由 `zee-rp/scripts/proto.py`（Pillow）绘制，字体路径写死为 `/System/Library/Fonts/PingFang.ttc` 等 macOS 绝对路径。Windows 上 `/System/...` 按**当前盘根**解析，所以补一个文件即可：`copy C:\Windows\Fonts\msyh.ttc D:\System\Library\Fonts\PingFang.ttc`。
+- 实测（2026-11-04）：补之前 v1 的预览中文全是豆腐块（`page_preview` 17,020 B、`preview_summary` 24,699 B），补之后同一需求重跑 v2 中文正常（86,165 B / 78,317 B）。引擎的 `no_missing_glyphs` 闸只看排版不看栅格，所以豆腐块不会让它失败 —— 只能靠人看预览，这条限制要留在验收口径里。
+- 依赖当前盘是 D:（子进程 cwd 落在 `data/` 下）；换盘或换机器要按实际盘根重放这个 shim。
 
 
 
@@ -505,7 +514,35 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 
 **本轮写稿用的是本地假 OpenAI 端点**（`data/tools/model-stub.mjs`，返回固定稿件，只服务本机验证、不进 Git）。因此已被证实的是接缝：HTTP 往返、契约闸、用量记账、渲染链、闸报告、落库与人工腿。**未验证的是模型真实写稿质量**（需求文档 §8-U6 的一次通过率仍未测）—— `heron.model.*` 填真值后重跑同一条候选即可。
 
-遗留一条真缺陷：失败任务已 `finalizeFile` 搬进 `videos/<workId>/v<versionId>/a<attempt>-<token>/` 的产物，在被 `complete()` 拒收后成为**无人引用的孤儿目录**（清理服务按任务清单找候选，扫不到它们）。不属本轮范围，记为 R19。
+遗留一条真缺陷：失败任务已 `finalizeFile` 搬进 `videos/<workId>/v<versionId>/a<attempt>-<token>/` 的产物，在被 `complete()` 拒收后成为**无人引用的孤儿目录**（清理服务按任务清单找候选，扫不到它们）。不属本轮范围，记为 R15。
+
+### 7.6 原型线 P2 真闭环实测（2026-11-04）
+
+补上 `prototypeCapabilitySnapshot`（R18）之后，第一次在产品内跑通整条线，走的仍是真后端 + 真浏览器：
+
+| 步骤 | 实测 |
+|---|---|
+| 发起生成 | `POST /heron/proto/{id}/generate`（`requestKey` + 已保存修订 1）→ `queued`；worker **3 秒 succeeded**，模型腿记 `heron-stub` / 1200+480 tokens |
+| 引擎真跑 | `proto.mjs check` → `generate` 真出 RP/1（3,676 B）与原生 `.rp`（69,969 B，魔数 `ac ef 09 00` = RP9，与 `rp/1 target=9` 一致） |
+| 产物 | 7 件：`native_rp` / `engine_check` / 2×`page_preview` / `preview_summary` / `audit` / `rp1`；清单里 `engineCommit=74f286fe…`、`templateManifest.blank-rp9_rp` 是空白模板实算哈希 |
+| 审核腿 | 浏览器里选中 v2 → 勾「我已核对指纹」→ 提交审核；落库 `review_status=approved`，`review_rp_sha=e7b1b729…`、`review_preview_sha=db2b1ab4…` 与产物清单一致 |
+| 交付腿 | `deliver` 同 `requestKey` 重放返回同一事实（毫秒值不变）；哈希不符回 `409 文件已变化`；未做 Axure 人工验证时 `nativeVerifiedAtDelivery=false` —— **不假装验证过** |
+| 下载腿 | 审核下载与正式下载（带 `rpSha256`）取回的字节 sha256 与清单逐位相同；`page_preview`/`preview_summary` 只能走 inline `preview`，走 `review-download` 会按 kinds 白名单回 404 |
+| 交付面 | 审核通过后「确认为交付」按钮才解除 disabled，与后端 `requireApproved` 同口径 |
+
+**仍未验证**：`heron.model.*` 填真值后模型能否按需求写出可读 RP/1（本轮是引擎自带示例 spec，所以页面文案是「复习资料」而不是我们的「订单管理」需求）；以及人在 Axure 里真的打开/编辑/重开那条原生验证腿。
+
+### 7.7 操作面实测：从「能跑」到「好用」（2026-11-04 下午）
+
+按「两条线要可用好用」逐条走操作员路径，撞出三处只有真点才算得上的缺陷，都已修：
+
+| 现象 | 根因 | 处置 |
+|---|---|---|
+| 新认领的作品点「发起生成」必回 503「选择的模板或声音尚未验证」 | `claim` 把 `template_key/voice_key` 写成 `default` 占位，而生成闸拿部署锁定的 `news-9x16` / `zh-CN-XiaoxiaoNeural` 比对；操作员必须先盲点一次「保存草稿」才能生成 | 认领时直接落锁定档位（`NewsProductionDomain.lockedAssetsIfConfigured()`，未配置才留 `default`，不能让编辑认领被生产配置卡住） |
+| 140 秒的真渲染全程显示「执行中 进度 0%」 | `beginStage` 这条通道在核心里早就有，但两条流水线都拿不到 `IProductionExecutionService`，没人回报阶段 | 新增单方法接口 `ProductionStageReporter`，新闻线回报 `script 5 → voice 25 → render 45 → finalize 85`，原型线回报 `check 35 → generate 55 → finalize 85`（写稿腿已有 usage 记账，不再重复报阶段）；`ProtoEnginePipelineTest` 钉住序列与「check 失败后不再回报后续阶段」 |
+| 原型「原生验证声明」永远记为未通过 | `heron.prototype.target-axure-version` 没配，`passed` 的判据是「输入字符串 == 配置值」，操作员无从猜起 | dev 配置补 `Axure RP 9`，并把该值随 `/capabilities` 下发；前端选中版本时自动预填且只读 |
+
+工作台随之补上静默轮询：任务在途时每 2 秒读一次任务详情（不是重读工作台，避免覆盖正在输入的草稿），到终态才整页刷新一次；页面顶部用一条 alert 显示状态/阶段/进度，失败时把 `errorReason` 原文铺在原地，不用跳任务中心。实测一条新认领的智元机器人新闻：`排队中 → voice 25% → render 45% → finalize → 已完成 100%`，版本行自己变成「v1 已完成 待审片 54 秒」，全程零手动刷新。
 
 
 ---
@@ -540,11 +577,16 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 | R10 | hyperframes 匿名 telemetry / `feedback` 上报 | 自部署开源产品默认关掉（`doctor`/`telemetry` 具体开关 M1 实测确认），不进我们脚本的自动上报路径 |
 | R11 | `sweep_static`：全程静止的时间轴会让 `check` 直接失败且一切绿判定不可信 | 模板保留一个持续运动元素；M1 首条样片验 |
 | R12 | 15 个 MySQL 集成测试类默认被 `heron.test.excludedGroups=exclude,mysql` 排除（`ruoyi-heron/pom.xml:16`） | M0 必须跑第二段命令（§7.1），否则「测试绿」只覆盖 10 个单元测试类 |
-| R13 | 集成测试要 `HERON_TEST_MYSQL_URL/USER/PASSWORD` 且库名 `heron_it_` 前缀 | 已解：隔离栈 3307 上建 `heron_it_local`，三组分别跑，137 项全绿 |
+| R13 | 集成测试要 `HERON_TEST_MYSQL_URL/USER/PASSWORD` 且库名 `heron_it_` 前缀 | 已解：隔离栈 3307 上建 `heron_it_local`，三组分别跑。2026-11-04 复测：A 组 110、B 组 73（含真渲染 84 秒）、C 组 27 全绿，另有 78 项单元测试 |
 | R14 | `guard-enabled=false` 这条新路径的覆盖 | 已补 `ProductionProcessTest.runsChildWithoutGuard`（任意平台真起子进程、不落 guard-identity）；仍缺超时与 1MiB 两条分支的 no-guard 用例 |
 | R15 | 失败任务已搬进 `videos/…/a<attempt>-<token>/` 的产物，被 `complete()` 拒收后成为无人引用的孤儿目录 | 清理服务按任务清单取候选，扫不到它们。本轮不修（属清理侧范围），要避开就先让 checks 过再 finalizeFile |
 | R16 | 渲染耗时目标 60 秒 vs 实测：测试链路 121 秒、真任务 140 秒（`looks` + `--workers 1`） | 没有擅自降到 `draft`（画质换速度不该由实现侧决定）。要么把目标改成实测口径，要么 `draft` 出草片、`looks` 只用于定稿 |
 | R17 | hyperframes 的匿名 telemetry / `feedback` 上报仍未逐条核实关法 | M1 只确认 `doctor` 可跑；部署前把上报关掉并记录开关名 |
+| R18 | 原型线在产品内**永远 503**：`reserve()` 要 `ProtoProductionDomain.CapabilitySnapshot` bean，但主源码里没人提供它，`/capabilities` 报 `available:true` 也照样跑不了 | 已解：`HeronProductionConfiguration.prototypeCapabilitySnapshot` 由 `heron.prototype.engine-assets` 提供，且拿声明 commit 比引擎实际 `.git/HEAD`、把空白模板实算哈希进 `templateManifest`、模型档位缺失即启动失败；缺配置就不注册 bean，保持 fail-closed |
+| R19 | 预览中文全是豆腐块：引擎 `proto.py` 用 Pillow，字体路径写死 macOS 绝对路径，Windows 上退化成只认 ASCII 的默认字体 | 已解（机器级 shim，见 §7.1）：`msyh.ttc` 复制成当前盘根的 `System/Library/Fonts/PingFang.ttc`。引擎的 `no_missing_glyphs` 只看排版不看栅格，所以这项**不会自己报错**，只能靠人看预览 |
+| R20 | 新闻预览不支持分段请求：审片拖进度条要整段 3.3 MB 重传 | 已解：`NewsWorkController.stream` 认单段 Range，回 206 + `Content-Range`，越界回 416，无 Range 与原来逐字节一致。**注意**：当前前端是 axios 取 blob 再播，走不到这条分支，价值在断点续传与直接链接播放 |
+| R21 | 本会话的 shell 会把口令里的 `!` 转义成 `\!`，`export HERON_TEST_MYSQL_PASSWORD='heron!2026'` 静默送出错口令，三组 IT 全红（`Access denied ... using password: YES`），看着像代码回归 | 用 `$(printf 'heron\0412026')` 注入；IT 报红先核对 `env | grep HERON_TEST` 的实际字节，再怀疑被测代码 |
+| R22 | 修 claim 之前建的作品仍带着 `template_key=default`，生成照样被闸拒（本机已有一条：荣威那条 work） | 不写迁移脚本：这类作品点一次「保存草稿」就会落到锁定档位；开源前若要清历史数据，一条 UPDATE 足够，但要用户单独授权 |
 
 ---
 

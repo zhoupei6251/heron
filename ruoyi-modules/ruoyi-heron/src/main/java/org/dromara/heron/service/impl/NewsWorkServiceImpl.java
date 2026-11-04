@@ -160,8 +160,9 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         work.setDraft(candidate.getSummary());
         work.setRevision(1L);
         work.setNextVersion(1);
-        work.setTemplateKey("default");
-        work.setVoiceKey("default");
+        Map<String, Object> locked = domain.lockedAssetsIfConfigured();
+        work.setTemplateKey((String) locked.getOrDefault("templateKey", "default"));
+        work.setVoiceKey((String) locked.getOrDefault("voiceKey", "default"));
         work.setCreateBy(actor);
         work.setUpdateBy(actor);
         work.setCreateTime(now());
@@ -457,9 +458,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             HeronProductionTask task = taskMapper.selectById(vo.getActiveTaskId());
             if (task == null || !TYPE.name().equals(task.getBizType()) || !Objects.equals(task.getBizId(), vo.getWorkId())
                 || !Objects.equals(task.getOwnerId(), vo.getOwnerId())) throw new HeronAccessException();
-            ProductionTaskVo active = MapstructUtils.convert(task, ProductionTaskVo.class);
-            active.setErrorReason(null);
-            vo.setActiveTask(active);
+            vo.setActiveTask(MapstructUtils.convert(task, ProductionTaskVo.class));
         }
     }
 

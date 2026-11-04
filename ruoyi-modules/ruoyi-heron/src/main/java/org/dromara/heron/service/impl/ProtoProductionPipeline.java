@@ -10,6 +10,7 @@ import org.dromara.heron.domain.vo.ProductionRunVo;
 import org.dromara.heron.domain.vo.ProtoVersionVo;
 import org.dromara.heron.service.IProductionPipeline;
 import org.dromara.heron.service.ProtoRp1Author;
+import org.dromara.heron.service.ProductionStageReporter;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -46,13 +47,16 @@ public class ProtoProductionPipeline implements IProductionPipeline {
     private final ProductionProcessService processes;
     private final ProductionArtifactService artifacts;
     private final HeronProductionProperties properties;
+    private final ProductionStageReporter stages;
 
     public ProtoProductionPipeline(ProtoRp1Author author, ProductionProcessService processes,
-                                   ProductionArtifactService artifacts, HeronProductionProperties properties) {
+                                   ProductionArtifactService artifacts, HeronProductionProperties properties,
+                                   ProductionStageReporter stages) {
         this.author = author;
         this.processes = processes;
         this.artifacts = artifacts;
         this.properties = properties;
+        this.stages = stages;
     }
 
     @Override
@@ -66,12 +70,14 @@ public class ProtoProductionPipeline implements IProductionPipeline {
         Map<String, String> environment = Map.of("AXURE_BLANK_TEMPLATE_RP9",
             properties.getPrototypeTemplate().toAbsolutePath().normalize().toString());
 
+        stages.beginStage(run, "check", 35);
         ProductionProcessVo check = processes.run(run, new ProductionProcessBo("node",
             List.of(engineScript().toString(), "check", "--spec", spec.toString()), work,
             CHECK_TIMEOUT, environment));
         if (check.exitCode() != 0) {
             throw new HeronBusinessException(409, "proto_engine_check", check.stderr());
         }
+        stages.beginStage(run, "generate", 55);
         ProductionProcessVo generate = processes.run(run, new ProductionProcessBo("node",
             List.of(engineScript().toString(), "generate", "--spec", spec.toString(),
                 "--out-dir", out.toString(), "--out-rp", out.resolve(NATIVE_FILE).toString()), work,
@@ -107,6 +113,7 @@ public class ProtoProductionPipeline implements IProductionPipeline {
             }
         }
 
+        stages.beginStage(run, "finalize", 85);
         List<ProductionArtifactVo> files = new ArrayList<>();
         for (Planned artifact : planned) {
             files.add(artifacts.finalizeFile(run, artifact.kind(), artifact.file(),

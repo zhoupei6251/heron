@@ -100,6 +100,11 @@ public class OpenAiModelClient {
         return content;
     }
 
+    /** 部署侧要记录"这条结果由哪个模型档位产出"，只给逻辑名，不外泄密钥。 */
+    public String modelName() {
+        return setting("heron.model.name");
+    }
+
     /** 参数表优先，环境变量与 yml 兜底；空白等同于未配置。 */
     private String setting(String key) {
         String value = config.getConfigValue(key);

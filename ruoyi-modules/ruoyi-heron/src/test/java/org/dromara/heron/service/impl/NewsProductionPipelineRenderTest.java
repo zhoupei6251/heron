@@ -71,7 +71,8 @@ class NewsProductionPipelineRenderTest {
         properties.setNode(System.getenv().getOrDefault("HERON_TEST_NODE", "node"));
         NewsProductionPipeline pipeline = new NewsProductionPipeline(
             fixedAuthor(SCRIPT), new ProductionProcessService(properties,
-            new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties);
+            new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties,
+            (run, stage, progress) -> true);
 
         ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_video, 10L, 5L, 1,
             UUID.randomUUID().toString(), lockedAssets(template), null);

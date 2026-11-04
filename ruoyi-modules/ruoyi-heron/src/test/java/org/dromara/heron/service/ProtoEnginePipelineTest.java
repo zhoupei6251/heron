@@ -65,6 +65,7 @@ class ProtoEnginePipelineTest {
     private ProductionArtifactService artifacts;
     private RecordingProcesses processes;
     private ProtoProductionPipeline pipeline;
+    private final List<String> stageLog = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
@@ -74,7 +75,9 @@ class ProtoEnginePipelineTest {
         properties.setPrototypeTemplate(write("blank-rp9.rp", "blank"));
         artifacts = new ProductionArtifactService(properties);
         processes = new RecordingProcesses(properties, artifacts);
-        pipeline = new ProtoProductionPipeline(run -> RP1, processes, artifacts, properties);
+        stageLog.clear();
+        pipeline = new ProtoProductionPipeline(run -> RP1, processes, artifacts, properties,
+            (run, stage, progress) -> stageLog.add(stage + ":" + progress));
     }
 
     @Test
@@ -88,6 +91,7 @@ class ProtoEnginePipelineTest {
         assertEquals("proto_engine_check", error.getCode());
         assertTrue(error.getMessage().contains("E_TARGET_UNSUPPORTED"), error.getMessage());
         assertEquals(1, processes.commands.size());
+        assertEquals(List.of("check:35"), stageLog, "check 失败后不该再回报后续阶段");
     }
 
     @Test
@@ -113,6 +117,7 @@ class ProtoEnginePipelineTest {
             assertEquals(Map.of("AXURE_BLANK_TEMPLATE_RP9",
                 properties.getPrototypeTemplate().toAbsolutePath().normalize().toString()), command.environment());
         }
+        assertEquals(List.of("check:35", "generate:55", "finalize:85"), stageLog, "操作员要看到阶段单调前进");
     }
 
     @Test

@@ -28,13 +28,14 @@ public class ProductionCapabilityService {
     public ProductionCapabilitiesVo getCapabilities() {
         return new ProductionCapabilitiesVo(
             capability("newsProductionPipeline", List.of("node", "python", "ffmpeg", "ffprobe", "hyperframes"),
-                properties.getNewsTemplate(), 1),
+                properties.getNewsTemplate(), 1, null),
             capability("prototypeProductionPipeline", List.of("python", "zee-rp"),
-                properties.getPrototypeTemplate(), ProductionServiceImpl.PROTOTYPE_CAPACITY));
+                properties.getPrototypeTemplate(), ProductionServiceImpl.PROTOTYPE_CAPACITY,
+                context.getEnvironment().getProperty("heron.prototype.target-axure-version", "")));
     }
 
     private ProductionCapabilitiesVo.Capability capability(String pipelineBean, List<String> tools,
-                                                           Path template, int capacity) {
+                                                           Path template, int capacity, String targetAxureVersion) {
         List<String> reasons = new ArrayList<>();
         if (!properties.isWorkerEnabled()) {
             reasons.add("worker_disabled");
@@ -58,7 +59,8 @@ public class ProductionCapabilityService {
             reasons.add("data_root_unavailable");
         }
         boolean available = configured && reasons.isEmpty();
-        return new ProductionCapabilitiesVo.Capability(configured, available, List.copyOf(reasons), capacity);
+        return new ProductionCapabilitiesVo.Capability(configured, available, List.copyOf(reasons), capacity,
+            targetAxureVersion);
     }
 
     private boolean resolvable(String tool) {

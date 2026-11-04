@@ -301,7 +301,8 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         } catch (IOException e) { throw conflict("keep_unreadable", "无法确认人工保留标记"); }
     }
 
-    private Map<String, Object> productionAssets(HeronNewsWork work) {
+    /** 部署锁定的模板与音色等标识；配置缺失或不完整一律拒绝，不给出半成品。 */
+    public Map<String, Object> lockedAssets() {
         // Deployment-provided identifiers and hashes, not paths or credentials; missing B2 evidence stays unavailable.
         String json = environment.getProperty("heron.news.production-assets");
         if (json == null || json.isBlank()) throw new HeronBusinessException(503, "news_assets_unconfigured", "尚未锁定新闻模板、字体、声音和素材版本");
@@ -314,6 +315,17 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
                 asset.put(key, value);
             }
         } catch (RuntimeException e) { throw new HeronBusinessException(503, "news_assets_invalid", "锁定资产配置不完整"); }
+        return asset;
+    }
+
+    /** 认领用：还没锁定资产时返回空表，让作品先落 default；真正的拒绝留在生成闸，编辑认领不该被生产配置卡住。 */
+    public Map<String, Object> lockedAssetsIfConfigured() {
+        String json = environment.getProperty("heron.news.production-assets");
+        return json == null || json.isBlank() ? Map.of() : lockedAssets();
+    }
+
+    private Map<String, Object> productionAssets(HeronNewsWork work) {
+        Map<String, Object> asset = lockedAssets();
         if (!work.getTemplateKey().equals(asset.get("templateKey")) || !work.getVoiceKey().equals(asset.get("voiceKey"))) {
             throw new HeronBusinessException(503, "news_assets_unavailable", "选择的模板或声音尚未验证");
         }
