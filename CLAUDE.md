@@ -9,6 +9,22 @@ Heron 业务管理系统，基座 RuoYi-Vue-Plus 6.0.0（Spring Boot 4.1.2 / JDK
 业务规格（唯一有效版）：`docs/plans/2026-10-29-heron-business-spec.md`。单租户自部署，两条业务线：新闻视频生产线、原型工坊。
 前端在 `../heron-ui`（plus-ui）。
 
+### 新闻视频生产线下面还有两条子线，别混
+
+两条子线共用 `ProductionBizType.news_video`，只能靠版本冻结输入里的 `kind` 区分；差别是**画面由什么驱动**，不是"是不是视频"——两条都出视频。
+
+| | 文稿解说线 | 数据看板线 |
+| --- | --- | --- |
+| `kind` | `article` | `data_board` |
+| 模板前缀 | `news-*` | `news-data-*` |
+| 画面主体 | 文字排版 | 图表 |
+| 链路 | 热点 → 写稿 → 套版 | 热点 → 选源 → `dataset/1` 快照 → 写稿 → 出图 |
+| 现状 | `article-enabled: false`，不参与发版 | 当前在跑的产品形态 |
+
+命名坑：`kind="article"` 指的是**文稿驱动的那条视频线**，它不产出文章。看到 `article` 不要理解成"写文章"。
+
+栏目（全球数据图鉴、科技竞争力、商业观察室、全球市场、趋势解码）是**数据看板线内部**的选题分类，由 `Column` 和 `heron/column-*.md` 承载，和上面两条子线不是一个层级，不要并列。
+
 ## 写代码前必读（不得凭记忆）
 
 1. Read `.codex/skills/ruoyi-plus-ai-coding/SKILL.md`
@@ -46,10 +62,12 @@ Heron 业务管理系统，基座 RuoYi-Vue-Plus 6.0.0（Spring Boot 4.1.2 / JDK
 - 构建：`mvn -pl ruoyi-admin -am package`，产物 `ruoyi-admin/target/heron.jar`
 - 改 Java 至少保证目标模块编译通过；只改注释/文档不跑构建，也不做无关格式化或 import 重排
 - 运行前提：MySQL 库 `heron`（先导 `script/sql/ry_vue.sql`），**Redis 必需**（Sa-Token / Redisson）
+- 新闻线渲染前提：**Node ≥ 22**，且 `cd data/tools && npm ci`（`node_modules` 不进仓库，靠 `package-lock.json` 还原）。模板、字体、音效与 BGM 已进 git，clone 后无需另外下载
+- 渲染相关路径用 `HERON_NODE` / `HERON_HYPERFRAMES` / `HERON_NEWS_TEMPLATE` 覆盖，默认相对仓库根 `./data/...`，从 `heron/` 目录启动
 - 格式：UTF-8、LF、4 空格（JSON/YAML 2 空格）
 
 ## 边界
 
 - 不引入多租户、套餐、配额、计费、自助注册、微服务、第二套 RBAC；账号、审计、存储、定时任务、在线会话、代码生成都用基座
-- 发布与交付必须人确认；任何"自动跳过闸 / 无人值守直发"的实现都不接受
+- 发布与交付默认人确认。唯一例外是新闻线「自动模式」（业务规格 §3.10）：只关人工闸，其余闸照常；必须逐源开启 + 灰度准入 + 可下架 + 槽位幂等，且发布出口未拿到开放平台凭据前只走 `publish_source = "sandbox"`。任何"一个全局开关就全线直发"的实现都不接受
 - 每个失败必须能回答：哪条闸 + 哪段输入 + 为什么拒

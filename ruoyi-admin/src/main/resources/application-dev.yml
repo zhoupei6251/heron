@@ -331,9 +331,10 @@ heron:
     python: python
     guard-enabled: false
     # nvm-windows 的 node 是机器级符号链接，会被别的会话切回 20.x，而 hyperframes 要求 Node ≥22
-    node: D:/Users/zhoupei/AppData/Local/nvm/v24.22.1/node.exe
-    hyperframes: D:/zhoupei/heron/heron/data/tools/node_modules/hyperframes/bin/hyperframes.mjs
-    news-template: D:/zhoupei/heron/heron/data/templates/news-9x16
+    # 本机需要钉版本时设 HERON_NODE，默认走 PATH
+    node: ${HERON_NODE:node}
+    hyperframes: ${HERON_HYPERFRAMES:./data/tools/node_modules/hyperframes/bin/hyperframes.mjs}
+    news-template: ${HERON_NEWS_TEMPLATE:./data/templates}
     # zee-rp 只作 oracle：引擎根目录（内含 scripts/proto.mjs），本机解包在 D:/zhoupei/tmp 下
     zee-rp: D:/zhoupei/tmp/zee-rp-v0.2.1
     # Axure RP9 空白基底，在两仓库之外；引擎读它需要 AXURE_BLANK_TEMPLATE_RP9，由 Java 注入子进程
