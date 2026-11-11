@@ -17,4 +17,6 @@ public class NewsSourceBo implements Serializable {
     @NotBlank @Size(max = 2048) private String url;
     @NotNull @Min(60) private Integer intervalSeconds;
     @NotBlank @Pattern(regexp = "0|1") private String enabled;
+    /** 源级自动产出开关，缺省视为关闭：新源要先人工看过几条才允许自动。 */
+    @Pattern(regexp = "0|1") private String auto;
 }

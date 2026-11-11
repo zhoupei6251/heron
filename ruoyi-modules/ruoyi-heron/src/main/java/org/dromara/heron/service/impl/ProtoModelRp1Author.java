@@ -26,10 +26,19 @@ public class ProtoModelRp1Author implements ProtoRp1Author {
     @Override
     public String author(ProductionRunVo run) {
         ProtoVersionVo.InputSnapshot input = ProtoProductionDomain.readInput(run.inputJson());
+        // 项目主题是 Heron 的 default，引擎只认自己的主题名；原样传过去会在 check 阶段报 E_THEME。
+        String theme = "mobile".equals(input.canvas()) ? "mobile-hifi" : "enterprise-light";
         StringBuilder prompt = new StringBuilder()
             .append("需求：").append(input.requirement()).append('\n')
-            .append("画布：").append(input.canvas())
-            .append("，主题：").append(input.themeKey()).append('\n');
+            .append("画布：").append(input.canvas()).append('\n')
+            .append("首行固定写 domain=").append(input.canvas()).append(" theme=").append(theme).append("。\n")
+            .append("硬性规则（违反任何一条都会被 check 拒绝）：\n")
+            .append("mobile".equals(input.canvas())
+                ? "页面声明写 device=iphone-17。\n"
+                : "页面声明不要写 device（device 只用于移动端）。\n")
+            .append("- 节点类型只能用下面列出的清单。\n")
+            .append("- 分隔线用 divider [fillx1]；所有节点宽高必须是正数。\n")
+            .append("- 子元素必须落在父容器边界内（超出 2px 会被拒）。\n");
         if (input.supportedWidgets() != null && !input.supportedWidgets().isEmpty()) {
             prompt.append("只用这些元件：").append(String.join("、", input.supportedWidgets())).append('\n');
         }

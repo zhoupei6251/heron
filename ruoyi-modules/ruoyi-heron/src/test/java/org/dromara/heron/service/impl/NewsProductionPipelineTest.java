@@ -30,6 +30,8 @@ class NewsProductionPipelineTest {
     private static final String SLOTS = """
         <div id="root" data-duration="45">
         <audio id="narration" data-start="0" data-duration="45">
+        <header id="title-card" data-start="0" data-duration="45">
+        <section id="chart-slot" data-start="0" data-duration="45">
         <section id="scene-1" data-start="0" data-duration="10">
         <section id="scene-2" data-start="10" data-duration="10">
         <section id="scene-3" data-start="20" data-duration="10">
@@ -60,16 +62,22 @@ class NewsProductionPipelineTest {
         String patched = NewsProductionPipeline.timeCompositionString(SLOTS, JSON.readTree(SCRIPT), 41.5);
         assertEquals(41.5, attribute(patched, "root", "duration"), 0.001);
         assertEquals(41.5, attribute(patched, "narration", "duration"), 0.001);
+        // 常驻层必须跟成片走，否则超过模板默认 45 秒后整层消失。
+        assertEquals(41.5, attribute(patched, "title-card", "duration"), 0.001);
+        assertEquals(41.5, attribute(patched, "chart-slot", "duration"), 0.001);
         assertEquals(0.0, attribute(patched, "scene-1", "start"), 0.001);
         assertEquals(13.83, attribute(patched, "scene-1", "duration"), 0.001);
         assertEquals(13.83, attribute(patched, "scene-2", "start"), 0.001);
         assertEquals(27.66, attribute(patched, "scene-3", "start"), 0.001);
-        assertEquals(13.84, attribute(patched, "scene-3", "duration"), 0.001);
+        assertEquals(9.84, attribute(patched, "scene-3", "duration"), 0.001);
         double sum = attribute(patched, "scene-1", "duration") + attribute(patched, "scene-2", "duration")
-            + attribute(patched, "scene-3", "duration");
+            + attribute(patched, "scene-3", "duration") + attribute(patched, "closing-slot", "duration");
         assertEquals(41.5, sum, 0.001);
-        assertEquals(attribute(patched, "scene-3", "start"), attribute(patched, "closing-slot", "start"), 0.001);
-        assertEquals(attribute(patched, "scene-3", "duration"), attribute(patched, "closing-slot", "duration"), 0.001);
+        // 结尾口播排在最后一屏之后，独立尾窗，不与最后一屏同屏。
+        assertEquals(37.5, attribute(patched, "closing-slot", "start"), 0.001);
+        assertEquals(4.0, attribute(patched, "closing-slot", "duration"), 0.001);
+        assertEquals(attribute(patched, "scene-3", "start") + attribute(patched, "scene-3", "duration"),
+            attribute(patched, "closing-slot", "start"), 0.001);
     }
 
     @Test

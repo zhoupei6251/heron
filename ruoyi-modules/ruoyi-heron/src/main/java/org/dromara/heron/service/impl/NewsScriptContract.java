@@ -19,7 +19,7 @@ public final class NewsScriptContract {
     private static final int MIN_SCENES = 3;
     private static final int MAX_SCENES = 6;
     private static final int MIN_TOTAL_SECONDS = 30;
-    private static final int MAX_TOTAL_SECONDS = 90;
+    private static final int MAX_TOTAL_SECONDS = 75;
 
     private NewsScriptContract() { }
 
@@ -69,8 +69,8 @@ public final class NewsScriptContract {
             for (String field : scene.propertyNames()) {
                 if (!SCENE_FIELDS.contains(field)) items.add("第 " + (index + 1) + " 段有未知字段 " + field);
             }
-            text(items, scene, "lead", 40);
-            text(items, scene, "body", 600);
+            text(items, scene, "lead", 20);
+            text(items, scene, "body", 70);
             JsonNode duration = scene.path("duration_s");
             if (!duration.isNumber() || duration.asDouble() <= 0) items.add("第 " + (index + 1) + " 段缺少正数 duration_s");
             else total += duration.asDouble();
@@ -86,7 +86,8 @@ public final class NewsScriptContract {
     private static void text(List<String> items, JsonNode node, String field, int maxCodePoints) {
         if (!node.has(field)) return;
         String value = node.path(field).asString("");
+        int length = value.codePointCount(0, value.length());
         if (value.isBlank()) items.add(field + " 为空");
-        else if (value.codePointCount(0, value.length()) > maxCodePoints) items.add(field + " 超过 " + maxCodePoints + " 字");
+        else if (length > maxCodePoints) items.add(field + " " + length + " 字，超过上限 " + maxCodePoints + " 字");
     }
 }

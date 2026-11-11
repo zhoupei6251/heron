@@ -13,6 +13,7 @@ import org.dromara.heron.service.NewsScriptAuthor;
 import org.dromara.heron.service.ProductionStageReporter;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -54,28 +55,42 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private static final String RAW_FILE = "raw.mp4";
     private static final String FINAL_FILE = "final.mp4";
     private static final String SHEET_FILE = "contact.png";
+    /** 模板共用一份字体，落在模板根目录同级的 fonts/ 下，复制模板时注入 composition。 */
+    private static final String FONT_NAME = "NotoSansSC-Regular.otf";
     private static final String AIGC_TAG = "AIGC";
     private static final String AIGC_STATEMENT = "内容由 AI 生成";
     private static final int MAX_SCENE_SLOTS = 6;
     private static final int SHEET_TILES = 6;
+    private static final int MIN_AUDIO_SECONDS = 30;
     private static final Pattern CUE = Pattern.compile(
         "(\\d+):(\\d+):(\\d+)[.,](\\d+) --> (\\d+):(\\d+):(\\d+)[.,](\\d+)\\r?\\n([^\\r\\n]+)");
-    private static final Pattern STAMP = Pattern.compile("(\\d+):(\\d+):(\\d+)[.,](\\d+) -->");
+    private static final Pattern STAMP = Pattern.compile(
+        "(\\d+):(\\d+):(\\d+)[.,](\\d+) --> (\\d+):(\\d+):(\\d+)[.,](\\d+)");
 
     private final NewsScriptAuthor author;
     private final ProductionProcessService processes;
     private final ProductionArtifactService artifacts;
     private final HeronProductionProperties properties;
     private final ProductionStageReporter stages;
+    private final DatasetRouter router;
+    private final DatasetFetchService datasets;
+    private final DatasetScriptAuthor datasetAuthor;
+    private final EditorialReviewer reviewer;
 
     public NewsProductionPipeline(NewsScriptAuthor author, ProductionProcessService processes,
                                   ProductionArtifactService artifacts, HeronProductionProperties properties,
-                                  ProductionStageReporter stages) {
+                                  ProductionStageReporter stages, DatasetRouter router,
+                                  DatasetFetchService datasets, DatasetScriptAuthor datasetAuthor,
+                                  EditorialReviewer reviewer) {
         this.author = author;
         this.processes = processes;
         this.artifacts = artifacts;
         this.properties = properties;
         this.stages = stages;
+        this.router = router;
+        this.datasets = datasets;
+        this.datasetAuthor = datasetAuthor;
+        this.reviewer = reviewer;
     }
 
     @Override
@@ -83,25 +98,49 @@ public class NewsProductionPipeline implements IProductionPipeline {
         JsonNode input = JSON.readTree(run.inputJson());
         List<Gate> gates = new ArrayList<>();
         // 阶段回报只给操作员看进度；租约已易主时返回 false，交给 runner 收尾，这里不因此失败。
+        boolean dataBoard = "data_board".equals(input.path("kind").asString(""));
+        if (!dataBoard && !properties.isArticleEnabled()) {
+            throw new HeronBusinessException(409, "article_disabled", "文章新闻路径已下线，只生产数据看板");
+        }
         stages.beginStage(run, "script", 5);
-        JsonNode script = JSON.readTree(author.author(run));
-        gates.add(contractGate(script));
-        gates.add(evidenceGate(script));
+        DatasetFetchService.Result fetched = null;
+        JsonNode dataset = null;
+        String scriptJson;
+        if (dataBoard) {
+            DatasetRouter.Route route = router.route(run, input);
+            fetched = datasets.fetch(run, route.sourceKey(), input.path("limit").asInt(30));
+            dataset = JSON.readTree(fetched.json());
+            gates.add(dataGate(fetched, dataset));
+            gates.add(datasetEvidenceGate(dataset));
+            scriptJson = datasetAuthor.author(run, fetched.json(), route.digest());
+            scriptJson = reviewScript(run, scriptJson, dataset, fetched.json());
+        } else {
+            scriptJson = author.author(run);
+        }
+        JsonNode script = JSON.readTree(scriptJson);
+        gates.add(contractGate(script, dataset, dataBoard));
+        if (!dataBoard) {
+            gates.add(evidenceGate(script));
+        }
 
         Path work = artifacts.prepareWorkDirectory(run);
-        Path composition = copyTemplate(work);
-        write(work.resolve(VARS_FILE), templateVariables(script));
-        gates.add(assetsGate(composition, input.path("assets"), properties.getNewsTemplate().toAbsolutePath().normalize()));
+        Path templateDir = templateDir(input.path("assets").path("templateKey").asString(""));
+        Path composition = copyTemplate(work, templateDir);
+        // 占位稿入库供 data 闸复核；TTS 与模板用解析后的可读文本。
+        JsonNode renderScript = dataBoard ? DatasetPlaceholders.resolve(script, dataset) : script;
+        write(work.resolve(VARS_FILE),
+            dataBoard ? dataTemplateVariables(renderScript, dataset) : templateVariables(renderScript));
+        gates.add(assetsGate(composition, input.path("assets"), templateDir));
 
         Path voice = composition.resolve(VOICE_FILE);
         stages.beginStage(run, "voice", 25);
-        speak(run, work, script, input.path("assets").path("voiceKey").asString(""));
+        speak(run, work, renderScript, input.path("assets").path("voiceKey").asString(""));
         double audioSeconds = probeDuration(run, voice);
         gates.add(voiceGate(voice, audioSeconds));
         gates.add(subtitleGate(composition.resolve(SUBTITLES_FILE), audioSeconds));
 
         stages.beginStage(run, "render", 45);
-        timeComposition(composition, script, audioSeconds);
+        timeComposition(composition, renderScript, audioSeconds);
         JsonNode check = checkComposition(run, work);
         render(run, work);
         gates.add(renderGate(work.resolve(RAW_FILE)));
@@ -117,7 +156,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
         String checks = gateJson(gates);
         String subtitles = subtitleJson(read(composition.resolve(SUBTITLES_FILE)));
-        List<ProductionArtifactVo> files = List.of(
+        List<ProductionArtifactVo> files = new ArrayList<>(List.of(
             artifacts.finalizeFile(run, "mp4", finalFile, "video/mp4"),
             artifacts.finalizeFile(run, "contact_sheet", sheet, "image/png"),
             artifacts.finalizeFile(run, "script", write(work.resolve("script.json"), JSON.writeValueAsString(script)),
@@ -126,10 +165,16 @@ public class NewsProductionPipeline implements IProductionPipeline {
             artifacts.finalizeFile(run, "checks", write(work.resolve("checks.json"), checks), "application/json"),
             artifacts.finalizeFile(run, "asset_manifest",
                 write(work.resolve("asset-manifest.json"), assetManifest(composition, input.path("assets"))),
-                "application/json"));
+                "application/json")));
+        if (fetched != null) {
+            files.add(fetched.artifact());
+        }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("script", script);
+        if (dataset != null) {
+            result.put("dataset", dataset);
+        }
         result.put("durationMs", (long) Math.round(audioSeconds * 1000));
         result.put("checks", JSON.readTree(checks));
         return new ProductionResultVo(files, JSON.writeValueAsString(result));
@@ -139,12 +184,52 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     private record Gate(String gate, String inputLocator, String reason, Map<String, Object> measured) { }
 
-    private static Gate contractGate(JsonNode script) {
-        List<String> violations = NewsScriptContract.violations(script);
+    private static Gate contractGate(JsonNode script, JsonNode dataset, boolean dataBoard) {
+        List<String> violations = dataBoard
+            ? DatasetScriptContract.violations(script, dataset)
+            : NewsScriptContract.violations(script);
         if (!violations.isEmpty()) {
             throw new HeronBusinessException(409, "news_script_contract", "稿件退回写稿：" + String.join("；", violations));
         }
         return new Gate("schema", "script", "字段、时长合计与重复检查全过", Map.of("violations", 0));
+    }
+
+    private static Gate dataGate(DatasetFetchService.Result fetched, JsonNode dataset) {
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("dataSha", true);
+        measured.put("rows", dataset.path("rows").size());
+        measured.put("points", dataset.path("time_range").path("points").asInt(dataset.path("rows").size()));
+        return new Gate("data", "dataset.json", "快照与 facts、哈希、占位符全部重算通过", measured);
+    }
+
+    /** 审稿发现表达与事实矛盾时定向改一次；改完还不合格就退出，不无限重试。 */
+    private String reviewScript(ProductionRunVo run, String scriptJson, JsonNode dataset, String datasetJson) {
+        String facts = dataset.path("facts").toString();
+        EditorialReviewer.Verdict verdict = reviewer.review(run, scriptJson, facts);
+        if (!verdict.blocked()) {
+            return scriptJson;
+        }
+        String repaired = datasetAuthor.repair(run, datasetJson, scriptJson, verdict.blockingNotes());
+        EditorialReviewer.Verdict again = reviewer.review(run, repaired, facts);
+        if (again.blocked()) {
+            throw new HeronBusinessException(409, "editorial_review_blocked",
+                "审稿两次未过：" + String.join("；", again.blockingNotes()));
+        }
+        return repaired;
+    }
+
+    private static Gate datasetEvidenceGate(JsonNode dataset) {
+        String url = dataset.path("source_url").asString("");
+        String at = dataset.path("retrieved_at").asString("");
+        String sha = dataset.path("data_sha256").asString("");
+        if (!url.matches("https?://\\S{1,2047}") || at.isBlank() || !sha.matches("[0-9a-f]{64}")) {
+            throw new HeronBusinessException(409, "dataset_evidence_missing", "快照出处三件不完整，不能出片");
+        }
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("dataSha", true);
+        measured.put("retrievedAt", true);
+        measured.put("sourceUrl", true);
+        return new Gate("evidence", "dataset.json:source_url", "数据集出处由快照覆盖，不信模型自述", measured);
     }
 
     private static Gate evidenceGate(JsonNode script) {
@@ -166,10 +251,15 @@ public class NewsProductionPipeline implements IProductionPipeline {
         if (bytes <= 0 || audioSeconds <= 0) {
             throw new HeronBusinessException(503, "news_audio_failed", "配音没有产出可用音频，且不启用本地兜底");
         }
+        // 声明时长不控制配音长度；低于 30 秒直接退回，靠补静音凑时长会让视频变空。
+        if (audioSeconds < MIN_AUDIO_SECONDS) {
+            throw new HeronBusinessException(409, "news_audio_short",
+                "配音只有 " + Math.round(audioSeconds) + " 秒，低于 " + MIN_AUDIO_SECONDS + " 秒下限");
+        }
         Map<String, Object> measured = new TreeMap<>();
         measured.put("audioMs", (long) Math.round(audioSeconds * 1000));
         measured.put("voiceBytes", bytes);
-        return new Gate("audio", VOICE_FILE, "edge-tts 退出 0 且实测时长为正", measured);
+        return new Gate("audio", VOICE_FILE, "edge-tts 退出 0、实测时长为正且不低于 30 秒", measured);
     }
 
     private static Gate subtitleGate(Path vtt, double audioSeconds) {
@@ -179,7 +269,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
         Matcher matcher = STAMP.matcher(text);
         while (matcher.find()) {
             cues++;
-            covered = Math.max(covered, millis(matcher.group(1), matcher.group(2), matcher.group(3), matcher.group(4)));
+            covered = Math.max(covered,
+                millis(matcher.group(5), matcher.group(6), matcher.group(7), matcher.group(8)));
         }
         long audioMs = Math.round(audioSeconds * 1000);
         // 末条 cue 早于音频收尾是 edge-tts 的常态（尾部静音），按覆盖比例判而不是卡绝对差。
@@ -293,19 +384,19 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     private static Gate assetsGate(Path composition, JsonNode locked, Path templateDir) {
         String manifestSha = sha256(composition.resolve("assets-manifest.json"));
-        String fontSha = sha256(composition.resolve("fonts").resolve("NotoSansSC-Regular.otf"));
+        String fontSha = sha256(composition.resolve("fonts").resolve(FONT_NAME));
         String templateKey = templateDir.getFileName().toString();
         boolean manifestMatched = manifestSha.equals(locked.path("assetManifestSha256").asString(""));
         boolean fontMatched = fontSha.equals(locked.path("fontSha256").asString(""));
         boolean templateMatched = templateKey.equals(locked.path("templateKey").asString(""));
         if (!manifestMatched || !fontMatched || !templateMatched) {
-            throw new HeronBusinessException(503, "news_assets_drifted", "模板、字体或素材清单与认领时锁定的资产不一致");
+            throw new HeronBusinessException(503, "news_assets_drifted", "模板、字体或素材清单与模板目录的 LOCK.json 声明不一致");
         }
         Map<String, Object> measured = new TreeMap<>();
         measured.put("fontMatched", fontMatched);
         measured.put("manifestMatched", manifestMatched);
         measured.put("templateMatched", templateMatched);
-        return new Gate("assets", "assets-manifest.json", "模板目录实算哈希逐项等于锁定资产", measured);
+        return new Gate("assets", "LOCK.json", "模板目录实算哈希逐项等于 LOCK.json 声明", measured);
     }
 
     private static String gateJson(List<Gate> gates) {
@@ -338,10 +429,15 @@ public class NewsProductionPipeline implements IProductionPipeline {
         }
         speech.add(script.path("closing").asString(""));
         write(work.resolve("narration.txt"), String.join("\n", speech));
-        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("python",
-            List.of("-m", "edge_tts", "-f", "narration.txt", "-v", voiceKey, "--no-progress",
-                "--write-media", COMPOSITION_DIR + "/" + VOICE_FILE,
-                "--write-subtitles", COMPOSITION_DIR + "/" + SUBTITLES_FILE), work, VOICE_TIMEOUT));
+        List<String> args = new ArrayList<>(List.of("-m", "edge_tts", "-f", "narration.txt", "-v", voiceKey,
+            "--no-progress",
+            "--write-media", COMPOSITION_DIR + "/" + VOICE_FILE,
+            "--write-subtitles", COMPOSITION_DIR + "/" + SUBTITLES_FILE));
+        String rate = properties.getVoiceRate();
+        if (rate != null && !rate.isBlank()) {
+            args.add(2, "--rate=" + rate);
+        }
+        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("python", args, work, VOICE_TIMEOUT));
         if (result.exitCode() != 0) {
             throw new HeronBusinessException(503, "news_audio_failed", "配音失败：" + safeTail(result.stderr()));
         }
@@ -437,6 +533,14 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return JSON.writeValueAsString(vars);
     }
 
+    /** 数据看板变量：沿用文章线文本变量，再补图表类型与整份快照（模板自己解析）。 */
+    static String dataTemplateVariables(JsonNode script, JsonNode dataset) {
+        ObjectNode vars = (ObjectNode) JSON.readTree(templateVariables(script));
+        vars.put("chart", DatasetScriptContract.chartFor(dataset.path("shape").asString("")));
+        vars.put("dataset_json", dataset.toString());
+        return JSON.writeValueAsString(vars);
+    }
+
     /**
      * 按实测音频时长缩放各段声明时长，并把根、音轨与每个槽位的 data-start / data-duration 直接写进复制出来的 HTML。
      * 末段吃掉舍入余量，保证总长与音频一致。
@@ -455,14 +559,21 @@ public class NewsProductionPipeline implements IProductionPipeline {
         double scale = totalSeconds / sum;
         String patched = replaceTiming(html, "root", 0, totalSeconds);
         patched = replaceTiming(patched, "narration", 0, totalSeconds);
+        // 常驻层也要跟成片走：模板默认 45 秒，长片超过 45 秒会整层消失。
+        patched = replaceTimingIfPresent(patched, "title-card", 0, totalSeconds);
+        patched = replaceTimingIfPresent(patched, "chart-slot", 0, totalSeconds);
         double cursor = 0;
         for (int index = 0; index < declared.size(); index++) {
             boolean last = index == declared.size() - 1;
             double span = last ? round2(totalSeconds - cursor) : round2(declared.get(index) * scale);
-            patched = replaceTiming(patched, "scene-" + (index + 1), cursor, span);
             if (last) {
-                // 结尾口播落在最后一屏的时间窗内，不另起一段时长。
-                patched = replaceTiming(patched, "closing-slot", cursor, span);
+                // 结尾口播排在最后一段旁白之后：切出独立尾窗，避免和最后一屏字幕同屏重叠。
+                double closing = round2(Math.min(4.0, span * 0.5));
+                double sceneSpan = round2(span - closing);
+                patched = replaceTiming(patched, "scene-" + (index + 1), cursor, sceneSpan);
+                patched = replaceTiming(patched, "closing-slot", round2(cursor + sceneSpan), closing);
+            } else {
+                patched = replaceTiming(patched, "scene-" + (index + 1), cursor, span);
             }
             cursor = round2(cursor + span);
         }
@@ -487,6 +598,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return html.substring(0, tag.start()) + rewritten + html.substring(tag.end());
     }
 
+    /** 模板可能没有这个常驻层（文章模板没有 chart-slot），存在才补时间轴。 */
+    private static String replaceTimingIfPresent(String html, String id, double start, double duration) {
+        return html.contains("id=\"" + id + "\"") ? replaceTiming(html, id, start, duration) : html;
+    }
+
     private static double round2(double value) {
         return Math.round(value * 100) / 100d;
     }
@@ -500,8 +616,20 @@ public class NewsProductionPipeline implements IProductionPipeline {
             timeCompositionString(read(composition.resolve("index.html")), script, totalSeconds));
     }
 
-    private Path copyTemplate(Path work) {
-        Path template = properties.getNewsTemplate();
+    /** 模板根目录下的单个模板；key 只允许锁定的字符集，避免拼出目录穿越。 */
+    private Path templateDir(String templateKey) {
+        Path root = properties.getNewsTemplate();
+        if (root == null || templateKey == null || !templateKey.matches("[a-zA-Z0-9_-]{1,80}")) {
+            throw new HeronBusinessException(503, "news_template_missing", "找不到锁定的 composition 模板目录");
+        }
+        Path dir = root.toAbsolutePath().normalize().resolve(templateKey).normalize();
+        if (!dir.startsWith(root.toAbsolutePath().normalize()) || !Files.isDirectory(dir)) {
+            throw new HeronBusinessException(503, "news_template_missing", "找不到锁定的 composition 模板目录：" + templateKey);
+        }
+        return dir;
+    }
+
+    private Path copyTemplate(Path work, Path template) {
         if (template == null || !Files.isDirectory(template)) {
             throw new HeronBusinessException(503, "news_template_missing", "找不到锁定的 composition 模板目录");
         }
@@ -524,7 +652,28 @@ public class NewsProductionPipeline implements IProductionPipeline {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        copySharedFont(composition);
         return composition;
+    }
+
+    private void copySharedFont(Path composition) {
+        // 模板自带的 fonts/ 优先，只有模板目录没带字体时才补模板根同级的共用字体。
+        if (Files.isRegularFile(composition.resolve("fonts").resolve(FONT_NAME))) {
+            return;
+        }
+        Path root = properties.getNewsTemplate();
+        Path dir = root == null ? null : root.toAbsolutePath().normalize().getParent();
+        Path font = dir == null ? null : dir.resolve("fonts").resolve(FONT_NAME);
+        if (font == null || !Files.isRegularFile(font)) {
+            throw new HeronBusinessException(503, "news_font_missing", "找不到模板共用字体：" + font);
+        }
+        try {
+            Path target = composition.resolve("fonts").resolve(FONT_NAME);
+            Files.createDirectories(target.getParent());
+            Files.copy(font, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static String assetManifest(Path composition, JsonNode locked) {

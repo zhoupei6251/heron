@@ -32,7 +32,7 @@ class ProtoRp1AuthorTest {
         client = new RecordingClient();
         author = new ProtoModelRp1Author(client);
         inputJson = JSON.writeValueAsString(new ProtoVersionVo.InputSnapshot(7L, 3, 11L,
-            "做一个两页打卡清单，首页列待办、次页录入", "iphone-17", "mobile-hifi", "c0ffee",
+            "做一个两页打卡清单，首页列待办、次页录入", "mobile", "mobile-hifi", "c0ffee",
             Map.of("blank-rp9", "sha256:aa"), List.of("list-item", "card"), "model-1"));
     }
 

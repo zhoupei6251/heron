@@ -56,16 +56,32 @@ public class NewsWorkController extends BaseController {
     @GetMapping("/{id}/versions/{versionId}")
     public R<NewsVideoVersionVo> version(@PathVariable long id, @PathVariable long versionId) { return R.ok(news.version(id, versionId)); }
 
+    @SaCheckPermission("heron:newsWork:review")
     @Log(title = "新闻审片", businessType = BusinessType.UPDATE, isSaveRequestData = false, isSaveResponseData = false)
     @PostMapping("/{id}/versions/{versionId}/review")
     public R<NewsVideoVersionVo> review(@PathVariable long id, @PathVariable long versionId, @RequestBody NewsReviewBo bo) {
         return R.ok(news.review(id, versionId, bo));
     }
 
+    @SaCheckPermission({"heron:newsWork:review", "heron:newsWork:publish"})
+    @Log(title = "新闻确认发布", businessType = BusinessType.UPDATE, isSaveRequestData = false, isSaveResponseData = false)
+    @PostMapping("/{id}/versions/{versionId}/confirm")
+    public R<NewsVideoVersionVo> confirm(@PathVariable long id, @PathVariable long versionId, @RequestBody NewsReviewBo bo) {
+        return R.ok(news.confirm(id, versionId, bo));
+    }
+
+    @SaCheckPermission("heron:newsWork:publish")
     @Log(title = "人工发布回执", businessType = BusinessType.UPDATE, isSaveRequestData = false, isSaveResponseData = false)
     @PostMapping("/{id}/versions/{versionId}/publish")
     public R<NewsVideoVersionVo> publish(@PathVariable long id, @PathVariable long versionId, @RequestBody NewsPublishBo bo) {
         return R.ok(news.publish(id, versionId, bo));
+    }
+
+    @SaCheckPermission("heron:newsWork:publish")
+    @Log(title = "补作品链接", businessType = BusinessType.UPDATE, isSaveRequestData = false, isSaveResponseData = false)
+    @PostMapping("/{id}/versions/{versionId}/publish-url")
+    public R<NewsVideoVersionVo> publishUrl(@PathVariable long id, @PathVariable long versionId, @RequestBody NewsPublishUrlBo bo) {
+        return R.ok(news.backfillPublishUrl(id, versionId, bo));
     }
 
     @GetMapping("/{id}/versions/{versionId}/preview/{artifactId}")

@@ -24,4 +24,6 @@ public class HeronNewsWork extends BaseEntity {
     private Integer nextVersion;
     private Long currentVersionId;
     private Long activeTaskId;
+    /** 自动模式认领的稿件：'0' 开 '1' 关；开启后由自动发布扫描替代人工确认。 */
+    private String autoPublish;
 }

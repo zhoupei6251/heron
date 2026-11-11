@@ -74,6 +74,9 @@ public class NewsSourceServiceImpl implements INewsSourceService {
         source.setSourceId(IdUtil.getSnowflakeNextId());
         source.setUrl(url);
         source.setFailureCount(0);
+        if (source.getAuto() == null) {
+            source.setAuto("1");
+        }
         source.setNextFetchAt(now);
         source.setCreateBy(actor);
         source.setUpdateBy(actor);
@@ -92,6 +95,9 @@ public class NewsSourceServiceImpl implements INewsSourceService {
         source.setUrl(url);
         source.setIntervalSeconds(bo.getIntervalSeconds());
         source.setEnabled(bo.getEnabled());
+        if (bo.getAuto() != null) {
+            source.setAuto(bo.getAuto());
+        }
         source.setUpdateBy(access.requireActor());
         source.setUpdateTime(now());
         if (sources.updateById(source) != 1) throw new HeronBusinessException(409, "news_source_write", "来源保存失败");

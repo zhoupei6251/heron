@@ -10,11 +10,13 @@ import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
+import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.domain.*;
 import org.dromara.heron.domain.bo.*;
 import org.dromara.heron.domain.vo.*;
 import org.dromara.heron.mapper.*;
 import org.dromara.heron.service.INewsWorkService;
+import org.dromara.heron.service.IPublishAdapter;
 import org.dromara.heron.service.IProductionService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -50,6 +52,9 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private final ProductionArtifactService artifacts;
     private final PlatformTransactionManager transactionManager;
     private final ObjectProvider<Clock> clocks;
+    private final IPublishAdapter publishAdapter;
+    private final NewsTemplatePicker templatePicker;
+    private final HeronNewsProperties news;
 
     @Override
     public PageResult<NewsCandidateVo> candidates(NewsCandidateQuery query) {
@@ -141,7 +146,26 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
     public NewsWorkVo claim(long candidateId) {
         access.requirePermission("heron:newsCandidate:claim");
-        long actor = access.requireActor();
+        return claimAs(candidateId, access.requireActor(), false);
+    }
+
+    /** 自动模式认领：后台线程没有会话，用系统账号；标记 auto_publish=0 交给自动发布扫描。 */
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    public NewsWorkVo claimForAuto(long candidateId, long actor) {
+        return claimAs(candidateId, actor, true, null);
+    }
+
+    /** 总编辑已定线时由调用方给死模板，覆盖配置里的默认模板。 */
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    public NewsWorkVo claimForAuto(long candidateId, long actor, String templateKey) {
+        return claimAs(candidateId, actor, true, templateKey);
+    }
+
+    private NewsWorkVo claimAs(long candidateId, long actor, boolean auto) {
+        return claimAs(candidateId, actor, auto, null);
+    }
+
+    private NewsWorkVo claimAs(long candidateId, long actor, boolean auto, String forcedTemplate) {
         lockLane();
         HeronNewsCandidate candidate = candidateMapper.lockById(candidateId);
         if (candidate == null) throw new HeronAccessException();
@@ -159,8 +183,23 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         work.setDraft(candidate.getSummary());
         work.setRevision(1L);
         work.setNextVersion(1);
+        work.setAutoPublish(auto ? "0" : "1");
         Map<String, Object> locked = domain.lockedAssetsIfConfigured();
-        work.setTemplateKey((String) locked.getOrDefault("templateKey", "default"));
+        // 总编辑定的线优先：给了死模板就不再看配置里的默认模板
+        String pinned = forcedTemplate != null && !forcedTemplate.isBlank()
+            ? forcedTemplate : news.getAutoTemplate();
+        String picked;
+        if (auto && pinned != null && !pinned.isBlank()) {
+            if (!domain.availableTemplates().contains(pinned)) {
+                throw new HeronBusinessException(503, "auto_template_missing",
+                    "自动模板不存在或缺少 LOCK.json：" + pinned);
+            }
+            picked = pinned;
+        } else {
+            // 人工认领仍由模型挑，系统再卡「最近两期不重复」；挑不出来就落到最久未用的那套
+            picked = templatePicker.pick(candidate.getTitle(), candidate.getSummary());
+        }
+        work.setTemplateKey(picked != null ? picked : (String) locked.getOrDefault("templateKey", "default"));
         work.setVoiceKey((String) locked.getOrDefault("voiceKey", "default"));
         work.setCreateBy(actor);
         work.setUpdateBy(actor);
@@ -220,6 +259,14 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         return production.submit(new ProductionSubmitBo(TYPE, workId, bo.requestKey(), bo.expectedRevision()));
     }
 
+    /** 自动模式提交：跳过对象级权限校验，请求键由槽位决定，重复触发由生产层幂等拦。 */
+    public ProductionReceiptVo generateForAuto(long workId, String requestKey) {
+        HeronNewsWork work = workMapper.selectById(workId);
+        if (work == null) throw new HeronAccessException();
+        if (requestKey == null || !requestKey.matches("[a-zA-Z0-9._:-]{1,64}")) throw invalid("生成请求不合法");
+        return production.submit(new ProductionSubmitBo(TYPE, workId, requestKey, work.getRevision()));
+    }
+
     @Override
     public PageResult<NewsVideoVersionVo> versions(long workId, PageQuery pageQuery) {
         HeronNewsWork work = requireWork(workId, "query");
@@ -237,7 +284,11 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     @Override
     @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
     public NewsVideoVersionVo review(long workId, long versionId, NewsReviewBo bo) {
-        HeronVideoVersion version = lockVersion(workId, versionId, "review");
+        return reviewAs(workId, versionId, bo, access.requireActor(), false);
+    }
+
+    private NewsVideoVersionVo reviewAs(long workId, long versionId, NewsReviewBo bo, long actor, boolean system) {
+        HeronVideoVersion version = system ? lockVersionAny(workId, versionId) : lockVersion(workId, versionId, "review");
         if (bo == null || !Set.of("approved", "rejected").contains(Objects.toString(bo.decision(), ""))
             || !sha(bo.contactSha256()) || !sha(bo.videoSha256()) || bo.reason() != null && bo.reason().length() > 1000
             || "rejected".equals(bo.decision()) && (bo.reason() == null || bo.reason().isBlank())) throw invalid("审核决议、双指纹或驳回理由不合法");
@@ -250,10 +301,10 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             throw conflict("review_conflict", "已有审核决议：" + version.getReviewStatus());
         }
         if (versionMapper.lambda().set(HeronVideoVersion::getReviewStatus, bo.decision())
-            .set(HeronVideoVersion::getReviewBy, access.requireActor()).set(HeronVideoVersion::getReviewAt, now())
+            .set(HeronVideoVersion::getReviewBy, actor).set(HeronVideoVersion::getReviewAt, now())
             .set(HeronVideoVersion::getReviewReason, bo.reason() == null ? null : bo.reason().strip())
             .set(HeronVideoVersion::getReviewContactSha, bo.contactSha256()).set(HeronVideoVersion::getReviewVideoSha, bo.videoSha256())
-            .set(HeronVideoVersion::getUpdateBy, access.requireActor()).set(HeronVideoVersion::getUpdateTime, now())
+            .set(HeronVideoVersion::getUpdateBy, actor).set(HeronVideoVersion::getUpdateTime, now())
             .eq(HeronVideoVersion::getVersionId, versionId).eq(HeronVideoVersion::getReviewStatus, "pending")
             .isNull(HeronVideoVersion::getReviewContactSha).isNull(HeronVideoVersion::getReviewVideoSha)
             .isNull(HeronVideoVersion::getCleanupStartedAt).updateCount() != 1) throw conflict("review_conflict", "审核状态已变化");
@@ -263,42 +314,114 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     @Override
     @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
     public NewsVideoVersionVo publish(long workId, long versionId, NewsPublishBo bo) {
-        HeronVideoVersion version = lockVersion(workId, versionId, "publish");
         if (bo == null || bo.publishedAt() == null || !sha(bo.videoSha256()) || !douyinUrl(bo.workUrl())) {
             throw invalid("作品链接、发布时间或成片指纹不合法");
         }
-        text(bo.account(), 120, "账号标识");
+        return applyReceipt(workId, versionId, bo.workUrl(), bo.account(), bo.publishedAt(), bo.videoSha256(),
+            "manual", access.requireActor(), false);
+    }
+
+    @Override
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    public NewsVideoVersionVo backfillPublishUrl(long workId, long versionId, NewsPublishUrlBo bo) {
+        if (bo == null || !douyinUrl(bo.workUrl())) throw invalid("作品链接不合法");
+        String url = bo.workUrl().strip();
+        HeronVideoVersion version = lockVersion(workId, versionId, "publish");
+        if (!DouyinCliPublishAdapter.SOURCE.equals(version.getPublishSource())) throw conflict("publish_source", "只有命令行发布的记录需要补链接");
+        if (version.getPublishAt() == null) throw conflict("publish_not_submitted", "该版本尚未提交发布");
+        if (version.getPublishUrl() != null) {
+            if (version.getPublishUrl().equals(url)) return versionView(version);
+            throw conflict("publish_conflict", "该版本已有作品链接");
+        }
+        if (versionMapper.lambda().set(HeronVideoVersion::getPublishUrl, url)
+            .set(HeronVideoVersion::getUpdateBy, access.requireActor()).set(HeronVideoVersion::getUpdateTime, now())
+            .eq(HeronVideoVersion::getVersionId, versionId).isNull(HeronVideoVersion::getPublishUrl)
+            .updateCount() != 1) throw conflict("publish_conflict", "作品链接已变化");
+        return versionView(versionMapper.selectById(versionId));
+    }
+
+    @Override
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    public NewsVideoVersionVo confirm(long workId, long versionId, NewsReviewBo bo) {
+        return confirmAs(workId, versionId, bo, access.requireActor(), false);
+    }
+
+    /**
+     * 自动模式：后台线程没有会话，用系统账号写确认与回执。
+     * 走的仍是同一套校验与幂等规则，变的只有操作人来源。
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    public NewsVideoVersionVo confirmForAuto(long workId, long versionId, long actor) {
+        HeronVideoVersion version = versionMapper.selectById(versionId);
+        if (version == null) throw new HeronAccessException();
+        List<ProductionArtifactVo> files = readyFiles(version);
+        NewsReviewBo bo = new NewsReviewBo("approved", byKind(files, "contact_sheet").sha256(),
+            byKind(files, "mp4").sha256(), null);
+        return confirmAs(workId, versionId, bo, actor, true);
+    }
+
+    private NewsVideoVersionVo confirmAs(long workId, long versionId, NewsReviewBo bo, long actor, boolean system) {
+        NewsVideoVersionVo reviewed = reviewAs(workId, versionId, bo, actor, system);
+        if (bo == null || !"approved".equals(bo.decision())) {
+            return reviewed;
+        }
+        HeronVideoVersion version = system ? lockVersionAny(workId, versionId) : lockVersion(workId, versionId, "publish");
+        // 已发布就回放既有事实：重复点击不能因为沙箱回执时间变了而报冲突
+        if (version.getPublishAt() != null) {
+            return versionView(version);
+        }
+        HeronNewsWork work = workMapper.selectById(version.getWorkId());
+        PublishReceipt receipt = publishAdapter.publish(new PublishRequest(version.getTaskId(), versionId,
+            work == null ? null : work.getTitle(), version.getReviewVideoSha(), now(),
+            artifacts.localPath(byKind(readyFiles(version), "mp4"))));
+        return applyReceipt(workId, versionId, receipt.workUrl(), receipt.account(), receipt.publishedAt(),
+            version.getReviewVideoSha(), receipt.source(), actor, system);
+    }
+
+    /** 写发布事实。人工与沙箱只认各自的前缀，命令行出口如实留空链接——两边都不许冒充对方。 */
+    private NewsVideoVersionVo applyReceipt(long workId, long versionId, String workUrl, String account,
+                                            LocalDateTime publishedAt, String videoSha256, String source,
+                                            long actor, boolean system) {
+        String url = workUrl == null || workUrl.isBlank() ? null : workUrl.strip();
+        HeronVideoVersion version = system ? lockVersionAny(workId, versionId) : lockVersion(workId, versionId, "publish");
+        boolean urlOk = switch (source) {
+            case SandboxPublishAdapter.SOURCE -> url != null && url.startsWith(SandboxPublishAdapter.URL_PREFIX);
+            // sau 不回传作品链接，回执只能空着；链接由人在后台复制后补
+            case DouyinCliPublishAdapter.SOURCE -> url == null;
+            default -> douyinUrl(url);
+        };
+        if (!urlOk || publishedAt == null || !sha(videoSha256)) throw invalid("作品链接、发布时间或成片指纹不合法");
+        text(account, 120, "账号标识");
         // datetime(3) 只留毫秒；先截断，回执重放才能与已存事实逐位相等
-        LocalDateTime publishedAt = bo.publishedAt().truncatedTo(ChronoUnit.MILLIS);
-        if (publishedAt.isAfter(now())) throw conflict("publish_time", "发布时间不能晚于当前时间");
+        LocalDateTime published = publishedAt.truncatedTo(ChronoUnit.MILLIS);
+        if (published.isAfter(now())) throw conflict("publish_time", "发布时间不能晚于当前时间");
         List<ProductionArtifactVo> files = readyFiles(version);
         ProductionArtifactVo video = byKind(files, "mp4"), contact = byKind(files, "contact_sheet");
         if (!"approved".equals(version.getReviewStatus())
             || !Objects.equals(version.getReviewVideoSha(), video.sha256())
             || !Objects.equals(version.getReviewContactSha(), contact.sha256())) throw conflict("publish_unapproved", "需审核通过且确认指纹仍与成片一致");
-        if (!video.sha256().equals(bo.videoSha256())) throw conflict("publish_hash", "回执指纹与该版本成片不一致");
+        if (!video.sha256().equals(videoSha256)) throw conflict("publish_hash", "回执指纹与该版本成片不一致");
         HeronNewsWork work = workMapper.selectById(version.getWorkId());
         HeronNewsCandidate candidate = candidateMapper.selectById(work.getCandidateId());
         if (candidate == null) throw new HeronAccessException();
         if (version.getPublishAt() != null) {
-            if (Objects.equals(version.getPublishUrl(), bo.workUrl())
-                && Objects.equals(version.getPublishAccount(), bo.account().strip())
-                && Objects.equals(version.getPublishAt(), publishedAt)
-                && Objects.equals(version.getPublishVideoSha(), bo.videoSha256())) return versionView(version);
+            if (Objects.equals(version.getPublishUrl(), url)
+                && Objects.equals(version.getPublishAccount(), account.strip())
+                && Objects.equals(version.getPublishAt(), published)
+                && Objects.equals(version.getPublishVideoSha(), videoSha256)) return versionView(version);
             throw conflict("publish_conflict", "该版本已回填发布回执");
         }
         // 一个候选只有一条已发布事实；换版本重渲不能覆盖它，只能人工先处置
         if (candidate.getPublishedAt() != null) throw conflict("publish_conflict", "该候选已有发布记录");
-        long actor = access.requireActor();
-        if (versionMapper.lambda().set(HeronVideoVersion::getPublishSource, "manual").set(HeronVideoVersion::getPublishUrl, bo.workUrl())
-            .set(HeronVideoVersion::getPublishAccount, bo.account().strip()).set(HeronVideoVersion::getPublishAt, publishedAt)
-            .set(HeronVideoVersion::getPublishBy, actor).set(HeronVideoVersion::getPublishVideoSha, bo.videoSha256())
+        if (versionMapper.lambda().set(HeronVideoVersion::getPublishSource, source).set(HeronVideoVersion::getPublishUrl, url)
+            .set(HeronVideoVersion::getPublishAccount, account.strip()).set(HeronVideoVersion::getPublishAt, published)
+            .set(HeronVideoVersion::getPublishBy, actor).set(HeronVideoVersion::getPublishVideoSha, videoSha256)
             .set(HeronVideoVersion::getUpdateBy, actor).set(HeronVideoVersion::getUpdateTime, now())
             .eq(HeronVideoVersion::getVersionId, versionId).eq(HeronVideoVersion::getReviewStatus, "approved")
             .isNull(HeronVideoVersion::getPublishAt).isNull(HeronVideoVersion::getCleanupStartedAt).updateCount() != 1) {
             throw conflict("publish_conflict", "发布回执已变化");
         }
-        if (candidateMapper.lambda().set(HeronNewsCandidate::getPublishedAt, publishedAt)
+        if (candidateMapper.lambda().set(HeronNewsCandidate::getPublishedAt, published)
             .set(HeronNewsCandidate::getUpdateBy, actor).set(HeronNewsCandidate::getUpdateTime, now())
             .eq(HeronNewsCandidate::getCandidateId, work.getCandidateId()).isNull(HeronNewsCandidate::getPublishedAt).updateCount() != 1) {
             throw conflict("publish_conflict", "候选发布状态已变化");
@@ -406,6 +529,14 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         return lockMaintenanceVersion(workId, versionId);
     }
 
+    /** 后台线程没有会话：直接按 id 取工作与版本并加锁，不走对象级权限校验。 */
+    private HeronVideoVersion lockVersionAny(long workId, long versionId) {
+        HeronNewsWork work = workMapper.selectById(workId);
+        if (work == null) throw new HeronAccessException();
+        requireVersion(work, versionId);
+        return lockMaintenanceVersion(workId, versionId);
+    }
+
     private HeronNewsWork requireWork(long id, String action) {
         HeronNewsWork work = workMapper.selectById(id);
         if (work == null) throw new HeronAccessException();
@@ -428,7 +559,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         if (!"succeeded".equals(task.getStatus()) || version.getScript() == null || version.getDurationMs() == null || version.getDurationMs() <= 0) {
             throw conflict("not_complete", "生产任务尚未成功完成");
         }
-        domain.validateChecks(version.getChecks());
+        domain.validateChecks(version.getChecks(), domain.dataBoard(version));
         List<ProductionArtifactVo> files = parseManifest(version);
         domain.validateManifest(version, task, files, false);
         for (ProductionArtifactVo file : files) {

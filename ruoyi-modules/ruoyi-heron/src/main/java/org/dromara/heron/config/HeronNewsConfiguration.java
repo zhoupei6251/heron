@@ -2,6 +2,8 @@ package org.dromara.heron.config;
 
 import org.dromara.heron.service.INewsSourceService;
 import org.dromara.heron.service.impl.ApacheNewsTransport;
+import org.dromara.heron.service.impl.NewsAutoRunner;
+import org.dromara.heron.service.impl.NewsAutoService;
 import org.dromara.heron.service.impl.NewsSourceRunner;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -28,5 +30,13 @@ public class HeronNewsConfiguration {
     public NewsSourceRunner newsSourceRunner(INewsSourceService sources,
                                             @Qualifier("scheduledExecutorService") ScheduledExecutorService scheduler) {
         return new NewsSourceRunner(sources, scheduler);
+    }
+
+    /** 自动产出只在部署显式打开时装配；关闭时既没有槽位也没有自动确认扫描。 */
+    @Bean
+    @ConditionalOnProperty(prefix = "heron.news", name = "auto-enabled", havingValue = "true")
+    public NewsAutoRunner newsAutoRunner(NewsAutoService auto, HeronNewsProperties news,
+                                         @Qualifier("scheduledExecutorService") ScheduledExecutorService scheduler) {
+        return new NewsAutoRunner(auto, news, scheduler);
     }
 }

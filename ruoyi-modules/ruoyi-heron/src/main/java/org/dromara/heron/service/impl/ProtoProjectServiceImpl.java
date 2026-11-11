@@ -77,7 +77,9 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
 
     @Override
     public ProtoProjectVo queryById(long projectId) {
-        ProtoProjectVo vo = MapstructUtils.convert(requireProject(projectId, "query", false), ProtoProjectVo.class);
+        var project = requireProject(projectId, "query", false);
+        ProtoProjectVo vo = MapstructUtils.convert(project, ProtoProjectVo.class);
+        enrichCurrentVersion(vo);
         if (vo.getActiveTaskId() == null) {
             return vo;
         }
@@ -103,6 +105,7 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
             .betweenParams(HeronProtoProject::getUpdateTime, query.getParams(), "beginUpdateTime", "endUpdateTime")
             .orderByDesc(HeronProtoProject::getUpdateTime, HeronProtoProject::getProjectId).build();
         Page<ProtoProjectVo> page = projectMapper.selectVoPage(pageQuery.build(), wrapper);
+        page.getRecords().forEach(this::enrichCurrentVersion);
         return PageResult.build(page.getRecords(), page.getTotal());
     }
 
@@ -338,6 +341,19 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
         String name = "prototype-" + version.getProjectId() + "-v" + version.getVersionNo()
             + "-" + file.kind() + extension;
         return new ProtoFile(name, file.mediaType(), file.bytes(), file.sha256(), artifacts.openVerified(file));
+    }
+
+    /** 列表与详情都带上当前版本的审核状态；版本必须属于该项目和拥有者。 */
+    private void enrichCurrentVersion(ProtoProjectVo vo) {
+        if (vo.getCurrentVersionId() == null) {
+            return;
+        }
+        var version = versionMapper.selectById(vo.getCurrentVersionId());
+        if (version == null || !Objects.equals(version.getProjectId(), vo.getProjectId())
+            || !Objects.equals(version.getOwnerId(), vo.getOwnerId())) {
+            throw new HeronAccessException();
+        }
+        vo.setCurrentVersion(toVersionVo(version));
     }
 
     private HeronProtoProject requireProject(long projectId, String action, boolean lock) {

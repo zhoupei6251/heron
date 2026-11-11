@@ -216,6 +216,11 @@ public class ProductionArtifactService {
         }
     }
 
+    /** 本地绝对路径：浏览器自动化只能传本地文件；对象存储模式下没有本地文件，返回 null。 */
+    public Path localPath(ProductionArtifactVo artifact) {
+        return oss() == null ? resolveStorageKey(artifact.storageKey()) : null;
+    }
+
     public void removeFile(ProductionArtifactVo artifact) {
         verify(artifact);
         OssClient oss = oss();

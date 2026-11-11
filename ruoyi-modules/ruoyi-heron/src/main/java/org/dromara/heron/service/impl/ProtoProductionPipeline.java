@@ -75,7 +75,7 @@ public class ProtoProductionPipeline implements IProductionPipeline {
             List.of(engineScript().toString(), "check", "--spec", spec.toString()), work,
             CHECK_TIMEOUT, environment));
         if (check.exitCode() != 0) {
-            throw new HeronBusinessException(409, "proto_engine_check", check.stderr());
+            throw new HeronBusinessException(409, "proto_engine_check", failureText(check));
         }
         stages.beginStage(run, "generate", 55);
         ProductionProcessVo generate = processes.run(run, new ProductionProcessBo("node",
@@ -83,7 +83,7 @@ public class ProtoProductionPipeline implements IProductionPipeline {
                 "--out-dir", out.toString(), "--out-rp", out.resolve(NATIVE_FILE).toString()), work,
             GENERATE_TIMEOUT, environment));
         if (generate.exitCode() != 0) {
-            throw new HeronBusinessException(409, "proto_engine_generate", generate.stderr());
+            throw new HeronBusinessException(409, "proto_engine_generate", failureText(generate));
         }
 
         Long versionNo = (long) input.versionNo();
@@ -187,6 +187,17 @@ public class ProtoProductionPipeline implements IProductionPipeline {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    /** 引擎把校验结果写在 stdout，失败时 stderr 常为空；否则原因就丢了。 */
+    private static String failureText(ProductionProcessVo process) {
+        if (process.stderr() != null && !process.stderr().isBlank()) {
+            return process.stderr().strip();
+        }
+        if (process.stdout() != null && !process.stdout().isBlank()) {
+            return process.stdout().strip();
+        }
+        return "引擎退出码 " + process.exitCode() + "，且没有输出";
     }
 
     private static void writeRp1(Path spec, String rp1) {

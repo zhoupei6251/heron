@@ -16,6 +16,8 @@ public class NewsSourceVo implements Serializable {
     private String url;
     private Integer intervalSeconds;
     private String enabled;
+    /** 源级自动产出开关：'0' 开 '1' 关。 */
+    private String auto;
     private LocalDateTime lastAttemptAt;
     private LocalDateTime lastSuccessAt;
     private LocalDateTime nextFetchAt;

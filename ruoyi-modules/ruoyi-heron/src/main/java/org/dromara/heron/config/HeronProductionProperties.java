@@ -20,6 +20,9 @@ public class HeronProductionProperties {
 
     private boolean workerEnabled;
 
+    /** 文章新闻路径开关；关闭后只允许数据看板模板，文章模板与文章分支一律拒绝。 */
+    private boolean articleEnabled = true;
+
     private int cleanupRetentionDays = 7;
 
     private String python = "python3";
@@ -33,6 +36,9 @@ public class HeronProductionProperties {
     private String zeeRp = "zee-rp";
 
     private String hyperframes;
+
+    /** edge-tts 语速，形如 +12%；资讯口播默认略快，同样的稿子能省下约一成时长。 */
+    private String voiceRate = "+12%";
 
     /** Windows 开发机上 Linux 监护脚本跑不起来，只能显式关掉；关掉就没有 rlimit 三项，不做平台自动探测。 */
     private boolean guardEnabled = true;

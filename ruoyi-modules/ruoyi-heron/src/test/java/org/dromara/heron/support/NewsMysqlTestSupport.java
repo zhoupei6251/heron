@@ -18,6 +18,7 @@ import org.springframework.test.context.ContextConfiguration;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -44,12 +45,16 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         resetSchema();
         clearProductionData();
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
-            for (String table : List.of("heron_video_version", "heron_news_work", "heron_news_candidate", "heron_news_source")) {
+            for (String table : List.of("heron_auto_slot", "heron_video_version", "heron_news_work", "heron_news_candidate", "heron_news_source")) {
                 statement.execute("DROP TABLE IF EXISTS " + table);
             }
             Path ddl = Path.of("../../script/sql/heron/002-news.sql");
             if (!Files.isRegularFile(ddl)) ddl = Path.of("script/sql/heron/002-news.sql");
             ScriptUtils.executeSqlScript(connection, new FileSystemResource(ddl));
+            // 002 之后的分批迁移（自动模式字段与槽位表）同样要在这个隔离库里建起来
+            Path autoDdl = Path.of("../../script/sql/heron/006-news-auto.sql");
+            if (!Files.isRegularFile(autoDdl)) autoDdl = Path.of("script/sql/heron/006-news-auto.sql");
+            ScriptUtils.executeSqlScript(connection, new FileSystemResource(autoDdl));
         }
         var factory = (DefaultListableBeanFactory) context.getBeanFactory();
         factory.destroySingleton("newsProductionPipeline");
@@ -80,9 +85,16 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
     }
 
     protected void allowProduction() {
-        context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("news-fixture-assets",
-            Map.of("heron.news.production-assets", JsonUtils.toJsonString(Map.of("templateKey", "default", "templateVersion", "fixture-1",
-                "fontSha256", "a".repeat(64), "voiceKey", "default", "voiceVersion", "fixture-1", "assetManifestSha256", "b".repeat(64))))));
+        // 资产锁随模板目录走：根目录下建一套 default 模板，等价于部署侧跑过 template-lock.mjs。
+        try {
+            Path template = Files.createDirectories(properties.getNewsTemplate().resolve("default"));
+            Files.writeString(template.resolve("LOCK.json"), JsonUtils.toJsonString(Map.of(
+                "templateKey", "default", "templateVersion", "fixture-1",
+                "fontSha256", "a".repeat(64), "voiceKey", "default", "voiceVersion", "fixture-1",
+                "assetManifestSha256", "b".repeat(64))));
+        } catch (IOException e) {
+            throw new IllegalStateException("无法写入测试模板 LOCK.json", e);
+        }
         if (!context.containsBean("newsProductionPipeline")) {
             context.getBeanFactory().registerSingleton("newsProductionPipeline", (IProductionPipeline) run -> {
                 throw new AssertionError("事务 fixture 不执行模型或流水线");

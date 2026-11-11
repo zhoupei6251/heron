@@ -19,6 +19,8 @@ public class HeronNewsSource extends BaseEntity {
     private Integer intervalSeconds;
     /** 0 启用，1 停用。 */
     private String enabled;
+    /** 源级自动产出开关：'0' 开 '1' 关；新源默认关，人工看过几条再打开。 */
+    private String auto;
     private LocalDateTime lastAttemptAt;
     private LocalDateTime lastSuccessAt;
     private LocalDateTime nextFetchAt;

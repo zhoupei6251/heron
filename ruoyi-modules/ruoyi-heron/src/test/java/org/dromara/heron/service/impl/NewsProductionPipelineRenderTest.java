@@ -54,7 +54,8 @@ class NewsProductionPipelineRenderTest {
     @DisplayName("六类产物齐备，十道闸全部由真实命令判定通过")
     void rendersOneRealVideo() {
         Path repository = Path.of("..", "..").toAbsolutePath().normalize();
-        Path template = repository.resolve("data").resolve("templates").resolve("news-9x16");
+        Path templateRoot = repository.resolve("data").resolve("templates");
+        Path template = templateRoot.resolve("news-9x16");
         Path cli = repository.resolve("data").resolve("tools").resolve("node_modules")
             .resolve("hyperframes").resolve("bin").resolve("hyperframes.mjs");
         assertTrue(Files.isDirectory(template), "缺少模板目录：" + template);
@@ -64,7 +65,7 @@ class NewsProductionPipelineRenderTest {
         Path dataRoot = repository.resolve("data").resolve("it-render").resolve(UUID.randomUUID().toString());
         HeronProductionProperties properties = new HeronProductionProperties();
         properties.setDataRoot(dataRoot);
-        properties.setNewsTemplate(template);
+        properties.setNewsTemplate(templateRoot);
         properties.setHyperframes(cli.toString());
         properties.setGuardEnabled(false);
         // PATH 上的 node 可能被同机其它会话切成 20.x，而 hyperframes 要求 >=22：与部署侧一样用绝对路径钉住。
@@ -72,7 +73,7 @@ class NewsProductionPipelineRenderTest {
         NewsProductionPipeline pipeline = new NewsProductionPipeline(
             fixedAuthor(SCRIPT), new ProductionProcessService(properties,
             new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties,
-            (run, stage, progress) -> true);
+            (run, stage, progress) -> true, null, null, null, passingReview());
 
         ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_video, 10L, 5L, 1,
             UUID.randomUUID().toString(), lockedAssets(template), null);
@@ -119,13 +120,13 @@ class NewsProductionPipelineRenderTest {
         throw new AssertionError("缺少闸 " + gate);
     }
 
-    /** 认领时锁定的资产快照：模板目录名与实算哈希，与部署侧要写的值同一算法。 */
+    /** 认领时锁定的资产快照：模板目录名与实算哈希，与部署侧要写的值同一算法。字体十二套共用，取模板根目录同级的 fonts/。 */
     private static String lockedAssets(Path template) {
         Map<String, Object> assets = new TreeMap<>();
         assets.put("templateKey", template.getFileName().toString());
         assets.put("templateVersion", "1");
         assets.put("fontSha256", DigestUtil.sha256Hex(
-            template.resolve("fonts").resolve("NotoSansSC-Regular.otf").toFile()));
+            template.getParent().getParent().resolve("fonts").resolve("NotoSansSC-Regular.otf").toFile()));
         assets.put("voiceKey", "zh-CN-XiaoxiaoNeural");
         assets.put("voiceVersion", "1");
         assets.put("assetManifestSha256", DigestUtil.sha256Hex(
@@ -135,5 +136,15 @@ class NewsProductionPipelineRenderTest {
 
     private static NewsScriptAuthor fixedAuthor(String script) {
         return run -> script;
+    }
+
+    /** 审稿不是这些用例的被测对象，一律放行。 */
+    private static EditorialReviewer passingReview() {
+        return new EditorialReviewer(null) {
+            @Override
+            public EditorialReviewer.Verdict review(ProductionRunVo run, String scriptJson, String factsJson) {
+                return new EditorialReviewer.Verdict("PASS", List.of(), List.of());
+            }
+        };
     }
 }

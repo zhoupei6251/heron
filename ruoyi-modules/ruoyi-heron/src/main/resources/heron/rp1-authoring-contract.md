@@ -16,6 +16,7 @@
 ## 二、尺寸与属性铁律
 
 - 纵向容器、卡片、多行文本、动态面板、中继器一律写 `[fillxhug]`（宽铺满、高按内容自动测量，`panel` 自动取最高 `:state` 高度）；按钮、输入框写 `[fillx44]` 或 `[120x44]`。节点 ID 前的 `#` 可省略，但建议写出。
+- 分隔线写 `divider #sep [fillx1]`；不要给 `divider` 用 `[fillxhug]`，高度会算成 0 被拒；任何节点宽高都必须为正数。
 - `fontSize` 范围 `(0,72]`（含字号简写与 spans），`letterSpacing` 非负。
 - `after` 必须引用同容器中的另一个节点，不存在则报 `E_REFERENCE`。
 - 未知属性、未知宏插槽名（`slots`）、`progress-bar` 同时声明 `percent` 与 `value`、对非 `enum` 字段声明 `filters: "auto"`，均返回 `E_PROPERTY`。任何无法生效的声明（如 `wizard-card` 的 `nextWhen`）都不会被静默丢弃——写错就是失败，不会降级通过。

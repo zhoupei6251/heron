@@ -5,6 +5,10 @@ import org.dromara.common.core.factory.YmlPropertySourceFactory;
 import org.dromara.heron.service.IProductionExecutionService;
 import org.dromara.heron.service.NewsScriptAuthor;
 import org.dromara.heron.service.ProtoRp1Author;
+import org.dromara.heron.service.impl.DatasetFetchService;
+import org.dromara.heron.service.impl.DatasetRouter;
+import org.dromara.heron.service.impl.DatasetScriptAuthor;
+import org.dromara.heron.service.impl.EditorialReviewer;
 import org.dromara.heron.service.impl.NewsProductionPipeline;
 import org.dromara.heron.service.impl.OpenAiModelClient;
 import org.dromara.heron.service.impl.ProtoProductionDomain;
@@ -76,8 +80,13 @@ public class HeronProductionConfiguration {
                                                          ProductionProcessService processes,
                                                          ProductionArtifactService artifacts,
                                                          HeronProductionProperties properties,
-                                                         IProductionExecutionService execution) {
-        return new NewsProductionPipeline(author, processes, artifacts, properties, execution::beginStage);
+                                                         IProductionExecutionService execution,
+                                                         DatasetRouter datasetRouter,
+                                                         DatasetFetchService datasetFetch,
+                                                         DatasetScriptAuthor datasetAuthor,
+                                                         EditorialReviewer reviewer) {
+        return new NewsProductionPipeline(author, processes, artifacts, properties, execution::beginStage,
+            datasetRouter, datasetFetch, datasetAuthor, reviewer);
     }
 
     /**

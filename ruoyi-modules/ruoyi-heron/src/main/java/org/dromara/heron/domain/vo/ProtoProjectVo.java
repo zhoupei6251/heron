@@ -20,6 +20,7 @@ public class ProtoProjectVo implements Serializable {
     private Long revision;
     private Integer nextVersion;
     private Long currentVersionId;
+    private ProtoVersionVo currentVersion;
     private Long activeTaskId;
     private ProductionTaskVo activeTask;
     private String archived;

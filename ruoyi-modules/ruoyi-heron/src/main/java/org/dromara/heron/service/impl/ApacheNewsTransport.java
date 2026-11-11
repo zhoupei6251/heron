@@ -66,8 +66,12 @@ public final class ApacheNewsTransport implements NewsTransport, NewsTransport.R
     public NewsTransport.Response get(NewsTransport.Request request) throws IOException {
         String host = NewsUrlPolicy.hostOf(request.url());
         PINS.get().put(host, request.pinned());
+        HttpGet get = new HttpGet(request.url());
+        // 热榜站点按 UA + 同源 Referer 做基础风控；RSS 源多这两个头无副作用。
+        get.setHeader("User-Agent", "Mozilla/5.0");
+        get.setHeader("Referer", "https://" + host + "/");
         try {
-            return client.execute(new HttpGet(request.url()), response -> {
+            return client.execute(get, response -> {
                 Header location = response.getFirstHeader("Location");
                 Header encoding = response.getFirstHeader("Content-Encoding");
                 try {

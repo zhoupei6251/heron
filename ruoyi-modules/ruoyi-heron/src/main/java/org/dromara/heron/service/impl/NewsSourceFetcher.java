@@ -10,6 +10,8 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -18,6 +20,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -38,6 +41,7 @@ public class NewsSourceFetcher {
     static final int MAX_ITEMS = 200;
     static final int ARTICLE_CODE_POINTS = 12_000;
     private static final int TITLE_CODE_POINTS = 80;
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final NewsTransport transport;
     private final NewsTransport.Resolver resolver;
@@ -49,6 +53,8 @@ public class NewsSourceFetcher {
         return switch (source.getSourceType()) {
             case "rss", "atom" -> parseXml(body);
             case "text" -> parseText(body);
+            case "weibo" -> parseWeibo(body);
+            case "baidu" -> parseBaidu(body);
             default -> throw new HeronBusinessException(400, "news_source_type", "未知的来源类型: " + source.getSourceType());
         };
     }
@@ -195,6 +201,58 @@ public class NewsSourceFetcher {
             items.add(new NewsFeedItem(truncate(value), value, null, null, items.size() + 1));
         }
         return items;
+    }
+
+    /** 微博热搜：data.realtime[] 的 word/word_scheme；条目链接指向站内搜索。 */
+    static List<NewsFeedItem> parseWeibo(byte[] body) {
+        JsonNode root;
+        try {
+            root = JSON.readTree(new String(body, StandardCharsets.UTF_8));
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(502, "news_source_body", "微博热榜不是 JSON");
+        }
+        JsonNode items = root.path("data").path("realtime");
+        List<NewsFeedItem> list = new ArrayList<>();
+        if (!items.isArray()) return list;
+        for (JsonNode item : items) {
+            if (list.size() >= MAX_ITEMS) break;
+            String word = item.path("word").asString("").strip();
+            if (word.isEmpty()) continue;
+            String scheme = item.path("word_scheme").asString(word);
+            String url = "https://s.weibo.com/weibo?q=" + URLEncoder.encode(scheme, StandardCharsets.UTF_8);
+            list.add(new NewsFeedItem(truncate(word), "微博热搜", url, word, list.size() + 1));
+        }
+        return list;
+    }
+
+    /** 百度热搜：HTML 里的 s-data JSON，取 component=hotList 的 content[]。 */
+    static List<NewsFeedItem> parseBaidu(byte[] body) {
+        String html = new String(body, StandardCharsets.UTF_8);
+        int start = html.indexOf("s-data:");
+        int end = start < 0 ? -1 : html.indexOf("-->", start);
+        if (start < 0 || end <= start) {
+            throw new HeronBusinessException(502, "news_source_body", "百度热榜缺少 s-data");
+        }
+        JsonNode root;
+        try {
+            root = JSON.readTree(html.substring(start + "s-data:".length(), end).strip());
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(502, "news_source_body", "百度热榜 s-data 不是 JSON");
+        }
+        JsonNode cards = root.path("data").path("cards");
+        List<NewsFeedItem> list = new ArrayList<>();
+        if (!cards.isArray()) return list;
+        for (JsonNode card : cards) {
+            if (!"hotList".equals(card.path("component").asString(""))) continue;
+            for (JsonNode item : card.path("content")) {
+                if (list.size() >= MAX_ITEMS) break;
+                String word = item.path("word").asString("").strip();
+                String url = item.path("url").asString("");
+                if (word.isEmpty() || url.isEmpty()) continue;
+                list.add(new NewsFeedItem(truncate(word), "百度热搜", url, item.path("rawUrl").asString(""), list.size() + 1));
+            }
+        }
+        return list;
     }
 
     private static String truncate(String value) {

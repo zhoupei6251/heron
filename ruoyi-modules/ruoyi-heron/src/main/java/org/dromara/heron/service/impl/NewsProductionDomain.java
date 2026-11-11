@@ -12,18 +12,19 @@ import org.dromara.heron.mapper.*;
 import org.dromara.heron.service.IProductionDomain;
 import org.dromara.heron.service.IProductionObjectScope;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Stream;
 
 /** 新闻固定业务接缝。只依赖持久层、文件校验和能力，不反向注入生产提交服务。 */
 @Service("newsProductionDomain")
@@ -32,13 +33,17 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     private static final Set<String> KINDS = Set.of("mp4", "contact_sheet", "script", "subtitles", "checks", "asset_manifest");
     private static final Set<String> GATES = Set.of("schema", "evidence", "audio", "subtitles", "render", "decode",
         "visual", "aigc_metadata", "aigc_visible", "assets");
+    private static final Set<String> DATA_KINDS = Set.of("mp4", "contact_sheet", "script", "subtitles", "checks",
+        "asset_manifest", "dataset");
+    private static final Set<String> DATA_GATES = Set.of("schema", "evidence", "data", "audio", "subtitles", "render",
+        "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
     private final HeronNewsCandidateMapper candidateMapper;
     private final HeronNewsWorkMapper workMapper;
     private final HeronVideoVersionMapper versionMapper;
+    private final HeronDatasetUsageMapper datasetUsageMapper;
     private final ProductionCapabilityService capabilities;
     private final ProductionArtifactService artifacts;
     private final HeronProductionProperties properties;
-    private final Environment environment;
     private final ObjectProvider<Clock> clocks;
 
     @Override
@@ -81,6 +86,8 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         snapshot.put("draft", work.getDraft().replace("\r\n", "\n").replace('\r', '\n'));
         snapshot.put("evidence", JsonUtils.parseObject(candidate.getEvidence(), Object.class));
         snapshot.put("assets", assets);
+        snapshot.put("kind", work.getTemplateKey() != null && work.getTemplateKey().startsWith("news-data-")
+            ? "data_board" : "article");
         String input = JsonUtils.toJsonString(canonical(snapshot));
         boundedJson(input);
         HeronVideoVersion version = new HeronVideoVersion();
@@ -127,10 +134,14 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         JsonNode content = JsonUtils.getJsonMapper().readTree(result.resultJson());
         if (!content.isObject() || !content.path("script").isObject() || !content.path("durationMs").isIntegralNumber()
             || content.path("durationMs").asLong() <= 0) throw conflict("result_invalid", "脚本或实测时长缺失");
-        List<String> violations = NewsScriptContract.violations(content.path("script"));
+        boolean dataBoard = dataBoard(version);
+        if (dataBoard && !content.path("dataset").isObject()) throw conflict("result_invalid", "数据看板缺少快照");
+        List<String> violations = dataBoard
+            ? DatasetScriptContract.violations(content.path("script"), content.path("dataset"))
+            : NewsScriptContract.violations(content.path("script"));
         if (!violations.isEmpty()) throw conflict("script_contract", "稿件退回写稿：" + String.join("；", violations));
         String checks = JsonUtils.toJsonString(content.path("checks"));
-        validateChecks(checks);
+        validateChecks(checks, dataBoard);
         validateManifest(version, task, result.artifacts(), true);
         String manifest = JsonUtils.toJsonString(result.artifacts());
         boundedJson(manifest);
@@ -148,6 +159,33 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             .eq(HeronNewsWork::getWorkId, task.getBizId()).eq(HeronNewsWork::getActiveTaskId, task.getTaskId()).updateCount() != 1) {
             throw conflict("completion_conflict", "作品在途指针已变化");
         }
+        if (dataBoard) {
+            recordDatasetUsage(task, content.path("dataset"));
+        }
+    }
+
+    /** 完成才记账：失败或重跑不占用 7 天去重窗口。 */
+    private void recordDatasetUsage(HeronProductionTask task, JsonNode dataset) {
+        HeronDatasetUsage usage = new HeronDatasetUsage();
+        usage.setUsageId(IdUtil.getSnowflakeNextId());
+        usage.setSourceKey(dataset.path("source_key").asString(""));
+        usage.setEntity(entityOf(dataset));
+        usage.setMetric(dataset.path("metric").path("key").asString(""));
+        usage.setVersionId(task.getVersionId());
+        usage.setUsedAt(now());
+        usage.setCreateBy(task.getActorId());
+        usage.setUpdateBy(task.getActorId());
+        usage.setCreateTime(now());
+        usage.setUpdateTime(now());
+        if (datasetUsageMapper.insert(usage) != 1) {
+            throw conflict("usage_record_failed", "数据看板使用账本写入失败");
+        }
+    }
+
+    /** 当前按 source_key 去重，entity 先落指标；等单源多实体上线再收紧到 entity。 */
+    static String entityOf(JsonNode dataset) {
+        String metric = dataset.path("metric").path("key").asString("");
+        return metric.isBlank() ? dataset.path("source_key").asString("") : metric;
     }
 
     @Override
@@ -163,6 +201,15 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             .eq(HeronNewsWork::getWorkId, task.getBizId()).eq(HeronNewsWork::getActiveTaskId, task.getTaskId()).update();
     }
 
+    /** 版本冻结输入里的 kind 决定产物清单、闸清单与脚本契约；不读实时配置，重放口径一致。 */
+    public boolean dataBoard(HeronVideoVersion version) {
+        return dataBoard(JsonUtils.getJsonMapper().readTree(version.getInputSnapshot()));
+    }
+
+    private static boolean dataBoard(JsonNode input) {
+        return "data_board".equals(input.path("kind").asString(""));
+    }
+
     /** 查询、审核、下载均核对版本与任务的不可变归属。 */
     public void requireTask(HeronVideoVersion version, HeronProductionTask task) {
         if (version == null || task == null || !ProductionBizType.news_video.name().equals(task.getBizType())
@@ -175,12 +222,16 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     /** 只接受完整、同版本同尝试的清单；过期查询可只校验描述而不读取文件。 */
     public void validateManifest(HeronVideoVersion version, HeronProductionTask task, List<ProductionArtifactVo> files, boolean verifyFiles) {
         requireTask(version, task);
-        if (files == null || files.size() != KINDS.size()) throw conflict("manifest_invalid", "必须具备全部六类产物");
+        boolean dataBoard = dataBoard(version);
+        Set<String> expected = dataBoard ? DATA_KINDS : KINDS;
+        if (files == null || files.size() != expected.size()) {
+            throw conflict("manifest_invalid", dataBoard ? "必须具备全部七类产物（含 dataset）" : "必须具备全部六类产物");
+        }
         Set<String> kinds = new HashSet<>();
         Set<String> ids = new HashSet<>();
         String prefix = "videos/" + version.getWorkId() + "/v" + version.getVersionId() + "/a" + task.getAttemptNo() + "-" + task.getRunToken() + "/";
         for (ProductionArtifactVo file : files) {
-            if (file == null || !KINDS.contains(file.kind()) || !kinds.add(file.kind()) || file.artifactId() == null
+            if (file == null || !expected.contains(file.kind()) || !kinds.add(file.kind()) || file.artifactId() == null
                 || !file.artifactId().matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}") || !ids.add(file.artifactId())
                 || file.sha256() == null || !file.sha256().matches("[0-9a-f]{64}") || file.bytes() <= 0
                 || file.bytes() > properties.getNewsMaxBytes()) throw conflict("manifest_invalid", "产物描述不完整或重复");
@@ -216,7 +267,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     }
 
     /** 闸口必须全部存在且通过；检查明细只接受安全定位符和数值测量。 */
-    public void validateChecks(String checks) {
+    public void validateChecks(String checks, boolean dataBoard) {
         boundedJson(checks);
         JsonNode list = JsonUtils.getJsonMapper().readTree(checks);
         if (!list.isArray() || list.isEmpty() || list.size() > 200) throw conflict("checks_invalid", "完整检查报告缺失");
@@ -238,7 +289,8 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             }
             seen.add(gate);
         }
-        if (!seen.containsAll(GATES)) throw conflict("checks_incomplete", "结构、依据、音轨、字幕、渲染、解码、视觉、AIGC或许可闸缺失");
+        Set<String> required = dataBoard ? DATA_GATES : GATES;
+        if (!seen.containsAll(required)) throw conflict("checks_incomplete", "结构、依据、数据、音轨、字幕、渲染、解码、视觉、AIGC或许可闸缺失");
     }
 
     /** 新闻文件使用固定服务端布局，逐层拒绝符号链接；复用底座哈希校验。 */
@@ -290,32 +342,91 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         } catch (IOException e) { throw conflict("keep_unreadable", "无法确认人工保留标记"); }
     }
 
-    /** 部署锁定的模板与音色等标识；配置缺失或不完整一律拒绝，不给出半成品。 */
-    public Map<String, Object> lockedAssets() {
-        // Deployment-provided identifiers and hashes, not paths or credentials; missing B2 evidence stays unavailable.
-        String json = environment.getProperty("heron.news.production-assets");
-        if (json == null || json.isBlank()) throw new HeronBusinessException(503, "news_assets_unconfigured", "尚未锁定新闻模板、字体、声音和素材版本");
+    /** 模板自带资产锁：谁改模板谁用 script/tools/template-lock.mjs 重新生成 LOCK.json，不改部署配置。 */
+    public Map<String, Object> lockedAssets(String templateKey) {
+        Path lock = lockFile(templateKey);
+        if (lock == null || !Files.isRegularFile(lock)) {
+            throw new HeronBusinessException(503, "news_assets_unconfigured",
+                "模板 " + templateKey + " 缺少 LOCK.json，请运行 script/tools/template-lock.mjs 生成");
+        }
         Map<String, Object> asset = new TreeMap<>();
         try {
-            JsonNode node = JsonUtils.getJsonMapper().readTree(json);
+            JsonNode node = JsonUtils.getJsonMapper().readTree(Files.readString(lock, StandardCharsets.UTF_8));
             for (String key : List.of("templateKey", "templateVersion", "fontSha256", "voiceKey", "voiceVersion", "assetManifestSha256")) {
                 String value = node.path(key).asText();
                 if (!value.matches(key.endsWith("Sha256") ? "[0-9a-f]{64}" : "[a-zA-Z0-9_.-]{1,80}")) throw new IllegalArgumentException();
                 asset.put(key, value);
             }
-        } catch (RuntimeException e) { throw new HeronBusinessException(503, "news_assets_invalid", "锁定资产配置不完整"); }
+        } catch (IOException | RuntimeException e) {
+            throw new HeronBusinessException(503, "news_assets_invalid", "LOCK.json 不完整或无法读取");
+        }
+        if (!templateKey.equals(asset.get("templateKey"))) {
+            throw new HeronBusinessException(503, "news_assets_invalid", "LOCK.json 的 templateKey 与目录名不一致");
+        }
         return asset;
     }
 
-    /** 认领用：还没锁定资产时返回空表，让作品先落 default；真正的拒绝留在生成闸，编辑认领不该被生产配置卡住。 */
+    /** 认领用：还没有可用模板时返回空表，让作品先落默认值；真正的拒绝留在生成闸。 */
     public Map<String, Object> lockedAssetsIfConfigured() {
-        String json = environment.getProperty("heron.news.production-assets");
-        return json == null || json.isBlank() ? Map.of() : lockedAssets();
+        List<String> keys = availableTemplates();
+        return keys.isEmpty() ? Map.of() : lockedAssets(keys.get(0));
+    }
+
+    /** 可用模板：根目录下带 LOCK.json 的子目录，按名字排序，保证默认选择稳定。 */
+    public List<String> availableTemplates() {
+        Path root = properties.getNewsTemplate();
+        if (root == null || !Files.isDirectory(root)) {
+            return List.of();
+        }
+        try (Stream<Path> dirs = Files.list(root)) {
+            return dirs.filter(Files::isDirectory)
+                .filter(dir -> Files.isRegularFile(dir.resolve("LOCK.json")))
+                .filter(dir -> properties.isArticleEnabled()
+                    || dir.getFileName().toString().startsWith("news-data-"))
+                .map(dir -> dir.getFileName().toString())
+                .sorted()
+                .toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /** 模板元信息：名字与一句话描述写在模板自己的 template.json 里，加模板不用改代码。 */
+    public record TemplateInfo(String key, String name, String description) {
+    }
+
+    public List<TemplateInfo> templateCatalog() {
+        Path root = properties.getNewsTemplate();
+        return availableTemplates().stream().map(key -> {
+            String name = key;
+            String description = "";
+            if (root != null) {
+                Path meta = root.toAbsolutePath().normalize().resolve(key).resolve("template.json");
+                if (Files.isRegularFile(meta)) {
+                    try {
+                        JsonNode node = JsonUtils.getJsonMapper().readTree(Files.readString(meta, StandardCharsets.UTF_8));
+                        name = node.path("name").asString(key);
+                        description = node.path("description").asString("");
+                    } catch (IOException | RuntimeException e) {
+                        // 描述只是选择用的辅助信息，读坏了退回模板标识；模板本身仍由 LOCK.json 与闸判定
+                    }
+                }
+            }
+            return new TemplateInfo(key, name, description);
+        }).toList();
+    }
+
+    private Path lockFile(String templateKey) {
+        Path root = properties.getNewsTemplate();
+        if (root == null || templateKey == null || !templateKey.matches("[a-zA-Z0-9_-]{1,80}")) {
+            return null;
+        }
+        return root.toAbsolutePath().normalize().resolve(templateKey).resolve("LOCK.json");
     }
 
     private Map<String, Object> productionAssets(HeronNewsWork work) {
-        Map<String, Object> asset = lockedAssets();
-        if (!work.getTemplateKey().equals(asset.get("templateKey")) || !work.getVoiceKey().equals(asset.get("voiceKey"))) {
+        Map<String, Object> asset = lockedAssets(work.getTemplateKey());
+        if (!work.getVoiceKey().equals(asset.get("voiceKey"))) {
             throw new HeronBusinessException(503, "news_assets_unavailable", "选择的模板或声音尚未验证");
         }
         return asset;

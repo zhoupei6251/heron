@@ -51,11 +51,7 @@ public class OpenAiModelClient {
         String callId = IdUtil.getSnowflakeNextIdStr();
         usage.start(run, stage, callId, host(baseUrl), model);
         long began = System.nanoTime();
-        String payload = JSON.writeValueAsString(Map.of(
-            "model", model,
-            "messages", List.of(
-                Map.of("role", "system", "content", systemPrompt),
-                Map.of("role", "user", "content", userPrompt))));
+        String payload = payload(model, systemPrompt, userPrompt);
         HttpRequest request = HttpRequest.newBuilder(URI.create(trimSlash(baseUrl) + "/chat/completions"))
             .timeout(TIMEOUT)
             .header("Content-Type", "application/json")
@@ -98,6 +94,51 @@ public class OpenAiModelClient {
         }
         usage.complete(run, callId, providerCallId, inputTokens, outputTokens, elapsedMs(began));
         return content;
+    }
+
+    /**
+     * 没有任务上下文的轻量调用（例如挑排版模板）：不写用量表，失败照常抛。
+     * 用量台账只记成片生产，不记运维时的选择动作。
+     */
+    public String chatWithoutUsage(String systemPrompt, String userPrompt) {
+        String baseUrl = setting("heron.model.base-url");
+        String model = setting("heron.model.name");
+        String apiKey = setting("heron.model.api-key");
+        if (baseUrl == null || model == null || apiKey == null) {
+            throw new HeronBusinessException(503, "model_not_configured", "模型配置不完整");
+        }
+        HttpRequest request = HttpRequest.newBuilder(URI.create(trimSlash(baseUrl) + "/chat/completions"))
+            .timeout(TIMEOUT)
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer " + apiKey)
+            .POST(HttpRequest.BodyPublishers.ofString(payload(model, systemPrompt, userPrompt), StandardCharsets.UTF_8))
+            .build();
+        try {
+            HttpResponse<String> result = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (result.statusCode() / 100 != 2) {
+                throw new HeronBusinessException(503, FAILURE, "模型返回 HTTP " + result.statusCode());
+            }
+            JsonNode message = JSON.readTree(result.body()).path("choices").path(0).path("message").path("content");
+            if (!message.isString() || message.asString().isBlank()) {
+                throw new HeronBusinessException(503, FAILURE, "模型输出为空");
+            }
+            return message.asString();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new HeronBusinessException(503, FAILURE, "模型调用被中断");
+        } catch (HeronBusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new HeronBusinessException(503, FAILURE, "模型调用失败: " + e.getClass().getSimpleName());
+        }
+    }
+
+    private static String payload(String model, String systemPrompt, String userPrompt) {
+        return JSON.writeValueAsString(Map.of(
+            "model", model,
+            "messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userPrompt))));
     }
 
     /** 部署侧要记录"这条结果由哪个模型档位产出"，只给逻辑名，不外泄密钥。 */

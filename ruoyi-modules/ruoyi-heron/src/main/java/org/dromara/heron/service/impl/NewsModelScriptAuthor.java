@@ -24,7 +24,9 @@ import java.util.List;
 public class NewsModelScriptAuthor implements NewsScriptAuthor {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final String CONTRACT = contract();
+    /** 契约管形状，风格管说人话；两份一起给模型，避免"符合格式但没人听"。 */
+    private static final String SYSTEM = resource("/heron/news-writing-style.md")
+        + "\n\n---\n\n" + resource("/heron/news-script-contract.md");
 
     private final OpenAiModelClient model;
     private final NewsSourceFetcher fetcher;
@@ -33,16 +35,36 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
     public String author(ProductionRunVo run) {
         JsonNode input = JSON.readTree(run.inputJson());
         NewsArticleBody article = fetcher.fetchArticle(sourceUrl(input));
-        JsonNode draft = parse(model.chat(run, "script", CONTRACT, prompt(input, article)));
+        ObjectNode script = withEvidence(parse(model.chat(run, "script", SYSTEM, prompt(input, article))), article);
+        List<String> violations = NewsScriptContract.violations(script);
+        if (!violations.isEmpty()) {
+            // 一次定向修复：把违规条目原样回给模型，只改不合规的字段；再不过就按规则失败，不盲目重跑
+            ObjectNode repaired = withEvidence(
+                parse(model.chat(run, "script-repair", SYSTEM, repairPrompt(script, violations))), article);
+            violations = NewsScriptContract.violations(repaired);
+            if (!violations.isEmpty()) {
+                throw new HeronBusinessException(409, "news_script_contract", "稿件退回写稿：" + String.join("；", violations));
+            }
+            script = repaired;
+        }
+        return JSON.writeValueAsString(script);
+    }
+
+    /** 出处事实由抓取覆盖，模型自述一律不采信。 */
+    private static ObjectNode withEvidence(JsonNode draft, NewsArticleBody article) {
         ObjectNode script = (ObjectNode) draft;
         script.put("source_url", article.url());
         script.put("fetched_at", article.fetchedAt().toString());
         script.put("body_sha256", article.htmlSha256());
-        List<String> violations = NewsScriptContract.violations(script);
-        if (!violations.isEmpty()) {
-            throw new HeronBusinessException(409, "news_script_contract", "稿件退回写稿：" + String.join("；", violations));
-        }
-        return JSON.writeValueAsString(script);
+        return script;
+    }
+
+    private static String repairPrompt(ObjectNode script, List<String> violations) {
+        return new StringBuilder()
+            .append("上一版稿件没有通过契约校验，问题如下：\n")
+            .append("- ").append(String.join("\n- ", violations)).append('\n')
+            .append("只修改不符合要求的字段，其余字段原样保留，输出完整 JSON。\n")
+            .append("上一版稿件：\n").append(script.toString()).toString();
     }
 
     /** 泛资讯候选必须带正文出处；手工候选没有出处时直接失败，不假装模型知识是来源。 */
@@ -70,21 +92,21 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
     }
 
     private static JsonNode parse(String text) {
-        JsonNode node = text == null ? null : JSON.readTree(text);
+        JsonNode node = text == null ? null : JSON.readTree(ModelJson.unwrap(text));
         if (node == null || !node.isObject()) {
             throw new HeronBusinessException(409, "news_script_contract", "稿件退回写稿：模型输出不是 JSON 对象");
         }
         return node;
     }
 
-    private static String contract() {
-        try (InputStream resource = NewsModelScriptAuthor.class.getResourceAsStream("/heron/news-script-contract.md")) {
-            if (resource == null) {
-                throw new IllegalStateException("缺少 news-script-contract.md");
+    private static String resource(String path) {
+        try (InputStream stream = NewsModelScriptAuthor.class.getResourceAsStream(path)) {
+            if (stream == null) {
+                throw new IllegalStateException("缺少提示词资源 " + path);
             }
-            return new String(resource.readAllBytes(), StandardCharsets.UTF_8);
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new IllegalStateException("稿件创作契约不可读", e);
+            throw new IllegalStateException("提示词资源不可读 " + path, e);
         }
     }
 }

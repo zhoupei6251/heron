@@ -94,15 +94,16 @@ class NewsScriptContractTest {
     }
 
     @Test
-    @DisplayName("契约不过就退回写稿并列条目，不自动改稿也不重试")
-    void authorFailsWithItemListInsteadOfRepairing() {
+    @DisplayName("契约不过先定向修复一次，仍不过就退回写稿并列条目")
+    void authorRepairsOnceThenFailsWithItemList() {
         ScriptClient client = new ScriptClient("{\"title\":\"很短\",\"closing\":\"结尾\",\"source_name\":\"来源\","
             + "\"scenes\":[{\"lead\":\"一\",\"body\":\"正文\",\"duration_s\":15}]}");
         HeronBusinessException error = assertThrows(HeronBusinessException.class,
             () -> new NewsModelScriptAuthor(client, new StubFetcher()).author(run()));
         assertEquals("news_script_contract", error.getCode());
         assertTrue(error.getMessage().contains("段落数"), error.getMessage());
-        assertEquals(1, client.calls);
+        assertEquals(2, client.calls);
+        assertEquals("script-repair", client.stage);
     }
 
     @Test
