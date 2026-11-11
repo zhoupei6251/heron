@@ -346,13 +346,29 @@ heron:
     # 装配流水线：引擎根 + 模板卷 + 模型都到位才打开
     engine-enabled: true
     # 人工核对过的引擎能力声明（tag v0.2.1 的提交号）；启动时仍要比引擎目录实际 HEAD 与模板实算哈希
-    engine-assets: '{"engineCommit":"74f286fead2e2524fb5f710b36e2e1db9e861df5","supportedWidgets":["page","group","button","text","image","input","dynamicPanel","repeater"]}'
+    # supportedWidgets 必须用引擎 RP/1 的节点名（见 zee-rp scripts/rp_language.py 的 NODE_PROPS），不是 Heron 自己的叫法
+    engine-assets: '{"engineCommit":"74f286fead2e2524fb5f710b36e2e1db9e861df5","supportedWidgets":["box","card","row","column","grid","stack","label","paragraph","button","badge","input","divider","image","icon","sparkline","dynamic-panel","repeater","when","data-table","searchable-list","form-card","kv-list","detail-card","wizard-card","master-detail"]}'
   news:
     pipeline-enabled: true
     # 泛资讯源白名单（时政不进）；本机开发与 N3 闭环验收用这两家实测可达的 RSS
     collection-enabled: true
     allowed-hosts:
       - www.ithome.com
-      - 36kr.com
-    # 模板、字体与音色清单的实算哈希；改模板后必须同步这一行，否则 assets 闸判不一致
-    production-assets: '{"templateKey":"news-9x16","templateVersion":"1","fontSha256":"2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b","voiceKey":"zh-CN-XiaoxiaoNeural","voiceVersion":"1","assetManifestSha256":"4100ca23bb3c8c34c45abfe4435bdb73c632624b04600bf4892a7b9add150bfd"}'
+      - sspai.com
+      - www.ifanr.com
+      - www.tmtpost.com
+      - m.tmtpost.com
+      - www.199it.com
+    # 自动产出：按下述三条 cron 各产出一条并自动确认（沙箱发布）
+    auto-enabled: false
+    auto-slots:
+      - "0 0 11 * * ?"
+      - "0 0 15 * * ?"
+      - "0 0 19 * * ?"
+    # 发布出口：douyin-cli 调 social-auto-upload 的 sau（浏览器自动化，不用开放平台凭据）。
+    # 首次使用先跑一次登录，cookie 存在仓库的 accounts 目录里：
+    #   data/tools/social-auto-upload/.venv/Scripts/sau.exe douyin login --account heron
+    publish-adapter: douyin-cli
+    publish-command: ${HERON_PUBLISH_COMMAND:./data/tools/social-auto-upload/.venv/Scripts/sau.exe}
+    publish-account: heron
+    publish-timeout-seconds: 240
