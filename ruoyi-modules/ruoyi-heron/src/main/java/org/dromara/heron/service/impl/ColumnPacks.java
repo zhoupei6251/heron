@@ -15,7 +15,7 @@ final class ColumnPacks {
 
     static String text(String sourceKey) {
         Column column = Column.forSource(sourceKey);
-        String path = "/heron/column-" + column.key() + ".md";
+        String path = "/prompt/data-board/columns/" + column.key() + ".md";
         try (InputStream stream = ColumnPacks.class.getResourceAsStream(path)) {
             if (stream == null) throw new IllegalStateException("缺少栏目包 " + path);
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8);

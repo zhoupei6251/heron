@@ -299,7 +299,7 @@ public class ProductionProcessService {
     private Path guardScript() {
         Path directory = properties.getDataRoot().toAbsolutePath().normalize().resolve("runtime");
         Path script = directory.resolve("process_guard.py");
-        try (InputStream resource = getClass().getResourceAsStream("/heron/process_guard.py")) {
+        try (InputStream resource = getClass().getResourceAsStream("/runtime/process_guard.py")) {
             if (resource == null) {
                 throw new IllegalStateException("缺少 process_guard.py");
             }

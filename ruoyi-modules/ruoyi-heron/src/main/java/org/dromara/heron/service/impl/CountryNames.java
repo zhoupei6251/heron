@@ -18,7 +18,7 @@ final class CountryNames {
     }
 
     private static Map<String, String> load() {
-        try (InputStream stream = CountryNames.class.getResourceAsStream("/heron/country-zh.tsv")) {
+        try (InputStream stream = CountryNames.class.getResourceAsStream("/data/country-zh.tsv")) {
             if (stream == null) return Map.of();
             Map<String, String> map = new HashMap<>();
             for (String line : new String(stream.readAllBytes(), StandardCharsets.UTF_8).split("\\R")) {

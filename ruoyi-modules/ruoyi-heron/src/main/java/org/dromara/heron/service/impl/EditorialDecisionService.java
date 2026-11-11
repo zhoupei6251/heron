@@ -25,7 +25,7 @@ public class EditorialDecisionService {
     public static final String NO_PUBLISH = "NO_PUBLISH";
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final String SYSTEM = resource("/heron/editorial-daily.md");
+    private static final String SYSTEM = resource("/prompt/editorial/daily-editor.md");
     private static final Set<String> LINES = Set.of(DATA_BOARD, NEWS_EXPLAINER);
 
     private final OpenAiModelClient model;

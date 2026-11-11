@@ -22,7 +22,7 @@ import java.util.List;
 public class DatasetScriptAuthor {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final String BASE_SYSTEM = resource("/heron/dataset-script-contract.md");
+    private static final String BASE_SYSTEM = resource("/prompt/data-board/script-contract.md");
     private static final String STAGE = "dataset-script";
     private static final int MAX_REPAIRS = 2;
 

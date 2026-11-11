@@ -39,7 +39,7 @@ hyperframes check 对 news-9x16 报 0 error
    - 输入：两条候选池的**摘要**（不是全量）、最近 7–30 天发布记录、编辑策略提示词
    - 输出严格 JSON：`{decision, selectedLine, reason, editorialIntent}`
    - `NO_PUBLISH` 是合法结果，run 记 `skipped`，不报错
-2. 新提示词 `heron/editorial-daily.md`：写清两线权重（数据看板优先，解说线要真有爆款相）、`NO_PUBLISH` 的条件
+2. 新提示词 `prompt/editorial/daily-editor.md`：写清两线权重（数据看板优先，解说线要真有爆款相）、`NO_PUBLISH` 的条件
 3. 候选池摘要构造（Java）：
    - 看板池：热榜前 N 条 + 检索到的前 15 个数据集（名称 + 一句能讲什么 + 时效）
    - 解说池：只含**有正文**的 RSS 候选（热榜候选 `summary` 是来源名，不是摘要）
@@ -76,7 +76,7 @@ hyperframes check 对 news-9x16 报 0 error
 
 **改动**
 
-1. 新服务 `EditorialReviewer` + 提示词 `heron/editorial-review.md`
+1. 新服务 `EditorialReviewer` + 提示词 `prompt/review/editorial-review.md`
 2. 两线的事实清单分开构造：
    - 看板：`validatedFacts`（快照 `facts` 节点 + 占位符解析出的 `factRefs`）
    - 解说：`quotes`（原文片段 + 来源 URL + 抓取时间）

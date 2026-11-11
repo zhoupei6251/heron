@@ -48,7 +48,7 @@ public class ProtoModelRp1Author implements ProtoRp1Author {
 
     private static String contract() {
         try (InputStream resource = ProtoModelRp1Author.class.getResourceAsStream(
-            "/heron/rp1-authoring-contract.md")) {
+            "/prompt/prototype/rp1-authoring-contract.md")) {
             if (resource == null) {
                 throw new IllegalStateException("缺少 rp1-authoring-contract.md");
             }

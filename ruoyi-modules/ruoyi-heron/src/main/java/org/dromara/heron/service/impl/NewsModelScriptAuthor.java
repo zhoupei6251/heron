@@ -25,8 +25,8 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     /** 契约管形状，风格管说人话；两份一起给模型，避免"符合格式但没人听"。 */
-    private static final String SYSTEM = resource("/heron/news-writing-style.md")
-        + "\n\n---\n\n" + resource("/heron/news-script-contract.md");
+    private static final String SYSTEM = resource("/prompt/news-explainer/writing-style.md")
+        + "\n\n---\n\n" + resource("/prompt/news-explainer/script-contract.md");
 
     private final OpenAiModelClient model;
     private final NewsSourceFetcher fetcher;

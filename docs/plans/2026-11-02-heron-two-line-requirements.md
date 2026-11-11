@@ -22,7 +22,7 @@
 | 范围 | 位置 |
 |---|---|
 | 共享生产核心 | `ruoyi-modules/ruoyi-heron/.../service/impl/ProductionServiceImpl`、`ProductionExecutionServiceImpl`（租约/认领/心跳）、`ProductionRunner`、`ProductionRecoveryService`、`ProductionArtifactService`、`ProductionUsageService`、`ProductionCleanupService` |
-| 沙箱子进程 | `ProductionProcessService`：固定工具白名单 `{node, ffmpeg, ffprobe, python, zee-rp}`，由 `heron-production.yml` 解析，经 `src/main/resources/heron/process_guard.py` 执行（内存/CPU/输出上限，**Linux only**） |
+| 沙箱子进程 | `ProductionProcessService`：固定工具白名单 `{node, ffmpeg, ffprobe, python, zee-rp}`，由 `heron-production.yml` 解析，经 `src/main/resources/runtime/process_guard.py` 执行（内存/CPU/输出上限，**Linux only**） |
 | 新闻线 | `HeronNewsSource` / `HeronNewsCandidate` / `HeronNewsWork` / `HeronVideoVersion` + `NewsSourceServiceImpl`、`NewsCandidateCollector`、`NewsSourceFetcher`、`NewsSourceRunner`、`NewsDedup`、`ApacheNewsTransport`、`NewsUrlPolicy`、`NewsAddressPolicy` |
 | 原型线 | `HeronProtoProject` / `HeronProtoVersion` + `ProtoProjectServiceImpl`、`ProtoProductionDomain`、`ProtoController`（含 native-verifications / deliver / download） |
 | 表 | `script/sql/heron/001-production.sql`、`002-news.sql`、`003-prototype.sql`、`004-menu.sql` |
@@ -39,7 +39,7 @@
 | # | 空缺 | 当前状态 |
 |---|---|---|
 | G1 | **渲染执行器** | 无 `IProductionPipeline` 生产实现；`newsProductionPipeline` 只存在于测试（`TestProductionPipeline`），原型侧的 `prototypeProductionPipeline` 见 G4。全仓库无 hyperframes / ffmpeg 调用点、无 composition 文件 |
-| G2 | **模型调用** | 已接线（2026-11-02 TDD）：`OpenAiModelClient.chat(run, stage, system, user)` 发一次 `POST {base-url}/chat/completions`，用量经 `ProductionUsageService` 落 `heron_usage_record`（供应商没报的 token 保持空，不填 0）；`ProtoModelRp1Author` 以 `heron/rp1-authoring-contract.md` 为 system、冻结需求为 user，模型原文直接交装配流水线。还缺的是新闻写稿步骤本身（属 G1） |
+| G2 | **模型调用** | 已接线（2026-11-02 TDD）：`OpenAiModelClient.chat(run, stage, system, user)` 发一次 `POST {base-url}/chat/completions`，用量经 `ProductionUsageService` 落 `heron_usage_record`（供应商没报的 token 保持空，不填 0）；`ProtoModelRp1Author` 以 `prompt/prototype/rp1-authoring-contract.md` 为 system、冻结需求为 user，模型原文直接交装配流水线。还缺的是新闻写稿步骤本身（属 G1） |
 | G3 | **发布** | 无抖音适配器；`heron_news_candidate.published_at` 注释写明「N1 never writes this field」 |
 | G4 | **原型引擎调用** | 已接线（2026-11-02 TDD）：`ProtoProductionPipeline` 注册为 `prototypeProductionPipeline`，写 `.rp1` → `check` → `generate` → 定稿 `5+页数` 个产物 → 出 `ManifestEvidence`。配置项 `heron.production.zee-rp` 的语义随之从「可执行文件名」改为**引擎根目录**（能力探测看 `<root>/scripts/proto.mjs`）。剩余缺口只有 Linux 真跑（`process_guard.py` 限制）与人在 Axure 9 打开那一步 |
 
@@ -209,7 +209,7 @@ node <zee-rp>/scripts/proto.mjs generate  --spec <project>.rp1 --out-dir <dir> -
 - 用量写 `heron_usage_record`：取响应 `usage` 字段；某供应商未上报时该栏显示「未上报」，**不填 0**。
 - **实现落地（2026-11-02 TDD）**：三项配置的读取顺序是 `sys_config` → `Environment`（yml 与 `HERON_MODEL_*` 环境变量都走后者），空白值等同未配置；`model_not_configured` 在发出请求之前判定，因此不留用量行。
 - 记账点在 client 内部：请求前 `start`，成功 `complete`（带 `id` 与 `prompt_tokens` / `completion_tokens`，缺字段保持 null），任何失败 `fail(model_failed)`；`stage` 由调用方给（原型 `rp1`，新闻写稿 `script`）。超时 300 秒是常量，**没有第四项配置**，守住「只有 base-url / model / api-key」。
-- RP/1 创作契约在 `src/main/resources/heron/rp1-authoring-contract.md`：zee-rp `SKILL.md` 第二、三节的摘录（MIT，文件头标了出处），外加 Heron 侧硬校验口径（首行 `rp/1 target=9`、页面 ID `[A-Za-z0-9_-]{1,80}`、全文 256 KB、语义化命名）。契约不从引擎目录读取，引擎口径变更时人工同步这份摘录。
+- RP/1 创作契约在 `src/main/resources/prompt/prototype/rp1-authoring-contract.md`：zee-rp `SKILL.md` 第二、三节的摘录（MIT，文件头标了出处），外加 Heron 侧硬校验口径（首行 `rp/1 target=9`、页面 ID `[A-Za-z0-9_-]{1,80}`、全文 256 KB、语义化命名）。契约不从引擎目录读取，引擎口径变更时人工同步这份摘录。
 - 模型需求本身仍只是「一段 prompt → 一段结构化文本」，不接 SnailAI（D9 结论不变）；`api-key` 不落业务表明文，版本快照里的 `modelConfigId` 是逻辑名不是密钥。基座「参数管理」页对管理员仍显示明文，这是选择 `sys_config` 存密钥的既定代价，不在本轮加固范围。
 
 ---

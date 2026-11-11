@@ -22,7 +22,7 @@ import java.util.List;
 public class DatasetTitleAuthor {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final String SYSTEM = resource("/heron/dataset-title-contract.md");
+    private static final String SYSTEM = resource("/prompt/data-board/title-contract.md");
     private static final String STAGE = "dataset-title";
     private static final List<String> BANNED = List.of(
         "必涨", "必跌", "稳赚", "抄底", "逃顶", "预测", "将涨", "将跌", "一定", "保证");

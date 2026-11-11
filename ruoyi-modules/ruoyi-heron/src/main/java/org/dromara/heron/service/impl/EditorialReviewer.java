@@ -23,7 +23,7 @@ import java.util.Set;
 public class EditorialReviewer {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final String SYSTEM = resource("/heron/editorial-review.md");
+    private static final String SYSTEM = resource("/prompt/review/editorial-review.md");
     private static final Set<String> SEVERITIES = Set.of("BLOCKER", "MAJOR", "MINOR");
 
     private final OpenAiModelClient model;

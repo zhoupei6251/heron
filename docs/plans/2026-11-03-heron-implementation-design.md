@@ -63,8 +63,8 @@
 
 ### 1.2 未提交（**整批**，M0 统一验证后提交）
 
-- **G2 模型**：`OpenAiModelClient`、`NewsModelScriptAuthor`、`NewsScriptContract`、`NewsArticleBody`、`NewsSourceFetcher.fetchArticle`、`heron/news-script-contract.md`、`ModelClientTest`、`NewsScriptContractTest`
-- **G4 原型**：`ProtoProductionPipeline`、`ProtoModelRp1Author`、`ProtoRp1Author`、`heron/rp1-authoring-contract.md`、`ProtoEnginePipelineTest`、`ProtoRp1AuthorTest`、`ProtoManifestMediaTest`
+- **G2 模型**：`OpenAiModelClient`、`NewsModelScriptAuthor`、`NewsScriptContract`、`NewsArticleBody`、`NewsSourceFetcher.fetchArticle`、`prompt/news-explainer/script-contract.md`、`ModelClientTest`、`NewsScriptContractTest`
+- **G4 原型**：`ProtoProductionPipeline`、`ProtoModelRp1Author`、`ProtoRp1Author`、`prompt/prototype/rp1-authoring-contract.md`、`ProtoEnginePipelineTest`、`ProtoRp1AuthorTest`、`ProtoManifestMediaTest`
 - **G3 发布**：`NewsPublishBo`、`NewsWorkServiceImpl.publish`、`NewsVideoVersion` `publish_*` 六列、`NewsPublishAccessTest`、前端发布回填表单
 - **文档**：`CLAUDE.md`、`docs/plans/2026-11-02-heron-two-line-requirements.md`、`AGENTS.md` 等
 - **另有 40+ 个已跟踪文件处于 modified**（yml、`pom.xml`、docker-compose、`script/sql/*` 等），提交范围按 `git status` 实盘逐条过，不用 `git add .`

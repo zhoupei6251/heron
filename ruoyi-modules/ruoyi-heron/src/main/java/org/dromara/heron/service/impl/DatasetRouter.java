@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 public class DatasetRouter {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final String SYSTEM = resource("/heron/dataset-routing.md");
+    private static final String SYSTEM = resource("/prompt/data-board/routing.md");
     private static final int DEDUP_DAYS = 7;
 
     private final OpenAiModelClient model;

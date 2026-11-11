@@ -30,7 +30,7 @@ public class NewsCandidateScreener {
     private static final int PERFORMANCE_LIMIT = 5;
     // 用独立 JsonMapper 而不是 JsonUtils：后者绑定 Spring 容器，纯单元测试里初始化会失败
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final String SYSTEM = resource("/heron/news-selection-prompt.md");
+    private static final String SYSTEM = resource("/prompt/news-explainer/selection.md");
 
     private final ObjectProvider<OpenAiModelClient> modelProvider;
     private final INewsMetricService metrics;
