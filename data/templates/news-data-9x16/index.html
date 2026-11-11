@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='[
+  {"id":"title","type":"string","label":"标题","maxLength":15,"default":"金价创阶段新高"},
+  {"id":"scene1_lead","type":"string","label":"第一屏领句","maxLength":40,"default":"金价站上关键位"},
+  {"id":"scene1_body","type":"string","label":"第一屏正文","maxLength":600,"default":"最新收于 4113.34 美元，创下阶段新高。"},
+  {"id":"scene2_lead","type":"string","label":"第二屏领句","maxLength":40,"default":"较前一日走高"},
+  {"id":"scene2_body","type":"string","label":"第二屏正文","maxLength":600,"default":"较前一日上涨 21.79 美元，涨幅 0.53%。"},
+  {"id":"scene3_lead","type":"string","label":"第三屏领句","maxLength":40,"default":"区间高点确认"},
+  {"id":"scene3_body","type":"string","label":"第三屏正文","maxLength":600,"default":"近两周区间最高 4113.34 美元，最低 3988.20 美元。"},
+  {"id":"scene4_lead","type":"string","label":"第四屏领句","maxLength":40,"default":""},
+  {"id":"scene4_body","type":"string","label":"第四屏正文","maxLength":600,"default":""},
+  {"id":"scene5_lead","type":"string","label":"第五屏领句","maxLength":40,"default":""},
+  {"id":"scene5_body","type":"string","label":"第五屏正文","maxLength":600,"default":""},
+  {"id":"scene6_lead","type":"string","label":"第六屏领句","maxLength":40,"default":""},
+  {"id":"scene6_body","type":"string","label":"第六屏正文","maxLength":600,"default":""},
+  {"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"关注接下来的走势。"},
+  {"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"来源：新浪财经"},
+  {"id":"accent","type":"color","label":"品牌色","default":"#18b7c9"},
+  {"id":"scene_count","type":"number","label":"场景数","min":3,"max":6,"default":3},
+  {"id":"chart","type":"enum","label":"图表模块","options":[{"value":"line","label":"折线"},{"value":"bars","label":"排行"}],"default":"line"},
+  {"id":"dataset_json","type":"string","label":"数据快照","default":"{\"contract\":\"dataset/1\",\"source_key\":\"sina-gold-xau\",\"source_name\":\"新浪财经\",\"cadence\":\"daily\",\"shape\":\"wide\",\"columns\":[\"date\",\"value\"],\"metric\":{\"key\":\"close\",\"label\":\"伦敦金收盘价\",\"unit\":\"USD/oz\",\"precision\":2},\"rows\":[[\"2026-10-26\",3988.2],[\"2026-10-27\",3996.4],[\"2026-10-28\",4002.1],[\"2026-10-29\",3991.8],[\"2026-10-30\",4008.6],[\"2026-11-02\",4021.3],[\"2026-11-03\",4033.0],[\"2026-11-04\",4042.7],[\"2026-11-05\",4091.55],[\"2026-11-06\",4105.5],[\"2026-11-09\",4110.04],[\"2026-11-10\",4113.34]],\"time_range\":{\"start\":\"2026-10-26\",\"end\":\"2026-11-10\",\"points\":12}}"}
+]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Heron 数据看板竖版</title>
+    <style>
+      @font-face {
+        font-family: "Noto Sans SC";
+        src: url("fonts/NotoSansSC-Regular.otf") format("truetype");
+        font-weight: 100 900;
+        font-display: block;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #0c1417; color: #f3f0e8; font-family: "Noto Sans SC", sans-serif; }
+      #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0c1417; }
+      .clip { position: absolute; inset: 0; }
+      #title-card { padding: 128px 84px 0 84px; }
+      #title { margin: 0; font-size: 92px; font-weight: 800; line-height: 1.16; letter-spacing: -0.02em; color: #f3f0e8; }
+      #rule { margin-top: 26px; width: 100%; height: 3px; background: var(--accent); }
+      #kpi { display: flex; align-items: baseline; gap: 14px; margin-top: 24px; }
+      #kpi-value { font-size: 64px; font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
+      #kpi-unit { font-size: 28px; color: #7f949b; }
+      #kpi-change { font-size: 32px; font-weight: 600; color: #f3f0e8; font-variant-numeric: tabular-nums; }
+      #chart-slot { top: 430px; left: 84px; right: 84px; height: 760px; overflow: hidden; }
+      #chart { width: 100%; height: 100%; display: block; }
+      .axis { stroke: rgba(243, 240, 232, 0.14); stroke-width: 2; }
+      .axis-label { fill: #7f949b; font-size: 28px; font-variant-numeric: tabular-nums; }
+      .annotation { fill: #f3f0e8; font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .series-line { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round;
+                     filter: drop-shadow(0 0 8px rgba(24, 183, 201, 0.35)); }
+      .series-area { fill: var(--accent); opacity: 0.16; }
+      .dot { fill: var(--accent); filter: drop-shadow(0 0 10px rgba(24, 183, 201, 0.7)); }
+      .dot-label { fill: #f3f0e8; font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .bar { fill: var(--accent); transform-box: fill-box; transform-origin: left center; }
+      .bar-label { fill: #f3f0e8; font-size: 28px; font-weight: 600; }
+      .bar-value { fill: #9fb0b6; font-size: 28px; font-variant-numeric: tabular-nums; }
+      .scene {
+        top: 1230px;
+        bottom: 420px;
+        left: 0;
+        right: 0;
+        padding: 0 84px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+      }
+      .lead { margin: 0 0 18px; font-size: 54px; font-weight: 700; line-height: 1.35; color: #f3f0e8;
+              display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+      .body { margin: 0; font-size: 38px; font-weight: 400; line-height: 1.6; color: #b7c4c9;
+              max-height: 170px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+      #closing-slot { top: 1230px; bottom: 420px; padding: 0 84px; display: flex; align-items: flex-start; }
+      #closing { margin: 0; padding: 24px 28px; font-size: 38px; font-weight: 500; line-height: 1.55; color: #f3f0e8;
+                 background: rgba(243, 240, 232, 0.06); border-left: 10px solid var(--accent); border-radius: 8px;
+                 display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+      #bottom-bar { position: absolute; left: 0; right: 0; bottom: 300px; padding: 0 84px; }
+      #progress { display: block; height: 6px; border-radius: 3px; background: var(--accent);
+                  transform-origin: left center; margin-bottom: 28px; }
+      #meta-row { display: flex; align-items: center; justify-content: space-between; }
+      #aigc-badge { font-size: 28px; padding: 12px 24px; border-radius: 999px; white-space: nowrap;
+                    color: #0c1417; background: #f3f0e8; }
+      #source-line { font-size: 28px; max-width: 560px; text-align: right; color: #7f949b; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920" data-duration="45">
+      <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="45" data-track-index="9"></audio>
+
+      <header id="title-card" class="clip" data-start="0" data-duration="45" data-track-index="0">
+        <h1 id="title" data-var-text="title">金价创阶段新高</h1>
+        <div id="rule"></div>
+        <div id="kpi">
+          <span id="kpi-value">4113.34</span>
+          <span id="kpi-unit">USD/oz</span>
+          <span id="kpi-change">▲ 21.79（0.53%）</span>
+        </div>
+      </header>
+
+      <section id="chart-slot" class="clip" data-start="0" data-duration="45" data-track-index="1">
+        <svg id="chart" viewBox="0 0 912 760" role="img" aria-label="数据图表"></svg>
+      </section>
+
+      <section id="scene-1" class="clip scene" data-start="0" data-duration="15" data-track-index="2" data-scene-index="1">
+        <p class="lead" data-var-text="scene1_lead">金价站上关键位</p>
+        <p class="body" data-var-text="scene1_body">最新收于 4113.34 美元，创下阶段新高。</p>
+      </section>
+      <section id="scene-2" class="clip scene" data-start="15" data-duration="15" data-track-index="2" data-scene-index="2">
+        <p class="lead" data-var-text="scene2_lead">较前一日走高</p>
+        <p class="body" data-var-text="scene2_body">较前一日上涨 21.79 美元，涨幅 0.53%。</p>
+      </section>
+      <section id="scene-3" class="clip scene" data-start="30" data-duration="15" data-track-index="2" data-scene-index="3">
+        <p class="lead" data-var-text="scene3_lead">区间高点确认</p>
+        <p class="body" data-var-text="scene3_body">近两周区间最高 4113.34 美元，最低 3988.20 美元。</p>
+      </section>
+      <section id="scene-4" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="4">
+        <p class="lead" data-var-text="scene4_lead"></p>
+        <p class="body" data-var-text="scene4_body"></p>
+      </section>
+      <section id="scene-5" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="5">
+        <p class="lead" data-var-text="scene5_lead"></p>
+        <p class="body" data-var-text="scene5_body"></p>
+      </section>
+      <section id="scene-6" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="6">
+        <p class="lead" data-var-text="scene6_lead"></p>
+        <p class="body" data-var-text="scene6_body"></p>
+      </section>
+
+      <section id="closing-slot" class="clip" data-start="45" data-duration="0.01" data-track-index="2">
+        <p id="closing" data-var-text="closing">关注接下来的走势。</p>
+      </section>
+
+      <div id="bottom-bar">
+        <div id="progress"></div>
+        <div id="meta-row">
+          <span id="aigc-badge">内容由 AI 生成</span>
+          <span id="source-line" data-var-text="source_name">来源：新浪财经</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="gsap.min.js"></script>
+    <script>
+      const declared = window.__hyperframes && window.__hyperframes.getVariables
+        ? window.__hyperframes.getVariables()
+        : {};
+      const dataset = JSON.parse(declared.dataset_json);
+      const titleEl = document.getElementById("title");
+      const titleLen = Array.from(declared.title || titleEl.textContent || "").length;
+      if (titleLen > 11) titleEl.style.fontSize = "68px";
+      else if (titleLen > 9) titleEl.style.fontSize = "76px";
+      const chart = declared.chart || "line";
+      const precision = Number(dataset.metric && dataset.metric.precision);
+      const unit = dataset.metric && dataset.metric.unit ? dataset.metric.unit : "";
+      const rows = dataset.rows.map((row) => ({ label: String(row[0]), value: Number(row[1]) }));
+      const svg = document.getElementById("chart");
+      const NS = "http://www.w3.org/2000/svg";
+      const make = (name, attrs) => {
+        const node = document.createElementNS(NS, name);
+        Object.keys(attrs).forEach((key) => node.setAttribute(key, attrs[key]));
+        return node;
+      };
+      const fmt = (value) => Number(value).toFixed(Number.isFinite(precision) ? precision : 2);
+      const facts = dataset.facts || {};
+      let kpiTarget = NaN;
+      if (facts.last && typeof facts.last.value === "number") {
+        kpiTarget = facts.last.value;
+        document.getElementById("kpi-value").textContent = fmt(facts.last.value);
+        document.getElementById("kpi-unit").textContent = unit;
+        if (typeof facts.change === "number") {
+          const arrow = facts.change >= 0 ? "▲" : "▼";
+          const pct = typeof facts.change_pct === "number" ? "（" + facts.change_pct.toFixed(2) + "%）" : "";
+          const changeEl = document.getElementById("kpi-change");
+          changeEl.textContent = arrow + " " + fmt(Math.abs(facts.change)) + pct;
+          changeEl.style.color = facts.change >= 0 ? "var(--accent)" : "#e06c5a";
+        }
+      } else if (facts.leader) {
+        kpiTarget = facts.leader.value;
+        document.getElementById("kpi-value").textContent = fmt(facts.leader.value);
+        document.getElementById("kpi-unit").textContent = unit;
+        document.getElementById("kpi-change").textContent = facts.leader.label || facts.leader.location || "";
+      }
+      const W = 912;
+      const H = 760;
+      const pad = { left: 132, right: 36, top: 56, bottom: 72 };
+      const tl = gsap.timeline({ paused: true });
+      const total = parseFloat(document.getElementById("root").dataset.duration);
+      tl.fromTo("#chart", { scale: 1 }, { scale: 1.04, duration: total, ease: "none", transformOrigin: "center center" }, 0);
+      if (Number.isFinite(kpiTarget)) {
+        const counter = { v: 0 };
+        const kpiValue = document.getElementById("kpi-value");
+        kpiValue.textContent = fmt(0);
+        tl.to(counter, { v: kpiTarget, duration: 1.2, ease: "power2.out",
+          onUpdate: () => { kpiValue.textContent = fmt(counter.v); } }, 0.35);
+      }
+
+      const clip = (text) => {
+        const list = Array.from(text);
+        const max = /[一-鿿]/.test(text) ? 10 : 22;
+        return list.length > max ? list.slice(0, max).join("") + "…" : text;
+      };
+
+      if (chart === "bars") {
+        // 画全部行：facts 的 count/spread 是全量口径，截断会让口播和画面互相打脸。
+        const top = rows.slice().sort((a, b) => b.value - a.value);
+        const max = Math.max(...top.map((row) => row.value)) || 1;
+        const rowH = (H - pad.top - pad.bottom) / Math.max(top.length, 1);
+        const typeSize = Math.max(16, Math.min(28, Math.round(rowH * 0.44)));
+        const fontStyle = "font-size:" + typeSize + "px";
+        const x0 = 430;
+        // 右侧留 210：最长那条的数值要落在柱子外面，不压柱身。
+        const x1 = W - pad.right - 210;
+        const bars = [];
+        top.forEach((row, index) => {
+          const y = pad.top + index * rowH + rowH * 0.16;
+          const height = rowH * 0.56;
+          const label = make("text", { x: pad.left, y: y + height * 0.72, class: "bar-label", style: fontStyle });
+          label.textContent = clip(row.label);
+          const bar = make("rect", { x: x0, y, width: Math.max(6, (row.value / max) * (x1 - x0)), height, rx: 6, class: "bar" });
+          const value = make("text", { x: W - pad.right, y: y + height * 0.72, "text-anchor": "end",
+            class: "bar-value", style: fontStyle });
+          value.textContent = fmt(row.value) + " " + unit;
+          svg.append(label, bar, value);
+          bars.push(bar);
+        });
+        tl.from(bars, { scaleX: 0, duration: 1.1, stagger: Math.min(0.1, 1.2 / bars.length), ease: "power3.out" }, 0.8);
+      } else {
+        const values = rows.map((row) => row.value);
+        let min = Math.min(...values);
+        let max = Math.max(...values);
+        const span = max - min || 1;
+        min -= span * 0.14;
+        max += span * 0.14;
+        const x = (index) => pad.left + (index / Math.max(rows.length - 1, 1)) * (W - pad.left - pad.right);
+        const y = (value) => pad.top + (1 - (value - min) / (max - min)) * (H - pad.top - pad.bottom);
+        for (let i = 0; i < 4; i++) {
+          const yy = pad.top + (i * (H - pad.top - pad.bottom)) / 3;
+          svg.appendChild(make("line", { x1: pad.left, y1: yy, x2: W - pad.right, y2: yy, class: "axis" }));
+          const label = make("text", { x: pad.left - 14, y: yy + 9, "text-anchor": "end", class: "axis-label" });
+          label.textContent = fmt(max - (i * (max - min)) / 3);
+          svg.appendChild(label);
+        }
+        const line = rows.map((row, index) => (index ? "L" : "M") + x(index) + "," + y(row.value)).join(" ");
+        const area = line + " L" + x(rows.length - 1) + "," + (H - pad.bottom) + " L" + x(0) + "," + (H - pad.bottom) + " Z";
+        const areaPath = make("path", { d: area, class: "series-area" });
+        // 面积跟着折线一起推进；整块先出现会把结尾走势提前泄底。
+        const revealRect = make("rect", { x: 0, y: 0, width: 0, height: H });
+        const revealClip = make("clipPath", { id: "area-reveal" });
+        revealClip.appendChild(revealRect);
+        const defs = make("defs", {});
+        defs.appendChild(revealClip);
+        areaPath.setAttribute("clip-path", "url(#area-reveal)");
+        svg.append(defs, areaPath);
+        const path = make("path", { d: line, class: "series-line" });
+        svg.appendChild(path);
+        const dot = make("circle", { cx: x(rows.length - 1), cy: y(rows[rows.length - 1].value), r: 12, class: "dot" });
+        svg.appendChild(dot);
+        const dotLabel = make("text", { x: x(rows.length - 1), y: y(rows[rows.length - 1].value) - 26,
+          "text-anchor": "end", class: "dot-label" });
+        dotLabel.textContent = fmt(rows[rows.length - 1].value) + " " + unit;
+        svg.appendChild(dotLabel);
+        const shortDate = (date) => date.endsWith("-01-01") ? date.slice(0, 4) : date;
+        const first = make("text", { x: pad.left, y: H - pad.bottom + 42, class: "axis-label" });
+        first.textContent = shortDate(rows[0].label);
+        const last = make("text", { x: W - pad.right, y: H - pad.bottom + 42, "text-anchor": "end", class: "axis-label" });
+        last.textContent = shortDate(rows[rows.length - 1].label);
+        svg.append(first, last);
+        const length = path.getTotalLength();
+        gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
+        tl.to(path, { strokeDashoffset: 0, duration: 16, ease: "none" }, 1);
+        tl.to(revealRect, { attr: { width: W }, duration: 16, ease: "none" }, 1);
+        tl.from(dot, { scale: 0, transformOrigin: "center", duration: 0.6, ease: "back.out(2)" }, 16.6);
+        tl.from(dotLabel, { opacity: 0, y: 12, duration: 0.6, ease: "power2.out" }, 16.8);
+        // 有限次呼吸，保持后段画面有动感；不用 repeat:-1，保证可 seek。
+        const pulseRepeats = Math.max(0, Math.floor((parseFloat(document.getElementById("root").dataset.duration) - 18) / 2) - 1);
+        if (pulseRepeats > 0) {
+          tl.to(dot, { scale: 1.3, transformOrigin: "center", duration: 0.9, yoyo: true,
+            repeat: pulseRepeats, ease: "sine.inOut" }, 17.5);
+        }
+        const annotate = (index, text, color) => {
+          if (index < 0 || index >= rows.length) return;
+          const cx = x(index);
+          const cy = y(rows[index].value);
+          const anchor = cx > W * 0.72 ? "end" : "start";
+          const labelY = cy < 90 ? cy + 34 : cy - 18;
+          const group = make("g", {});
+          const point = make("circle", { cx, cy, r: 7, fill: color });
+          const label = make("text", { x: cx + (anchor === "end" ? -14 : 14), y: labelY,
+            "text-anchor": anchor, class: "annotation" });
+          label.textContent = text;
+          group.append(point, label);
+          svg.appendChild(group);
+          tl.from(group, { opacity: 0, duration: 0.4, ease: "sine.out" },
+            1 + 16 * (index / Math.max(rows.length - 1, 1)));
+        };
+        const maxIndex = rows.findIndex((row) => row.label === (facts.max && facts.max.date));
+        const minIndex = rows.findIndex((row) => row.label === (facts.min && facts.min.date));
+        if (maxIndex >= 0 && maxIndex !== rows.length - 1) {
+          annotate(maxIndex, "最高 " + fmt(facts.max.value), "#18b7c9");
+        }
+        if (minIndex >= 0 && minIndex !== rows.length - 1) {
+          annotate(minIndex, "最低 " + fmt(facts.min.value), "#e06c5a");
+        }
+      }
+
+      tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
+      tl.from("#title", { y: 40, opacity: 0, duration: 0.8, ease: "power3.out" }, 0.2);
+      tl.from("#kpi", { y: 20, opacity: 0, duration: 0.6, ease: "power2.out" }, 0.35);
+      tl.from("#rule", { scaleX: 0, duration: 0.8, ease: "power2.out" }, 0.5);
+      tl.from("#aigc-badge", { opacity: 0, duration: 0.4, ease: "none" }, 0.2);
+      tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
+
+      const sceneCount = Number.isFinite(Number(declared.scene_count)) ? Number(declared.scene_count) : 3;
+      document.querySelectorAll(".scene").forEach((slot) => {
+        if (Number(slot.dataset.sceneIndex) > sceneCount) {
+          slot.hidden = true;
+          slot.style.display = "none";
+          return;
+        }
+        const start = parseFloat(slot.dataset.start);
+        const end = start + parseFloat(slot.dataset.duration);
+        tl.from(slot.querySelector(".lead"), { y: 28, opacity: 0, duration: 0.5, ease: "power3.out" }, start);
+        tl.from(slot.querySelector(".body"), { y: 28, opacity: 0, duration: 0.5, ease: "power3.out" }, start + 0.12);
+        const outAt = Math.max(start + 0.5, end - 0.35);
+        tl.to(slot.querySelector(".lead"), { opacity: 0, y: -16, duration: 0.3, ease: "power1.in" }, outAt);
+        tl.to(slot.querySelector(".body"), { opacity: 0, y: -16, duration: 0.3, ease: "power1.in" }, outAt);
+      });
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "duration": 45,
+  "assertions": [
+    {
+      "kind": "appearsBy",
+      "selector": "#aigc-badge",
+      "bySec": 0.5
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#title",
+      "bySec": 1.2
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#aigc-badge"
+    },
+    {
+      "kind": "keepsMoving",
+      "withinSelector": "#root",
+      "maxStaticSec": 4
+    }
+  ]
+}

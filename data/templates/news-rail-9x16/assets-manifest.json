@@ -1,0 +1,36 @@
+{
+  "templateKey": "news-rail-9x16",
+  "templateVersion": "1",
+  "files": [
+    {
+      "path": "fonts/NotoSansSC-Regular.otf",
+      "sha256": "763146584cf0710223441356b4395e279021b0806c196614377a7a0174ae074a",
+      "bytes": 17773244
+    },
+    {
+      "path": "gsap.min.js",
+      "sha256": "c174bfce53a729418d57a8ad8625e7247c793a22fef8e2851e3cfa3de9cd8280",
+      "bytes": 72779
+    },
+    {
+      "path": "index.html",
+      "sha256": "cbfdbccb489f5e0f16e95dbb65c30e3874291691b99100dd7e1e2e327fd501b6",
+      "bytes": 13537
+    },
+    {
+      "path": "index.motion.json",
+      "sha256": "4e4fc08e14741b20f23d89386ddeb2e40aa0126d332fc855324a94834ff587ae",
+      "bytes": 396
+    },
+    {
+      "path": "narration.mp3",
+      "sha256": "f42dfbf9155145b9dd3d284cad0e7c88a25b3fe47bbbe87be92874051038f623",
+      "bytes": 179522
+    },
+    {
+      "path": "template.json",
+      "sha256": "f9f0ee42b28cc6a21414091ff4ee4161e9caeed0e424ec7323685ddd1816a6f0",
+      "bytes": 146
+    }
+  ]
+}

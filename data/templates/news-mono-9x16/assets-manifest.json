@@ -1,0 +1,36 @@
+{
+  "templateKey": "news-mono-9x16",
+  "templateVersion": "1",
+  "files": [
+    {
+      "path": "fonts/NotoSansSC-Regular.otf",
+      "sha256": "763146584cf0710223441356b4395e279021b0806c196614377a7a0174ae074a",
+      "bytes": 17773244
+    },
+    {
+      "path": "gsap.min.js",
+      "sha256": "c174bfce53a729418d57a8ad8625e7247c793a22fef8e2851e3cfa3de9cd8280",
+      "bytes": 72779
+    },
+    {
+      "path": "index.html",
+      "sha256": "926cce0aedf88045548781f913e4040c675cb3dc615347080fa81a8f855a5d15",
+      "bytes": 14696
+    },
+    {
+      "path": "index.motion.json",
+      "sha256": "4e4fc08e14741b20f23d89386ddeb2e40aa0126d332fc855324a94834ff587ae",
+      "bytes": 396
+    },
+    {
+      "path": "narration.mp3",
+      "sha256": "f42dfbf9155145b9dd3d284cad0e7c88a25b3fe47bbbe87be92874051038f623",
+      "bytes": 179522
+    },
+    {
+      "path": "template.json",
+      "sha256": "a18fbb1c455fcb2ac4d9d360024042f1c472d6c43ba04503315b577e8888b90d",
+      "bytes": 137
+    }
+  ]
+}

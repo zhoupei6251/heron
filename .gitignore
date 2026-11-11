@@ -59,6 +59,17 @@ application-ga.yml
 ######################################################################
 # Heron 产物与 Axure 素材
 # 产物目录只跟仓库根（data-root: ./data）；素材是商业软件产物，不进仓库
-/data/
+# data/ 下只放行两类可复现资产：模板（含字体）与音效/BGM，换机器 clone 后无需另外下载
+/data/*
+!/data/templates/
+!/data/audio/
+# data/tools 只放行 node 依赖清单；node_modules 与第三方工具靠 npm ci / 单独安装还原
+!/data/tools/
+/data/tools/*
+!/data/tools/package.json
+!/data/tools/package-lock.json
+!/data/tools/model-stub.mjs
+# 模板里的 hyperframes 检查产物是生成的，不进仓库
+/data/templates/**/.hyperframes/
 *.rp
 *.rplib

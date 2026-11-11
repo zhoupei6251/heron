@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='[
+  {"id":"title","type":"string","label":"标题","maxLength":15,"default":"新一代旗舰手机发布"},
+  {"id":"scene1_lead","type":"string","label":"第一屏领句","maxLength":40,"default":"电池容量提升两成"},
+  {"id":"scene1_body","type":"string","label":"第一屏正文","maxLength":600,"default":"厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。"},
+  {"id":"scene2_lead","type":"string","label":"第二屏领句","maxLength":40,"default":"影像算法全面重写"},
+  {"id":"scene2_body","type":"string","label":"第二屏正文","maxLength":600,"default":"影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。"},
+  {"id":"scene3_lead","type":"string","label":"第三屏领句","maxLength":40,"default":"起售价保持不变"},
+  {"id":"scene3_body","type":"string","label":"第三屏正文","maxLength":600,"default":"价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。"},
+  {"id":"scene4_lead","type":"string","label":"第四屏领句","maxLength":40,"default":"现货发售时间已定"},
+  {"id":"scene4_body","type":"string","label":"第四屏正文","maxLength":600,"default":"官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。"},
+  {"id":"scene5_lead","type":"string","label":"第五屏领句","maxLength":40,"default":"竞品同期密集上新"},
+  {"id":"scene5_body","type":"string","label":"第五屏正文","maxLength":600,"default":"过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。"},
+  {"id":"scene6_lead","type":"string","label":"第六屏领句","maxLength":40,"default":"售后政策同步调整"},
+  {"id":"scene6_body","type":"string","label":"第六屏正文","maxLength":600,"default":"厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。"},
+  {"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"更多机型对比与实测，我们会在后续持续跟进。"},
+  {"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"公开报道整理"},
+  {"id":"accent","type":"color","label":"品牌色","default":"#d97706"},
+  {"id":"scene_count","type":"number","label":"场景数","min":3,"max":6,"default":6}
+]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Heron 撞色竖版</title>
+    <style>
+      @font-face {
+        font-family: "Noto Sans SC";
+        src: url("fonts/NotoSansSC-Regular.otf") format("truetype");
+        font-weight: 100 900;
+        font-display: block;
+      }
+      * { box-sizing: border-box; }
+      .lead, .body { clip-path: inset(0); }
+      /* 正文数字高亮：让数据自己跳出来，而不是混在句子里的普通文字 */
+      .num {
+        color: var(--accent);
+        font-weight: 700;
+        font-size: 1.1em;
+        font-variant-numeric: tabular-nums;
+      }
+      body { margin: 0; background: #f2f5f5; color: #12232a; font-family: "Noto Sans SC", sans-serif; }
+      #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #f2f5f5; }
+      #plate { position: absolute; left: 0; right: 0; top: 0; height: 900px; background: #12232a;
+               transform-origin: center center; z-index: 0; }
+      #title-card, .scene, #closing-slot, #bottom-bar { z-index: 1; }
+      #title-card { padding: 168px 84px 0 84px; }
+      #kicker { margin: 0 0 24px; font-size: 28px; font-weight: 500; letter-spacing: 9px; color: #6fbccc; }
+      #title { margin: 0; font-size: 100px; font-weight: 800; line-height: 1.16; letter-spacing: -0.02em; color: #ffffff; }
+      #rule { margin-top: 30px; width: 240px; height: 12px; background: var(--accent); }
+      .lead { margin: 0 0 26px; padding: 14px 24px;
+              font-size: 66px; font-weight: 700; line-height: 1.26; color: #ffffff; background: #12232a;
+              display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+      .body { margin: 22px 0 0; font-size: 48px; font-weight: 400; line-height: 1.72; color: #34474d;
+              max-height: 600px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 7; }
+      #closing { margin: 0; padding: 26px 30px; font-size: 42px; font-weight: 500; line-height: 1.55; color: #12232a;
+                 background: rgba(18,35,42,0.08); border-left: 12px solid var(--accent); border-radius: 8px;
+                 display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+      #root { --badge-fg: #ffffff; --badge-bg: #12232a; }
+      #source-line { color: #5b6b70; }
+      .clip { position: absolute; inset: 0; }
+      .scene {
+        top: 380px;
+        bottom: 420px;
+        left: 0;
+        right: 0;
+        padding: 0 84px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      #closing-slot {
+        top: 380px;
+        bottom: 420px;
+        padding: 0 84px;
+        display: flex;
+        align-items: center;
+      }
+      #bottom-bar { position: absolute; left: 0; right: 0; bottom: 300px; padding: 0 84px; }
+      #progress {
+        display: block;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--accent);
+        transform-origin: left center;
+        margin-bottom: 28px;
+      }
+      #meta-row { display: flex; align-items: center; justify-content: space-between; }
+      #aigc-badge {
+        font-size: 28px;
+        padding: 12px 24px;
+        border-radius: 999px;
+        white-space: nowrap;
+        color: var(--badge-fg, #0b1418);
+        background: var(--badge-bg, var(--accent));
+      }
+      #source-line { font-size: 28px; max-width: 560px; text-align: right; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920" data-duration="45">
+      <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="45" data-track-index="9"></audio>
+      <div id="plate"></div>
+      <header id="title-card" class="clip" data-start="0" data-duration="45" data-track-index="0">
+        <p id="kicker">HERON FLASH</p>
+        <h1 id="title" data-var-text="title">新一代旗舰手机发布</h1>
+        <div id="rule"></div>
+      </header>
+
+      <section id="scene-1" class="clip scene" data-start="0" data-duration="8" data-track-index="1" data-scene-index="1">
+        <p class="lead" data-var-text="scene1_lead">电池容量提升两成</p>
+        <p class="body" data-var-text="scene1_body">厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。</p>
+      </section>
+      <section id="scene-2" class="clip scene" data-start="8" data-duration="8" data-track-index="1" data-scene-index="2">
+        <p class="lead" data-var-text="scene2_lead">影像算法全面重写</p>
+        <p class="body" data-var-text="scene2_body">影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。</p>
+      </section>
+      <section id="scene-3" class="clip scene" data-start="16" data-duration="8" data-track-index="1" data-scene-index="3">
+        <p class="lead" data-var-text="scene3_lead">起售价保持不变</p>
+        <p class="body" data-var-text="scene3_body">价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。</p>
+      </section>
+      <section id="scene-4" class="clip scene" data-start="24" data-duration="7" data-track-index="1" data-scene-index="4">
+        <p class="lead" data-var-text="scene4_lead">现货发售时间已定</p>
+        <p class="body" data-var-text="scene4_body">官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。</p>
+      </section>
+      <section id="scene-5" class="clip scene" data-start="31" data-duration="7" data-track-index="1" data-scene-index="5">
+        <p class="lead" data-var-text="scene5_lead">竞品同期密集上新</p>
+        <p class="body" data-var-text="scene5_body">过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。</p>
+      </section>
+      <section id="scene-6" class="clip scene" data-start="38" data-duration="7" data-track-index="1" data-scene-index="6">
+        <p class="lead" data-var-text="scene6_lead">售后政策同步调整</p>
+        <p class="body" data-var-text="scene6_body">厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。</p>
+      </section>
+
+      <aside id="closing-slot" class="clip" data-start="38" data-duration="7" data-track-index="2">
+        <p id="closing" data-var-text="closing">更多机型对比与实测，我们会在后续持续跟进。</p>
+      </aside>
+
+      <footer id="bottom-bar">
+        <span id="progress"></span>
+        <div id="meta-row">
+          <span id="aigc-badge">内容由 AI 生成</span>
+          <span id="source-line">来源：<span id="source" data-var-text="source_name">公开报道整理</span></span>
+        </div>
+      </footer>
+    </div>
+
+    <script src="gsap.min.js"></script>
+    <script>
+      // 数字高亮：变量注入可能发生在脚本之后，所以再补一次；已有 .num 就不重复包裹
+      const highlightNumbers = () => {
+        document.querySelectorAll(".body").forEach((el) => {
+          if (el.querySelector(".num")) return;
+          el.innerHTML = el.innerHTML.replace(/(\d+(?:\.\d+)?%?)/g, '<span class="num">$1</span>');
+        });
+      };
+      highlightNumbers();
+      setTimeout(highlightNumbers, 120);
+
+      const root = document.getElementById("root");
+      const total = parseFloat(root.dataset.duration);
+      const slots = [...document.querySelectorAll(".scene")];
+      const declared = window.__hyperframes ? window.__hyperframes.getVariables() : {};
+      const sceneCount = Number.isFinite(declared.scene_count) ? declared.scene_count : slots.length;
+      slots.forEach((slot) => {
+        if (Number(slot.dataset.sceneIndex) > sceneCount) {
+          slot.hidden = true;
+          slot.style.display = "none";
+        }
+      });
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
+      tl.from("#title", { y: 80, opacity: 0, duration: 0.6, ease: "power4.out" }, 0.28);
+      tl.from("#rule", { scaleX: 0, opacity: 0, duration: 0.5, ease: "power2.out" }, 0.52);
+      tl.from("#aigc-badge", { opacity: 0, duration: 0.2, ease: "none" }, 0.05);
+      // 只淡出大标题与分隔线，保留顶部小标签作为画面锚点
+      tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 2.6);
+      const live = slots.filter((slot) => !slot.hidden);
+      live.forEach((slot, index) => {
+        const start = parseFloat(slot.dataset.start);
+        const span = parseFloat(slot.dataset.duration);
+        const isLast = index === live.length - 1;
+        // immediateRender：动画排在时间轴中段时 GSAP 默认不提前写起始值，元素会先裸着露出来
+        tl.from(slot.querySelector(".lead"), { y: -24, opacity: 0, duration: 0.42, ease: "back.out(1.6)", immediateRender: true }, start + 0.08);
+        tl.from(slot.querySelector(".body"), { y: 26, opacity: 0, duration: 0.5, ease: "power2.out", immediateRender: true }, start + 0.36);
+        if (isLast) {
+          // 最后一屏让位给结尾口播：正文先退场，口播接在同一段时间窗里，避免两块文字叠在一起
+          const outAt = start + Math.max(0.8, span - 3.9);
+          tl.to(slot, { opacity: 0, duration: 0.45, ease: "power1.in" }, outAt);
+          tl.from("#closing", { y: 30, opacity: 0, duration: 0.45, ease: "power2.out", immediateRender: true }, outAt + 0.35);
+        } else {
+          tl.to(slot, { opacity: 0, duration: 0.26, ease: "power1.in" }, start + span - 0.26);
+        }
+      });
+      // 双色板从中间的缝往上下推开，撑出这套的撞色骨架
+      tl.fromTo("#plate", { scaleY: 0 }, { scaleY: 1, duration: 0.8, ease: "power3.inOut" }, 0.05);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
