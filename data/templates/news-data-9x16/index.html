@@ -17,7 +17,7 @@
   {"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"来源：新浪财经"},
   {"id":"accent","type":"color","label":"品牌色","default":"#18b7c9"},
   {"id":"scene_count","type":"number","label":"场景数","min":3,"max":6,"default":3},
-  {"id":"chart","type":"enum","label":"图表模块","options":[{"value":"line","label":"折线"},{"value":"bars","label":"排行"}],"default":"line"},
+  {"id":"chart","type":"enum","label":"图表模块","options":[{"value":"line","label":"折线"},{"value":"bars","label":"排行"},{"value":"race","label":"赛跑"}],"default":"line"},
   {"id":"dataset_json","type":"string","label":"数据快照","default":"{\"contract\":\"dataset/1\",\"source_key\":\"sina-gold-xau\",\"source_name\":\"新浪财经\",\"cadence\":\"daily\",\"shape\":\"wide\",\"columns\":[\"date\",\"value\"],\"metric\":{\"key\":\"close\",\"label\":\"伦敦金收盘价\",\"unit\":\"USD/oz\",\"precision\":2},\"rows\":[[\"2026-10-26\",3988.2],[\"2026-10-27\",3996.4],[\"2026-10-28\",4002.1],[\"2026-10-29\",3991.8],[\"2026-10-30\",4008.6],[\"2026-11-02\",4021.3],[\"2026-11-03\",4033.0],[\"2026-11-04\",4042.7],[\"2026-11-05\",4091.55],[\"2026-11-06\",4105.5],[\"2026-11-09\",4110.04],[\"2026-11-10\",4113.34]],\"time_range\":{\"start\":\"2026-10-26\",\"end\":\"2026-11-10\",\"points\":12}}"}
 ]'>
   <head>
@@ -178,7 +178,8 @@
         kpiTarget = facts.leader.value;
         document.getElementById("kpi-value").textContent = fmt(facts.leader.value);
         document.getElementById("kpi-unit").textContent = unit;
-        document.getElementById("kpi-change").textContent = facts.leader.label || facts.leader.location || "";
+        document.getElementById("kpi-change").textContent = facts.leader.label || facts.leader.location
+          || facts.leader.name || "";
       }
       const W = 912;
       const H = 760;
@@ -186,7 +187,7 @@
       const tl = gsap.timeline({ paused: true });
       const total = parseFloat(document.getElementById("root").dataset.duration);
       tl.fromTo("#chart", { scale: 1 }, { scale: 1.04, duration: total, ease: "none", transformOrigin: "center center" }, 0);
-      if (Number.isFinite(kpiTarget)) {
+      if (Number.isFinite(kpiTarget) && chart !== "race") {
         const counter = { v: 0 };
         const kpiValue = document.getElementById("kpi-value");
         kpiValue.textContent = fmt(0);
@@ -224,6 +225,77 @@
           bars.push(bar);
         });
         tl.from(bars, { scaleX: 0, duration: 1.1, stagger: Math.min(0.1, 1.2 / bars.length), ease: "power3.out" }, 0.8);
+      } else if (chart === "race") {
+        // long 形态：(date, series, value)。全部实体都建节点，超出可视窗口的沉到槽位下方由 overflow 裁掉。
+        const byName = new Map();
+        const dateSet = new Set();
+        dataset.rows.forEach((row) => {
+          const name = String(row[1]);
+          const date = String(row[0]);
+          const value = Number(row[2]);
+          if (!Number.isFinite(value)) return;
+          dateSet.add(date);
+          if (!byName.has(name)) byName.set(name, new Map());
+          byName.get(name).set(date, value);
+        });
+        const timeline = Array.from(dateSet).sort();
+        const names = Array.from(byName.keys());
+        const visibleMax = Math.max(1, Math.min(names.length, 14));
+        const rowH = (H - pad.top - pad.bottom) / visibleMax;
+        const typeSize = Math.max(16, Math.min(28, Math.round(rowH * 0.44)));
+        const fontStyle = "font-size:" + typeSize + "px";
+        const barH = Math.max(6, rowH * 0.56);
+        const x0 = 430;
+        const x1 = W - pad.right - 210;
+        const offSlot = H + rowH;
+        const nodes = new Map();
+        names.forEach((name) => {
+          const label = make("text", { x: pad.left, y: offSlot, class: "bar-label", style: fontStyle });
+          label.textContent = clip(name);
+          const bar = make("rect", { x: x0, y: offSlot, width: 0, height: barH, rx: 6, class: "bar" });
+          const value = make("text", { x: W - pad.right, y: offSlot, "text-anchor": "end",
+            class: "bar-value", style: fontStyle });
+          svg.append(label, bar, value);
+          nodes.set(name, { label, bar, value });
+        });
+        const start = 1.5;
+        const step = Math.max(0.12, (total - start - 3.5) / Math.max(timeline.length - 1, 1));
+        const move = (node, y, at, duration) => {
+          tl.to(node.bar, { attr: { y }, duration, ease: "power2.out" }, at);
+          tl.to(node.label, { attr: { y: y + barH * 0.72 }, duration, ease: "power2.out" }, at);
+          tl.to(node.value, { attr: { y: y + barH * 0.72 }, duration, ease: "power2.out" }, at);
+        };
+        timeline.forEach((date, index) => {
+          const ranked = names
+            .map((name) => ({ name, value: byName.get(name).get(date) }))
+            .filter((item) => Number.isFinite(item.value))
+            .sort((a, b) => b.value - a.value);
+          const max = ranked.length ? ranked[0].value : 1;
+          const at = start + index * step;
+          const duration = index === 0 ? 0.5 : step * 0.85;
+          // KPI 跟着当前帧的榜首走：否则开头的 KPI 是终局冠军，和柱子上的当年数字互相打脸
+          const top = ranked[0];
+          if (top) {
+            if (index === 0) {
+              document.getElementById("kpi-value").textContent = fmt(top.value);
+              document.getElementById("kpi-change").textContent = top.name;
+            }
+            tl.call(() => {
+              document.getElementById("kpi-value").textContent = fmt(top.value);
+              document.getElementById("kpi-change").textContent = top.name;
+            }, null, at);
+          }
+          ranked.forEach((item, rank) => {
+            const node = nodes.get(item.name);
+            const hidden = rank >= visibleMax;
+            const y = hidden ? offSlot : pad.top + rank * rowH + rowH * 0.16;
+            move(node, y, at, duration);
+            tl.to(node.bar, { attr: { width: Math.max(6, (item.value / max) * (x1 - x0)) },
+              duration, ease: "power2.out" }, at);
+            // 数值只能用 call 写：文本没法 tween，且同一帧重放写的是同一个值，可 seek
+            tl.call(() => { node.value.textContent = fmt(item.value) + " " + unit; }, null, at);
+          });
+        });
       } else {
         const values = rows.map((row) => row.value);
         let min = Math.min(...values);
