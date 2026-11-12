@@ -84,7 +84,10 @@ class ProductionContextTest extends NewsMysqlTestSupport {
 
         assertEquals(64, contexts.verify(receipt.taskId(), snapshot).contentHash().length());
 
-        String tampered = snapshot.replace("\"data_board\"", "\"article\"");
+        // 手动生成路径的快照 kind 固定为 article（selection==null 时不会出现 data_board），
+        // 篡改必须真的改到内容：替换一个必然存在的值，replace 才不是空操作。
+        String tampered = snapshot.replace("\"article\"", "\"tampered\"");
+        assertNotEquals(snapshot, tampered, "篡改必须真的改到快照内容");
         var error = assertThrows(org.dromara.heron.domain.HeronBusinessException.class,
             () -> contexts.verify(receipt.taskId(), tampered));
         assertEquals("news_context_mismatch", error.getCode());

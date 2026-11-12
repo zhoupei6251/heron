@@ -28,6 +28,8 @@ import java.util.List;
 @Import({HeronMysqlTestConfiguration.class, NewsWorkServiceImpl.class, NewsSourceServiceImpl.class,
     NewsSourceFetcher.class, NewsCandidateCollector.class, SandboxPublishAdapter.class,
     NewsTemplatePicker.class, NewsMetricServiceImpl.class, SpringUtils.class,
+    org.dromara.heron.service.impl.FrozenContextService.class,
+    org.dromara.heron.service.impl.FrozenArticleService.class,
     io.github.linpeilie.mapstruct.MapstructAutoConfiguration.class})
 public class NewsMysqlTestConfiguration {
     @Bean
