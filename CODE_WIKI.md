@@ -422,9 +422,14 @@ heron-ui/src
 
 | 页面 | 使用的 API | 后端 Controller |
 | --- | --- | --- |
+| `views/heron/news/topic` | `api/heron/newsCandidate` | `NewsCandidateController` |
 | `views/heron/news/source` | `api/heron/newsSource` | `NewsSourceController` |
-| `views/heron/news/candidate` | `api/heron/newsCandidate` | `NewsCandidateController` |
 | `views/heron/news/work` | `api/heron/newsWork` + `production` + `metrics` | `NewsWorkController` + `ProductionController` + `NewsMetricController` |
+| `views/heron/editorial` | `api/heron/editorial` | `EditorialController` |
+| `views/heron/review` | `api/heron/newsWork` | `NewsWorkController` |
+| `views/heron/publish` | `api/heron/newsWork` | `NewsWorkController` |
+| `views/heron/asset/dataset` | `api/heron/dataSource` | `DataSourceController` |
+| `views/heron/asset/template` | `api/heron/template` | `TemplateController` |
 | `views/heron/production` | `api/heron/production` | `ProductionController` |
 | `views/heron/proto` | `api/heron/proto` + `production` | `ProtoController` + `ProductionController` |
 | （无独立页面） | `api/heron/auto`、`api/heron/health` | `HeronAutoController`、`HeronHealthController` |
