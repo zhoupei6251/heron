@@ -42,6 +42,10 @@ import java.util.*;
 @RequiredArgsConstructor
 public class NewsWorkServiceImpl implements INewsWorkService {
     private static final ProductionBizType TYPE = ProductionBizType.news_video;
+    /** 自动发布只认这些审稿级别；白名单之外的拼写一律当非法，不猜风险高低。 */
+    private static final java.util.Set<String> REVIEW_SEVERITIES = java.util.Set.of("BLOCKER", "MAJOR", "MINOR");
+    /** 当前审稿记录契约版本；历史记录没有版本号的一律不能自动发布。 */
+    private static final java.util.Set<String> REVIEW_SCHEMAS = java.util.Set.of("1.0");
     private final HeronNewsCandidateMapper candidateMapper;
     private final HeronNewsWorkMapper workMapper;
     private final HeronVideoVersionMapper versionMapper;
@@ -499,11 +503,23 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             throw new HeronBusinessException(409, "review_invalid", "AI 审稿记录的问题清单不合法");
         }
         for (JsonNode issue : issues) {
-            String severity = issue.path("severity").asString("");
-            if ("BLOCKER".equals(severity) || "MAJOR".equals(severity)) {
+            String severity = issue.path("severity").asString("").strip();
+            // 白名单之外的级别不能默认当低风险：拼错的 BLOCKER 也必须拦住
+            if (!REVIEW_SEVERITIES.contains(severity)) {
+                throw new HeronBusinessException(409, "review_invalid",
+                    "AI 审稿记录含未知严重级别：" + (severity.isBlank() ? "（空）" : severity));
+            }
+            if (!"MINOR".equals(severity)) {
                 throw new HeronBusinessException(409, "review_not_passed",
                     "AI 审稿仍带 " + severity + "，不能自动发布");
             }
+        }
+        // 版本最后判：先给出「明确阻断」的原因，再判记录本身是否可信。
+        // 没有版本号的是旧契约记录，放行等于承认一条来路不明的 PASS。
+        String schema = record.path("schemaVersion").asString("").strip();
+        if (!REVIEW_SCHEMAS.contains(schema)) {
+            throw new HeronBusinessException(409, "review_legacy",
+                "AI 审稿记录早于当前契约（schemaVersion=" + (schema.isBlank() ? "缺失" : schema) + "），不能自动发布");
         }
     }
 

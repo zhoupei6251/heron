@@ -97,12 +97,48 @@ class EditorialPublishGateTest {
     }
 
     @Test
-    @DisplayName("PASS 只带 MINOR 也放行")
+    @DisplayName("PASS 只带 MINOR 也放行（当前契约记录）")
     void passWithOnlyMinorIsAllowed() {
         assertDoesNotThrow(() -> NewsWorkServiceImpl.checkEditorialPass("""
+            {"schemaVersion":"1.0","result":"PASS","issues":[
+              {"severity":"MINOR","segmentId":"closing","description":"结尾略拖","suggestion":"压短"}
+            ],"repairAttempts":1}
+            """));
+    }
+
+    @Test
+    @DisplayName("缺 schemaVersion 的旧记录：不能当 PASS 自动发布")
+    void legacyRecordWithoutSchemaIsBlocked() {
+        assertEquals("review_legacy", errorCode("""
             {"result":"PASS","issues":[
               {"severity":"MINOR","segmentId":"closing","description":"结尾略拖","suggestion":"压短"}
             ],"repairAttempts":1}
+            """));
+        assertEquals("review_legacy", errorCode("""
+            {"result":"PASS","issues":[],"repairAttempts":0}
+            """));
+    }
+
+    @Test
+    @DisplayName("未知或缺失的严重级别：不能默认当低风险放行")
+    void unknownSeverityIsBlocked() {
+        // 拼错的 BLOCKER、小写写法、自造级别，过去都被静默放过
+        for (String severity : new String[]{"SEVERE", "blocker", "Major"}) {
+            assertEquals("review_invalid", errorCode("""
+                {"schemaVersion":"1.0","result":"PASS","issues":[
+                  {"severity":"%s","segmentId":"scene1","description":"x","suggestion":""}
+                ]}
+                """.formatted(severity)), severity + " 必须被拒");
+        }
+        assertEquals("review_invalid", errorCode("""
+            {"schemaVersion":"1.0","result":"PASS","issues":[
+              {"segmentId":"scene1","description":"x","suggestion":""}
+            ]}
+            """));
+        assertEquals("review_invalid", errorCode("""
+            {"schemaVersion":"1.0","result":"PASS","issues":[
+              {"severity":"","segmentId":"scene1","description":"x","suggestion":""}
+            ]}
             """));
     }
 }
