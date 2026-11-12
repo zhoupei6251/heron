@@ -6,6 +6,7 @@
   ],
   "supportedSceneTypes": [
     "headline",
+    "text",
     "rank"
   ],
   "aspectRatio": "9:16",

@@ -6,7 +6,7 @@
   ],
   "supportedSceneTypes": [
     "headline",
-    "list"
+    "text"
   ],
   "aspectRatio": "9:16",
   "recommendedDuration": {

@@ -5,7 +5,8 @@
     "NEWS_EXPLAINER"
   ],
   "supportedSceneTypes": [
-    "headline"
+    "headline",
+    "text"
   ],
   "aspectRatio": "9:16",
   "recommendedDuration": {

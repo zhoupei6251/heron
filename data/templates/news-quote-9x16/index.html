@@ -1,22 +1,160 @@
 <!doctype html>
 <html lang="zh-CN" data-composition-variables='[
-  {"id":"title","type":"string","label":"标题","maxLength":15,"default":"新一代旗舰手机发布"},
-  {"id":"scene1_lead","type":"string","label":"第一屏领句","maxLength":40,"default":"电池容量提升两成"},
-  {"id":"scene1_body","type":"string","label":"第一屏正文","maxLength":600,"default":"厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。"},
-  {"id":"scene2_lead","type":"string","label":"第二屏领句","maxLength":40,"default":"影像算法全面重写"},
-  {"id":"scene2_body","type":"string","label":"第二屏正文","maxLength":600,"default":"影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。"},
-  {"id":"scene3_lead","type":"string","label":"第三屏领句","maxLength":40,"default":"起售价保持不变"},
-  {"id":"scene3_body","type":"string","label":"第三屏正文","maxLength":600,"default":"价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。"},
-  {"id":"scene4_lead","type":"string","label":"第四屏领句","maxLength":40,"default":"现货发售时间已定"},
-  {"id":"scene4_body","type":"string","label":"第四屏正文","maxLength":600,"default":"官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。"},
-  {"id":"scene5_lead","type":"string","label":"第五屏领句","maxLength":40,"default":"竞品同期密集上新"},
-  {"id":"scene5_body","type":"string","label":"第五屏正文","maxLength":600,"default":"过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。"},
-  {"id":"scene6_lead","type":"string","label":"第六屏领句","maxLength":40,"default":"售后政策同步调整"},
-  {"id":"scene6_body","type":"string","label":"第六屏正文","maxLength":600,"default":"厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。"},
-  {"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"更多机型对比与实测，我们会在后续持续跟进。"},
-  {"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"公开报道整理"},
-  {"id":"accent","type":"color","label":"品牌色","default":"#d97706"},
-  {"id":"scene_count","type":"number","label":"场景数","min":3,"max":6,"default":6}
+  {
+    "id": "title",
+    "type": "string",
+    "label": "标题",
+    "maxLength": 15,
+    "default": "新一代旗舰手机发布"
+  },
+  {
+    "id": "scene1_lead",
+    "type": "string",
+    "label": "第一屏领句",
+    "maxLength": 40,
+    "default": "电池容量提升两成"
+  },
+  {
+    "id": "scene1_body",
+    "type": "string",
+    "label": "第一屏正文",
+    "maxLength": 600,
+    "default": "厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。"
+  },
+  {
+    "id": "scene2_lead",
+    "type": "string",
+    "label": "第二屏领句",
+    "maxLength": 40,
+    "default": "影像算法全面重写"
+  },
+  {
+    "id": "scene2_body",
+    "type": "string",
+    "label": "第二屏正文",
+    "maxLength": 600,
+    "default": "影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。"
+  },
+  {
+    "id": "scene3_lead",
+    "type": "string",
+    "label": "第三屏领句",
+    "maxLength": 40,
+    "default": "起售价保持不变"
+  },
+  {
+    "id": "scene3_body",
+    "type": "string",
+    "label": "第三屏正文",
+    "maxLength": 600,
+    "default": "价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。"
+  },
+  {
+    "id": "scene4_lead",
+    "type": "string",
+    "label": "第四屏领句",
+    "maxLength": 40,
+    "default": "现货发售时间已定"
+  },
+  {
+    "id": "scene4_body",
+    "type": "string",
+    "label": "第四屏正文",
+    "maxLength": 600,
+    "default": "官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。"
+  },
+  {
+    "id": "scene5_lead",
+    "type": "string",
+    "label": "第五屏领句",
+    "maxLength": 40,
+    "default": "竞品同期密集上新"
+  },
+  {
+    "id": "scene5_body",
+    "type": "string",
+    "label": "第五屏正文",
+    "maxLength": 600,
+    "default": "过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。"
+  },
+  {
+    "id": "scene6_lead",
+    "type": "string",
+    "label": "第六屏领句",
+    "maxLength": 40,
+    "default": "售后政策同步调整"
+  },
+  {
+    "id": "scene6_body",
+    "type": "string",
+    "label": "第六屏正文",
+    "maxLength": 600,
+    "default": "厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。"
+  },
+  {
+    "id": "closing",
+    "type": "string",
+    "label": "结尾口播",
+    "maxLength": 200,
+    "default": "更多机型对比与实测，我们会在后续持续跟进。"
+  },
+  {
+    "id": "source_name",
+    "type": "string",
+    "label": "来源名称",
+    "maxLength": 80,
+    "default": "公开报道整理"
+  },
+  {
+    "id": "accent",
+    "type": "color",
+    "label": "品牌色",
+    "default": "#d97706"
+  },
+  {
+    "id": "scene_count",
+    "type": "number",
+    "label": "场景数",
+    "min": 3,
+    "max": 6,
+    "default": 6
+  },
+  {
+    "id": "scene1_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  },
+  {
+    "id": "scene2_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  },
+  {
+    "id": "scene3_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  },
+  {
+    "id": "scene4_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  },
+  {
+    "id": "scene5_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  },
+  {
+    "id": "scene6_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  }
 ]'>
   <head>
     <meta charset="UTF-8" />
@@ -45,9 +183,19 @@
       #title { margin: 0; font-size: 96px; font-weight: 800; line-height: 1.2; letter-spacing: -0.02em; color: #f5efe9; }
       #rule { margin-top: 28px; width: 150px; height: 8px; border-radius: 4px; background: var(--accent); }
       .scene { --glyph: 1; }
-      .scene::before { content: "「"; position: absolute; left: 62px; top: 14px;
-                       font-size: 190px; font-weight: 700; line-height: 1; color: var(--accent);
-                       opacity: 0.5; transform: scale(var(--glyph)); transform-origin: left bottom; }
+      /* 场景类型驱动版式：只有 quote 段画巨型引号并加大字号，text 段保持干净正文。
+         没标类型的老稿按 text 处理，版式与升级前一致。 */
+      .scene[data-scene-type="quote"] { position: relative; padding-left: 118px; }
+      .scene[data-scene-type="quote"]::before {
+        content: "「";
+        position: absolute; left: 30px; top: 6px;
+        font-size: 190px; font-weight: 700; line-height: 1;
+        color: var(--accent); opacity: 0.5;
+        transform: scale(var(--glyph)); transform-origin: left bottom;
+      }
+      .scene[data-scene-type="quote"] .lead { font-size: 92px; line-height: 1.32; }
+      .scene[data-scene-type="quote"] .body { font-size: 46px; border-left-width: 10px; }
+
       .lead { margin: 0 0 30px; font-size: 74px; font-weight: 700; line-height: 1.42; letter-spacing: -0.01em; color: #fbf7f2;
               display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
       .body { margin: 0; padding-left: 28px; border-left: 6px solid rgba(160,138,118,0.45);
@@ -162,10 +310,15 @@
       const declared = window.__hyperframes ? window.__hyperframes.getVariables() : {};
       const sceneCount = Number.isFinite(declared.scene_count) ? declared.scene_count : slots.length;
       slots.forEach((slot) => {
-        if (Number(slot.dataset.sceneIndex) > sceneCount) {
+        const index = slot.dataset.sceneIndex;
+        if (Number(index) > sceneCount) {
           slot.hidden = true;
           slot.style.display = "none";
+          return;
         }
+        // 场景类型驱动版式：模型说这一段是引语，画面才按引语排
+        const type = declared["scene" + index + "_type"];
+        slot.dataset.sceneType = type || "text";
       });
 
       const tl = gsap.timeline({ paused: true });

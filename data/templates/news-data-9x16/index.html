@@ -1,24 +1,198 @@
 <!doctype html>
 <html lang="zh-CN" data-composition-variables='[
-  {"id":"title","type":"string","label":"标题","maxLength":15,"default":"金价创阶段新高"},
-  {"id":"scene1_lead","type":"string","label":"第一屏领句","maxLength":40,"default":"金价站上关键位"},
-  {"id":"scene1_body","type":"string","label":"第一屏正文","maxLength":600,"default":"最新收于 4113.34 美元，创下阶段新高。"},
-  {"id":"scene2_lead","type":"string","label":"第二屏领句","maxLength":40,"default":"较前一日走高"},
-  {"id":"scene2_body","type":"string","label":"第二屏正文","maxLength":600,"default":"较前一日上涨 21.79 美元，涨幅 0.53%。"},
-  {"id":"scene3_lead","type":"string","label":"第三屏领句","maxLength":40,"default":"区间高点确认"},
-  {"id":"scene3_body","type":"string","label":"第三屏正文","maxLength":600,"default":"近两周区间最高 4113.34 美元，最低 3988.20 美元。"},
-  {"id":"scene4_lead","type":"string","label":"第四屏领句","maxLength":40,"default":""},
-  {"id":"scene4_body","type":"string","label":"第四屏正文","maxLength":600,"default":""},
-  {"id":"scene5_lead","type":"string","label":"第五屏领句","maxLength":40,"default":""},
-  {"id":"scene5_body","type":"string","label":"第五屏正文","maxLength":600,"default":""},
-  {"id":"scene6_lead","type":"string","label":"第六屏领句","maxLength":40,"default":""},
-  {"id":"scene6_body","type":"string","label":"第六屏正文","maxLength":600,"default":""},
-  {"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"关注接下来的走势。"},
-  {"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"来源：新浪财经"},
-  {"id":"accent","type":"color","label":"品牌色","default":"#18b7c9"},
-  {"id":"scene_count","type":"number","label":"场景数","min":3,"max":6,"default":3},
-  {"id":"chart","type":"enum","label":"图表模块","options":[{"value":"line","label":"折线"},{"value":"bars","label":"排行"},{"value":"race","label":"赛跑"},{"value":"stacked","label":"堆叠"},{"value":"multiline","label":"多线"},{"value":"radar","label":"雷达"}],"default":"line"},
-  {"id":"dataset_json","type":"string","label":"数据快照","default":"{\"contract\":\"dataset/1\",\"source_key\":\"sina-gold-xau\",\"source_name\":\"新浪财经\",\"cadence\":\"daily\",\"shape\":\"wide\",\"columns\":[\"date\",\"value\"],\"metric\":{\"key\":\"close\",\"label\":\"伦敦金收盘价\",\"unit\":\"USD/oz\",\"precision\":2},\"rows\":[[\"2026-10-26\",3988.2],[\"2026-10-27\",3996.4],[\"2026-10-28\",4002.1],[\"2026-10-29\",3991.8],[\"2026-10-30\",4008.6],[\"2026-11-02\",4021.3],[\"2026-11-03\",4033.0],[\"2026-11-04\",4042.7],[\"2026-11-05\",4091.55],[\"2026-11-06\",4105.5],[\"2026-11-09\",4110.04],[\"2026-11-10\",4113.34]],\"time_range\":{\"start\":\"2026-10-26\",\"end\":\"2026-11-10\",\"points\":12}}"}
+  {
+    "id": "title",
+    "type": "string",
+    "label": "标题",
+    "maxLength": 15,
+    "default": "金价创阶段新高"
+  },
+  {
+    "id": "scene1_lead",
+    "type": "string",
+    "label": "第一屏领句",
+    "maxLength": 40,
+    "default": "金价站上关键位"
+  },
+  {
+    "id": "scene1_body",
+    "type": "string",
+    "label": "第一屏正文",
+    "maxLength": 600,
+    "default": "最新收于 4113.34 美元，创下阶段新高。"
+  },
+  {
+    "id": "scene2_lead",
+    "type": "string",
+    "label": "第二屏领句",
+    "maxLength": 40,
+    "default": "较前一日走高"
+  },
+  {
+    "id": "scene2_body",
+    "type": "string",
+    "label": "第二屏正文",
+    "maxLength": 600,
+    "default": "较前一日上涨 21.79 美元，涨幅 0.53%。"
+  },
+  {
+    "id": "scene3_lead",
+    "type": "string",
+    "label": "第三屏领句",
+    "maxLength": 40,
+    "default": "区间高点确认"
+  },
+  {
+    "id": "scene3_body",
+    "type": "string",
+    "label": "第三屏正文",
+    "maxLength": 600,
+    "default": "近两周区间最高 4113.34 美元，最低 3988.20 美元。"
+  },
+  {
+    "id": "scene4_lead",
+    "type": "string",
+    "label": "第四屏领句",
+    "maxLength": 40,
+    "default": ""
+  },
+  {
+    "id": "scene4_body",
+    "type": "string",
+    "label": "第四屏正文",
+    "maxLength": 600,
+    "default": ""
+  },
+  {
+    "id": "scene5_lead",
+    "type": "string",
+    "label": "第五屏领句",
+    "maxLength": 40,
+    "default": ""
+  },
+  {
+    "id": "scene5_body",
+    "type": "string",
+    "label": "第五屏正文",
+    "maxLength": 600,
+    "default": ""
+  },
+  {
+    "id": "scene6_lead",
+    "type": "string",
+    "label": "第六屏领句",
+    "maxLength": 40,
+    "default": ""
+  },
+  {
+    "id": "scene6_body",
+    "type": "string",
+    "label": "第六屏正文",
+    "maxLength": 600,
+    "default": ""
+  },
+  {
+    "id": "closing",
+    "type": "string",
+    "label": "结尾口播",
+    "maxLength": 200,
+    "default": "关注接下来的走势。"
+  },
+  {
+    "id": "source_name",
+    "type": "string",
+    "label": "来源名称",
+    "maxLength": 80,
+    "default": "来源：新浪财经"
+  },
+  {
+    "id": "accent",
+    "type": "color",
+    "label": "品牌色",
+    "default": "#18b7c9"
+  },
+  {
+    "id": "scene_count",
+    "type": "number",
+    "label": "场景数",
+    "min": 3,
+    "max": 6,
+    "default": 3
+  },
+  {
+    "id": "chart",
+    "type": "enum",
+    "label": "图表模块",
+    "options": [
+      {
+        "value": "line",
+        "label": "折线"
+      },
+      {
+        "value": "bars",
+        "label": "排行"
+      },
+      {
+        "value": "race",
+        "label": "赛跑"
+      },
+      {
+        "value": "stacked",
+        "label": "堆叠"
+      },
+      {
+        "value": "multiline",
+        "label": "多线"
+      },
+      {
+        "value": "radar",
+        "label": "雷达"
+      }
+    ],
+    "default": "line"
+  },
+  {
+    "id": "dataset_json",
+    "type": "string",
+    "label": "数据快照",
+    "default": "{\"contract\":\"dataset/1\",\"source_key\":\"sina-gold-xau\",\"source_name\":\"新浪财经\",\"cadence\":\"daily\",\"shape\":\"wide\",\"columns\":[\"date\",\"value\"],\"metric\":{\"key\":\"close\",\"label\":\"伦敦金收盘价\",\"unit\":\"USD/oz\",\"precision\":2},\"rows\":[[\"2026-10-26\",3988.2],[\"2026-10-27\",3996.4],[\"2026-10-28\",4002.1],[\"2026-10-29\",3991.8],[\"2026-10-30\",4008.6],[\"2026-11-02\",4021.3],[\"2026-11-03\",4033.0],[\"2026-11-04\",4042.7],[\"2026-11-05\",4091.55],[\"2026-11-06\",4105.5],[\"2026-11-09\",4110.04],[\"2026-11-10\",4113.34]],\"time_range\":{\"start\":\"2026-10-26\",\"end\":\"2026-11-10\",\"points\":12}}"
+  },
+  {
+    "id": "scene1_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  },
+  {
+    "id": "scene2_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  },
+  {
+    "id": "scene3_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  },
+  {
+    "id": "scene4_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  },
+  {
+    "id": "scene5_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  },
+  {
+    "id": "scene6_type",
+    "type": "string",
+    "label": "场景类型",
+    "default": ""
+  }
 ]'>
   <head>
     <meta charset="UTF-8" />
