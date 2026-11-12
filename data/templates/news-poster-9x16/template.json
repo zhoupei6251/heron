@@ -1,4 +1,21 @@
 {
   "name": "大字报",
-  "description": "一屏一句超大字加厚重字重，遮罩自下而上擦出，节奏最快，适合突发与硬消息"
+  "description": "一屏一句超大字加厚重字重，遮罩自下而上擦出，节奏最快，适合突发与硬消息",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 30,
+    "max": 45
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

@@ -1,4 +1,22 @@
 {
   "name": "极简",
-  "description": "大量留白、极轻字重与宽行距，节奏最慢，适合长文与观点"
+  "description": "大量留白、极轻字重与宽行距，节奏最慢，适合长文与观点",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "text"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 60,
+    "max": 90
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

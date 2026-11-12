@@ -1,4 +1,22 @@
 {
   "name": "榜单",
-  "description": "大号名次数字配横向标尺，逐条排列，适合 TOP N、排名与名次"
+  "description": "大号名次数字配横向标尺，逐条排列，适合 TOP N、排名与名次",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "rank"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 30,
+    "max": 60
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

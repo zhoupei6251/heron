@@ -27,9 +27,21 @@ public class NewsTemplatePicker {
     private final ObjectProvider<OpenAiModelClient> modelProvider;
     private final HeronNewsWorkMapper workMapper;
 
-    /** 返回选中的模板标识；没有任何可用模板时返回 null，由调用方落默认值。 */
+    /** 手工认领：两条线的模板都进候选，由模型按标题摘要选。 */
     public String pick(String title, String summary) {
-        List<NewsProductionDomain.TemplateInfo> all = domain.templateCatalog();
+        return pickFrom(domain.templateCatalog(), title, summary, null);
+    }
+
+    /**
+     * 按生产线收窄候选。判断依据是模板自己声明的 supportedLines，不是命名前缀——
+     * 改模板名不该改出片逻辑。没写 supportedLines 的老模板才退回前缀推断。
+     */
+    public String pick(String title, String summary, String line) {
+        return pickFrom(domain.templateCatalog().stream()
+            .filter(item -> item.supports(line)).toList(), title, summary, line);
+    }
+
+    private String pickFrom(List<NewsProductionDomain.TemplateInfo> all, String title, String summary, String line) {
         if (all.isEmpty()) {
             return null;
         }
@@ -47,7 +59,7 @@ public class NewsTemplatePicker {
         OpenAiModelClient model = modelProvider.getIfAvailable();
         if (model != null) {
             try {
-                reply = model.chatWithoutUsage(SYSTEM, prompt(title, summary, candidates, recent));
+                reply = model.chatWithoutUsage(SYSTEM, prompt(title, summary, candidates, recent, line));
             } catch (RuntimeException e) {
                 // 选择失败不阻塞认领：与模型不可用时的行为一致，退回最久未用
                 reply = null;
@@ -99,7 +111,7 @@ public class NewsTemplatePicker {
     }
 
     private static String prompt(String title, String summary, List<NewsProductionDomain.TemplateInfo> candidates,
-                                 List<String> recent) {
+                                 List<String> recent, String line) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("本期标题：").append(nullToEmpty(title)).append('\n');
         prompt.append("本期摘要：").append(nullToEmpty(summary)).append('\n');

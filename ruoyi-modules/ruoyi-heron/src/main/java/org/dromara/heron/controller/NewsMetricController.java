@@ -35,4 +35,15 @@ public class NewsMetricController extends BaseController {
     public R<List<NewsMetricVo>> byVersion(@PathVariable long versionId) {
         return R.ok(metrics.byVersion(versionId));
     }
+
+    /**
+     * 效果归因：按维度汇总。dimension 取 template / line / angle。
+     * 数据来自人工回填，样本会很少——前端据此注明「样本不足」而不是把平均值当规律。
+     */
+    @SaCheckPermission("heron:newsWork:list")
+    @GetMapping("/breakdown")
+    public R<List<org.dromara.heron.mapper.HeronNewsMetricMapper.Breakdown>> breakdown(
+        @RequestParam(defaultValue = "template") String dimension) {
+        return R.ok(metrics.performanceBreakdown(dimension));
+    }
 }

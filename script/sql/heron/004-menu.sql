@@ -45,8 +45,12 @@ insert into sys_menu values(1761400000000002040, '审片中心', 176140000000000
 -- 5 发布记录：只列已有发布事实的版本
 insert into sys_menu values(1761400000000002050, '发布记录', 1761400000000002000, 5, 'publish', 'heron/publish/index', '', 'N', 'Y', 'C', '0', '0', 'heron:newsWork:list', 'upload', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '发过的版本、回执与作品链接');
 
--- 6 新闻来源：配置类页面
-insert into sys_menu values(1761400000000002060, '新闻来源', 1761400000000002000, 6, 'source', 'heron/news/source/index', '', 'N', 'Y', 'C', '0', '0', 'heron:newsSource:list', 'cloud', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '受白名单约束的新闻来源采集');
+-- 6 内容表现：效果归因（数据来自人工回填）
+insert into sys_menu values(1761400000000002055, '内容表现', 1761400000000002000, 6, 'analytics', 'heron/analytics/index', '', 'N', 'Y', 'C', '0', '0', 'heron:newsWork:list', 'chart', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '按模板/生产线/角度归因已发布作品的表现');
+insert into sys_menu values(1761400000000002056, '表现查询', 1761400000000002055, 1, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:newsWork:list', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
+
+-- 7 新闻来源：配置类页面
+insert into sys_menu values(1761400000000002060, '新闻来源', 1761400000000002000, 7, 'source', 'heron/news/source/index', '', 'N', 'Y', 'C', '0', '0', 'heron:newsSource:list', 'cloud', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '受白名单约束的新闻来源采集');
 insert into sys_menu values(1761400000000002061, '来源查询', 1761400000000002060, 1, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:newsSource:query', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000002062, '来源新增', 1761400000000002060, 2, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:newsSource:add', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000002063, '来源修改', 1761400000000002060, 3, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:newsSource:edit', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
@@ -54,21 +58,21 @@ insert into sys_menu values(1761400000000002064, '来源删除', 176140000000000
 insert into sys_menu values(1761400000000002065, '来源采集', 1761400000000002060, 5, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:newsSource:fetch', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 
 -- 7 数据集：注册表只读，登记走 SQL 迁移
-insert into sys_menu values(1761400000000002070, '数据集', 1761400000000002000, 7, 'dataset', 'heron/asset/dataset/index', '', 'N', 'Y', 'C', '0', '0', 'heron:dataSource:list', 'chart', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '数据源注册表：授权、探测、形态与更新频率');
+insert into sys_menu values(1761400000000002070, '数据集', 1761400000000002000, 8, 'dataset', 'heron/asset/dataset/index', '', 'N', 'Y', 'C', '0', '0', 'heron:dataSource:list', 'chart', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '数据源注册表：授权、探测、形态与更新频率');
 insert into sys_menu values(1761400000000002071, '数据集查询', 1761400000000002070, 1, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:dataSource:list', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000002072, '数据集详情', 1761400000000002070, 2, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:dataSource:query', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 
 -- 8 视频模板：模板是目录不是表，只读
-insert into sys_menu values(1761400000000002080, '视频模板', 1761400000000002000, 8, 'template', 'heron/asset/template/index', '', 'N', 'Y', 'C', '0', '0', 'heron:template:list', 'color', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '模板目录与 LOCK 资产锁，加模板仍是加目录');
+insert into sys_menu values(1761400000000002080, '视频模板', 1761400000000002000, 9, 'template', 'heron/asset/template/index', '', 'N', 'Y', 'C', '0', '0', 'heron:template:list', 'color', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '模板目录与 LOCK 资产锁，加模板仍是加目录');
 insert into sys_menu values(1761400000000002081, '模板查询', 1761400000000002080, 1, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:template:list', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 
 -- 9 生产任务：执行记录，运维视角
-insert into sys_menu values(1761400000000002090, '生产任务', 1761400000000002000, 9, 'production', 'heron/production/index', '', 'N', 'Y', 'C', '0', '0', 'heron:production:list', 'list', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '统一生产任务中心');
+insert into sys_menu values(1761400000000002090, '生产任务', 1761400000000002000, 10, 'production', 'heron/production/index', '', 'N', 'Y', 'C', '0', '0', 'heron:production:list', 'list', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '统一生产任务中心');
 insert into sys_menu values(1761400000000002091, '任务查询', 1761400000000002090, 1, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:production:query', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000002092, '任务取消', 1761400000000002090, 2, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:production:cancel', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 
 -- 10 原型工坊：另一条业务线，本次不动
-insert into sys_menu values(1761400000000002100, '原型工坊', 1761400000000002000, 10, 'proto', 'heron/proto/index', '', 'N', 'Y', 'C', '0', '0', 'heron:proto:list', 'build', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '需求到 RP 原型的生成与交付');
+insert into sys_menu values(1761400000000002100, '原型工坊', 1761400000000002000, 11, 'proto', 'heron/proto/index', '', 'N', 'Y', 'C', '0', '0', 'heron:proto:list', 'build', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '需求到 RP 原型的生成与交付');
 insert into sys_menu values(1761400000000002101, '原型新增', 1761400000000002100, 1, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:proto:add', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000002102, '原型查询', 1761400000000002100, 2, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:proto:query', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000002103, '原型编辑', 1761400000000002100, 3, '', '', '', 'N', 'Y', 'F', '0', '0', 'heron:proto:edit', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');

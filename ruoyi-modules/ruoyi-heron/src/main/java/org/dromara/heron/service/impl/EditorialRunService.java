@@ -38,11 +38,14 @@ public class EditorialRunService {
 
     public PageResult<EditorialRunVo> queryPageList(EditorialRunQuery query) {
         access.requirePermission("heron:editorial:list");
+        // betweenParams 要求两端都给值，单边日期会静默失效；这里两端各自可选
+        Object begin = query.getParams() == null ? null : query.getParams().get("beginDate");
+        Object end = query.getParams() == null ? null : query.getParams().get("endDate");
         var wrapper = QueryBuilder.lambda(HeronAutoSlot.class)
             .eq(StringUtils.isNotBlank(query.getStatus()), HeronAutoSlot::getStatus, query.getStatus())
             .eq(StringUtils.isNotBlank(query.getSelectedLine()), HeronAutoSlot::getSelectedLine, query.getSelectedLine())
-            .ge(query.getBeginDate() != null, HeronAutoSlot::getSlotDate, query.getBeginDate())
-            .le(query.getEndDate() != null, HeronAutoSlot::getSlotDate, query.getEndDate())
+            .ge(begin != null, HeronAutoSlot::getSlotDate, begin)
+            .le(end != null, HeronAutoSlot::getSlotDate, end)
             .orderByDesc(HeronAutoSlot::getSlotDate, HeronAutoSlot::getSlotTime)
             .build();
         Page<HeronAutoSlot> page = slotMapper.selectPage(query.build(), wrapper);

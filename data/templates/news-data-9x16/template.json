@@ -1,4 +1,22 @@
 {
   "name": "数据看板",
-  "description": "折线/排行/赛跑/堆叠/多线/雷达，1080×1920，数据由 dataset/1 快照驱动"
+  "description": "折线/排行/赛跑/堆叠/多线/雷达，1080×1920，数据由 dataset/1 快照驱动",
+  "supportedLines": [
+    "DATA_BOARD"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "chart"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 30,
+    "max": 60
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

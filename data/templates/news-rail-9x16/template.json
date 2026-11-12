@@ -1,4 +1,22 @@
 {
   "name": "时间轴",
-  "description": "左侧轨道随进度生长、锚点逐屏点亮，突出先后顺序，适合事件进展与流程"
+  "description": "左侧轨道随进度生长、锚点逐屏点亮，突出先后顺序，适合事件进展与流程",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "timeline"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 40,
+    "max": 90
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

@@ -20,6 +20,9 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class NewsMetricServiceImpl implements INewsMetricService {
+    /** 白名单：这三个值会进 XML 的 choose 分支，不能放任意输入过去。 */
+    private static final java.util.Set<String> GROUP_BY_KEYS = java.util.Set.of("template", "line", "angle");
+
     private final HeronNewsMetricMapper metrics;
     private final HeronVideoVersionMapper versions;
 
@@ -71,6 +74,17 @@ public class NewsMetricServiceImpl implements INewsMetricService {
     @Override
     public List<HeronNewsMetricMapper.Performance> recentPerformance(int limit) {
         return metrics.recentPerformance(Math.max(1, limit));
+    }
+
+    /** 只认三个已知维度：把未知值拼进 SQL 会被 groupBy 直接带进 wapper 的字符串位置。 */
+    @Override
+    public List<HeronNewsMetricMapper.Breakdown> performanceBreakdown(String dimension) {
+        String groupBy = dimension == null ? "" : dimension.strip().toLowerCase();
+        if (!GROUP_BY_KEYS.contains(groupBy)) {
+            throw new HeronBusinessException(400, "metric_dimension_invalid",
+                "只支持按 template / line / angle 汇总，收到：" + dimension);
+        }
+        return metrics.performanceBreakdown(groupBy);
     }
 
     private NewsMetricVo toVo(HeronNewsMetric metric) {

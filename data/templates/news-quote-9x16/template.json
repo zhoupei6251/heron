@@ -1,4 +1,22 @@
 {
   "name": "引语",
-  "description": "巨型引号压顶，领句当被引用的话来讲，适合发言人、声明与原文引用"
+  "description": "巨型引号压顶，领句当被引用的话来讲，适合发言人、声明与原文引用",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "quote"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 30,
+    "max": 60
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

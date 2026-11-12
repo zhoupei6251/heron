@@ -1,4 +1,22 @@
 {
   "name": "撞色",
-  "description": "上下双色板从中间推开，标题压在暗底上，动静对比最强，适合强对比短标题"
+  "description": "上下双色板从中间推开，标题压在暗底上，动静对比最强，适合强对比短标题",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "text"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 30,
+    "max": 60
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

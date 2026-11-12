@@ -1,4 +1,22 @@
 {
   "name": "对比",
-  "description": "上下两张卡片分置两边，领句与正文各占一栏，适合涨跌、前后与 AB 方案"
+  "description": "上下两张卡片分置两边，领句与正文各占一栏，适合涨跌、前后与 AB 方案",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "compare"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 40,
+    "max": 90
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

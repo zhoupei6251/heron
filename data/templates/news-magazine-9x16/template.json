@@ -1,4 +1,22 @@
 {
   "name": "杂志",
-  "description": "浅色纸感、引文竖线与横向揭开，行距最宽，适合评测与深度内容"
+  "description": "浅色纸感、引文竖线与横向揭开，行距最宽，适合评测与深度内容",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "quote"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 60,
+    "max": 90
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

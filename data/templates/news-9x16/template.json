@@ -1,4 +1,23 @@
 {
   "name": "快报",
-  "description": "深色底加暖色雾，标题压顶、正文自上而下擦出，节奏均衡，适合日常资讯"
+  "description": "深色底加暖色雾，标题压顶、正文自上而下擦出，节奏均衡，适合日常资讯",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "text",
+    "image"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 40,
+    "max": 90
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

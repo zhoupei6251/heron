@@ -1,4 +1,22 @@
 {
   "name": "问答",
-  "description": "问与答分区排版，领句当问题、正文当答案，适合释疑与来龙去脉"
+  "description": "问与答分区排版，领句当问题、正文当答案，适合释疑与来龙去脉",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "qa"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 40,
+    "max": 90
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

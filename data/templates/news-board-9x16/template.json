@@ -1,4 +1,22 @@
 {
   "name": "信息板",
-  "description": "色块标题横向扩张、正文装进面板，信息分区最清楚，适合多要点并列"
+  "description": "色块标题横向扩张、正文装进面板，信息分区最清楚，适合多要点并列",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "list"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 40,
+    "max": 90
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }

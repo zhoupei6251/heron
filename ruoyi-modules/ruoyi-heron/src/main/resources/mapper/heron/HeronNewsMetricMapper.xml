@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.dromara.heron.mapper.HeronNewsMetricMapper">
+
+    <!-- 四表联查 + 相关子查询取每版最新采样，wrapper 表达不了，因此走 XML 而不是注解。 -->
+    <select id="recentPerformance" resultType="org.dromara.heron.mapper.HeronNewsMetricMapper$Performance">
+        select c.title as title, m.plays as plays, m.completion_rate as completionRate
+        from heron_news_metric m
+        join heron_video_version v on v.version_id = m.version_id
+        join heron_news_work w on w.work_id = v.work_id
+        join heron_news_candidate c on c.candidate_id = w.candidate_id
+        where m.fetched_at = (
+            select max(m2.fetched_at) from heron_news_metric m2 where m2.version_id = m.version_id)
+        order by m.fetched_at desc
+        limit #{limit}
+    </select>
+
+    <!--
+      效果归因：按维度分组统计。三个维度共用一条 SQL，靠 groupBy 切换，
+      避免为「按模板/按角度/按生产线」各写一份几乎相同的语句。
+
+      只统计每版最新一次采样（子查询同上）：同一条视频多次采样时，
+      把旧数据也算进去会把平均值拉低，看起来像这一版越跑越差。
+
+      维度取值来自 input_snapshot 的 selection.templateId 与 editorial.line、
+      editorial.storyAngle——没有快照的老版本归入「未记录」，不猜。
+    -->
+    <select id="performanceBreakdown" resultType="org.dromara.heron.mapper.HeronNewsMetricMapper$Breakdown">
+        select
+        <choose>
+            <when test="groupBy == 'template'">
+                coalesce(json_unquote(json_extract(v.input_snapshot, '$.selection.templateId')), '未记录') as bucket
+            </when>
+            <when test="groupBy == 'line'">
+                coalesce(json_unquote(json_extract(v.input_snapshot, '$.editorial.line')), '未记录') as bucket
+            </when>
+            <otherwise>
+                coalesce(nullif(json_unquote(json_extract(v.input_snapshot, '$.editorial.storyAngle')), ''), '未记录') as bucket
+            </otherwise>
+        </choose>
+        , count(*) as samples
+        , avg(m.plays) as avgPlays
+        , avg(m.completion_rate) as avgCompletionRate
+        , avg(m.likes) as avgLikes
+        , max(m.plays) as maxPlays
+        from heron_news_metric m
+        join heron_video_version v on v.version_id = m.version_id
+        where m.fetched_at = (
+            select max(m2.fetched_at) from heron_news_metric m2 where m2.version_id = m.version_id)
+        and m.plays is not null
+        group by bucket
+        having count(*) > 0
+        order by avgCompletionRate desc, avgPlays desc
+    </select>
+
+</mapper>

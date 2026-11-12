@@ -26,11 +26,14 @@ public class TemplateCatalogService {
                 Map<String, Object> lock = domain.lockedAssets(info.key());
                 return new VideoTemplateVo(info.key(), info.name(), info.description(), true, null,
                     text(lock.get("templateVersion")), text(lock.get("voiceKey")),
-                    text(lock.get("assetManifestSha256")));
+                    text(lock.get("assetManifestSha256")),
+                    info.supportedLines(), info.supportedSceneTypes(), info.aspectRatio(),
+                    info.minDuration(), info.maxDuration());
             } catch (HeronBusinessException e) {
                 // LOCK 缺失或与目录不一致：模板仍要出现在列表里，否则「少了一个模板」没人发现
                 return new VideoTemplateVo(info.key(), info.name(), info.description(), false, e.getMessage(),
-                    null, null, null);
+                    null, null, null, info.supportedLines(), info.supportedSceneTypes(), info.aspectRatio(),
+                    info.minDuration(), info.maxDuration());
             }
         }).toList();
     }

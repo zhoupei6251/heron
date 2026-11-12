@@ -1,4 +1,22 @@
 {
   "name": "数据",
-  "description": "数字从零滚到目标值，等宽数字配细网格，适合参数、报价与数值对比"
+  "description": "数字从零滚到目标值，等宽数字配细网格，适合参数、报价与数值对比",
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "number"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 30,
+    "max": 60
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
 }
