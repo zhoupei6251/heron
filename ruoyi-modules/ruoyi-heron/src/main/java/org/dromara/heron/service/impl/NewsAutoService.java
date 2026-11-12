@@ -147,13 +147,16 @@ public class NewsAutoService {
             return;
         }
         EditorialDecisionService.Decision decision;
+        EditorialDecisionService.Pools pools;
         try {
-            decision = editorial.decide(pools(candidateId.get(), now));
+            pools = pools(candidateId.get(), now);
+            decision = editorial.decide(pools);
         } catch (RuntimeException e) {
             // 决策失败不产出：宁可空槽，也不按默认线硬发
             finish(slot, "failed", "editorial_decision: " + e.getMessage(), null);
             return;
         }
+        markDecision(slot, decision, candidateId.get(), pools);
         if (!decision.publish()) {
             finish(slot, "skipped", "no_publish: " + decision.reason(), null);
             return;
@@ -347,11 +350,33 @@ public class NewsAutoService {
         return null;
     }
 
+    /**
+     * 决策结构化落库。detail 只是一段给人看的文本，编辑策划页要能回答「它看到了什么、为什么这么选」，
+     * 所以线、意图、理由和候选池快照分开存。NO_PUBLISH 也留痕，否则空槽看起来像故障。
+     */
+    private void markDecision(HeronAutoSlot slot, EditorialDecisionService.Decision decision,
+                              long candidateId, EditorialDecisionService.Pools pools) {
+        slotMapper.lambda()
+            .set(HeronAutoSlot::getSelectedLine, decision.publish() ? decision.selectedLine()
+                : EditorialDecisionService.NO_PUBLISH)
+            .set(HeronAutoSlot::getEditorialIntent, clip(decision.editorialIntent(), 500))
+            .set(HeronAutoSlot::getDecisionReason, clip(decision.reason(), 500))
+            .set(HeronAutoSlot::getCandidateId, candidateId)
+            .set(HeronAutoSlot::getPoolJson, JsonUtils.toJsonString(pools))
+            .set(HeronAutoSlot::getUpdateTime, LocalDateTime.now(clock))
+            .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
+            .eq(HeronAutoSlot::getSlotTime, slot.getSlotTime())
+            .update();
+    }
+
+    private static String clip(String value, int max) {
+        return value == null ? null : value.substring(0, Math.min(value.length(), max));
+    }
+
     private void finish(HeronAutoSlot slot, String status, String detail, Long workId) {
-        String safeDetail = detail == null ? null : detail.substring(0, Math.min(detail.length(), 2000));
         slotMapper.lambda()
             .set(HeronAutoSlot::getStatus, status)
-            .set(HeronAutoSlot::getDetail, safeDetail)
+            .set(HeronAutoSlot::getDetail, clip(detail, 2000))
             .set(HeronAutoSlot::getWorkId, workId)
             .set(HeronAutoSlot::getUpdateTime, LocalDateTime.now(clock))
             .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())

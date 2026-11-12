@@ -20,6 +20,16 @@ public class HeronAutoSlot implements Serializable {
     /** produced 已产出 / skipped 已跳过（含原因）/ failed 失败。 */
     private String status;
     private String detail;
+    /** 总编辑选定的线：DATA_BOARD / NEWS_EXPLAINER / NO_PUBLISH。 */
+    private String selectedLine;
+    /** 总编辑给出的选题意图，进入生产输入而不是只当备注。 */
+    private String editorialIntent;
+    /** 为什么选这条线，或为什么今天不发。 */
+    private String decisionReason;
+    /** 这一槽认定的候选；线内编辑重新选定后以线内结果为准。 */
+    private Long candidateId;
+    /** 决策当时两条线的候选概况快照，用于回放「它看到了什么」。 */
+    private String poolJson;
     private Long workId;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
