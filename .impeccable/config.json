@@ -11,6 +11,15 @@
         ],
         "createdAt": "2026-11-10T05:19:03.532Z",
         "reason": "intentional video caption treatment: matches the existing 12 news-9x16 templates (border-left accent bar); this is a HyperFrames composition, not a web UI card"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "data/templates/news-9x16/index.html"
+        ],
+        "createdAt": "2026-11-12T04:09:11.598Z",
+        "reason": "broadcast video composition, not web UI; thick accent bar on the closing callout is intended broadcast graphics, predates this session"
       }
     ]
   }

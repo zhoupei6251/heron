@@ -1,6 +1,7 @@
 package org.dromara.heron.service.impl;
 
 import cn.hutool.crypto.digest.DigestUtil;
+import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.vo.ProductionArtifactVo;
@@ -114,10 +115,20 @@ class DataBoardPipelineRenderTest {
         }));
 
         NewsProductionPipeline pipeline = new NewsProductionPipeline(
-            (NewsScriptAuthor) run -> "{}",
+            new NewsScriptAuthor() {
+                @Override
+                public String author(ProductionRunVo run) {
+                    return "{}";
+                }
+
+                @Override
+                public String repair(ProductionRunVo run, String scriptJson, List<String> notes) {
+                    return scriptJson;
+                }
+            },
             new ProductionProcessService(properties, new ProductionArtifactService(properties)),
             new ProductionArtifactService(properties), properties, (run, stage, progress) -> true,
-            router, fetch, author, passingReview());
+            router, fetch, author, passingReview(), new NewsSourceFetcher(null, null, new HeronNewsProperties()));
 
         ObjectNode input = (ObjectNode) JSON.readTree(lockedAssets(template));
         input.put("kind", "data_board");
@@ -179,6 +190,11 @@ class DataBoardPipelineRenderTest {
         return new EditorialReviewer(null) {
             @Override
             public EditorialReviewer.Verdict review(ProductionRunVo run, String scriptJson, String factsJson) {
+                return new EditorialReviewer.Verdict("PASS", List.of(), List.of());
+            }
+
+            @Override
+            public EditorialReviewer.Verdict reviewEvidence(ProductionRunVo run, String scriptJson, String evidenceJson) {
                 return new EditorialReviewer.Verdict("PASS", List.of(), List.of());
             }
         };

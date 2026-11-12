@@ -28,6 +28,7 @@ import org.dromara.heron.service.impl.ProductionRuntimeIdentityService;
 import org.dromara.heron.service.impl.ProductionServiceImpl;
 import org.dromara.heron.service.impl.ProductionUsageService;
 import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -81,6 +82,10 @@ public class HeronMysqlTestConfiguration {
                                                MetaObjectHandler metaObjectHandler) throws Exception {
         MybatisSqlSessionFactoryBean factory = new MybatisSqlSessionFactoryBean();
         factory.setDataSource(dataSource);
+        // 生产环境靠 application.yml 的 mapperLocations 加载 XML；测试上下文不继承那份配置，
+        // 不显式设一遍，带 XML 的 mapper 就会报 Invalid bound statement。
+        factory.setMapperLocations(new PathMatchingResourcePatternResolver()
+            .getResources("classpath*:mapper/**/*Mapper.xml"));
         MybatisConfiguration configuration = new MybatisConfiguration();
         configuration.setMapUnderscoreToCamelCase(true);
         factory.setConfiguration(configuration);

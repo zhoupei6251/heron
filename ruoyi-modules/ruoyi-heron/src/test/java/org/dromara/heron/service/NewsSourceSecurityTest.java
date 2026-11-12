@@ -259,7 +259,7 @@ class NewsSourceSecurityTest {
         private int privateConnections;
 
         void reply(String url, int status, String location, String encoding, byte[] body) {
-            replies.put(url, new NewsTransport.Response(status, location, encoding, body));
+            replies.put(url, new NewsTransport.Response(status, location, encoding, null, body));
         }
 
         void fail(String url) { failures.put(url, new IOException("connection refused")); }

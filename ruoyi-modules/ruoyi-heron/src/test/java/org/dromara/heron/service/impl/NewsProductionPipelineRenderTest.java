@@ -1,6 +1,7 @@
 package org.dromara.heron.service.impl;
 
 import cn.hutool.crypto.digest.DigestUtil;
+import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.vo.ProductionArtifactVo;
@@ -73,7 +74,8 @@ class NewsProductionPipelineRenderTest {
         NewsProductionPipeline pipeline = new NewsProductionPipeline(
             fixedAuthor(SCRIPT), new ProductionProcessService(properties,
             new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties,
-            (run, stage, progress) -> true, null, null, null, passingReview());
+            (run, stage, progress) -> true, null, null, null, passingReview(),
+            new NewsSourceFetcher(null, null, new HeronNewsProperties()));
 
         ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_video, 10L, 5L, 1,
             UUID.randomUUID().toString(), lockedAssets(template), null);
@@ -111,8 +113,85 @@ class NewsProductionPipelineRenderTest {
         assertTrue(find(checks, "assets").path("measured").path("manifestMatched").asBoolean());
     }
 
-    private static JsonNode find(JsonNode checks, String gate) {
-        for (JsonNode item : checks) {
+    /**
+     * 图片场景要真渲一遍：模板的 .scene-figure 是否展开、图有没有真进画面，
+     * 靠读代码看不出来——CSS 的 display 与 has-image 类是两处协同。
+     *
+     * <p>图片用本机临时文件而不是外网 URL：这条测试不该依赖网络可达。
+     */
+    @Test
+    @DisplayName("图片场景：配图落到工作目录并进入渲染，联络表没有空白帧")
+    void rendersImageScene() throws Exception {
+        Path repository = Path.of("..", "..").toAbsolutePath().normalize();
+        Path templateRoot = repository.resolve("data").resolve("templates");
+        Path template = templateRoot.resolve("news-9x16");
+        Path cli = repository.resolve("data").resolve("tools").resolve("node_modules")
+            .resolve("hyperframes").resolve("bin").resolve("hyperframes.mjs");
+        assertTrue(Files.isDirectory(template), "缺少模板目录：" + template);
+
+        Path dataRoot = repository.resolve("data").resolve("it-render").resolve(UUID.randomUUID().toString());
+        HeronProductionProperties properties = new HeronProductionProperties();
+        properties.setDataRoot(dataRoot);
+        properties.setNewsTemplate(templateRoot);
+        properties.setHyperframes(cli.toString());
+        properties.setGuardEnabled(false);
+        properties.setNode(System.getenv().getOrDefault("HERON_TEST_NODE", "node"));
+
+        // 稿子声明了一个 image 场景；图片地址由替身 fetcher 返回，不真的出网
+        String script = SCRIPT.replace(
+            "\"scenes\":[",
+            "\"scenes\":[{\"lead\":\"配图场景验证\",\"body\":\"这一段应当带一张配图。\",\"duration_s\":10,"
+                + "\"scene_type\":\"image\",\"visual\":{\"layout\":\"image_with_context\","
+                + "\"assets\":[{\"asset_id\":\"img_0\",\"source_url\":\"https://example.com/photo.jpg\"}]}},");
+
+        NewsSourceFetcher stubFetcher = new NewsSourceFetcher(null, null, new HeronNewsProperties()) {
+            @Override
+            public java.util.Optional<byte[]> fetchImage(java.net.URI url) {
+                return java.util.Optional.of(tinyPng());
+            }
+        };
+        NewsProductionPipeline pipeline = new NewsProductionPipeline(
+            fixedAuthor(script), new ProductionProcessService(properties,
+            new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties,
+            (run, stage, progress) -> true, null, null, null, passingReview(), stubFetcher);
+
+        ProductionRunVo run = new ProductionRunVo(7002L, ProductionBizType.news_video, 10L, 5L, 1,
+            UUID.randomUUID().toString(), lockedAssets(template), null);
+        ProductionResultVo result = pipeline.execute(run);
+
+        // 配图必须真的落到工作目录并被模板引用
+        Path varsFile = findFile(dataRoot, "vars.json");
+        assertTrue(varsFile != null, "应当生成 vars.json");
+        String varsJson = Files.readString(varsFile);
+        assertTrue(varsJson.contains("scene1_image"), "vars 里应有 scene1_image：" + varsJson);
+        assertFalse(varsJson.contains("scene1_image\": \"\""), "scene1_image 不该是空串");
+        assertTrue(findFile(dataRoot, "scene1.png") != null || findFile(dataRoot, "scene1.jpg") != null,
+            "配图文件应当已经下载到工作目录");
+
+        JsonNode content = JSON.readTree(result.resultJson());
+        JsonNode visual = find(content.path("checks"), "visual");
+        assertEquals(0, visual.path("measured").path("blankFrames").asInt(), "带图场景不该出现空白帧");
+    }
+
+    /** 1×1 PNG：足够让模板的 img 有内容，又不让测试体积变大。 */
+    private static byte[] tinyPng() {
+        return java.util.Base64.getDecoder().decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+    }
+
+    /** 产物目录层级由生产域决定，这里按文件名递归找，避免把布局写死在测试里。 */
+    private static Path findFile(Path root, String name) throws Exception {
+        if (!Files.isDirectory(root)) {
+            return null;
+        }
+        try (var stream = Files.walk(root)) {
+            return stream.filter(Files::isRegularFile)
+                .filter(p -> p.getFileName().toString().equals(name))
+                .findFirst().orElse(null);
+        }
+    }
+
+    private static JsonNode find(JsonNode checks, String gate) {        for (JsonNode item : checks) {
             if (gate.equals(item.path("gate").asString(""))) {
                 return item;
             }
@@ -135,7 +214,17 @@ class NewsProductionPipelineRenderTest {
     }
 
     private static NewsScriptAuthor fixedAuthor(String script) {
-        return run -> script;
+        return new NewsScriptAuthor() {
+            @Override
+            public String author(ProductionRunVo run) {
+                return script;
+            }
+
+            @Override
+            public String repair(ProductionRunVo run, String scriptJson, List<String> notes) {
+                return script;
+            }
+        };
     }
 
     /** 审稿不是这些用例的被测对象，一律放行。 */
@@ -143,6 +232,11 @@ class NewsProductionPipelineRenderTest {
         return new EditorialReviewer(null) {
             @Override
             public EditorialReviewer.Verdict review(ProductionRunVo run, String scriptJson, String factsJson) {
+                return new EditorialReviewer.Verdict("PASS", List.of(), List.of());
+            }
+
+            @Override
+            public EditorialReviewer.Verdict reviewEvidence(ProductionRunVo run, String scriptJson, String evidenceJson) {
                 return new EditorialReviewer.Verdict("PASS", List.of(), List.of());
             }
         };

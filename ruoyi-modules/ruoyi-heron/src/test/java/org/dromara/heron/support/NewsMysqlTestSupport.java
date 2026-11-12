@@ -55,6 +55,11 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
             Path autoDdl = Path.of("../../script/sql/heron/006-news-auto.sql");
             if (!Files.isRegularFile(autoDdl)) autoDdl = Path.of("script/sql/heron/006-news-auto.sql");
             ScriptUtils.executeSqlScript(connection, new FileSystemResource(autoDdl));
+            // 002 之后的新列（审稿结论）同样要建起来，否则实体多一个字段就整批 SQL 报未知列
+            Path reviewDdl = Path.of("../../script/sql/heron/027-editorial-review.sql");
+            if (!Files.isRegularFile(reviewDdl)) reviewDdl = Path.of("script/sql/heron/027-editorial-review.sql");
+            ScriptUtils.executeSqlScript(connection, new FileSystemResource(reviewDdl));
+            ScriptUtils.executeSqlScript(connection, metricDdl());
         }
         var factory = (DefaultListableBeanFactory) context.getBeanFactory();
         factory.destroySingleton("newsProductionPipeline");
@@ -73,6 +78,13 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         grantNews(OWNER);
         grantNews(OTHER);
         loginAs(OWNER);
+    }
+
+    /** 表现表：002 里没有，选题器与归因都读它。 */
+    private static FileSystemResource metricDdl() {
+        Path ddl = Path.of("../../script/sql/heron/007-news-metric.sql");
+        if (!Files.isRegularFile(ddl)) ddl = Path.of("script/sql/heron/007-news-metric.sql");
+        return new FileSystemResource(ddl);
     }
 
     protected void grantNews(long actor) {
@@ -121,8 +133,16 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         ProductionRunVo run = execution.claim(ProductionBizType.news_video).orElseThrow();
         List<ProductionArtifactVo> files = fixtureFiles(run);
         String checks = checksJson();
-        String result = JsonUtils.toJsonString(Map.of("script", JsonUtils.parseObject(scriptJson(), Object.class),
-            "checks", JsonUtils.parseObject(checks, Object.class), "durationMs", 1000));
+        // 审稿记录现在是自动发布的必备条件，fixture 必须给一份干净的 PASS
+        String review = JsonUtils.toJsonString(Map.of(
+            "schemaVersion", "1.0", "result", "PASS",
+            "issues", List.of(), "repairAttempts", 0,
+            "promptVersion", "episode-review", "reviewedAt", "2026-11-12T00:00:00"));
+        String result = JsonUtils.toJsonString(Map.of(
+            "script", JsonUtils.parseObject(scriptJson(), Object.class),
+            "checks", JsonUtils.parseObject(checks, Object.class),
+            "editorialReview", JsonUtils.parseObject(review, Object.class),
+            "durationMs", 1000));
         org.junit.jupiter.api.Assertions.assertTrue(execution.succeed(run, new ProductionResultVo(files, result)));
         return new Completed(work.getWorkId(), receipt.versionId(), files);
     }

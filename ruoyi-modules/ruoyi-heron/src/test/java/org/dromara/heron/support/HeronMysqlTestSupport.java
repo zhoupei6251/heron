@@ -93,6 +93,7 @@ public abstract class HeronMysqlTestSupport {
                 statement.execute("DROP TABLE IF EXISTS heron_production_lane");
                 statement.execute("DROP TABLE IF EXISTS heron_test_version");
                 statement.execute("DROP TABLE IF EXISTS heron_test_object");
+                statement.execute("DROP TABLE IF EXISTS heron_news_metric");
             }
             ScriptUtils.executeSqlScript(connection, new FileSystemResource(productionDdl()));
             try (Statement statement = connection.createStatement()) {
@@ -124,10 +125,14 @@ public abstract class HeronMysqlTestSupport {
                     """);
             }
             ScriptUtils.executeSqlScript(connection, new ClassPathResource("production-fixture.sql"));
+            extendSchema(connection);
         } catch (SQLException e) {
             throw new IllegalStateException("初始化隔离测试库失败", e);
         }
     }
+
+    /** 子类在这里建自己的表；在 production DDL 与 fixture 之后执行，顺序确定。 */
+    protected void extendSchema(Connection connection) throws SQLException { }
 
     protected void clearProductionData() {
         jdbc.update("DELETE FROM heron_usage_record");

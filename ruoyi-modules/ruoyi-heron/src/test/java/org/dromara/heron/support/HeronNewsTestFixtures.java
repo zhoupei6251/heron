@@ -23,7 +23,7 @@ public class HeronNewsTestFixtures implements NewsTransport, NewsTransport.Resol
     private int connections;
 
     public void reply(String url, int status, String location, String encoding, String body) {
-        replies.put(url, new NewsTransport.Response(status, location, encoding, body.getBytes(StandardCharsets.UTF_8)));
+        replies.put(url, new NewsTransport.Response(status, location, encoding, null, body.getBytes(StandardCharsets.UTF_8)));
     }
 
     public void fail(String url) {
@@ -32,7 +32,7 @@ public class HeronNewsTestFixtures implements NewsTransport, NewsTransport.Resol
 
     /** 兜底应答：只用于不关心内容、只关心租约与调度事实的用例。 */
     public void replyAll(String body) {
-        wildcard = new NewsTransport.Response(200, null, null, body.getBytes(StandardCharsets.UTF_8));
+        wildcard = new NewsTransport.Response(200, null, null, null, body.getBytes(StandardCharsets.UTF_8));
     }
 
     public int connections() {
