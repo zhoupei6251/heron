@@ -10,6 +10,7 @@ import org.dromara.heron.service.impl.DatasetRouter;
 import org.dromara.heron.service.impl.DatasetScriptAuthor;
 import org.dromara.heron.service.impl.NewsSourceFetcher;
 import org.dromara.heron.service.impl.EditorialReviewer;
+import org.dromara.heron.service.impl.FrozenContextService;
 import org.dromara.heron.service.impl.NewsProductionPipeline;
 import org.dromara.heron.service.impl.OpenAiModelClient;
 import org.dromara.heron.service.impl.ProtoProductionDomain;
@@ -86,9 +87,10 @@ public class HeronProductionConfiguration {
                                                          DatasetFetchService datasetFetch,
                                                          DatasetScriptAuthor datasetAuthor,
                                                          EditorialReviewer reviewer,
-                                                         NewsSourceFetcher newsSourceFetcher) {
+                                                         NewsSourceFetcher newsSourceFetcher,
+                                                         FrozenContextService frozenContexts) {
         return new NewsProductionPipeline(author, processes, artifacts, properties, execution::beginStage,
-            datasetRouter, datasetFetch, datasetAuthor, reviewer, newsSourceFetcher);
+            datasetRouter, datasetFetch, datasetAuthor, reviewer, newsSourceFetcher, frozenContexts);
     }
 
     /**

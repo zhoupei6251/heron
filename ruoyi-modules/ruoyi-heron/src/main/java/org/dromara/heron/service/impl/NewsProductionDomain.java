@@ -38,6 +38,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     private static final Set<String> DATA_GATES = Set.of("schema", "evidence", "data", "audio", "subtitles", "render",
         "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
     private final HeronNewsCandidateMapper candidateMapper;
+    private final FrozenContextService contexts;
     private final HeronNewsWorkMapper workMapper;
     private final HeronVideoVersionMapper versionMapper;
     private final HeronDatasetUsageMapper datasetUsageMapper;
@@ -102,7 +103,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         if (work.getNextVersion() == Integer.MAX_VALUE) throw conflict("version_limit", "版本序号已达上限");
         long versionId = IdUtil.getSnowflakeNextId();
         Map<String, Object> snapshot = new TreeMap<>();
-        snapshot.put("schemaVersion", "1.0");
+        snapshot.put("schemaVersion", FrozenContext.SCHEMA);
         snapshot.put("workId", work.getWorkId());
         snapshot.put("candidateId", candidate.getCandidateId());
         snapshot.put("versionNo", work.getNextVersion());
@@ -119,8 +120,11 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             snapshot.put("editorial", editorialNode(work, command));
             snapshot.put("selection", selectionNode(selection));
         }
-        String input = JsonUtils.toJsonString(canonical(snapshot));
+        // 冻结：内容与 hash 先落独立上下文行，版本与任务再引用同一份字节。
+        // 三个地方（context / version / task）字节相同，谁被改都能立刻发现。
+        String input = JsonUtils.toJsonString(FrozenContext.canonical(snapshot));
         boundedJson(input);
+        contexts.freeze(work.getWorkId(), versionId, taskId, work.getNextVersion(), actorId, input);
         HeronVideoVersion version = new HeronVideoVersion();
         version.setVersionId(versionId);
         version.setWorkId(work.getWorkId());
@@ -517,16 +521,6 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             throw new HeronBusinessException(503, "news_assets_unavailable", "选择的模板或声音尚未验证");
         }
         return asset;
-    }
-
-    private Object canonical(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> ordered = new TreeMap<>();
-            map.forEach((key, item) -> ordered.put(key.toString(), canonical(item)));
-            return ordered;
-        }
-        if (value instanceof List<?> list) return list.stream().map(this::canonical).toList();
-        return value;
     }
 
     private void boundedJson(String json) {

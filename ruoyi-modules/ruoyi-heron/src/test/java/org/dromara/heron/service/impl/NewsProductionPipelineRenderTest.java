@@ -75,7 +75,8 @@ class NewsProductionPipelineRenderTest {
             fixedAuthor(SCRIPT), new ProductionProcessService(properties,
             new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties,
             (run, stage, progress) -> true, null, null, null, passingReview(),
-            new NewsSourceFetcher(null, null, new HeronNewsProperties()));
+            new NewsSourceFetcher(null, null, new HeronNewsProperties()),
+            org.mockito.Mockito.mock(FrozenContextService.class));
 
         ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_video, 10L, 5L, 1,
             UUID.randomUUID().toString(), lockedAssets(template), null);
@@ -153,7 +154,8 @@ class NewsProductionPipelineRenderTest {
         NewsProductionPipeline pipeline = new NewsProductionPipeline(
             fixedAuthor(script), new ProductionProcessService(properties,
             new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties,
-            (run, stage, progress) -> true, null, null, null, passingReview(), stubFetcher);
+            (run, stage, progress) -> true, null, null, null, passingReview(), stubFetcher,
+            org.mockito.Mockito.mock(FrozenContextService.class));
 
         ProductionRunVo run = new ProductionRunVo(7002L, ProductionBizType.news_video, 10L, 5L, 1,
             UUID.randomUUID().toString(), lockedAssets(template), null);

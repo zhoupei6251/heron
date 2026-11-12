@@ -45,7 +45,7 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         resetSchema();
         clearProductionData();
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
-            for (String table : List.of("heron_auto_slot", "heron_video_version", "heron_news_work", "heron_news_candidate", "heron_news_source")) {
+            for (String table : List.of("heron_auto_slot", "heron_video_version", "heron_news_work", "heron_news_candidate", "heron_news_source", "heron_production_context")) {
                 statement.execute("DROP TABLE IF EXISTS " + table);
             }
             Path ddl = Path.of("../../script/sql/heron/002-news.sql");
@@ -59,6 +59,10 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
             Path reviewDdl = Path.of("../../script/sql/heron/027-editorial-review.sql");
             if (!Files.isRegularFile(reviewDdl)) reviewDdl = Path.of("script/sql/heron/027-editorial-review.sql");
             ScriptUtils.executeSqlScript(connection, new FileSystemResource(reviewDdl));
+            // 冻结上下文表：生产提交时写入，执行前校验
+            Path contextDdl = Path.of("../../script/sql/heron/028-production-context.sql");
+            if (!Files.isRegularFile(contextDdl)) contextDdl = Path.of("script/sql/heron/028-production-context.sql");
+            ScriptUtils.executeSqlScript(connection, new FileSystemResource(contextDdl));
             ScriptUtils.executeSqlScript(connection, metricDdl());
         }
         var factory = (DefaultListableBeanFactory) context.getBeanFactory();

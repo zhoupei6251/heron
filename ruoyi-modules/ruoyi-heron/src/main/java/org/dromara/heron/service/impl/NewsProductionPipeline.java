@@ -82,12 +82,14 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private final DatasetScriptAuthor datasetAuthor;
     private final EditorialReviewer reviewer;
     private final NewsSourceFetcher fetcher;
+    private final FrozenContextService contexts;
 
     public NewsProductionPipeline(NewsScriptAuthor author, ProductionProcessService processes,
                                   ProductionArtifactService artifacts, HeronProductionProperties properties,
                                   ProductionStageReporter stages, DatasetRouter router,
                                   DatasetFetchService datasets, DatasetScriptAuthor datasetAuthor,
-                                  EditorialReviewer reviewer, NewsSourceFetcher fetcher) {
+                                  EditorialReviewer reviewer, NewsSourceFetcher fetcher,
+                                  FrozenContextService contexts) {
         this.author = author;
         this.processes = processes;
         this.artifacts = artifacts;
@@ -98,11 +100,21 @@ public class NewsProductionPipeline implements IProductionPipeline {
         this.datasetAuthor = datasetAuthor;
         this.reviewer = reviewer;
         this.fetcher = fetcher;
+        this.contexts = contexts;
+    }
+
+    /**
+     * 冻结输入的读取口径：有上下文行的任务必须与冻结 hash 吻合，没有的是迁移前的老任务。
+     * 校验失败在这里就抛，不会走到任何取数/写稿步骤。
+     */
+    private JsonNode frozenInput(ProductionRunVo run) {
+        contexts.verify(run.taskId(), run.inputJson());
+        return JSON.readTree(run.inputJson());
     }
 
     @Override
     public ProductionResultVo execute(ProductionRunVo run) {
-        JsonNode input = JSON.readTree(run.inputJson());
+        JsonNode input = frozenInput(run);
         List<Gate> gates = new ArrayList<>();
         // 阶段回报只给操作员看进度；租约已易主时返回 false，交给 runner 收尾，这里不因此失败。
         boolean dataBoard = "data_board".equals(input.path("kind").asString(""));
