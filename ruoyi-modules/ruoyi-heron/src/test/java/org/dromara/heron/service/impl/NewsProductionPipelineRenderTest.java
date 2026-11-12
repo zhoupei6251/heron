@@ -94,7 +94,7 @@ class NewsProductionPipelineRenderTest {
             kinds.stream().sorted().toList());
 
         JsonNode checks = content.path("checks");
-        assertEquals(10, checks.size(), checks.toString());
+        assertEquals(11, checks.size(), checks.toString());
         for (JsonNode gate : checks) {
             assertTrue(gate.path("passed").asBoolean(), gate.path("gate").asString("") + " 未通过");
             assertTrue(gate.path("measured").size() > 0, gate.path("gate").asString("") + " 没有实测值");

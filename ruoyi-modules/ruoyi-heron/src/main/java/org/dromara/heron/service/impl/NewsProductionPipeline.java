@@ -115,7 +115,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         String scriptJson;
         ReviewOutcome review;
         if (dataBoard) {
-            DatasetRouter.Route route = router.route(run, input);
+            DatasetRouter.Route route = frozenRoute(run, input);
             fetched = datasets.fetch(run, route.sourceKey(), input.path("limit").asInt(30));
             dataset = JSON.readTree(fetched.json());
             gates.add(dataGate(fetched, dataset));
@@ -145,6 +145,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
             ? dataTemplateVariables(renderScript, dataset)
             : templateVariables(renderScript, images));
         gates.add(assetsGate(composition, input.path("assets"), templateDir));
+        gates.add(sceneTypeGate(script, templateDir));
 
         Path voice = composition.resolve(VOICE_FILE);
         stages.beginStage(run, "voice", 25);
@@ -199,6 +200,62 @@ public class NewsProductionPipeline implements IProductionPipeline {
     // ---------- 十道闸 ----------
 
     private record Gate(String gate, String inputLocator, String reason, Map<String, Object> measured) { }
+
+    /**
+     * 场景类型必须落在模板声明的能力里。
+     *
+     * <p>模板声明 supportedSceneTypes 是承诺，不是愿望清单：模型选了模板渲染不了的
+     * 类型，画面和稿子就会对不上。这里在渲染前拦住，而不是渲完才发现。
+     * 没有 scene_type 的段落不参与判定——那是 v1 稿，本来就只有文字。
+     */
+    static Gate sceneTypeGate(JsonNode script, Path templateDir) {
+        java.util.Set<String> supported = supportedSceneTypes(templateDir);
+        if (supported.isEmpty()) {
+            // 没声明能力就不做类型约束：空集是「未声明」，不是「什么都不支持」
+            Map<String, Object> none = new TreeMap<>();
+            none.put("declared", 0);
+            return new Gate("scene_type", "template.json",
+                "模板未声明场景能力，不做类型约束", none);
+        }
+        List<String> unsupported = new ArrayList<>();
+        for (JsonNode scene : script.path("scenes")) {
+            String type = scene.path("scene_type").asString("");
+            if (!type.isBlank() && !supported.contains(type)) {
+                unsupported.add(type);
+            }
+        }
+        if (!unsupported.isEmpty()) {
+            throw new HeronBusinessException(409, "scene_type_unsupported",
+                "模板 " + templateDir.getFileName() + " 不支持场景类型：" + String.join("、", unsupported)
+                    + "（声明支持：" + String.join("、", supported) + "）");
+        }
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("declared", supported.size());
+        return new Gate("scene_type", "template.json",
+            "场景类型必须落在模板声明的能力里", measured);
+    }
+
+    /** 模板没写 supportedSceneTypes 时返回空集，表示不做类型约束（老模板）。 */
+    @SuppressWarnings("unchecked")
+    private static java.util.Set<String> supportedSceneTypes(Path templateDir) {
+        Path meta = templateDir.resolve("template.json");
+        if (!java.nio.file.Files.isRegularFile(meta)) {
+            return java.util.Set.of();
+        }
+        try {
+            JsonNode node = JSON.readTree(java.nio.file.Files.readString(meta, java.nio.charset.StandardCharsets.UTF_8));
+            JsonNode types = node.path("supportedSceneTypes");
+            if (!types.isArray() || types.isEmpty()) {
+                return java.util.Set.of();
+            }
+            java.util.Set<String> out = new java.util.LinkedHashSet<>();
+            types.forEach(item -> out.add(item.asString("")));
+            return out;
+        } catch (RuntimeException | java.io.IOException e) {
+            // 读不到能力声明不阻断：模板本身仍由 LOCK 与版式闸判定
+            return java.util.Set.of();
+        }
+    }
 
     private static Gate contractGate(JsonNode script, JsonNode dataset, boolean dataBoard) {
         List<String> violations = dataBoard
@@ -268,6 +325,35 @@ public class NewsProductionPipeline implements IProductionPipeline {
             quote.put("fetchedAt", item.path("fetchedAt").asString(""));
         }
         return quotes.toString();
+    }
+
+    /**
+     * 数据源只读冻结值。线内编辑在认领前已经选过并写进 selection，这里再问一次模型
+     * 就会出现「快照记的是 A、片子用的是 B」——决策等于没冻结。
+     *
+     * <p>老快照没有 selection 节点（手工认领或升级前的版本），才退回路由，
+     * 保证历史作品仍可重渲。这是兼容分支，不是默认路径。
+     */
+    private DatasetRouter.Route frozenRoute(ProductionRunVo run, JsonNode input) {
+        DatasetRouter.Route frozen = frozenSelection(input);
+        if (frozen != null) {
+            return frozen;
+        }
+        log.warn("快照缺少 selection.dataSourceKey，退回路由选择（旧版本兼容）");
+        return router.route(run, input);
+    }
+
+    /**
+     * 纯判定：快照里有 selection 就返回它，没有返回 null 表示要走兼容回退。
+     * 单独抽出来是为了能直接断言「生产读的是冻结值」，不必真渲染一遍。
+     */
+    static DatasetRouter.Route frozenSelection(JsonNode input) {
+        JsonNode selection = input.path("selection");
+        String sourceKey = selection.path("dataSourceKey").asString("");
+        if (sourceKey.isBlank()) {
+            return null;
+        }
+        return new DatasetRouter.Route(sourceKey, selection.path("digest").asBoolean(false));
     }
 
     private static Gate datasetEvidenceGate(JsonNode dataset) {
@@ -674,6 +760,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
             // 模板为每个场景都声明了 data-var-src，--strict-variables 要求全部有值。
             // 无图的场景给空串，模板的 has-image 判断据此保持关闭。
             vars.put("scene" + (index + 1) + "_image", images.getOrDefault(String.valueOf(index + 1), ""));
+            // 场景类型是渲染信号，不只是契约层的分类：模板按它切换版式变体
+            vars.put("scene" + (index + 1) + "_type", scene.path("scene_type").asString(""));
         }
         return JSON.writeValueAsString(vars);
     }
