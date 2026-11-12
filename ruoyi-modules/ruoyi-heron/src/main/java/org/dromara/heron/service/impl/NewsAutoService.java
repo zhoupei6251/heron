@@ -191,14 +191,23 @@ public class NewsAutoService {
         slotMapper.lambda().set(HeronAutoSlot::getCandidateId, picked.selection().candidateId())
             .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
             .eq(HeronAutoSlot::getSlotTime, slot.getSlotTime()).update();
+        NewsWorkVo work = null;
         try {
-            NewsWorkVo work = newsWork.claimForAuto(picked.selection(), news.getAutoActorId());
+            work = newsWork.claimForAuto(picked.selection(), news.getAutoActorId());
             newsWork.generateForAuto(work.getWorkId(), "auto:" + today + ":" + slotTime, decision, picked.selection());
             finish(slot, "produced", picked.finalLine() + "：" + decision.editorialIntent(), work.getWorkId());
         } catch (RuntimeException e) {
             // 失败留痕即可；下一槽位会重新挑，不跨槽位补发
             log.warn("自动产出槽位失败 slot={} {}: {}", slotTime, e.getClass().getSimpleName(), e.getMessage());
             finish(slot, "failed", e.getMessage(), null);
+            // 认领已经落库，提交失败必须把候选放回池子：不释放就再也不会被选中，且不报错
+            if (work != null) {
+                try {
+                    newsWork.abandonAuto(work.getWorkId());
+                } catch (RuntimeException compensation) {
+                    log.warn("自动产出补偿失败 workId={}: {}", work.getWorkId(), compensation.getMessage());
+                }
+            }
         }
     }
 

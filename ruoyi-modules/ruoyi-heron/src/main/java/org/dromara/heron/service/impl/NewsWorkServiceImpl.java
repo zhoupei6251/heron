@@ -173,6 +173,39 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     }
 
     /**
+     * 自动线的补偿：认领成功但提交失败时，把作品与候选从「本次尝试占用」里放出来。
+     *
+     * <p>不释放会怎样：候选的 claimed_by 一直挂着，建池查询过滤 `claimed_by is null`，
+     * 这条候选从此再也不会被选中——失败一次就等于永久拉黑，且没有任何报错。
+     *
+     * <p>只回收「没产出过版本」的作品：已经出过片子的作品不能因为一次重试失败就被清掉认领。
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    public void abandonAuto(long workId) {
+        HeronNewsWork work = workMapper.selectById(workId);
+        if (work == null || work.getCurrentVersionId() != null) {
+            return;
+        }
+        Long candidateId = work.getCandidateId();
+        workMapper.lambda().set(HeronNewsWork::getActiveTaskId, null)
+            .set(HeronNewsWork::getUpdateBy, work.getOwnerId())
+            .set(HeronNewsWork::getUpdateTime, now())
+            .eq(HeronNewsWork::getWorkId, workId)
+            .isNull(HeronNewsWork::getCurrentVersionId).update();
+        if (candidateId == null) {
+            return;
+        }
+        candidateMapper.lambda().set(HeronNewsCandidate::getClaimedBy, null)
+            .set(HeronNewsCandidate::getClaimedAt, null)
+            .set(HeronNewsCandidate::getActiveTaskId, null)
+            .set(HeronNewsCandidate::getUpdateBy, work.getOwnerId())
+            .set(HeronNewsCandidate::getUpdateTime, now())
+            .eq(HeronNewsCandidate::getCandidateId, candidateId)
+            .eq(HeronNewsCandidate::getClaimedBy, work.getOwnerId())
+            .isNull(HeronNewsCandidate::getPublishedAt).update();
+    }
+
+    /**
      * 数据看板线的候选概念是数据集，没有新闻候选可认领。
      * 这里建一条占位候选承载证据与出处，让作品与版本仍挂在同一条链上——
      * shortcut: 占位候选不进入热榜池，靠 publishedAt 由作品发布时回填。
