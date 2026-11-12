@@ -43,10 +43,45 @@
 → Tests run: 251, Failures: 0, Errors: 0, Skipped: 5 — BUILD SUCCESS
 ```
 
-新增已执行：`FrozenArticleServiceTest`(8)、`NewsModelScriptAuthorTest`(3)。
-新增未执行（`@Tag("mysql")`，本机无隔离库凭据）：`ProductionContextTest`(3)、`AutoClaimReleaseTest`(2)。
-这 5 条覆盖的正是「落库 hash 与 MySQL 规范化后一致」「两版上下文串链」「篡改被拒」「补偿释放候选」——
-**只做到编译通过，不算验证过**。
+新增单测：`FrozenArticleServiceTest`(8)、`NewsModelScriptAuthorTest`(3)。
+
+**mysql 集成组（本地隔离库 `heron_it_local`，2026-11-12 已执行）**：
+
+```powershell
+$env:HERON_TEST_MYSQL_URL="jdbc:mysql://localhost:3307/heron_it_local?..."
+.\mvnw.cmd -o -pl ruoyi-modules/ruoyi-heron -am test "-Dheron.test.excludedGroups=exclude,render"
+```
+
+- 修复 `NewsMysqlTestConfiguration`：`@Import` 补 `FrozenContextService` / `FrozenArticleService`
+  （Phase 2/3 给 `NewsProductionDomain` / `NewsModelScriptAuthor` 构造器加的依赖没跟上测试装配，
+  之前整组 ApplicationContext 加载失败、同上下文测试类集体 ERROR）。
+- 修复 `ProductionContextTest.verificationCatchesTamperedSnapshot`：手动生成路径的快照
+  `kind` 恒为 `article`，原用例篡改的 `data_board` 是空操作；改为替换必然存在的值并断言篡改生效。
+- 执行结果：`ProductionContextTest` 3/3、`AutoClaimReleaseTest` 2/2、`NewsWorkTransactionTest` 9/9
+  等在无既有毒化前置时全绿。
+
+### 4.1 已知既有问题：mysql 组的顺序依赖毒化（非本轮引入）
+
+整组按字母序全量跑时，从 `NewsPublishAccessTest` 起所有共享 `NewsMysqlTestConfiguration`
+上下文的类全部以 `Lock wait timeout` 失败（每个用例 50s 超时）。归因结论：
+
+- **基线复现**：在 `9a1fac7e5`（Phase 1 之前、无任何冻结上下文改动的代码）上，
+  最小组合 `NewsDeduplicationTest → NewsDouyinCliPublishTest → NewsPublishAccessTest`
+  同样失败——**既有测试基建问题**，此前只是因为整组从未真正跑起来而没有暴露。
+- **最小触发条件**：`NewsDeduplicationTest`（共享上下文，14 用例）先跑 →
+  `NewsDouyinCliPublishTest`（独立上下文 + `@Primary` 发布替身）后跑 → 之后任何共享上下文的类中招；
+  任一环节缺失则全绿（`{Dedup, MetricXml, Publish}`、`{Douyin, MetricXml, Publish}` 等组合均通过）。
+- **现场特征**（MySQL `performance_schema` 取证）：受害 claim 事务执行到
+  `INSERT INTO heron_news_work` 后停在事务中间（连接 idle、持 lane + 候选行锁、永不提交）；
+  同一 claim 调用的后续 `UPDATE heron_news_candidate` 却落在一条 **autocommit=1 的裸连接**上，
+  等在自己事务的 `SELECT ... FOR UPDATE` 锁上直至 50s 超时。即同一 `@Transactional` 方法内
+  mapper 会话中途与事务绑定脱钩，形似「前序类遗留的挂起事务状态 + 事务同步被 suspend 后未 resume」。
+- **临时规避**：避免 `NewsDeduplicationTest` 与 `NewsDouyinCliPublishTest` 相邻执行
+  （如 `-Dtest` 显式排除或调整顺序）；根治需要排查 `NewsDeduplicationTest` 收尾时
+  main 线程上遗留的事务同步状态，属独立工作项。
+
+另：`HeronMenuSeedTest.seedAppliesIdempotentlyOnRealSysMenu` 断言「权限标识重复」失败，
+与毒化无关，同属既有问题（种子数据里存在重复权限标识），待单独处理。
 
 ## 5. 明确没做的部分
 
