@@ -19,6 +19,8 @@ public class NewsVideoVersionVo implements Serializable {
     private String inputSnapshot;
     private String script;
     private String checks;
+    /** AI 审稿结论；自动发布只认这里的 PASS，null 表示没审过。 */
+    private String editorialReview;
     private Long durationMs;
     private String reviewStatus;
     private Long reviewBy;

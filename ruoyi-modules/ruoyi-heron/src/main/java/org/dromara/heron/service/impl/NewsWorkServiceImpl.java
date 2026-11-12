@@ -25,6 +25,7 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.JsonNode;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -155,6 +156,41 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         return claimAs(candidateId, actor, true, null);
     }
 
+    /**
+     * 自动线认领：候选、模板、数据源、叙事角度来自同一次线内编辑，
+     * 认领只是把它们落成一个作品，不再自己挑任何东西。
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    public NewsWorkVo claimForAuto(EditorialSelection selection, long actor) {
+        long candidateId = selection.candidateId() != null
+            ? selection.candidateId()
+            : placeholderCandidate(selection, actor);
+        return claimAs(candidateId, actor, true, selection.templateId());
+    }
+
+    /**
+     * 数据看板线的候选概念是数据集，没有新闻候选可认领。
+     * 这里建一条占位候选承载证据与出处，让作品与版本仍挂在同一条链上——
+     * shortcut: 占位候选不进入热榜池，靠 publishedAt 由作品发布时回填。
+     */
+    private long placeholderCandidate(EditorialSelection selection, long actor) {
+        HeronNewsCandidate placeholder = new HeronNewsCandidate();
+        placeholder.setCandidateId(IdUtil.getSnowflakeNextId());
+        placeholder.setTitle("数据看板 · " + selection.dataSourceKey());
+        placeholder.setSummary("数据看板线由数据集驱动，非新闻候选");
+        placeholder.setEvidence(JsonUtils.toJsonString(java.util.Map.of("items", java.util.List.of())));
+        placeholder.setHitCount(1L);
+        placeholder.setHeatScore(0L);
+        placeholder.setFirstSeenAt(now());
+        placeholder.setLastSeenAt(now());
+        placeholder.setCreateBy(actor);
+        placeholder.setUpdateBy(actor);
+        placeholder.setCreateTime(now());
+        placeholder.setUpdateTime(now());
+        if (candidateMapper.insert(placeholder) != 1) throw conflict("claim_failed", "数据看板候选创建失败");
+        return placeholder.getCandidateId();
+    }
+
     /** 总编辑已定线时由调用方给死模板，覆盖配置里的默认模板。 */
     @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
     public NewsWorkVo claimForAuto(long candidateId, long actor, String templateKey) {
@@ -259,12 +295,15 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         return production.submit(new ProductionSubmitBo(TYPE, workId, bo.requestKey(), bo.expectedRevision()));
     }
 
-    /** 自动模式提交：跳过对象级权限校验，请求键由槽位决定，重复触发由生产层幂等拦。 */
-    public ProductionReceiptVo generateForAuto(long workId, String requestKey) {
+    /** 自动模式提交：跳过对象级权限校验，决策与选择随提交一起进快照。 */
+    public ProductionReceiptVo generateForAuto(long workId, String requestKey,
+                                               EditorialDecisionService.Decision decision,
+                                               EditorialSelection selection) {
         HeronNewsWork work = workMapper.selectById(workId);
         if (work == null) throw new HeronAccessException();
         if (requestKey == null || !requestKey.matches("[a-zA-Z0-9._:-]{1,64}")) throw invalid("生成请求不合法");
-        return production.submit(new ProductionSubmitBo(TYPE, workId, requestKey, work.getRevision()));
+        return production.submit(new ProductionSubmitBo(TYPE, workId, requestKey, work.getRevision(),
+            decision, selection));
     }
 
     @Override
@@ -413,14 +452,60 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     public NewsVideoVersionVo confirmForAuto(long workId, long versionId, long actor) {
         HeronVideoVersion version = versionMapper.selectById(versionId);
         if (version == null) throw new HeronAccessException();
+        requireEditorialPass(version);
         List<ProductionArtifactVo> files = readyFiles(version);
         NewsReviewBo bo = new NewsReviewBo("approved", byKind(files, "contact_sheet").sha256(),
             byKind(files, "mp4").sha256(), null);
         return confirmAs(workId, versionId, bo, actor, true);
     }
 
-    private NewsVideoVersionVo confirmAs(long workId, long versionId, NewsReviewBo bo, long actor, boolean system) {
-        NewsVideoVersionVo reviewed = reviewAs(workId, versionId, bo, actor, system);
+    /**
+     * 自动发布只认落盘的审稿 PASS。没有这条记录就是没审过：历史版本、审稿异常、
+     * 只调过审稿但没写回，一律不允许自动发布。fail closed 而不是 fail open，
+     * 因为没有记录就无法证明审稿发生过。
+     */
+    private void requireEditorialPass(HeronVideoVersion version) {
+        checkEditorialPass(version.getEditorialReview());
+    }
+
+    /**
+     * 自动发布只认落盘的审稿 PASS。没有这条记录就是没审过：历史版本、审稿异常、
+     * 只调过审稿但没写回，一律不允许自动发布。fail closed 而不是 fail open，
+     * 因为没有记录就无法证明审稿发生过。
+     */
+    static void checkEditorialPass(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new HeronBusinessException(409, "review_required", "该版本没有 AI 审稿记录，不能自动发布");
+        }
+        JsonNode record;
+        try {
+            // 用本地 mapper 而不是 JsonUtils：门禁要在纯单测里可验，不能依赖 Spring 上下文
+            record = tools.jackson.databind.json.JsonMapper.builder().build().readTree(raw);
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(409, "review_invalid", "AI 审稿记录无法解析，不能自动发布");
+        }
+        if (record == null || !record.isObject()) {
+            throw new HeronBusinessException(409, "review_invalid", "AI 审稿记录结构不合法，不能自动发布");
+        }
+        // 只判非空会被一个 {} 绕过，必须逐项校验
+        String result = record.path("result").asString("");
+        if (!"PASS".equals(result)) {
+            throw new HeronBusinessException(409, "review_not_passed", "AI 审稿结论为 " + result + "，不能自动发布");
+        }
+        JsonNode issues = record.path("issues");
+        if (!issues.isArray() && !issues.isMissingNode()) {
+            throw new HeronBusinessException(409, "review_invalid", "AI 审稿记录的问题清单不合法");
+        }
+        for (JsonNode issue : issues) {
+            String severity = issue.path("severity").asString("");
+            if ("BLOCKER".equals(severity) || "MAJOR".equals(severity)) {
+                throw new HeronBusinessException(409, "review_not_passed",
+                    "AI 审稿仍带 " + severity + "，不能自动发布");
+            }
+        }
+    }
+
+    private NewsVideoVersionVo confirmAs(long workId, long versionId, NewsReviewBo bo, long actor, boolean system) {        NewsVideoVersionVo reviewed = reviewAs(workId, versionId, bo, actor, system);
         if (bo == null || !"approved".equals(bo.decision())) {
             return reviewed;
         }

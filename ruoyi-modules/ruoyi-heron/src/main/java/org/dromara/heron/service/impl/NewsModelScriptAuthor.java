@@ -7,6 +7,7 @@ import org.dromara.heron.service.NewsScriptAuthor;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
@@ -50,6 +51,25 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
         return JSON.writeValueAsString(script);
     }
 
+    /** 审稿判 BLOCKER/MAJOR 后的定向修复：只改被点出的问题，其余字段原样保留。 */
+    public String repair(ProductionRunVo run, String scriptJson, List<String> notes) {
+        JsonNode input = JSON.readTree(run.inputJson());
+        NewsArticleBody article = fetcher.fetchArticle(sourceUrl(input));
+        ObjectNode script = withEvidence(
+            parse(model.chat(run, "script-repair", SYSTEM, reviewRepairPrompt(scriptJson, notes))), article);
+        List<String> violations = NewsScriptContract.violations(script);
+        if (!violations.isEmpty()) {
+            throw new HeronBusinessException(409, "news_script_contract", "修复稿仍未过契约：" + String.join("；", violations));
+        }
+        return JSON.writeValueAsString(script);
+    }
+
+    private static String reviewRepairPrompt(String scriptJson, List<String> notes) {
+        return "上一版稿件没有通过审稿，问题如下：\n- " + String.join("\n- ", notes)
+            + "\n只修改被点出的问题，其余字段与数字原样保留，输出完整 JSON。\n"
+            + "上一版稿件：\n" + scriptJson;
+    }
+
     /** 出处事实由抓取覆盖，模型自述一律不采信。 */
     private static ObjectNode withEvidence(JsonNode draft, NewsArticleBody article) {
         ObjectNode script = (ObjectNode) draft;
@@ -83,11 +103,13 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
     }
 
     private static String prompt(JsonNode input, NewsArticleBody article) {
+        ArrayNode images = ArticleImages.extract(article.html(), article.url());
         return new StringBuilder()
             .append("标题：").append(input.path("title").asString("")).append('\n')
             .append("草稿：").append(input.path("draft").asString("")).append('\n')
             .append("出处：").append(article.url()).append("（抓取时间 ").append(article.fetchedAt()).append("）\n")
             .append("正文 HTML：\n").append(article.html()).append('\n')
+            .append(ArticleImages.promptHint(images)).append('\n')
             .append("只用上面正文里能站住的事实，按契约输出完整稿件 JSON。").toString();
     }
 

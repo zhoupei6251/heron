@@ -21,6 +21,8 @@ public class HeronVideoVersion extends BaseEntity {
     private String script;
     private String artifactManifest;
     private String checks;
+    /** AI 审稿结论（JSON）。自动发布只认这里记录的 PASS，不认「曾经调过审稿」。 */
+    private String editorialReview;
     private Long durationMs;
     private String reviewStatus;
     private Long reviewBy;

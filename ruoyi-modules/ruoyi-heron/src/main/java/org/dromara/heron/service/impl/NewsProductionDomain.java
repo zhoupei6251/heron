@@ -61,6 +61,30 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         return work.getOwnerId();
     }
 
+    /** 总编辑判断：线、意图、理由，以及提示词版本，便于回溯「当时为什么这么选」。 */
+    private static Map<String, Object> editorialNode(HeronNewsWork work, ProductionSubmitBo command) {
+        Map<String, Object> editorial = new LinkedHashMap<>();
+        editorial.put("runKey", work.getCreateTime() == null ? null : work.getCreateTime().toString());
+        editorial.put("line", command.selection().line());
+        editorial.put("editorialIntent", command.editorial().editorialIntent());
+        editorial.put("reason", command.editorial().reason());
+        editorial.put("storyAngle", command.selection().storyAngle());
+        editorial.put("promptVersion", "daily-editor-v1");
+        return editorial;
+    }
+
+    /** 线内编辑结果：具体选了哪条候选、哪个数据集、哪套模板、引用了哪些证据。 */
+    private static Map<String, Object> selectionNode(EditorialSelection selection) {
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("candidateId", selection.candidateId());
+        node.put("dataSourceKey", selection.dataSourceKey());
+        node.put("digest", selection.digest());
+        node.put("templateId", selection.templateId());
+        node.put("storyAngle", selection.storyAngle());
+        node.put("sourceEvidenceIds", selection.sourceEvidenceIds());
+        return node;
+    }
+
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public ProductionReservationVo reserve(ProductionSubmitBo command, long actorId, long taskId) {
@@ -78,6 +102,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         if (work.getNextVersion() == Integer.MAX_VALUE) throw conflict("version_limit", "版本序号已达上限");
         long versionId = IdUtil.getSnowflakeNextId();
         Map<String, Object> snapshot = new TreeMap<>();
+        snapshot.put("schemaVersion", "1.0");
         snapshot.put("workId", work.getWorkId());
         snapshot.put("candidateId", candidate.getCandidateId());
         snapshot.put("versionNo", work.getNextVersion());
@@ -86,8 +111,14 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         snapshot.put("draft", work.getDraft().replace("\r\n", "\n").replace('\r', '\n'));
         snapshot.put("evidence", JsonUtils.parseObject(candidate.getEvidence(), Object.class));
         snapshot.put("assets", assets);
-        snapshot.put("kind", work.getTemplateKey() != null && work.getTemplateKey().startsWith("news-data-")
-            ? "data_board" : "article");
+        // 生产线由线内编辑显式给定，不再从模板名前缀反推：
+        // 反推等于让命名决定业务，改模板名就会改出片逻辑。
+        EditorialSelection selection = command.selection();
+        snapshot.put("kind", selection != null && selection.dataBoard() ? "data_board" : "article");
+        if (command.editorial() != null && selection != null) {
+            snapshot.put("editorial", editorialNode(work, command));
+            snapshot.put("selection", selectionNode(selection));
+        }
         String input = JsonUtils.toJsonString(canonical(snapshot));
         boundedJson(input);
         HeronVideoVersion version = new HeronVideoVersion();
@@ -142,12 +173,17 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         if (!violations.isEmpty()) throw conflict("script_contract", "稿件退回写稿：" + String.join("；", violations));
         String checks = JsonUtils.toJsonString(content.path("checks"));
         validateChecks(checks, dataBoard);
+        // 审稿记录必须随结果一起落库；缺失即视为没审过，自动发布会被门禁挡住
+        JsonNode reviewRecord = content.path("editorialReview");
+        if (!reviewRecord.isObject()) throw conflict("result_invalid", "缺少 AI 审稿记录");
+        String editorialReview = JsonUtils.toJsonString(reviewRecord);
         validateManifest(version, task, result.artifacts(), true);
         String manifest = JsonUtils.toJsonString(result.artifacts());
         boundedJson(manifest);
         verifyReports(result.artifacts(), JsonUtils.toJsonString(content.path("script")), checks);
         int changed = versionMapper.lambda().set(HeronVideoVersion::getScript, JsonUtils.toJsonString(content.path("script")))
             .set(HeronVideoVersion::getArtifactManifest, manifest).set(HeronVideoVersion::getChecks, checks)
+            .set(HeronVideoVersion::getEditorialReview, editorialReview)
             .set(HeronVideoVersion::getDurationMs, content.path("durationMs").asLong())
             .set(HeronVideoVersion::getUpdateBy, task.getActorId()).set(HeronVideoVersion::getUpdateTime, now())
             .eq(HeronVideoVersion::getVersionId, version.getVersionId()).eq(HeronVideoVersion::getTaskId, task.getTaskId())
@@ -391,8 +427,31 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         }
     }
 
-    /** 模板元信息：名字与一句话描述写在模板自己的 template.json 里，加模板不用改代码。 */
-    public record TemplateInfo(String key, String name, String description) {
+    /**
+     * 模板元信息：名字、说明与能力声明都写在模板自己的 template.json 里。
+     * 线上限与场景类型是线内编辑选模板的依据——按名字前缀猜「这条线能用哪套」不算选择。
+     */
+    public record TemplateInfo(String key, String name, String description,
+                               List<String> supportedLines, List<String> supportedSceneTypes,
+                               String aspectRatio, Integer minDuration, Integer maxDuration) {
+
+        /** 只关心名字与描述的调用方（运行回放、提示词摘要）用这个。 */
+        public TemplateInfo(String key, String name, String description) {
+            this(key, name, description, List.of(), List.of(), null, null, null);
+        }
+
+        /** 老模板没写 supportedLines 时按命名前缀推：news-data-* 是看板线，其余是解说线。 */
+        public boolean supports(String line) {
+            if (supportedLines == null || supportedLines.isEmpty()) {
+                boolean dataBoard = key.startsWith("news-data-");
+                return dataBoard == EditorialSelection.DATA_BOARD.equals(line);
+            }
+            return supportedLines.contains(line);
+        }
+
+        public boolean supportsScenes() {
+            return supportedSceneTypes != null && !supportedSceneTypes.isEmpty();
+        }
     }
 
     public List<TemplateInfo> templateCatalog() {
@@ -400,6 +459,11 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         return availableTemplates().stream().map(key -> {
             String name = key;
             String description = "";
+            List<String> lines = List.of();
+            List<String> sceneTypes = List.of();
+            String aspectRatio = null;
+            Integer minDuration = null;
+            Integer maxDuration = null;
             if (root != null) {
                 Path meta = root.toAbsolutePath().normalize().resolve(key).resolve("template.json");
                 if (Files.isRegularFile(meta)) {
@@ -407,13 +471,36 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
                         JsonNode node = JsonUtils.getJsonMapper().readTree(Files.readString(meta, StandardCharsets.UTF_8));
                         name = node.path("name").asString(key);
                         description = node.path("description").asString("");
+                        lines = strings(node.path("supportedLines"));
+                        sceneTypes = strings(node.path("supportedSceneTypes"));
+                        aspectRatio = node.path("aspectRatio").asString("");
+                        JsonNode duration = node.path("recommendedDuration");
+                        if (duration.isObject()) {
+                            minDuration = duration.path("min").isInt() ? duration.path("min").asInt() : null;
+                            maxDuration = duration.path("max").isInt() ? duration.path("max").asInt() : null;
+                        }
                     } catch (IOException | RuntimeException e) {
-                        // 描述只是选择用的辅助信息，读坏了退回模板标识；模板本身仍由 LOCK.json 与闸判定
+                        // 元信息只是选择用的辅助信息，读坏了退回模板标识与空能力；模板本身仍由 LOCK.json 与闸判定
                     }
                 }
             }
-            return new TemplateInfo(key, name, description);
+            return new TemplateInfo(key, name, description, lines, sceneTypes,
+                aspectRatio == null || aspectRatio.isBlank() ? null : aspectRatio, minDuration, maxDuration);
         }).toList();
+    }
+
+    private static List<String> strings(JsonNode node) {
+        if (!node.isArray()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        node.forEach(item -> {
+            String text = item.asString("");
+            if (!text.isBlank()) {
+                values.add(text);
+            }
+        });
+        return List.copyOf(values);
     }
 
     private Path lockFile(String templateKey) {

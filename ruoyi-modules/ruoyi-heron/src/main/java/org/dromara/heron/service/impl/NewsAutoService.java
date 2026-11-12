@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
 import org.dromara.heron.config.HeronNewsProperties;
+import org.dromara.heron.domain.EditorialSelection;
 import org.dromara.heron.domain.HeronAutoSlot;
 import org.dromara.heron.domain.HeronDataSource;
 import org.dromara.heron.domain.HeronNewsCandidate;
@@ -56,6 +57,7 @@ public class NewsAutoService {
     private final NewsCandidateScreener screener;
     private final EditorialDecisionService editorial;
     private final NewsProductionDomain domain;
+    private final EditorialLineEditor lineEditor;
     private final HeronDataSourceMapper dataSourceMapper;
     private final HeronDatasetUsageMapper usageMapper;
     private final Clock clock;
@@ -65,17 +67,17 @@ public class NewsAutoService {
                            HeronNewsCandidateMapper candidateMapper, HeronNewsWorkMapper workMapper,
                            HeronVideoVersionMapper versionMapper, HeronAutoSlotMapper slotMapper,
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
-                           EditorialDecisionService editorial, NewsProductionDomain domain,
+                           EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
                            HeronDataSourceMapper dataSourceMapper, HeronDatasetUsageMapper usageMapper) {
         this(news, sourceMapper, candidateMapper, workMapper, versionMapper, slotMapper, newsWork, pauseStore,
-            screener, editorial, domain, dataSourceMapper, usageMapper, Clock.systemUTC());
+            screener, editorial, domain, lineEditor, dataSourceMapper, usageMapper, Clock.systemUTC());
     }
 
     public NewsAutoService(HeronNewsProperties news, HeronNewsSourceMapper sourceMapper,
                            HeronNewsCandidateMapper candidateMapper, HeronNewsWorkMapper workMapper,
                            HeronVideoVersionMapper versionMapper, HeronAutoSlotMapper slotMapper,
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
-                           EditorialDecisionService editorial, NewsProductionDomain domain,
+                           EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
                            HeronDataSourceMapper dataSourceMapper, HeronDatasetUsageMapper usageMapper,
                            Clock clock) {
         this.news = news;
@@ -89,6 +91,7 @@ public class NewsAutoService {
         this.screener = screener;
         this.editorial = editorial;
         this.domain = domain;
+        this.lineEditor = lineEditor;
         this.dataSourceMapper = dataSourceMapper;
         this.usageMapper = usageMapper;
         this.clock = clock;
@@ -141,35 +144,43 @@ public class NewsAutoService {
             finish(slot, "skipped", "paused", null);
             return;
         }
-        Optional<Long> candidateId = pickCandidate(now);
-        if (candidateId.isEmpty()) {
-            finish(slot, "skipped", "no_candidate", null);
-            return;
-        }
-        EditorialDecisionService.Decision decision;
+        // 先建池，再由总编辑定线，最后线内编辑定素材。顺序不能倒：
+        // 反过来就是「先选出候选，再决定这条候选该走哪条线」。
         EditorialDecisionService.Pools pools;
+        EditorialDecisionService.Decision decision;
         try {
-            pools = pools(candidateId.get(), now);
+            pools = pools(now);
             decision = editorial.decide(pools);
         } catch (RuntimeException e) {
             // 决策失败不产出：宁可空槽，也不按默认线硬发
             finish(slot, "failed", "editorial_decision: " + e.getMessage(), null);
             return;
         }
-        markDecision(slot, decision, candidateId.get(), pools);
-        if (!decision.publish()) {
+        markDecision(slot, decision, pools);        if (!decision.publish()) {
             finish(slot, "skipped", "no_publish: " + decision.reason(), null);
             return;
         }
-        String template = templateFor(decision.selectedLine());
-        if (template == null) {
-            finish(slot, "failed", "no_template_for_" + decision.selectedLine(), null);
+        Optional<EditorialSelection> selection;
+        try {
+            selection = lineEditor.select(decision.selectedLine(), pools, decision.editorialIntent());
+        } catch (RuntimeException e) {
+            finish(slot, "failed", "line_editor: " + e.getMessage(), null);
             return;
         }
+        if (selection.isEmpty()) {
+            // 线内编辑找不到可用素材：不硬做，也不回问总编辑
+            finish(slot, "skipped", "no_fit: " + decision.selectedLine(), null);
+            return;
+        }
+        EditorialSelection picked = selection.get();
+        // 候选在最终选择确定后才记：之前记的是「预选候选」，会与实际生产的那条不符
+        slotMapper.lambda().set(HeronAutoSlot::getCandidateId, picked.candidateId())
+            .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
+            .eq(HeronAutoSlot::getSlotTime, slot.getSlotTime()).update();
         try {
-            NewsWorkVo work = newsWork.claimForAuto(candidateId.get(), news.getAutoActorId(), template);
-            newsWork.generateForAuto(work.getWorkId(), "auto:" + today + ":" + slotTime);
-            finish(slot, "produced", decision.selectedLine() + "：" + decision.editorialIntent(), work.getWorkId());
+            NewsWorkVo work = newsWork.claimForAuto(picked, news.getAutoActorId());
+            newsWork.generateForAuto(work.getWorkId(), "auto:" + today + ":" + slotTime, decision, picked);
+            finish(slot, "produced", picked.line() + "：" + decision.editorialIntent(), work.getWorkId());
         } catch (RuntimeException e) {
             // 失败留痕即可；下一槽位会重新挑，不跨槽位补发
             log.warn("自动产出槽位失败 slot={} {}: {}", slotTime, e.getClass().getSimpleName(), e.getMessage());
@@ -177,16 +188,8 @@ public class NewsAutoService {
         }
     }
 
-    /** 总编辑定的线映射到模板：数据看板取 news-data-*，解说线取其余 news-*。 */
-    private String templateFor(String line) {
-        boolean dataBoard = EditorialDecisionService.DATA_BOARD.equals(line);
-        return domain.availableTemplates().stream()
-            .filter(key -> key.startsWith("news-data-") == dataBoard)
-            .findFirst().orElse(null);
-    }
-
     /** 两条线的候选概况：只给概况，全量条目留给线内编辑。 */
-    private EditorialDecisionService.Pools pools(long candidateId, LocalDateTime now) {
+    private EditorialDecisionService.Pools pools(LocalDateTime now) {
         Set<String> autoHosts = autoHosts();
         List<HeronNewsCandidate> pool = candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
             .isNull(HeronNewsCandidate::getPublishedAt)
@@ -202,7 +205,9 @@ public class NewsAutoService {
         for (HeronNewsCandidate candidate : pool) {
             String title = candidate.getTitle();
             if (title == null || title.isBlank()) continue;
-            if (articleSources.contains(sourceIdOf(candidate))) {
+            // 「能不能走解说线」看证据里有没有原文链接，不看 sourceId 是不是 RSS：
+            // 同一事件可能先热榜后 RSS，合并后顺序不保证，只看第一条证据会判错。
+            if (EditorialLineEditor.hasBody(candidate)) {
                 articles.add(title);
             } else {
                 hot.add(title);
@@ -219,7 +224,7 @@ public class NewsAutoService {
         return new EditorialDecisionService.Pools(hot, articles, sources, recent);
     }
 
-    /** 候选证据里的 sourceId，用来区分「有正文的 RSS」和「只有标题的热榜」。 */
+    /** 候选证据里是否有原文链接：有正文才能走解说线，这一点由代码判定而不是模型自觉。 */
     private static String sourceIdOf(HeronNewsCandidate candidate) {
         try {
             JsonNode items = JsonUtils.getJsonMapper().readTree(candidate.getEvidence()).path("items");
@@ -355,13 +360,12 @@ public class NewsAutoService {
      * 所以线、意图、理由和候选池快照分开存。NO_PUBLISH 也留痕，否则空槽看起来像故障。
      */
     private void markDecision(HeronAutoSlot slot, EditorialDecisionService.Decision decision,
-                              long candidateId, EditorialDecisionService.Pools pools) {
+                              EditorialDecisionService.Pools pools) {
         slotMapper.lambda()
             .set(HeronAutoSlot::getSelectedLine, decision.publish() ? decision.selectedLine()
                 : EditorialDecisionService.NO_PUBLISH)
             .set(HeronAutoSlot::getEditorialIntent, clip(decision.editorialIntent(), 500))
             .set(HeronAutoSlot::getDecisionReason, clip(decision.reason(), 500))
-            .set(HeronAutoSlot::getCandidateId, candidateId)
             .set(HeronAutoSlot::getPoolJson, JsonUtils.toJsonString(pools))
             .set(HeronAutoSlot::getUpdateTime, LocalDateTime.now(clock))
             .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
