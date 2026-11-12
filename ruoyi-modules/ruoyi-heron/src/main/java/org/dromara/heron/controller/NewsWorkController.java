@@ -53,6 +53,16 @@ public class NewsWorkController extends BaseController {
     @GetMapping("/{id}/versions")
     public R<PageResult<NewsVideoVersionVo>> versions(@PathVariable long id, PageQuery page) { return R.ok(news.versions(id, page)); }
 
+    /** 审片中心一屏处理：跨作品的待审版本，不按作品分组。 */
+    @SaCheckPermission("heron:newsWork:review")
+    @GetMapping("/review/queue")
+    public R<PageResult<NewsVideoVersionVo>> reviewQueue(PageQuery page) { return R.ok(news.reviewQueue(page)); }
+
+    /** 发布记录：发过的版本，含沙箱与命令行提交，回执与链接一并返回。 */
+    @SaCheckPermission("heron:newsWork:list")
+    @GetMapping("/published")
+    public R<PageResult<NewsVideoVersionVo>> published(PageQuery page) { return R.ok(news.published(page)); }
+
     @GetMapping("/{id}/versions/{versionId}")
     public R<NewsVideoVersionVo> version(@PathVariable long id, @PathVariable long versionId) { return R.ok(news.version(id, versionId)); }
 

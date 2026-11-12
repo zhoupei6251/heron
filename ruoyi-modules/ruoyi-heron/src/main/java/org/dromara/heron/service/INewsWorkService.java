@@ -16,6 +16,10 @@ public interface INewsWorkService {
     NewsWorkVo saveDraft(long workId, NewsDraftBo bo);
     ProductionReceiptVo generate(long workId, NewsGenerateBo bo);
     PageResult<NewsVideoVersionVo> versions(long workId, PageQuery page);
+    /** 审片队列：跨作品的待审版本，供审片中心一屏处理。 */
+    PageResult<NewsVideoVersionVo> reviewQueue(PageQuery page);
+    /** 发布记录：已有发布事实的版本，含沙箱与命令行提交。 */
+    PageResult<NewsVideoVersionVo> published(PageQuery page);
     NewsVideoVersionVo version(long workId, long versionId);
     NewsVideoVersionVo review(long workId, long versionId, NewsReviewBo bo);
     /** 一次确认：批准即由发布适配器出回执，拒绝只落审核结论。手动模式的唯一人工动作。 */

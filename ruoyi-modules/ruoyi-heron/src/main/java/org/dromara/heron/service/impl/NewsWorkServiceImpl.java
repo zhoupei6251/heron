@@ -281,6 +281,65 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         return versionView(requireVersion(requireWork(workId, "query"), versionId));
     }
 
+    /**
+     * 审片队列只按 review_status 过滤，不预先剔除渲染失败的版本：把它藏起来会让
+     * 「生成了却没得审」变成看不见的问题。页面按 taskStatus 区分能不能审。
+     */
+    @Override
+    public PageResult<NewsVideoVersionVo> reviewQueue(PageQuery pageQuery) {
+        access.requirePermission("heron:newsWork:review");
+        Page<HeronVideoVersion> page = versionMapper.selectPage(pageQuery.build(), QueryBuilder.lambda(HeronVideoVersion.class)
+            .eq(HeronVideoVersion::getReviewStatus, "pending")
+            .eq(!access.hasAllScope(TYPE), HeronVideoVersion::getOwnerId, access.requireActor())
+            .orderByAsc(HeronVideoVersion::getCreateTime).build());
+        List<Long> workIds = page.getRecords().stream().map(HeronVideoVersion::getWorkId).distinct().toList();
+        Map<Long, String> titles = workIds.isEmpty() ? Map.of() : workMapper.selectByIds(workIds).stream()
+            .collect(java.util.stream.Collectors.toMap(HeronNewsWork::getWorkId, HeronNewsWork::getTitle));
+        List<NewsVideoVersionVo> rows = page.getRecords().stream().map(version -> {
+            NewsVideoVersionVo vo = listVersionView(version);
+            vo.setWorkTitle(titles.get(version.getWorkId()));
+            return vo;
+        }).toList();
+        return PageResult.build(rows, page.getTotal());
+    }
+
+    /** 发布记录：只要落过发布事实就列出，沙箱与命令行提交也算——「发过没发过」要能一眼分清。 */
+    @Override
+    public PageResult<NewsVideoVersionVo> published(PageQuery pageQuery) {
+        access.requirePermission("heron:newsWork:list");
+        Page<HeronVideoVersion> page = versionMapper.selectPage(pageQuery.build(), QueryBuilder.lambda(HeronVideoVersion.class)
+            .isNotNull(HeronVideoVersion::getPublishAt)
+            .eq(!access.hasAllScope(TYPE), HeronVideoVersion::getOwnerId, access.requireActor())
+            .orderByDesc(HeronVideoVersion::getPublishAt).build());
+        List<Long> workIds = page.getRecords().stream().map(HeronVideoVersion::getWorkId).distinct().toList();
+        Map<Long, String> titles = workIds.isEmpty() ? Map.of() : workMapper.selectByIds(workIds).stream()
+            .collect(java.util.stream.Collectors.toMap(HeronNewsWork::getWorkId, HeronNewsWork::getTitle));
+        List<NewsVideoVersionVo> rows = page.getRecords().stream().map(version -> {
+            NewsVideoVersionVo vo = listVersionView(version);
+            vo.setWorkTitle(titles.get(version.getWorkId()));
+            return vo;
+        }).toList();
+        return PageResult.build(rows, page.getTotal());
+    }
+
+    /**
+     * 列表不能因为某一行读不到任务就整页 500：任务被清理或跨版本不一致时退回只有版本事实的视图。
+     * 单条详情仍然走版本视图，让不一致在需要严格的地方暴露出来。
+     */
+    private NewsVideoVersionVo listVersionView(HeronVideoVersion version) {
+        NewsVideoVersionVo vo;
+        try {
+            vo = versionView(version);
+        } catch (RuntimeException e) {
+            log.debug("版本 {} 的任务不可读，退回基础视图: {}", version.getVersionId(), e.getMessage());
+            vo = MapstructUtils.convert(version, NewsVideoVersionVo.class);
+        }
+        // 列表不展示正文：一条 inputSnapshot 含整篇正文与证据，一页十行就是几百 KB，打开队列要等好几秒
+        vo.setInputSnapshot(null);
+        vo.setScript(null);
+        return vo;
+    }
+
     @Override
     @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
     public NewsVideoVersionVo review(long workId, long versionId, NewsReviewBo bo) {

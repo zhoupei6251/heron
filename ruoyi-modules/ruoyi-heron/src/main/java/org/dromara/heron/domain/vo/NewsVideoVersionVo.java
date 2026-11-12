@@ -39,4 +39,6 @@ public class NewsVideoVersionVo implements Serializable {
     private String taskErrorCode;
     private String taskErrorReason;
     private List<ProductionFileVo> artifacts;
+    /** 只在审片队列里填：跨作品列表需要作品标题，单作品视图不重复给。 */
+    private String workTitle;
 }
