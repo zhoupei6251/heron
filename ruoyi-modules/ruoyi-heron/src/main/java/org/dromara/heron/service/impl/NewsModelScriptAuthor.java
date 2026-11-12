@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -87,19 +88,49 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
             .append("上一版稿件：\n").append(script.toString()).toString();
     }
 
-    /** 泛资讯候选必须带正文出处；手工候选没有出处时直接失败，不假装模型知识是来源。 */
+    /**
+     * 取正文出处：优先用线内编辑选中的那条证据，而不是列表里的第一条。
+     *
+     * <p>同一个事件常有多个来源，第一条未必是编辑选的那条。若仍取第一条，
+     * 就会出现「快照记的证据是 A，写稿读的正文是 B」——和重新选数据源是同一类问题。
+     * 选中的证据都取不到时才退回第一条，保证手工认领等路径仍可用。
+     */
     private static URI sourceUrl(JsonNode input) {
-        for (JsonNode item : input.path("evidence").path("items")) {
-            String url = item.path("sourceUrl").asString("");
-            if (!url.isBlank()) {
-                try {
-                    return URI.create(url);
-                } catch (IllegalArgumentException e) {
-                    throw new HeronBusinessException(409, "news_script_source", "候选证据里的正文链接无法解析");
-                }
+        List<String> selected = new ArrayList<>();
+        for (JsonNode id : input.path("selection").path("sourceEvidenceIds")) {
+            String text = id.asString("");
+            if (!text.isBlank()) {
+                selected.add(text);
             }
         }
+        URI chosen = firstUrl(input, item -> {
+            String itemId = item.path("sourceItemId").asString("");
+            String url = item.path("sourceUrl").asString("");
+            return selected.contains(itemId) || selected.contains(url);
+        });
+        if (chosen != null) {
+            return chosen;
+        }
+        URI fallback = firstUrl(input, item -> true);
+        if (fallback != null) {
+            return fallback;
+        }
         throw new HeronBusinessException(409, "news_script_source", "候选证据里没有正文出处，不能写稿");
+    }
+
+    private static URI firstUrl(JsonNode input, java.util.function.Predicate<JsonNode> accept) {
+        for (JsonNode item : input.path("evidence").path("items")) {
+            String url = item.path("sourceUrl").asString("");
+            if (url.isBlank() || !accept.test(item)) {
+                continue;
+            }
+            try {
+                return URI.create(url);
+            } catch (IllegalArgumentException e) {
+                throw new HeronBusinessException(409, "news_script_source", "候选证据里的正文链接无法解析");
+            }
+        }
+        return null;
     }
 
     private static String prompt(JsonNode input, NewsArticleBody article) {

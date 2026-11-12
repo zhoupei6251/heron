@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
 import org.dromara.heron.config.HeronNewsProperties;
+import org.dromara.heron.domain.EditorialCandidatePool;
 import org.dromara.heron.domain.EditorialSelection;
 import org.dromara.heron.domain.HeronAutoSlot;
 import org.dromara.heron.domain.HeronDataSource;
@@ -144,25 +145,33 @@ public class NewsAutoService {
             finish(slot, "skipped", "paused", null);
             return;
         }
-        // 先建池，再由总编辑定线，最后线内编辑定素材。顺序不能倒：
-        // 反过来就是「先选出候选，再决定这条候选该走哪条线」。
+        // 先建池，再由总编辑定线，最后线内编辑从同一个池子里定素材。
+        // 顺序不能倒：反过来就是「先选出候选，再决定这条候选该走哪条线」。
         EditorialDecisionService.Pools pools;
         EditorialDecisionService.Decision decision;
+        EditorialCandidatePool pool;
         try {
-            pools = pools(now);
+            pool = candidatePool(now);
+            if (pool.isEmpty()) {
+                finish(slot, "skipped", "no_candidate", null);
+                return;
+            }
+            pools = pools(pool, now);
             decision = editorial.decide(pools);
         } catch (RuntimeException e) {
             // 决策失败不产出：宁可空槽，也不按默认线硬发
             finish(slot, "failed", "editorial_decision: " + e.getMessage(), null);
             return;
         }
-        markDecision(slot, decision, pools);        if (!decision.publish()) {
+        markDecision(slot, decision, pools);
+        if (!decision.publish()) {
             finish(slot, "skipped", "no_publish: " + decision.reason(), null);
             return;
         }
         Optional<EditorialSelection> selection;
         try {
-            selection = lineEditor.select(decision.selectedLine(), pools, decision.editorialIntent());
+            // 传池子而不是摘要：线内编辑必须从总编辑看过的那批数据里挑
+            selection = lineEditor.select(decision.selectedLine(), pool, decision.editorialIntent());
         } catch (RuntimeException e) {
             finish(slot, "failed", "line_editor: " + e.getMessage(), null);
             return;
@@ -188,50 +197,48 @@ public class NewsAutoService {
         }
     }
 
-    /** 两条线的候选概况：只给概况，全量条目留给线内编辑。 */
-    private EditorialDecisionService.Pools pools(LocalDateTime now) {
+    /**
+     * 建一次候选池，之后总编辑与线内编辑都只从这里取。
+     *
+     * <p>来源白名单与 24 小时时效在这里一次性生效。之前线内编辑收到摘要后
+     * 又自己查了一次库，那些边界条件在那次重查里全丢了——
+     * 总编辑看到的池子和真正被挑的池子是两批数据。
+     */
+    private EditorialCandidatePool candidatePool(LocalDateTime now) {
         Set<String> autoHosts = autoHosts();
-        List<HeronNewsCandidate> pool = candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
+        if (autoHosts.isEmpty()) {
+            log.warn("自动源白名单为空，本期不产出");
+            return EditorialCandidatePool.empty();
+        }
+        List<HeronNewsCandidate> candidates = candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
             .isNull(HeronNewsCandidate::getPublishedAt)
+            .isNull(HeronNewsCandidate::getClaimedBy)
+            .isNull(HeronNewsCandidate::getActiveTaskId)
             .ge(HeronNewsCandidate::getLastSeenAt, now.minusHours(24))
             .orderByDesc(HeronNewsCandidate::getHeatScore)
+            .orderByAsc(HeronNewsCandidate::getBestRank)
             .last("LIMIT " + POOL_LIMIT).build());
-        Set<String> articleSources = sourceMapper.selectList(QueryBuilder.lambda(HeronNewsSource.class)
-                .eq(HeronNewsSource::getSourceType, "rss").build())
-            .stream().map(source -> String.valueOf(source.getSourceId()))
-            .collect(java.util.stream.Collectors.toSet());
-        List<String> hot = new ArrayList<>();
-        List<String> articles = new ArrayList<>();
-        for (HeronNewsCandidate candidate : pool) {
-            String title = candidate.getTitle();
-            if (title == null || title.isBlank()) continue;
-            // 「能不能走解说线」看证据里有没有原文链接，不看 sourceId 是不是 RSS：
-            // 同一事件可能先热榜后 RSS，合并后顺序不保证，只看第一条证据会判错。
-            if (EditorialLineEditor.hasBody(candidate)) {
-                articles.add(title);
-            } else {
-                hot.add(title);
+        List<HeronNewsCandidate> allowed = new ArrayList<>();
+        for (HeronNewsCandidate candidate : candidates) {
+            String host = firstHost(candidate.getEvidence());
+            // 没开自动的来源不进池：这是「可下架」的边界，不是权重
+            if (host != null && autoHosts.contains(host)) {
+                allowed.add(candidate);
             }
         }
+        return EditorialCandidatePool.sort(allowed, EditorialLineEditor::hasBody);
+    }
+
+    /** 总编辑只看概况：具体条目留给线内编辑从同一个池子里选。 */
+    private EditorialDecisionService.Pools pools(EditorialCandidatePool pool, LocalDateTime now) {
+        List<String> hot = pool.hot().stream().map(HeronNewsCandidate::getTitle).toList();
+        List<String> articles = pool.articles().stream().map(HeronNewsCandidate::getTitle).toList();
         List<String> sources = dataSourceOptions(now);
         List<String> recent = workMapper.selectList(QueryBuilder.lambda(HeronNewsWork.class)
                 .orderByDesc(HeronNewsWork::getUpdateTime).last("LIMIT " + RECENT_LIMIT).build())
             .stream().map(HeronNewsWork::getTitle).filter(title -> title != null && !title.isBlank())
             .toList();
-        if (autoHosts.isEmpty()) {
-            log.warn("自动源白名单为空，候选池可能不可用");
-        }
         return new EditorialDecisionService.Pools(hot, articles, sources, recent);
-    }
-
-    /** 候选证据里是否有原文链接：有正文才能走解说线，这一点由代码判定而不是模型自觉。 */
-    private static String sourceIdOf(HeronNewsCandidate candidate) {
-        try {
-            JsonNode items = JsonUtils.getJsonMapper().readTree(candidate.getEvidence()).path("items");
-            return items.isArray() && !items.isEmpty() ? items.get(0).path("sourceId").asString("") : "";
-        } catch (RuntimeException e) {
-            return "";
-        }
     }
 
     /** 未启用、探测非 ok、近 7 天用过的源都不进候选。 */
@@ -270,44 +277,6 @@ public class NewsAutoService {
         }
     }
 
-    /** 候选选择：源开关 → 24 小时 → 未认领未在途未发布 → 热度降序 → 同源不连续。 */
-    private Optional<Long> pickCandidate(LocalDateTime now) {
-        Set<String> autoHosts = autoHosts();
-        if (autoHosts.isEmpty()) {
-            return Optional.empty();
-        }
-        String lastHost = lastAutoHost();
-        List<HeronNewsCandidate> pool = candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
-            .isNull(HeronNewsCandidate::getClaimedBy)
-            .isNull(HeronNewsCandidate::getActiveTaskId)
-            .isNull(HeronNewsCandidate::getPublishedAt)
-            .ge(HeronNewsCandidate::getLastSeenAt, now.minusHours(24))
-            .orderByDesc(HeronNewsCandidate::getHeatScore)
-            .orderByAsc(HeronNewsCandidate::getBestRank)
-            .last("LIMIT " + POOL_LIMIT).build());
-        List<HeronNewsCandidate> eligible = new ArrayList<>();
-        for (HeronNewsCandidate candidate : pool) {
-            String host = firstHost(candidate.getEvidence());
-            if (host == null || !autoHosts.contains(host) || host.equals(lastHost)) {
-                continue;
-            }
-            eligible.add(candidate);
-        }
-        if (eligible.isEmpty()) {
-            // 只有一个源开着自动时，「同源不连续」会把池子清空；退回不限同源的候选，避免永远不产出
-            for (HeronNewsCandidate candidate : pool) {
-                String host = firstHost(candidate.getEvidence());
-                if (host != null && autoHosts.contains(host)) {
-                    eligible.add(candidate);
-                }
-            }
-        }
-        if (eligible.isEmpty()) {
-            return Optional.empty();
-        }
-        // 模型按《选题抽卡规则》挑一条；模型不可用时退回热度最高的那条
-        return Optional.of(screener.screen(eligible).orElse(eligible.get(0).getCandidateId()));
-    }
 
     private Set<String> autoHosts() {
         List<HeronNewsSource> sources = sourceMapper.selectList(QueryBuilder.lambda(HeronNewsSource.class)
@@ -325,17 +294,6 @@ public class NewsAutoService {
         return hosts;
     }
 
-    /** 上一次自动产出的来源主机：同源不连续的依据，取自最近一条自动稿件。 */
-    private String lastAutoHost() {
-        HeronNewsWork last = workMapper.selectOne(QueryBuilder.lambda(HeronNewsWork.class)
-            .eq(HeronNewsWork::getAutoPublish, "0")
-            .orderByDesc(HeronNewsWork::getCreateTime).last("LIMIT 1").build());
-        if (last == null) {
-            return null;
-        }
-        HeronNewsCandidate candidate = candidateMapper.selectById(last.getCandidateId());
-        return candidate == null ? null : firstHost(candidate.getEvidence());
-    }
 
     private static String firstHost(String evidence) {
         if (evidence == null || evidence.isBlank()) {

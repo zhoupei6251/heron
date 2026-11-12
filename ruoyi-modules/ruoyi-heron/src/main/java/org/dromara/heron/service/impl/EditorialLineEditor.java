@@ -2,18 +2,16 @@ package org.dromara.heron.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.json.utils.JsonUtils;
-import org.dromara.common.mybatis.core.query.QueryBuilder;
+import org.dromara.heron.domain.EditorialCandidatePool;
 import org.dromara.heron.domain.EditorialSelection;
 import org.dromara.heron.domain.HeronDataSource;
 import org.dromara.heron.domain.HeronNewsCandidate;
 import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.vo.ProductionRunVo;
 import org.dromara.heron.mapper.HeronDataSourceMapper;
-import org.dromara.heron.mapper.HeronNewsCandidateMapper;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -36,36 +34,25 @@ public class EditorialLineEditor {
     private final NewsTemplatePicker templatePicker;
     private final DatasetRouter datasetRouter;
     private final HeronDataSourceMapper dataSourceMapper;
-    private final HeronNewsCandidateMapper candidateMapper;
-
-    private static final int POOL_LIMIT = 50;
 
     /**
-     * 总编辑定线之后的唯一入口。选不到就回退另一条线再试一次——
-     * 日更账号直接弃更的代价比多调一次模型高得多。
+     * 总编辑定线之后的唯一入口。候选只从传入的池子里取，不再自己查库——
+     * 池子的边界（来源白名单、24 小时时效）在 NewsAutoService 建池时已经生效，
+     * 重查一次等于把那些边界丢在门外。
+     *
+     * <p>选不到就回退另一条线再试一次：日更账号直接弃更的代价比多调一次模型高得多。
      */
-    public Optional<EditorialSelection> select(String line, EditorialDecisionService.Pools pools, String intent) {
+    public Optional<EditorialSelection> select(String line, EditorialCandidatePool pool, String intent) {
         boolean dataBoard = EditorialDecisionService.DATA_BOARD.equals(line);
         Optional<EditorialSelection> first = dataBoard
             ? editDataBoard(intent)
-            : editExplainer(autoCandidates(), intent);
+            : editExplainer(pool.articles(), intent);
         if (first.isPresent()) {
             return first;
         }
         return dataBoard
-            ? editExplainer(autoCandidates(), intent)
+            ? editExplainer(pool.articles(), intent)
             : editDataBoard(intent);
-    }
-
-    /** 解说线候选：24 小时内未发布且证据里带原文链接的候选。 */
-    private List<HeronNewsCandidate> autoCandidates() {
-        return candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
-            .isNull(HeronNewsCandidate::getPublishedAt)
-            .isNull(HeronNewsCandidate::getClaimedBy)
-            .isNull(HeronNewsCandidate::getActiveTaskId)
-            .ge(HeronNewsCandidate::getLastSeenAt, LocalDateTime.now().minusHours(24))
-            .orderByDesc(HeronNewsCandidate::getHeatScore)
-            .last("LIMIT " + POOL_LIMIT).build());
     }
 
     /**
