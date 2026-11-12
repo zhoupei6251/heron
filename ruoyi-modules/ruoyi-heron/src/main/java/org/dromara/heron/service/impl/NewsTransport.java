@@ -13,7 +13,7 @@ public interface NewsTransport {
     /** pinned 为策略刚验证过的地址；实现必须连接到它，同时保持原 host 的 TLS 校验。 */
     record Request(URI url, InetAddress pinned) { }
 
-    record Response(int status, String location, String contentEncoding, byte[] body) { }
+    record Response(int status, String location, String contentEncoding, String contentType, byte[] body) { }
 
     /** 每次连接前解析；同一主机在不同跳会被重复调用。 */
     interface Resolver {

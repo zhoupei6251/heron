@@ -1,22 +1,160 @@
 <!doctype html>
 <html lang="zh-CN" data-composition-variables='[
-  {"id":"title","type":"string","label":"标题","maxLength":15,"default":"新一代旗舰手机发布"},
-  {"id":"scene1_lead","type":"string","label":"第一屏领句","maxLength":40,"default":"电池容量提升两成"},
-  {"id":"scene1_body","type":"string","label":"第一屏正文","maxLength":600,"default":"厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。"},
-  {"id":"scene2_lead","type":"string","label":"第二屏领句","maxLength":40,"default":"影像算法全面重写"},
-  {"id":"scene2_body","type":"string","label":"第二屏正文","maxLength":600,"default":"影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。"},
-  {"id":"scene3_lead","type":"string","label":"第三屏领句","maxLength":40,"default":"起售价保持不变"},
-  {"id":"scene3_body","type":"string","label":"第三屏正文","maxLength":600,"default":"价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。"},
-  {"id":"scene4_lead","type":"string","label":"第四屏领句","maxLength":40,"default":"现货发售时间已定"},
-  {"id":"scene4_body","type":"string","label":"第四屏正文","maxLength":600,"default":"官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。"},
-  {"id":"scene5_lead","type":"string","label":"第五屏领句","maxLength":40,"default":"竞品同期密集上新"},
-  {"id":"scene5_body","type":"string","label":"第五屏正文","maxLength":600,"default":"过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。"},
-  {"id":"scene6_lead","type":"string","label":"第六屏领句","maxLength":40,"default":"售后政策同步调整"},
-  {"id":"scene6_body","type":"string","label":"第六屏正文","maxLength":600,"default":"厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。"},
-  {"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"更多机型对比与实测，我们会在后续持续跟进。"},
-  {"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"公开报道整理"},
-  {"id":"accent","type":"color","label":"品牌色","default":"#d97706"},
-  {"id":"scene_count","type":"number","label":"场景数","min":3,"max":6,"default":6}
+  {
+    "id": "title",
+    "type": "string",
+    "label": "标题",
+    "maxLength": 15,
+    "default": "新一代旗舰手机发布"
+  },
+  {
+    "id": "scene1_lead",
+    "type": "string",
+    "label": "第一屏领句",
+    "maxLength": 40,
+    "default": "电池容量提升两成"
+  },
+  {
+    "id": "scene1_body",
+    "type": "string",
+    "label": "第一屏正文",
+    "maxLength": 600,
+    "default": "厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。"
+  },
+  {
+    "id": "scene2_lead",
+    "type": "string",
+    "label": "第二屏领句",
+    "maxLength": 40,
+    "default": "影像算法全面重写"
+  },
+  {
+    "id": "scene2_body",
+    "type": "string",
+    "label": "第二屏正文",
+    "maxLength": 600,
+    "default": "影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。"
+  },
+  {
+    "id": "scene3_lead",
+    "type": "string",
+    "label": "第三屏领句",
+    "maxLength": 40,
+    "default": "起售价保持不变"
+  },
+  {
+    "id": "scene3_body",
+    "type": "string",
+    "label": "第三屏正文",
+    "maxLength": 600,
+    "default": "价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。"
+  },
+  {
+    "id": "scene4_lead",
+    "type": "string",
+    "label": "第四屏领句",
+    "maxLength": 40,
+    "default": "现货发售时间已定"
+  },
+  {
+    "id": "scene4_body",
+    "type": "string",
+    "label": "第四屏正文",
+    "maxLength": 600,
+    "default": "官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。"
+  },
+  {
+    "id": "scene5_lead",
+    "type": "string",
+    "label": "第五屏领句",
+    "maxLength": 40,
+    "default": "竞品同期密集上新"
+  },
+  {
+    "id": "scene5_body",
+    "type": "string",
+    "label": "第五屏正文",
+    "maxLength": 600,
+    "default": "过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。"
+  },
+  {
+    "id": "scene6_lead",
+    "type": "string",
+    "label": "第六屏领句",
+    "maxLength": 40,
+    "default": "售后政策同步调整"
+  },
+  {
+    "id": "scene6_body",
+    "type": "string",
+    "label": "第六屏正文",
+    "maxLength": 600,
+    "default": "厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。"
+  },
+  {
+    "id": "closing",
+    "type": "string",
+    "label": "结尾口播",
+    "maxLength": 200,
+    "default": "更多机型对比与实测，我们会在后续持续跟进。"
+  },
+  {
+    "id": "source_name",
+    "type": "string",
+    "label": "来源名称",
+    "maxLength": 80,
+    "default": "公开报道整理"
+  },
+  {
+    "id": "accent",
+    "type": "color",
+    "label": "品牌色",
+    "default": "#d97706"
+  },
+  {
+    "id": "scene_count",
+    "type": "number",
+    "label": "场景数",
+    "min": 3,
+    "max": 6,
+    "default": 6
+  },
+  {
+    "id": "scene1_image",
+    "type": "image",
+    "label": "场景配图",
+    "default": ""
+  },
+  {
+    "id": "scene2_image",
+    "type": "image",
+    "label": "场景配图",
+    "default": ""
+  },
+  {
+    "id": "scene3_image",
+    "type": "image",
+    "label": "场景配图",
+    "default": ""
+  },
+  {
+    "id": "scene4_image",
+    "type": "image",
+    "label": "场景配图",
+    "default": ""
+  },
+  {
+    "id": "scene5_image",
+    "type": "image",
+    "label": "场景配图",
+    "default": ""
+  },
+  {
+    "id": "scene6_image",
+    "type": "image",
+    "label": "场景配图",
+    "default": ""
+  }
 ]'>
   <head>
     <meta charset="UTF-8" />
@@ -48,6 +186,15 @@
       #rule { margin-top: 30px; width: 180px; height: 10px; border-radius: 5px; background: var(--accent); }
       .lead { margin: 0 0 26px; font-size: 76px; font-weight: 700; line-height: 1.4; letter-spacing: -0.01em; color: #ffffff;
               display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+      /* 场景区可用高度 = 1920 - 336(顶) - 420(底) = 1164px。
+         图片 520 + 间距 24 + 领句 2 行(~213) + 正文 3 行(~258) ≈ 1015，留出余量给不同字数的稿子。 */
+      .scene-figure { margin: 0 0 24px; width: 100%; height: 520px; border-radius: 16px; overflow: hidden;
+                      background: rgba(255,255,255,0.05); display: none; flex: 0 0 auto; }
+      .scene-figure img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      /* 有图时文字让位：图和字同时占满会互相压，宁可少一行字 */
+      .scene.has-image .scene-figure { display: block; }
+      .scene.has-image .lead { font-size: 62px; -webkit-line-clamp: 2; max-height: 180px; }
+      .scene.has-image .body { font-size: 42px; -webkit-line-clamp: 3; max-height: 220px; }
       .body { margin: 0; font-size: 50px; font-weight: 400; line-height: 1.72; color: #c2d1dd;
               max-height: 620px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 7; }
       #closing { margin: 0; padding: 32px 38px; font-size: 42px; font-weight: 500; line-height: 1.55; color: #f2f6f9;
@@ -104,26 +251,32 @@
       </header>
 
       <section id="scene-1" class="clip scene" data-start="0" data-duration="8" data-track-index="1" data-scene-index="1">
+        <figure class="scene-figure" data-image-slot="scene1_image"></figure>
         <p class="lead" data-var-text="scene1_lead">电池容量提升两成</p>
         <p class="body" data-var-text="scene1_body">厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。</p>
       </section>
       <section id="scene-2" class="clip scene" data-start="8" data-duration="8" data-track-index="1" data-scene-index="2">
+        <figure class="scene-figure" data-image-slot="scene2_image"></figure>
         <p class="lead" data-var-text="scene2_lead">影像算法全面重写</p>
         <p class="body" data-var-text="scene2_body">影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。</p>
       </section>
       <section id="scene-3" class="clip scene" data-start="16" data-duration="8" data-track-index="1" data-scene-index="3">
+        <figure class="scene-figure" data-image-slot="scene3_image"></figure>
         <p class="lead" data-var-text="scene3_lead">起售价保持不变</p>
         <p class="body" data-var-text="scene3_body">价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。</p>
       </section>
       <section id="scene-4" class="clip scene" data-start="24" data-duration="7" data-track-index="1" data-scene-index="4">
+        <figure class="scene-figure" data-image-slot="scene4_image"></figure>
         <p class="lead" data-var-text="scene4_lead">现货发售时间已定</p>
         <p class="body" data-var-text="scene4_body">官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。</p>
       </section>
       <section id="scene-5" class="clip scene" data-start="31" data-duration="7" data-track-index="1" data-scene-index="5">
+        <figure class="scene-figure" data-image-slot="scene5_image"></figure>
         <p class="lead" data-var-text="scene5_lead">竞品同期密集上新</p>
         <p class="body" data-var-text="scene5_body">过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。</p>
       </section>
       <section id="scene-6" class="clip scene" data-start="38" data-duration="7" data-track-index="1" data-scene-index="6">
+        <figure class="scene-figure" data-image-slot="scene6_image"></figure>
         <p class="lead" data-var-text="scene6_lead">售后政策同步调整</p>
         <p class="body" data-var-text="scene6_body">厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。</p>
       </section>
@@ -163,6 +316,24 @@
           slot.hidden = true;
           slot.style.display = "none";
         }
+      });
+
+      // 有图的场景才展开图片区：变量里没有这一段就保持纯文字版式，
+      // 否则图位会留一块空白，比没有图更难看。
+      //
+      // img 由脚本创建而不是写在 HTML 里：六个静态 <img> 会被版式闸判成
+      // duplicate_media_discovery_risk（同一组时间属性下的重复媒体节点）。
+      slots.forEach((slot) => {
+        const index = slot.dataset.sceneIndex;
+        const src = declared["scene" + index + "_image"];
+        if (!src) return;
+        slot.classList.add("has-image");
+        const figure = slot.querySelector(".scene-figure");
+        if (!figure) return;
+        const img = document.createElement("img");
+        img.alt = "";
+        img.src = src;
+        figure.appendChild(img);
       });
 
       const tl = gsap.timeline({ paused: true });

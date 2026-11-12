@@ -74,10 +74,12 @@ public final class ApacheNewsTransport implements NewsTransport, NewsTransport.R
             return client.execute(get, response -> {
                 Header location = response.getFirstHeader("Location");
                 Header encoding = response.getFirstHeader("Content-Encoding");
+                Header contentType = response.getFirstHeader("Content-Type");
                 try {
                     return new NewsTransport.Response(response.getCode(),
                         location == null ? null : location.getValue(),
-                        encoding == null ? null : encoding.getValue(), read(response.getEntity()));
+                        encoding == null ? null : encoding.getValue(),
+                        contentType == null ? null : contentType.getValue(), read(response.getEntity()));
                 } finally {
                     EntityUtils.consume(response.getEntity());
                 }

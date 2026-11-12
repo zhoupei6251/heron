@@ -26,6 +26,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -40,6 +41,8 @@ public class NewsSourceFetcher {
     static final int MAX_TEXT_BYTES = 2 << 20;
     static final int MAX_ITEMS = 200;
     static final int ARTICLE_CODE_POINTS = 12_000;
+    /** 单张图上限：正文配图不该有几 MB，超了通常是原图直出，压不进短视频。 */
+    static final int MAX_IMAGE_BYTES = 8 << 20;
     private static final int TITLE_CODE_POINTS = 80;
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -68,6 +71,42 @@ public class NewsSourceFetcher {
         // shortcut: 哈希取整篇、喂模型的是截断前缀；正文噪声大到影响出稿时再引正文抽取库
         return new NewsArticleBody(NewsUrlPolicy.canonical(target.toString()), LocalDateTime.now(ZoneOffset.UTC),
             html.substring(0, cut), DigestUtil.sha256Hex(body));
+    }
+
+    /**
+     * 下载正文里的一张图。走和正文同一套出网闸（白名单 + 私网拦截 + 重定向次数），
+     * 不因为是图片就放宽——图片地址同样可能被指向内网。
+     *
+     * @return 图片字节；类型不是图片、超过上限或站点不可达时返回 empty，由调用方退化成无图场景
+     */
+    public Optional<byte[]> fetchImage(URI url) {
+        URI target;
+        try {
+            target = NewsUrlPolicy.normalize(url.toString());
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
+        NewsTransport.Response response;
+        try {
+            response = request(target);
+        } catch (RuntimeException e) {
+            // 单张图取不到不该让整条片子失败：退化成纯文字场景，比整片报废合理
+            return Optional.empty();
+        }
+        String type = response.contentType() == null ? "" : response.contentType().toLowerCase();
+        if (!type.startsWith("image/")) {
+            return Optional.empty();
+        }
+        byte[] body;
+        try {
+            body = decode(response);
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
+        if (body.length == 0 || body.length > MAX_IMAGE_BYTES) {
+            return Optional.empty();
+        }
+        return Optional.of(body);
     }
 
     private NewsTransport.Response request(URI start) {

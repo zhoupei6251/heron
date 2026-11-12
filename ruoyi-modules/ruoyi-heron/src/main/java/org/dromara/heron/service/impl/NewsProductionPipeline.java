@@ -13,6 +13,8 @@ import org.dromara.heron.service.NewsScriptAuthor;
 import org.dromara.heron.service.ProductionStageReporter;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 import javax.imageio.ImageIO;
@@ -24,6 +26,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -40,6 +44,7 @@ import java.util.stream.Stream;
  * 稿件只由模型给一次，之后每一步都是确定的外部效果：变量映射、磁盘上改写时间轴、配音、版式闸、渲染、解码、AIGC 元数据。
  * 任何一步失败即抛出，不给半份结果入库的路径；字幕只到 cue 级，因为 edge-tts 的 CLI 给不出词级。
  */
+@lombok.extern.slf4j.Slf4j
 public class NewsProductionPipeline implements IProductionPipeline {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -76,12 +81,13 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private final DatasetFetchService datasets;
     private final DatasetScriptAuthor datasetAuthor;
     private final EditorialReviewer reviewer;
+    private final NewsSourceFetcher fetcher;
 
     public NewsProductionPipeline(NewsScriptAuthor author, ProductionProcessService processes,
                                   ProductionArtifactService artifacts, HeronProductionProperties properties,
                                   ProductionStageReporter stages, DatasetRouter router,
                                   DatasetFetchService datasets, DatasetScriptAuthor datasetAuthor,
-                                  EditorialReviewer reviewer) {
+                                  EditorialReviewer reviewer, NewsSourceFetcher fetcher) {
         this.author = author;
         this.processes = processes;
         this.artifacts = artifacts;
@@ -91,6 +97,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         this.datasets = datasets;
         this.datasetAuthor = datasetAuthor;
         this.reviewer = reviewer;
+        this.fetcher = fetcher;
     }
 
     @Override
@@ -106,6 +113,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         DatasetFetchService.Result fetched = null;
         JsonNode dataset = null;
         String scriptJson;
+        ReviewOutcome review;
         if (dataBoard) {
             DatasetRouter.Route route = router.route(run, input);
             fetched = datasets.fetch(run, route.sourceKey(), input.path("limit").asInt(30));
@@ -113,10 +121,13 @@ public class NewsProductionPipeline implements IProductionPipeline {
             gates.add(dataGate(fetched, dataset));
             gates.add(datasetEvidenceGate(dataset));
             scriptJson = datasetAuthor.author(run, fetched.json(), route.digest());
-            scriptJson = reviewScript(run, scriptJson, dataset, fetched.json());
+            review = reviewScript(run, scriptJson, dataset.path("facts").toString(), fetched, true);
         } else {
             scriptJson = author.author(run);
+            // 解说线此前完全没有审稿，自动确认会把没审过的片子直接发出去
+            review = reviewScript(run, scriptJson, evidenceQuotes(input), null, false);
         }
+        scriptJson = review.script;
         JsonNode script = JSON.readTree(scriptJson);
         gates.add(contractGate(script, dataset, dataBoard));
         if (!dataBoard) {
@@ -128,8 +139,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
         Path composition = copyTemplate(work, templateDir);
         // 占位稿入库供 data 闸复核；TTS 与模板用解析后的可读文本。
         JsonNode renderScript = dataBoard ? DatasetPlaceholders.resolve(script, dataset) : script;
-        write(work.resolve(VARS_FILE),
-            dataBoard ? dataTemplateVariables(renderScript, dataset) : templateVariables(renderScript));
+        // 解说线的图片场景：把稿子里引用的资产下载进工作目录，再以 sceneN_image 变量交给模板
+        Map<String, String> images = dataBoard ? Map.of() : materializeImages(composition, renderScript, input);
+        write(work.resolve(VARS_FILE), dataBoard
+            ? dataTemplateVariables(renderScript, dataset)
+            : templateVariables(renderScript, images));
         gates.add(assetsGate(composition, input.path("assets"), templateDir));
 
         Path voice = composition.resolve(VOICE_FILE);
@@ -147,7 +161,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         gates.add(decodeGate(decode(run, work.resolve(RAW_FILE)), audioSeconds));
 
         stages.beginStage(run, "finalize", 85);
-        Path finalFile = tagAigc(run, work);
+        Path finalFile = tagAigc(run, work, script);
         gates.add(aigcMetadataGate(run, finalFile));
         Path sheet = contactSheet(run, work, finalFile);
         gates.add(visualGate(check, sheet));
@@ -172,6 +186,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("script", script);
+        // 审稿结论必须随结果落盘：自动发布只认这条记录，内存里通过一次不算数
+        result.put("editorialReview", JSON.readTree(review.record));
         if (dataset != null) {
             result.put("dataset", dataset);
         }
@@ -203,19 +219,55 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     /** 审稿发现表达与事实矛盾时定向改一次；改完还不合格就退出，不无限重试。 */
-    private String reviewScript(ProductionRunVo run, String scriptJson, JsonNode dataset, String datasetJson) {
-        String facts = dataset.path("facts").toString();
-        EditorialReviewer.Verdict verdict = reviewer.review(run, scriptJson, facts);
-        if (!verdict.blocked()) {
-            return scriptJson;
+    /**
+     * 一次定向修复 + 复审。返回的 record 是最终结论，调用方必须落盘：
+     * 自动发布只认这条记录，所以写最终 verdict，不是第一次 FAIL。
+     */
+    private final class ReviewOutcome {
+        String script;
+        String record;
+    }
+
+    private ReviewOutcome reviewScript(ProductionRunVo run, String scriptJson, String basisJson,
+                                       DatasetFetchService.Result datasetFetched, boolean dataBoard) {
+        EditorialReviewer.Verdict verdict = dataBoard
+            ? reviewer.review(run, scriptJson, basisJson)
+            : reviewer.reviewEvidence(run, scriptJson, basisJson);
+        ReviewOutcome outcome = new ReviewOutcome();
+        int attempts = 0;
+        String finalScript = scriptJson;
+        if (verdict.blocked()) {
+            String repaired = datasetFetched == null
+                ? author.repair(run, scriptJson, verdict.blockingNotes())
+                : datasetAuthor.repair(run, datasetFetched.json(), scriptJson, verdict.blockingNotes());
+            EditorialReviewer.Verdict again = dataBoard
+                ? reviewer.review(run, repaired, basisJson)
+                : reviewer.reviewEvidence(run, repaired, basisJson);
+            if (again.blocked()) {
+                throw new HeronBusinessException(409, "editorial_review_blocked",
+                    "审稿两次未过：" + String.join("；", again.blockingNotes()));
+            }
+            finalScript = repaired;
+            attempts = 1;
+            verdict = again;
         }
-        String repaired = datasetAuthor.repair(run, datasetJson, scriptJson, verdict.blockingNotes());
-        EditorialReviewer.Verdict again = reviewer.review(run, repaired, facts);
-        if (again.blocked()) {
-            throw new HeronBusinessException(409, "editorial_review_blocked",
-                "审稿两次未过：" + String.join("；", again.blockingNotes()));
+        outcome.script = finalScript;
+        outcome.record = verdict.toRecord(attempts, dataBoard ? "editorial-review" : "evidence-review",
+            LocalDateTime.now(ZoneOffset.UTC));
+        return outcome;
+    }
+
+    /** 解说线审稿依据：只给抓到的证据片段与出处，不给模型自述。 */
+    private static String evidenceQuotes(JsonNode input) {
+        ArrayNode quotes = JsonNodeFactory.instance.arrayNode();
+        for (JsonNode item : input.path("evidence").path("items")) {
+            ObjectNode quote = quotes.addObject();
+            quote.put("title", item.path("title").asString(""));
+            quote.put("summary", item.path("summary").asString(""));
+            quote.put("sourceUrl", item.path("sourceUrl").asString(""));
+            quote.put("fetchedAt", item.path("fetchedAt").asString(""));
         }
-        return repaired;
+        return quotes.toString();
     }
 
     private static Gate datasetEvidenceGate(JsonNode dataset) {
@@ -473,15 +525,97 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return JSON.readTree(result.stdout().substring(result.stdout().indexOf('{')));
     }
 
-    private Path tagAigc(ProductionRunVo run, Path work) {
-        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg",
-            List.of("-y", "-loglevel", "error", "-i", RAW_FILE, "-c", "copy",
-                "-movflags", "+use_metadata_tags", "-metadata", AIGC_TAG + "=" + AIGC_STATEMENT, FINAL_FILE),
+    /**
+     * 成片定稿：混入背景音乐并写 AIGC 元数据，一条命令完成。
+     *
+     * <p>BGM 不是随便混一条了事：口播期间要压到 12%，只留垫底氛围；
+     * 口播结束到片尾（closing 段）拉回 34%，给结尾一点情绪。这条曲线由 ffmpeg 的
+     * sidechaincompress 做不合适（它依赖音轨包络，口播停顿会忽大忽小），所以用固定时间点淡入淡出，
+     * 时间点来自已冻结的脚本时长——和字幕、时间轴用的是同一份时长来源。
+     *
+     * <p>找不到背景音乐就退化成原样封装，不影响出片：音乐是加分项，不是闸。
+     */
+    private Path tagAigc(ProductionRunVo run, Path work, JsonNode script) {
+        Path bgm = pickBgm();
+        List<String> command = new ArrayList<>();
+        command.addAll(List.of("-y", "-loglevel", "error", "-i", RAW_FILE));
+        boolean withBgm = bgm != null;
+        if (withBgm) {
+            command.addAll(List.of("-stream_loop", "-1", "-i", bgm.toAbsolutePath().toString()));
+            command.addAll(List.of("-filter_complex", bgmFilter(script)));
+            command.addAll(List.of("-map", "0:v:0", "-map", "[mix]"));
+            command.addAll(List.of("-c:v", "copy", "-c:a", "aac", "-b:a", "160k"));
+        } else {
+            command.addAll(List.of("-c", "copy"));
+        }
+        command.addAll(List.of("-movflags", "+use_metadata_tags",
+            "-metadata", AIGC_TAG + "=" + AIGC_STATEMENT, FINAL_FILE));
+        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg", command,
             work, PACKAGE_TIMEOUT));
         if (result.exitCode() != 0 || size(work.resolve(FINAL_FILE)) <= 0) {
+            // 混音失败不静默降级成无 BGM：退回去等于掩盖一次真实的编码失败
             throw new HeronBusinessException(503, "news_aigc_metadata_failed", "写入 AIGC 元数据失败");
         }
         return work.resolve(FINAL_FILE);
+    }
+
+    /**
+     * 口播期间压低 BGM，结尾拉回来。
+     *
+     * <p>用两条 volume 叠加而不是 volume + enable：enable 作用在整条链上，
+     * 前一段静音后一段突然跳档会有明显台阶。这里靠 afade 做平滑过渡。
+     * 口播期 0.22、结尾 0.40——实测 0.12 在 -19dB 的口播下只抬 0.5dB，等于没有。
+     */
+    private static String bgmFilter(JsonNode script) {
+        double total = 0;
+        for (JsonNode scene : script.path("scenes")) {
+            total += scene.path("duration_s").asDouble(0);
+        }
+        if (total <= 0) {
+            total = 45;
+        }
+        double releaseAt = Math.max(1.0, total - 1.2);
+        return "[1:a]volume=0.22,afade=t=in:st=0:d=0.8,"
+            + "afade=t=out:st=" + fmt(releaseAt) + ":d=1.2,"
+            + "volume=1.8:enable='gte(t," + fmt(releaseAt) + ")'[bg];"
+            + "[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mix]";
+    }
+
+    private static String fmt(double seconds) {
+        return String.format(java.util.Locale.ROOT, "%.2f", seconds);
+    }
+
+    /**
+     * 背景音乐按「最近没用过的优先」轮换，避免每期都是同一首。
+     * 目录不存在或没有 mp3 时返回 null，由调用方退化成无 BGM。
+     *
+     * <p>BGM 是随仓库分发的资产，不跟 dataRoot 走：dataRoot 是工作目录（每个任务一个临时目录），
+     * 在那里找音乐永远找不到。听感资产和产出物不是同一类东西。
+     */
+    private Path pickBgm() {
+        Path root = properties.getNewsTemplate();
+        Path audio = root == null ? null
+            : root.toAbsolutePath().normalize().getParent().resolve("audio").resolve("bgm");
+        if (audio == null || !java.nio.file.Files.isDirectory(audio)) {
+            // 部署侧可能把模板目录指到别处；退回仓库默认布局再试一次
+            audio = java.nio.file.Path.of("data", "audio", "bgm").toAbsolutePath().normalize();
+            if (!java.nio.file.Files.isDirectory(audio)) {
+                return null;
+            }
+        }
+        try (var files = java.nio.file.Files.list(audio)) {
+            List<Path> tracks = files.filter(p -> p.getFileName().toString().toLowerCase().endsWith(".mp3"))
+                .sorted().toList();
+            if (tracks.isEmpty()) {
+                return null;
+            }
+            // shortcut: 按日轮换，不做「哪首用过」的持久账本；要做效果归因时再按作品表现挑
+            int index = Math.floorMod(java.time.LocalDate.now().getDayOfYear(), tracks.size());
+            return tracks.get(index);
+        } catch (java.io.IOException e) {
+            log.warn("背景音乐目录不可读，本期无 BGM: {}", e.getMessage());
+            return null;
+        }
     }
 
     private Path contactSheet(ProductionRunVo run, Path work, Path finalFile) {
@@ -519,6 +653,14 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     /** 稿件 → 变量：只搬文本；时长一律走磁盘补丁，因为根时长编译期就读一次。 */
     static String templateVariables(JsonNode script) {
+        return templateVariables(script, Map.of());
+    }
+
+    /**
+     * @param images 场景序号 → 已落到工作目录的相对文件名；没有图的场景不出键，
+     *               模板据此决定是否展开图片区，避免留一块空白。
+     */
+    static String templateVariables(JsonNode script, Map<String, String> images) {
         JsonNode scenes = script.path("scenes");
         Map<String, Object> vars = new TreeMap<>();
         vars.put("title", script.path("title").asString(""));
@@ -529,8 +671,75 @@ public class NewsProductionPipeline implements IProductionPipeline {
             JsonNode scene = scenes.get(index);
             vars.put("scene" + (index + 1) + "_lead", scene.path("lead").asString(""));
             vars.put("scene" + (index + 1) + "_body", scene.path("body").asString(""));
+            // 模板为每个场景都声明了 data-var-src，--strict-variables 要求全部有值。
+            // 无图的场景给空串，模板的 has-image 判断据此保持关闭。
+            vars.put("scene" + (index + 1) + "_image", images.getOrDefault(String.valueOf(index + 1), ""));
         }
         return JSON.writeValueAsString(vars);
+    }
+
+    /**
+     * 把稿子里引用的图片落到工作目录。只认稿子里声明的 asset_id → source_url 对应关系，
+     * 不扫描正文重抽一遍：那样会和模型写稿时看到的清单不一致，出现「稿子里说的图」和「画面上放的图」不是同一张。
+     *
+     * <p>取不到的图直接跳过，场景退化成纯文字。一张配图失败不该让整条片子报废。
+     */
+    private Map<String, String> materializeImages(java.nio.file.Path work, JsonNode script, JsonNode input) {
+        Map<String, String> resolved = new TreeMap<>();
+        Map<String, String> byAsset = indexEvidenceAssets(input);
+        JsonNode scenes = script.path("scenes");
+        for (int index = 0; index < scenes.size(); index++) {
+            JsonNode assets = scenes.get(index).path("visual").path("assets");
+            if (!assets.isArray() || assets.isEmpty()) {
+                continue;
+            }
+            JsonNode first = assets.get(0);
+            String url = first.path("source_url").asString("");
+            if (url.isBlank()) {
+                url = byAsset.getOrDefault(first.path("asset_id").asString(""), "");
+            }
+            if (url.isBlank()) {
+                continue;
+            }
+            try {
+                var bytes = fetcher.fetchImage(java.net.URI.create(url));
+                if (bytes.isEmpty()) {
+                    continue;
+                }
+                String name = "scene" + (index + 1) + imageExt(url);
+                java.nio.file.Files.write(work.resolve(name), bytes.get());
+                resolved.put(String.valueOf(index + 1), name);
+            } catch (RuntimeException | java.io.IOException e) {
+                log.warn("场景 {} 的配图取不到，退化成纯文字: {}", index + 1, e.getMessage());
+            }
+        }
+        return resolved;
+    }
+
+    /** 证据里的图片清单：asset_id → source_url，模型只回 asset_id 时用它补地址。 */
+    private static Map<String, String> indexEvidenceAssets(JsonNode input) {
+        Map<String, String> byAsset = new java.util.HashMap<>();
+        JsonNode assets = input.path("evidence").path("assets");
+        if (assets.isArray()) {
+            for (JsonNode asset : assets) {
+                byAsset.put(asset.path("asset_id").asString(""), asset.path("source_url").asString(""));
+            }
+        }
+        return byAsset;
+    }
+
+    private static String imageExt(String url) {
+        String lower = url.toLowerCase();
+        int query = lower.indexOf('?');
+        if (query >= 0) {
+            lower = lower.substring(0, query);
+        }
+        for (String ext : List.of(".png", ".jpg", ".jpeg", ".webp", ".gif")) {
+            if (lower.endsWith(ext)) {
+                return ext;
+            }
+        }
+        return ".jpg";
     }
 
     /** 数据看板变量：沿用文章线文本变量，再补图表类型与整份快照（模板自己解析）。 */
