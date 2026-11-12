@@ -16,6 +16,8 @@ import org.dromara.heron.mapper.HeronAutoSlotMapper;
 import org.dromara.heron.mapper.HeronNewsWorkMapper;
 import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -30,6 +32,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class EditorialRunService {
+
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final HeronAutoSlotMapper slotMapper;
     private final HeronNewsWorkMapper workMapper;
@@ -77,17 +81,36 @@ public class EditorialRunService {
             .collect(Collectors.toMap(HeronNewsWork::getWorkId, Function.identity()));
         List<Long> versionIds = works.values().stream().map(HeronNewsWork::getCurrentVersionId)
             .filter(java.util.Objects::nonNull).distinct().toList();
-        Map<Long, String> reviewStatus = versionIds.isEmpty() ? Map.of()
+        Map<Long, HeronVideoVersion> versions = versionIds.isEmpty() ? Map.of()
             : versionMapper.selectByIds(versionIds).stream()
-            .collect(Collectors.toMap(HeronVideoVersion::getVersionId, HeronVideoVersion::getReviewStatus));
+            .collect(Collectors.toMap(HeronVideoVersion::getVersionId, Function.identity()));
         for (EditorialRunVo row : rows) {
             HeronNewsWork work = row.getWorkId() == null ? null : works.get(row.getWorkId());
             if (work == null) {
                 continue;
             }
             row.setWorkTitle(work.getTitle());
-            row.setWorkReviewStatus(work.getCurrentVersionId() == null ? null : reviewStatus.get(work.getCurrentVersionId()));
+            HeronVideoVersion version = work.getCurrentVersionId() == null ? null : versions.get(work.getCurrentVersionId());
+            if (version == null) {
+                continue;
+            }
+            row.setWorkReviewStatus(version.getReviewStatus());
+            row.setSelectionJson(selectionJson(version));
+            row.setReviewJson(version.getEditorialReview());
         }
         return rows;
+    }
+
+    /**
+     * 只取快照里的 selection 节点：正文与证据占整份快照的绝大部分，
+     * 编辑策划要看的是「选了哪个候选、哪套模板、什么角度」，不是把它再搬一遍。
+     */
+    static String selectionJson(HeronVideoVersion version) {
+        if (StringUtils.isBlank(version.getInputSnapshot())) {
+            return null;
+        }
+        // 用本地 mapper 而不是 JsonUtils：这两个字段要在纯单测里可验，不依赖 Spring 上下文
+        JsonNode selection = JSON.readTree(version.getInputSnapshot()).path("selection");
+        return selection.isObject() ? JSON.writeValueAsString(selection) : null;
     }
 }

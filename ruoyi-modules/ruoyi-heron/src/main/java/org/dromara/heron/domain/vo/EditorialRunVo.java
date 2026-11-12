@@ -26,5 +26,9 @@ public class EditorialRunVo implements Serializable {
     /** 产出作品的标题，供列表直接显示，避免页面再查一次。 */
     private String workTitle;
     private String workReviewStatus;
+    /** 线内编辑在总编辑定线之后选了什么：候选、模板、角度、数据源。 */
+    private String selectionJson;
+    /** 这份产出的 AI 审稿记录，与自动发布门禁读的是同一份。 */
+    private String reviewJson;
     private LocalDateTime updateTime;
 }
