@@ -40,17 +40,35 @@ public class DatasetRouter {
     /** digest=true 表示没有热点匹配，按最新更新的源出「数据速览」。 */
     public record Route(String sourceKey, boolean digest) { }
 
-    public Route route(ProductionRunVo run, JsonNode input) {
+    /**
+     * 发现：哪些源此刻有资格参与选择。只查库、不调模型。
+     * 建池时调一次，之后线内编辑只从这份快照里挑，不再重查——
+     * 重查会让 7 天去重和探测状态在两次选择之间悄悄变掉。
+     */
+    public List<HeronDataSource> eligible(LocalDateTime now) {
         List<HeronDataSource> enabled = dataSourceMapper.enabledSources().stream()
             .filter(source -> "ok".equals(source.getProbeStatus())).toList();
         if (enabled.isEmpty()) throw slotEmpty("没有探测为 ok 的启用源");
-        Set<String> recent = usageMapper.recentSourceKeys(LocalDateTime.now().minusDays(DEDUP_DAYS));
+        Set<String> recent = usageMapper.recentSourceKeys(now.minusDays(DEDUP_DAYS));
         List<HeronDataSource> eligible = enabled.stream()
             .filter(source -> !recent.contains(source.getSourceKey())).toList();
         if (eligible.isEmpty()) throw slotEmpty("7 天内可用的数据源已用尽");
+        return eligible;
+    }
+
+    /** 选择：从给定候选里让模型挑一条。不查库，候选集合由调用方冻结。 */
+    public Route pick(ProductionRunVo run, JsonNode input, List<HeronDataSource> eligible) {
         String reply = model.chat(run, "dataset-route", SYSTEM, prompt(input, eligible));
-        return plan(reply, eligible,
-            enabled.stream().map(HeronDataSource::getSourceKey).collect(Collectors.toSet()));
+        return plan(reply, eligible, eligible.stream().map(HeronDataSource::getSourceKey).collect(Collectors.toSet()));
+    }
+
+    /**
+     * 老入口：发现 + 选择一步到位。
+     * 只留给 {@code NewsProductionPipeline.frozenSelection} 缺 selection 的历史快照回退，
+     * 新链路应当分别调 {@link #eligible} 与 {@link #pick}。
+     */
+    public Route route(ProductionRunVo run, JsonNode input) {
+        return pick(run, input, eligible(LocalDateTime.now()));
     }
 
     /** 纯决策：热点命中出热点片；none 或命中近 7 天已用源时降级速览。 */

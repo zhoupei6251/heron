@@ -34,6 +34,11 @@
 
 你只需要回答：走哪条线，为什么。
 
+**唯一的例外**：候选前面的方括号是它的编号（例如 `[1204] 标题`）。如果你确信今天要做的
+就是其中某一条（通常是解说线），可以回一个 `focusCandidateId` 作为锚点。这不是选素材，
+只是告诉线内编辑「如果要讲这件事，就是它」。拿不准就不要回——不回的代价远小于回错一个编号，
+因为线内编辑会用别的方式自己挑。
+
 ## 输出
 
 只输出一个 JSON 对象，不带 Markdown 代码块、不带解释文字。
@@ -42,6 +47,18 @@
 {
   "decision": "PUBLISH",
   "selectedLine": "DATA_BOARD",
+  "reason": "一句话说明为什么走这条线",
+  "editorialIntent": "今天这条片子要讲的核心判断，一句话"
+}
+```
+
+锁定某条候选时（可选，仅解说线）：
+
+```
+{
+  "decision": "PUBLISH",
+  "selectedLine": "NEWS_EXPLAINER",
+  "focusCandidateId": 1204,
   "reason": "一句话说明为什么走这条线",
   "editorialIntent": "今天这条片子要讲的核心判断，一句话"
 }
@@ -62,4 +79,5 @@
 - `selectedLine` 是 `PUBLISH` 时必填，只能是 `DATA_BOARD` 或 `NEWS_EXPLAINER`。
 - `reason` 必填，不超过 100 字。
 - `editorialIntent` 是 `PUBLISH` 时必填，一句话，不超过 50 字。
+- `focusCandidateId` 可选，必须是候选列表里出现过的编号。编号不存在会被判为无效输出。
 - 不输出其他字段。

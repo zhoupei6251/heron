@@ -21,14 +21,18 @@ class EditorialCandidatePoolTest {
         return item;
     }
 
+    private static EditorialCandidatePool pool(List<HeronNewsCandidate> items,
+                                               java.util.function.Predicate<HeronNewsCandidate> hasBody) {
+        return EditorialCandidatePool.of(items, hasBody, List.of(), List.of(), List.of());
+    }
+
     @Test
     @DisplayName("有正文的进解说池，其余进热榜池")
     void splitsByBody() {
         HeronNewsCandidate withBody = candidate("有正文");
         HeronNewsCandidate titleOnly = candidate("只有标题");
 
-        EditorialCandidatePool pool = EditorialCandidatePool.sort(
-            List.of(withBody, titleOnly), item -> item == withBody);
+        EditorialCandidatePool pool = pool(List.of(withBody, titleOnly), item -> item == withBody);
 
         assertEquals(List.of(withBody), pool.articles());
         assertEquals(List.of(titleOnly), pool.hot());
@@ -39,7 +43,7 @@ class EditorialCandidatePoolTest {
     @DisplayName("标题为空的候选被丢掉，不占名额")
     void dropsBlankTitles() {
         HeronNewsCandidate blank = candidate("   ");
-        EditorialCandidatePool pool = EditorialCandidatePool.sort(List.of(blank), item -> false);
+        EditorialCandidatePool pool = pool(List.of(blank), item -> false);
         assertTrue(pool.isEmpty());
     }
 
@@ -47,14 +51,34 @@ class EditorialCandidatePoolTest {
     @DisplayName("空池可判定，调用方据此跳过而不是硬做")
     void emptyIsDetectable() {
         assertTrue(EditorialCandidatePool.empty().isEmpty());
-        assertTrue(EditorialCandidatePool.sort(List.of(), item -> false).isEmpty());
+        assertTrue(pool(List.of(), item -> false).isEmpty());
     }
 
     @Test
     @DisplayName("池是不可变的，建好之后不会被下游改掉")
     void isImmutable() {
-        EditorialCandidatePool pool = EditorialCandidatePool.sort(
-            List.of(candidate("甲")), item -> false);
+        EditorialCandidatePool pool = pool(List.of(candidate("甲")), item -> false);
         assertThrows(UnsupportedOperationException.class, () -> pool.hot().add(candidate("乙")));
+    }
+
+    @Test
+    @DisplayName("建池即带内容摘要：64 位小写十六进制，空池也有")
+    void carriesPoolDigest() {
+        assertTrue(EditorialCandidatePool.empty().poolHash().matches("[0-9a-f]{64}"));
+        assertTrue(pool(List.of(candidate("甲")), item -> false).poolHash().matches("[0-9a-f]{64}"));
+    }
+
+    @Test
+    @DisplayName("内容变了摘要就变，池 ID 每池独立")
+    void digestTracksContentAndIdIsUnique() {
+        HeronNewsCandidate first = candidate("甲");
+        HeronNewsCandidate second = candidate("乙");
+
+        EditorialCandidatePool a = pool(List.of(first), item -> false);
+        EditorialCandidatePool b = pool(List.of(second), item -> false);
+
+        assertNotEquals(a.poolHash(), b.poolHash());
+        assertNotEquals(a.poolId(), b.poolId());
+        assertFalse(a.poolId().isBlank());
     }
 }

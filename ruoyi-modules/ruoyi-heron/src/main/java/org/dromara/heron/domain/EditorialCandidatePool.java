@@ -1,39 +1,54 @@
 package org.dromara.heron.domain;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
- * 自动线的候选池：结构化对象，不是标题字符串。
+ * 自动线的候选池：一次性建好，总编辑与线内编辑都从这里取。
  *
- * <p>总编辑看的是摘要，线内编辑从这个池子里挑具体条目——两处必须是同一批数据。
- * 之前线内编辑收到摘要后自己又查了一次库，于是「总编辑看到的」和「真正选的」
- * 是两个集合，池子的边界（来源白名单、24 小时时效）在那一次重查里全丢了。
+ * <p>五类候选分开装：热榜标题、带正文文章、可用数据源、自动来源、最近已发布。
+ * 之所以要 {@code poolId} 与 {@code poolHash} 两个身份：
+ * id 标识「这一次快照」，hash 证明「内容没被换过」——只有 id 相同不足以说明内容一致。
  *
- * <p>两类分开是因为它们的素材能力不同：有正文的才能走解说线，
- * 只有标题的只能靠数据看板。这个判定由 {@link #sort} 在代码里完成，不交给模型。
+ * <p>建好即不可变；分线判定（有正文才走解说线）由 {@link #of} 在代码里完成，不交给模型。
  */
-public record EditorialCandidatePool(List<HeronNewsCandidate> hot,
-                                     List<HeronNewsCandidate> articles) {
+public record EditorialCandidatePool(String poolId, String poolHash,
+                                     List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,
+                                     List<HeronDataSource> datasets, List<HeronNewsSource> sources,
+                                     List<HeronNewsWork> recent) {
 
     public EditorialCandidatePool {
+        if (poolId == null || poolId.isBlank()) {
+            throw new IllegalStateException("候选池缺少 poolId");
+        }
+        if (poolHash == null || !poolHash.matches("[0-9a-f]{64}")) {
+            throw new IllegalStateException("候选池缺少合法 poolHash：" + poolHash);
+        }
         hot = hot == null ? List.of() : List.copyOf(hot);
         articles = articles == null ? List.of() : List.copyOf(articles);
+        datasets = datasets == null ? List.of() : List.copyOf(datasets);
+        sources = sources == null ? List.of() : List.copyOf(sources);
+        recent = recent == null ? List.of() : List.copyOf(recent);
     }
 
     public static EditorialCandidatePool empty() {
-        return new EditorialCandidatePool(List.of(), List.of());
+        return build(List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
-    public boolean isEmpty() {
-        return hot.isEmpty() && articles.isEmpty();
-    }
-
-    /** 有正文的走解说线，其余进热榜池。判定依据是证据里有没有原文链接。 */
-    public static EditorialCandidatePool sort(List<HeronNewsCandidate> candidates,
-                                              java.util.function.Predicate<HeronNewsCandidate> hasBody) {
-        List<HeronNewsCandidate> hot = new java.util.ArrayList<>();
-        List<HeronNewsCandidate> articles = new java.util.ArrayList<>();
-        for (HeronNewsCandidate candidate : candidates) {
+    /**
+     * 建池：先按「有没有正文」分线，再连同其余三类候选一起算摘要。
+     * 标题为空的候选直接丢掉，不占名额。
+     */
+    public static EditorialCandidatePool of(List<HeronNewsCandidate> candidates,
+                                            Predicate<HeronNewsCandidate> hasBody,
+                                            List<HeronDataSource> datasets,
+                                            List<HeronNewsSource> sources,
+                                            List<HeronNewsWork> recent) {
+        List<HeronNewsCandidate> hot = new ArrayList<>();
+        List<HeronNewsCandidate> articles = new ArrayList<>();
+        for (HeronNewsCandidate candidate : candidates == null ? List.<HeronNewsCandidate>of() : candidates) {
             String title = candidate == null ? null : candidate.getTitle();
             if (title == null || title.isBlank()) {
                 continue;
@@ -44,6 +59,19 @@ public record EditorialCandidatePool(List<HeronNewsCandidate> hot,
                 hot.add(candidate);
             }
         }
-        return new EditorialCandidatePool(hot, articles);
+        return build(hot, articles, datasets, sources, recent);
+    }
+
+    /** 新闻候选为空才算空池：只有数据源没有稿子时，两条线都做不了。 */
+    public boolean isEmpty() {
+        return hot.isEmpty() && articles.isEmpty();
+    }
+
+    private static EditorialCandidatePool build(List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,
+                                                List<HeronDataSource> datasets, List<HeronNewsSource> sources,
+                                                List<HeronNewsWork> recent) {
+        return new EditorialCandidatePool(UUID.randomUUID().toString(),
+            PoolDigest.of(hot, articles, datasets, sources, recent),
+            hot, articles, datasets, sources, recent);
     }
 }

@@ -14,7 +14,18 @@ class EditorialDecisionTest {
 
     private static EditorialDecisionService.Pools pools(List<String> hot, List<String> articles,
                                                         List<String> data) {
-        return new EditorialDecisionService.Pools(hot, articles, data, List.of("昨天：中美科技市值榜"));
+        List<EditorialDecisionService.CandidateRef> hotRefs = refs(hot);
+        List<EditorialDecisionService.CandidateRef> articleRefs = refs(articles);
+        List<EditorialDecisionService.DatasetRef> dataRefs = data.stream()
+            .map(key -> new EditorialDecisionService.DatasetRef(key, key + "（daily，long）")).toList();
+        return new EditorialDecisionService.Pools("pool-1", "0".repeat(64),
+            hotRefs, articleRefs, dataRefs, List.of("昨天：中美科技市值榜"));
+    }
+
+    private static List<EditorialDecisionService.CandidateRef> refs(List<String> titles) {
+        return java.util.stream.IntStream.range(0, titles.size())
+            .mapToObj(index -> new EditorialDecisionService.CandidateRef(100L + index, titles.get(index)))
+            .toList();
     }
 
     @Test
@@ -27,6 +38,7 @@ class EditorialDecisionTest {
         assertTrue(decision.publish());
         assertEquals(EditorialDecisionService.DATA_BOARD, decision.selectedLine());
         assertEquals("看全球新能源份额怎么变", decision.editorialIntent());
+        assertNull(decision.focusCandidateId(), "没给 focusCandidateId 时保持原行为");
     }
 
     @Test
@@ -86,5 +98,36 @@ class EditorialDecisionTest {
                 "{\"decision\":\"PUBLISH\",\"selectedLine\":\"TELEVISION\"}", empty)).getCode());
         assertEquals("editorial_decision_invalid", assertThrows(HeronBusinessException.class,
             () -> EditorialDecisionService.plan("{\"decision\":\"NO_PUBLISH\"}", empty)).getCode());
+    }
+
+    @Test
+    @DisplayName("总编辑锁定候选：ID 在池子里就原样保留")
+    void keepsKnownFocusCandidate() {
+        var decision = EditorialDecisionService.plan("""
+            {"decision":"PUBLISH","selectedLine":"NEWS_EXPLAINER","focusCandidateId":101,
+             "reason":"这条最完整","editorialIntent":"解释产业影响"}
+            """, pools(List.of("热榜"), List.of("正文A", "正文B"), List.of()));
+        assertEquals(101L, decision.focusCandidateId());
+    }
+
+    @Test
+    @DisplayName("总编辑编了一个候选 ID：拒绝，不猜是哪条")
+    void rejectsUnknownFocusCandidate() {
+        HeronBusinessException error = assertThrows(HeronBusinessException.class,
+            () -> EditorialDecisionService.plan("""
+                {"decision":"PUBLISH","selectedLine":"NEWS_EXPLAINER","focusCandidateId":999,
+                 "reason":"这条最完整","editorialIntent":"解释产业影响"}
+                """, pools(List.of("热榜"), List.of("正文A"), List.of())));
+        assertEquals("editorial_decision_invalid", error.getCode());
+    }
+
+    @Test
+    @DisplayName("候选摘要带 ID：模型才能回指到具体候选")
+    void promptCarriesIds() {
+        String prompt = EditorialDecisionService.prompt(
+            pools(List.of("热榜标题"), List.of("正文稿"), List.of("worldbank-gdp")));
+        assertTrue(prompt.contains("[100] 热榜标题"), prompt);
+        assertTrue(prompt.contains("[100] 正文稿"), prompt);
+        assertTrue(prompt.contains("worldbank-gdp"), prompt);
     }
 }
