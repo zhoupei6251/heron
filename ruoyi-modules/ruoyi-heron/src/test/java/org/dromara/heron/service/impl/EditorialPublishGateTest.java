@@ -77,6 +77,18 @@ class EditorialPublishGateTest {
     }
 
     @Test
+    @DisplayName("问题清单缺失不能当「零问题」放过")
+    void missingIssuesIsBlocked() {
+        // 之前 isMissingNode 直接跳过校验，一个 {"result":"PASS"} 就能自动发布
+        assertEquals("review_invalid", errorCode("""
+            {"result":"PASS"}
+            """));
+        assertEquals("review_invalid", errorCode("""
+            {"schemaVersion":"1.0","result":"PASS","repairAttempts":0}
+            """));
+    }
+
+    @Test
     @DisplayName("干净的 PASS 才能放行")
     void cleanPassIsAllowed() {
         assertDoesNotThrow(() -> NewsWorkServiceImpl.checkEditorialPass("""

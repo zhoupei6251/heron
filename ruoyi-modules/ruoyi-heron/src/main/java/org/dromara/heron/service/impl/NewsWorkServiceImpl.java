@@ -492,8 +492,10 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         if (!"PASS".equals(result)) {
             throw new HeronBusinessException(409, "review_not_passed", "AI 审稿结论为 " + result + "，不能自动发布");
         }
+        // 缺失不算「没问题」：审稿器每次都写 issues（哪怕是空数组），
+        // 字段不见说明这条记录不是我们的审稿器产的，不能拿它当 PASS
         JsonNode issues = record.path("issues");
-        if (!issues.isArray() && !issues.isMissingNode()) {
+        if (!issues.isArray()) {
             throw new HeronBusinessException(409, "review_invalid", "AI 审稿记录的问题清单不合法");
         }
         for (JsonNode issue : issues) {
