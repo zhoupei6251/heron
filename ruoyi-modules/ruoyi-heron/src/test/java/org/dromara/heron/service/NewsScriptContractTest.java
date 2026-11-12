@@ -81,7 +81,7 @@ class NewsScriptContractTest {
         ScriptClient client = new ScriptClient("{\"title\":\"测试新闻\",\"closing\":\"结尾\",\"source_name\":\"测试来源\","
             + "\"scenes\":[{\"lead\":\"一\",\"body\":\"正文\",\"duration_s\":15},{\"lead\":\"二\",\"body\":\"正文\",\"duration_s\":15},"
             + "{\"lead\":\"三\",\"body\":\"正文\",\"duration_s\":15}]}");
-        JsonNode node = JSON.readTree(new NewsModelScriptAuthor(client, new StubFetcher()).author(run()));
+        JsonNode node = JSON.readTree(author(client).author(run()));
 
         assertEquals("script", client.stage);
         assertTrue(client.systemPrompt.contains("duration_s"), client.systemPrompt);
@@ -99,7 +99,7 @@ class NewsScriptContractTest {
         ScriptClient client = new ScriptClient("{\"title\":\"很短\",\"closing\":\"结尾\",\"source_name\":\"来源\","
             + "\"scenes\":[{\"lead\":\"一\",\"body\":\"正文\",\"duration_s\":15}]}");
         HeronBusinessException error = assertThrows(HeronBusinessException.class,
-            () -> new NewsModelScriptAuthor(client, new StubFetcher()).author(run()));
+            () -> author(client).author(run()));
         assertEquals("news_script_contract", error.getCode());
         assertTrue(error.getMessage().contains("段落数"), error.getMessage());
         assertEquals(2, client.calls);
@@ -113,14 +113,20 @@ class NewsScriptContractTest {
             "evidence", Map.of("items", List.of(Map.of("manual", true, "title", "测试新闻标题")))));
         ScriptClient client = new ScriptClient("{}");
         HeronBusinessException error = assertThrows(HeronBusinessException.class,
-            () -> new NewsModelScriptAuthor(client, new StubFetcher()).author(
+            () -> author(client).author(
                 new ProductionRunVo(1L, ProductionBizType.news_video, 7L, 9L, 1, "token", input, null)));
         assertEquals("news_script_source", error.getCode());
         assertEquals(0, client.calls);
     }
 
-    private ProductionRunVo run() {
-        String input = JSON.writeValueAsString(Map.of("workId", 7L, "candidateId", 8L, "versionNo", 1, "revision", 1L,
+    /** 正文由冻结层提供：单测里用假 mapper（读不到已冻结正文）让它走「抓取后冻结」这条真实路径。 */
+    private static NewsModelScriptAuthor author(ScriptClient client) {
+        return new NewsModelScriptAuthor(client, new org.dromara.heron.service.impl.FrozenArticleService(
+            org.mockito.Mockito.mock(org.dromara.heron.mapper.HeronProductionArtifactMapper.class),
+            new StubFetcher()));
+    }
+
+    private ProductionRunVo run() {        String input = JSON.writeValueAsString(Map.of("workId", 7L, "candidateId", 8L, "versionNo", 1, "revision", 1L,
             "title", "测试新闻标题", "draft", "来源事实与授权待人工核对",
             "evidence", Map.of("items", List.of(Map.of("sourceUrl", "https://feed.example.test/news/1", "title", "测试新闻标题"))),
             "assets", Map.of("templateKey", "default", "voiceKey", "default")));

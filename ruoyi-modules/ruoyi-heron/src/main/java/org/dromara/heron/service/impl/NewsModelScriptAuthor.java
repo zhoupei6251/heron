@@ -12,14 +12,14 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * 稿件由模型写，出处事实由抓取给：模型自述的 source_url / fetched_at / body_sha256 一律被抓取结果覆盖，
  * 契约不过就列条目退回，不改稿也不重试。
+ *
+ * <p>正文由流水线传入（已冻结）。写稿阶段不再出网：同一任务重试时读到的就是同一份正文。
  */
 @Service
 @RequiredArgsConstructor
@@ -31,12 +31,12 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
         + "\n\n---\n\n" + resource("/prompt/news-explainer/script-contract.md");
 
     private final OpenAiModelClient model;
-    private final NewsSourceFetcher fetcher;
+    private final FrozenArticleService articles;
 
     @Override
     public String author(ProductionRunVo run) {
         JsonNode input = JSON.readTree(run.inputJson());
-        NewsArticleBody article = fetcher.fetchArticle(sourceUrl(input));
+        NewsArticleBody article = articles.of(run.taskId(), input);
         ObjectNode script = withEvidence(parse(model.chat(run, "script", SYSTEM, prompt(input, article))), article);
         List<String> violations = NewsScriptContract.violations(script);
         if (!violations.isEmpty()) {
@@ -53,9 +53,10 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
     }
 
     /** 审稿判 BLOCKER/MAJOR 后的定向修复：只改被点出的问题，其余字段原样保留。 */
+    @Override
     public String repair(ProductionRunVo run, String scriptJson, List<String> notes) {
         JsonNode input = JSON.readTree(run.inputJson());
-        NewsArticleBody article = fetcher.fetchArticle(sourceUrl(input));
+        NewsArticleBody article = articles.of(run.taskId(), input);
         ObjectNode script = withEvidence(
             parse(model.chat(run, "script-repair", SYSTEM, reviewRepairPrompt(scriptJson, notes))), article);
         List<String> violations = NewsScriptContract.violations(script);
@@ -75,7 +76,7 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
     private static ObjectNode withEvidence(JsonNode draft, NewsArticleBody article) {
         ObjectNode script = (ObjectNode) draft;
         script.put("source_url", article.url());
-        script.put("fetched_at", article.fetchedAt().toString());
+        script.put("fetched_at", article.fetchedAt() == null ? "" : article.fetchedAt().toString());
         script.put("body_sha256", article.htmlSha256());
         return script;
     }
@@ -89,59 +90,38 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
     }
 
     /**
-     * 取正文出处：优先用线内编辑选中的那条证据，而不是列表里的第一条。
-     *
-     * <p>同一个事件常有多个来源，第一条未必是编辑选的那条。若仍取第一条，
-     * 就会出现「快照记的证据是 A，写稿读的正文是 B」——和重新选数据源是同一类问题。
-     * 选中的证据都取不到时才退回第一条，保证手工认领等路径仍可用。
+     * 提示词：编辑意图、决策理由、故事视角必须进模型输入。
+     * 这些字段躺在快照里不读，等于总编辑白干——「决策失效」就是这么来的。
+     * 老快照（手工路径）没有 editorial 节点，对应的行整行省略，不塞空字符串。
      */
-    private static URI sourceUrl(JsonNode input) {
-        List<String> selected = new ArrayList<>();
-        for (JsonNode id : input.path("selection").path("sourceEvidenceIds")) {
-            String text = id.asString("");
-            if (!text.isBlank()) {
-                selected.add(text);
-            }
-        }
-        URI chosen = firstUrl(input, item -> {
-            String itemId = item.path("sourceItemId").asString("");
-            String url = item.path("sourceUrl").asString("");
-            return selected.contains(itemId) || selected.contains(url);
-        });
-        if (chosen != null) {
-            return chosen;
-        }
-        URI fallback = firstUrl(input, item -> true);
-        if (fallback != null) {
-            return fallback;
-        }
-        throw new HeronBusinessException(409, "news_script_source", "候选证据里没有正文出处，不能写稿");
-    }
-
-    private static URI firstUrl(JsonNode input, java.util.function.Predicate<JsonNode> accept) {
-        for (JsonNode item : input.path("evidence").path("items")) {
-            String url = item.path("sourceUrl").asString("");
-            if (url.isBlank() || !accept.test(item)) {
-                continue;
-            }
-            try {
-                return URI.create(url);
-            } catch (IllegalArgumentException e) {
-                throw new HeronBusinessException(409, "news_script_source", "候选证据里的正文链接无法解析");
-            }
-        }
-        return null;
-    }
-
-    private static String prompt(JsonNode input, NewsArticleBody article) {
+    static String prompt(JsonNode input, NewsArticleBody article) {
         ArrayNode images = ArticleImages.extract(article.html(), article.url());
-        return new StringBuilder()
+        StringBuilder text = new StringBuilder()
             .append("标题：").append(input.path("title").asString("")).append('\n')
-            .append("草稿：").append(input.path("draft").asString("")).append('\n')
-            .append("出处：").append(article.url()).append("（抓取时间 ").append(article.fetchedAt()).append("）\n")
+            .append("草稿：").append(input.path("draft").asString("")).append('\n');
+        appendEditorial(text, input.path("editorial"));
+        text.append("出处：").append(article.url())
+            .append("（抓取时间 ").append(article.fetchedAt()).append("）\n")
             .append("正文 HTML：\n").append(article.html()).append('\n')
             .append(ArticleImages.promptHint(images)).append('\n')
-            .append("只用上面正文里能站住的事实，按契约输出完整稿件 JSON。").toString();
+            .append("只用上面正文里能站住的事实，按契约输出完整稿件 JSON。");
+        return text.toString();
+    }
+
+    private static void appendEditorial(StringBuilder text, JsonNode editorial) {
+        String intent = editorial.path("editorialIntent").asString("").strip();
+        String reason = editorial.path("reason").asString("").strip();
+        String angle = editorial.path("storyAngle").asString("").strip();
+        if (intent.isBlank() && reason.isBlank() && angle.isBlank()) {
+            return;
+        }
+        text.append("编辑意图：").append(intent.isBlank() ? "（未给出）" : intent).append('\n');
+        if (!reason.isBlank()) {
+            text.append("为什么选它：").append(reason).append('\n');
+        }
+        if (!angle.isBlank()) {
+            text.append("故事视角：").append(angle).append('\n');
+        }
     }
 
     private static JsonNode parse(String text) {

@@ -135,6 +135,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
             scriptJson = datasetAuthor.author(run, fetched.json(), route.digest());
             review = reviewScript(run, scriptJson, dataset.path("facts").toString(), fetched, true);
         } else {
+            // 正文由作者从冻结层取：首次抓取并落库，重试读同一份，写稿阶段不再二次出网
             scriptJson = author.author(run);
             // 解说线此前完全没有审稿，自动确认会把没审过的片子直接发出去
             review = reviewScript(run, scriptJson, evidenceQuotes(input), null, false);
