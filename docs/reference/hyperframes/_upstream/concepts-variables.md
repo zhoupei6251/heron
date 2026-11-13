@@ -1,0 +1,269 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://hyperframes.heygen.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Reuse a design with variables
+
+> Change approved text, colors, media, and choices without rebuilding the composition.
+
+Variables expose the parts of a composition that are meant to change. One
+customer card can accept a different name, logo, color, and plan while keeping
+the same layout and motion.
+
+Use a variable when the design should remain stable across versions. Make a
+normal source edit when the structure itself needs to change.
+
+<video src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-variables-default.mp4#t=0.1" autoPlay muted loop playsInline preload="metadata" />
+
+Default values
+
+<video src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-variables-variant.mp4#t=0.1" autoPlay muted loop playsInline preload="metadata" />
+
+The same design with different values
+
+## Use variables in the browser editor
+
+The browser editor can create and bind variables, preview overrides, and copy the reviewed
+values into a render command. Follow [Use variables and templates](https://hyperframes.heygen.com/studio/assets-and-blocks.md#use-variables)
+for that complete workflow.
+
+## Advanced: declare the approved inputs
+
+Variables live on the composition declaration:
+
+```html compositions/card.html theme={null}
+<html
+  data-composition-variables='[
+  {"id":"title","type":"string","label":"Title","default":"Pro"},
+  {"id":"accent","type":"color","label":"Accent color","default":"#6c5ce7"},
+  {"id":"logo","type":"string","label":"Logo","default":"assets/logo.svg"}
+]'
+></html>
+```
+
+### What can be a variable
+
+A variable has one of seven kinds. The kind sets the control the browser editor
+shows and what a render accepts for it.
+
+| Kind | What it holds | Example |
+| - | - | - |
+| `string` | Text, or a link to a file | A customer name, a video link |
+| `number` | A count, position, size, or strength | Seats on a plan, a speed |
+| `color` | One approved color | A brand accent |
+| `boolean` | On or off | Show the badge |
+| `enum` | One value from a list you approved | `light` or `dark` |
+| `font` | A font family | The headline typeface |
+| `image` | A link to a picture | A customer logo |
+
+Video and sound have no kind of their own. Declare the link as a `string`, then
+bind it to a `<video>` or `<audio>` element, as in [Swap in a video or a sound](#swap-in-a-video-or-a-sound).
+
+### Say what a slot means, not where it sits
+
+`label` and `description` are read by people and by agents. A description that
+only gives a position ("small credit in the corner of every banner") leaves the
+slot's meaning to be guessed; one that gives the meaning ("name of the brand this
+video promotes") can be filled correctly without opening the HTML.
+
+For a template that will be remixed against someone else's brand, add
+`portrays` — a list naming what the slot stands for. It is optional metadata,
+ignored by rendering, and it tells an editing agent which slots carry identity
+and must not be filled with invented copy:
+
+```html compositions/card.html theme={null}
+{"id":"appName","type":"string","label":"App name",
+ "description":"Name of the brand this video promotes, credited in the corner of every banner.",
+ "portrays":["subject_name"],"default":"HyperFrames"}
+```
+
+| Value | The slot stands for |
+| - | - |
+| `subject_name` | The promoted brand's own name |
+| `subject_domain` | Its domain, URL, or handle |
+| `subject_tagline` | Its own positioning line |
+| `subject_logo` | Its mark or wordmark |
+| `recommended_position` | The winning or featured slot in a ranking, so the promoted brand goes there |
+| `competitor_name` | A real product other than the promoted brand |
+| `authority_badge` | A claim of endorsement, ranking authority, rating, or source |
+| `host_identity` | The depicted application's own identity, which a remix leaves alone |
+
+`portrays` is orthogonal to `role`: `role` says which aspect of the composition a
+knob affects (`content`, `style`, `timing`, `motion`, `layout`), while `portrays`
+says what the value means to a viewer.
+
+## Bind common values without a script
+
+Use direct bindings for the normal cases:
+
+```html theme={null}
+<h1 data-var-text="title">Pro</h1>
+
+<img data-var-src="logo" src="assets/logo.svg" alt="" />
+
+<style>
+  .card-title {
+    color: var(--accent);
+  }
+</style>
+```
+
+* `data-var-text` replaces the element’s own text.
+* `data-var-src` replaces an image, video, audio, or source URL.
+* Scalar variables are available as CSS custom properties such as
+  `var(--accent)`.
+
+Use `window.__hyperframes.getVariables()` only when the result needs conditions,
+loops, or derived values:
+
+```js theme={null}
+const { featured = false } = window.__hyperframes.getVariables();
+document.querySelector(".badge").hidden = !featured;
+```
+
+## Swap in a video or a sound
+
+Bind a link to a media element with `data-var-src`. Keep a `src` on the element
+as the placeholder:
+
+```html index.html theme={null}
+<html
+  data-composition-variables='[
+  {"id":"welcomeClip","type":"string","label":"Welcome clip","default":"assets/placeholder.mp4"}
+]'
+>
+  <video
+    data-var-src="welcomeClip"
+    src="assets/placeholder.mp4"
+    data-start="0"
+    data-track-index="0"
+    playsinline
+  ></video>
+</html>
+```
+
+Render the same saved project once per account by passing each account's clip:
+
+```bash theme={null}
+npx hyperframes render \
+  --variables '{"welcomeClip":"https://example.com/clips/northstar.mp4"}' \
+  --output northstar.mp4
+```
+
+The film takes the length and the sound of the clip you pass, not the
+placeholder's. A 3 second placeholder swapped for a 5 second clip renders 5
+seconds, and that clip's sound is mixed once.
+
+Limits:
+
+* `data-var-src` works on `<video>`, `<audio>`, `<img>`, and `<source>`. On any
+  other element it is ignored.
+* The link must be a path or an `http`, `https`, or `blob` URL. Any
+  other value, including a `data:` video, is dropped and the placeholder
+  renders instead, with a warning.
+* A clip inside a nested composition that receives its own `data-variable-values`
+  is resolved by the browser during the render, not before it.
+* The root composition's length follows the clips it plays. It is not a variable.
+
+## Give each nested composition different values
+
+A parent can reuse the same composition several times:
+
+```html index.html theme={null}
+<div
+  data-composition-id="card-pro"
+  data-composition-src="compositions/card.html"
+  data-start="0"
+  data-duration="3"
+  data-track-index="1"
+data-variable-values='{"title":"Pro","accent":"#ff4d4f"}'
+></div>
+
+<div
+  data-composition-id="card-enterprise"
+  data-composition-src="compositions/card.html"
+  data-start="card-pro"
+  data-duration="3"
+  data-track-index="1"
+data-variable-values='{"title":"Enterprise","accent":"#22c55e"}'
+></div>
+```
+
+Both instances keep the same source and receive different content.
+
+## Advanced: render a version from data
+
+Override top-level values from the CLI:
+
+```bash theme={null}
+npx hyperframes render \
+  --variables '{"title":"Enterprise","accent":"#22c55e"}' \
+  --strict-variables \
+  --output enterprise.mp4
+```
+
+Use `--variables-file` for a JSON file and `--batch` when the same composition
+must render once per data row. The [CLI reference](https://hyperframes.heygen.com/packages/cli.md) covers batch
+output, validation, and automation.
+
+### Batch renders
+
+Put one variable object per row in a JSON array, then use placeholders from the
+row to name each output. Batch files can use UTF-8, with or without a byte order
+mark (BOM), or UTF-16LE with a BOM.
+
+```json rows.json theme={null}
+[
+  { "name": "acme", "title": "Acme Pro" },
+  { "name": "northstar", "title": "Northstar Pro" }
+]
+```
+
+```bash theme={null}
+npx hyperframes render \
+  --batch rows.json \
+  --strict-variables \
+  --output "renders/{name}.mp4"
+```
+
+Start with the default single-row concurrency. Increase `--batch-concurrency`
+only after one real render is stable and the machine has enough memory for
+several renders at once.
+
+## What can't be a variable
+
+Variables change content inside a composition. They do not change:
+
+* the composition viewport;
+* the root composition’s total render duration;
+* frame rate;
+* output format, codec, or quality;
+* a parent or sibling composition unless values are passed to it explicitly.
+
+Those choices are read from source or render settings before composition logic
+runs.
+
+## Check the contract
+
+Run:
+
+```bash theme={null}
+npx hyperframes lint
+```
+
+The linter catches malformed declarations, missing fields, wrong default types,
+and invalid enum choices. `--strict-variables` turns undeclared or mistyped
+render values into errors.
+
+Continue to [Compositions](https://hyperframes.heygen.com/concepts/compositions.md) for nesting or the
+[HTML schema](https://hyperframes.heygen.com/reference/html-schema.md) for the complete attribute contract.
+
+
+## Related topics
+
+- [How a HyperFrames project works](https://hyperframes.heygen.com/concepts/index.md)
+- [Compositions](https://hyperframes.heygen.com/concepts/compositions.md)
+- [Captions, assets and variables](https://hyperframes.heygen.com/studio/assets-and-blocks.md)
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

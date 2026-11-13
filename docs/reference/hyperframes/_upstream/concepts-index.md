@@ -1,0 +1,186 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://hyperframes.heygen.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# How a HyperFrames project works
+
+> Understand the editable files, compositions, timing, and tools behind a HyperFrames video.
+
+A HyperFrames project is a folder your agent can create and you can keep
+editing. Its HTML is the video: it describes the scenes, timing, motion, media,
+and reusable parts that HyperFrames plays or renders.
+
+One folder of HTML is the whole video. Every tool below reads and writes those
+same files — there is no export step between them and no second version of the
+project.
+
+```mermaid theme={null}
+flowchart TD
+    S["Your project folder<br/>HTML, CSS, media"]
+    A["Agent<br/>story and structure"] <--> S
+    T["Browser editor<br/>what you can point at"] <--> S
+    C["CLI<br/>check, preview, render"] <--> S
+    K["SDK and Player<br/>inside your own product"] <--> S
+    S --> R["renders/final.mp4"]
+```
+
+## The source is the project
+
+The agent, the browser editor, CLI, SDK, and Player do not create separate versions of the
+video. They work with the same project files.
+
+| What you want to change | Best place to start |
+| - | - |
+| Story, structure, or several scenes | Ask the agent |
+| Text, layout, timing, or animation you can see | The browser editor |
+| Preview, checks, snapshots, rendering, or automation | CLI |
+| A composition inside your own product | SDK or Player |
+
+![A HyperFrames project open in the browser editor with the source tree, canvas, controls, and timeline](https://static.heygen.ai/hyperframes-oss/docs/images/studio/overview-v1.jpg)
+
+The same editable project open in the browser editor, with its source, canvas, controls, and timeline.
+
+The browser editor writes supported edits back into the source. An agent can continue from
+those files, Git can track them, and the renderer sees the same result.
+
+## What the agent creates
+
+A larger project often looks like this:
+
+```text theme={null}
+project/
+├── BRIEF.md              what the video must communicate
+├── STORYBOARD.md         the planned sequence and review state
+├── SCRIPT.md             locked narration, when the video has it
+├── frame.md              visual direction, when the project needs one
+├── index.html            the main composition
+├── hyperframes.json      project settings
+├── compositions/         scenes and reusable visual parts
+├── assets/               images, video, audio, and fonts
+└── renders/              finished files
+```
+
+Only the project source is essential. Planning files exist to preserve decisions
+across reviews and agent sessions. A simple title card may need only
+`index.html` and an asset; a narrated launch film benefits from a brief,
+storyboard, script, and separate scenes.
+
+## Compositions hold the video together
+
+A **composition** is a finite, seekable piece of the project. The main
+composition is the complete sequence. Other compositions can be scenes,
+captions, title systems, or visuals reused more than once.
+
+```mermaid theme={null}
+flowchart LR
+    M["index.html<br/>the main composition"]
+    M --> O["Opening<br/>0s - 4s"]
+    M --> P["Product demo<br/>4s - 10s<br/>compositions/product-demo.html"]
+    M --> C["Customer proof<br/>10s - 15s"]
+    M --> Z["Closing<br/>15s - 18s"]
+```
+
+Each part is still HTML. A larger project stays manageable because a scene can
+be built and checked on its own, then placed on the main timeline.
+
+```html theme={null}
+<div
+  data-composition-id="product-demo"
+  data-composition-src="compositions/product-demo.html"
+  data-start="4"
+  data-duration="6"
+  data-track-index="1"
+></div>
+```
+
+Edit the nested composition when the scene itself should change everywhere it
+is used. Edit its placement in the main composition when only this appearance
+should start earlier, run longer, or move to another layer.
+
+## Time is part of the source
+
+Timed elements carry their start, duration, and track in HTML:
+
+```html theme={null}
+<img
+  id="product-shot"
+  class="clip"
+  data-start="2"
+  data-duration="3"
+  data-track-index="1"
+  src="./assets/product.png"
+/>
+```
+
+This image starts at two seconds, remains for three seconds, and appears on
+track one. Animation timelines are paused and seekable, so the browser editor, the Player,
+and the renderer can request an exact moment without playing from the
+beginning.
+
+## Variables keep approved parts changeable
+
+A variable exposes something that is meant to change—such as a title, logo,
+color, price, or customer name—without rebuilding the layout. One composition
+can produce several approved versions while preserving its design and motion.
+
+Use a variable when the structure should stay fixed. Use a normal edit when the
+structure itself needs to change.
+
+## How a project moves forward
+
+There is no required seven-step ceremony. The project records only the
+decisions its size and review process need.
+
+| Decision | Where it usually lives |
+| - | - |
+| What the video is for | Your request and, for a fuller project, `BRIEF.md` |
+| What happens and in what order | `STORYBOARD.md` and optional `SCRIPT.md` |
+| How it looks | `frame.md`, project assets, and the compositions themselves |
+| The editable result | `index.html`, `compositions/`, and `assets/` |
+| The approved delivery | checks plus the file in `renders/` |
+
+Review the message and sequence before polishing individual frames. Once the
+project looks right, run the checks, render it, and watch the exported file.
+
+## Why rendering can repeat the same moment
+
+HyperFrames seeks the composition to an exact time, captures the frame, and
+advances. Media and audio follow the same timeline.
+
+For the same source, media, and settings, an exact timestamp should resolve to
+the same project state. Compositions therefore avoid the current clock,
+unseeded randomness, and render-time network requests.
+
+## Go deeper when you need it
+
+> [card] [Reuse a design with variables](https://hyperframes.heygen.com/concepts/variables.md)
+>
+> Expose approved content without opening the layout.
+
+> [card] [Finish and share a video](https://hyperframes.heygen.com/guides/export-and-share.md)
+>
+> Review, check, render, watch, and deliver the same project.
+
+> [card] [Composition structure](https://hyperframes.heygen.com/concepts/compositions.md)
+>
+> Use nested compositions and exact source attributes.
+
+> [card] [HTML schema](https://hyperframes.heygen.com/reference/html-schema.md)
+>
+> Look up the complete technical composition contract.
+
+## Related topics
+
+* [Take more control of an existing project](https://hyperframes.heygen.com/studio-app/edit-with-the-agent.md)
+* [Look up the complete HTML schema](https://hyperframes.heygen.com/reference/html-schema.md)
+* [Choose a developer integration surface](https://hyperframes.heygen.com/developers/overview.md)
+
+
+## Related topics
+
+- [Brand, templates and storyboards](https://hyperframes.heygen.com/prompting/design-systems.md)
+- [HyperFrames FAQ](https://hyperframes.heygen.com/faq.md)
+- [How HyperFrames fits into an application](https://hyperframes.heygen.com/developers/overview.md)
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.
