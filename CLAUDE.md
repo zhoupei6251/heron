@@ -1,10 +1,10 @@
-# heron 后端（RuoYi-Vue-Plus 6.0.0）
+# heron 后端（RuoYi-Vue-Plus 6.1.0）
 
 > 项目级指令，覆盖 `~/.claude/CLAUDE.md` 中冲突的默认习惯；全局的 L1–L4 自检（能配置/能复用/一条命令解决就不写代码）仍然有效。
 
 ## 这是什么
 
-Heron 业务管理系统，基座 RuoYi-Vue-Plus 6.0.0（Spring Boot 4.1.2 / JDK 21 / MyBatis-Plus / Sa-Token / Jetty）。
+Heron 业务管理系统，基座 RuoYi-Vue-Plus 6.1.0（Spring Boot 4.1.2 / JDK 21 / MyBatis-Plus / Sa-Token / Jetty）。
 业务模块 `ruoyi-modules/ruoyi-heron`，包 `org.dromara.heron`，由 `ruoyi-admin` 统一启动。
 业务规格（唯一有效版）：`docs/plans/2026-10-29-heron-business-spec.md`。单租户自部署，两条业务线：新闻视频生产线、原型工坊。
 前端在 `../heron-ui`（plus-ui）。

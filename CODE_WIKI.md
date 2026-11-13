@@ -1,6 +1,6 @@
 # CODE_WIKI — Heron
 
-> 一句话：Heron 是「新闻视频 + Axure 原型」两条生产线的单租户内容生产系统，后端是 RuoYi-Vue-Plus 6.0.0 的一个业务模块，前端是 plus-ui 的一个分支。
+> 一句话：Heron 是「新闻视频 + Axure 原型」两条生产线的单租户内容生产系统，后端是 RuoYi-Vue-Plus 6.1.0 的一个业务模块，前端是 plus-ui 的一个分支。
 >
 > 本文件回答**代码怎么组织、每块干什么、怎么跑起来、改哪里**。业务规则、角色权限细节、契约字段、阶段背景**不在这里重写**，见文末「文档索引」。
 >
@@ -31,7 +31,7 @@
 
 ```text
 D:\zhoupei\heron\
-├── heron\                 # 后端仓库（独立 Git）：RuoYi-Vue-Plus 6.0.0 + Heron 业务模块
+├── heron\                 # 后端仓库（独立 Git）：RuoYi-Vue-Plus 6.1.0 + Heron 业务模块
 │   ├── ruoyi-admin\       # 唯一启动入口，聚合所有模块
 │   ├── ruoyi-api\         # 跨模块 API 接口（RemoteXxx）
 │   ├── ruoyi-common\      # 25 个公共子模块（core/web/mybatis/redis/satoken/...）
@@ -603,7 +603,7 @@ Vite 把 `/dev-api` 代理到 `VITE_APP_PROXY_TARGET`（默认 8080）。
 ./mvnw -pl ruoyi-admin -am package
 
 # 2) 构建镜像（标签是本地约定，不是已发布地址）
-docker build -t heron-server:6.0.0 ruoyi-admin
+docker build -t heron-server:6.1.0 ruoyi-admin
 
 # 3) 起全栈（在本仓库根目录执行）
 docker compose --env-file .env -f script/docker/docker-compose.yml up -d
@@ -617,11 +617,11 @@ compose 拓扑：
 | `redis` | `redis:8.6.3` | `6379` |
 | `nginx-web` | `nginx:1.31.1` | `80` / `443` |
 | `minio` | `pgsty/minio` | `9000` / `9001` |
-| `heron-server1` | `heron-server:6.0.0` | host 网络，`SERVER_PORT=8080` |
-| `heron-server2` | `heron-server:6.0.0` | host 网络，`SERVER_PORT=8081` |
-| `ruoyi-monitor-admin` | `ruoyi/ruoyi-monitor-admin:6.0.0` | `9090` |
-| `ruoyi-snailjob-server` | `ruoyi/ruoyi-snailjob-server:6.0.0` | `8800` / `17888` |
-| `ruoyi-snailai-server` | `ruoyi/ruoyi-snailai-server:6.0.0` | `8900` / `18888` |
+| `heron-server1` | `heron-server:6.1.0` | host 网络，`SERVER_PORT=8080` |
+| `heron-server2` | `heron-server:6.1.0` | host 网络，`SERVER_PORT=8081` |
+| `ruoyi-monitor-admin` | `ruoyi/ruoyi-monitor-admin:6.1.0` | `9090` |
+| `ruoyi-snailjob-server` | `ruoyi/ruoyi-snailjob-server:6.1.0` | `8800` / `17888` |
+| `ruoyi-snailai-server` | `ruoyi/ruoyi-snailai-server:6.1.0` | `8900` / `18888` |
 
 nginx 配置：`upstream server { ip_hash; 127.0.0.1:8080; 127.0.0.1:8081; }`；`/prod-api/ → server/`，`/admin/ → monitor-admin`，`/snail-job/`、`/snail-ai/` 分别反代。
 
