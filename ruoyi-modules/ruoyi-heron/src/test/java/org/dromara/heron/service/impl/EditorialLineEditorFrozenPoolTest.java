@@ -2,6 +2,7 @@ package org.dromara.heron.service.impl;
 
 import org.dromara.heron.domain.EditorialCandidatePool;
 import org.dromara.heron.domain.EditorialChoice;
+import org.dromara.heron.domain.HeronDataOpportunity;
 import org.dromara.heron.domain.HeronDataSource;
 import org.dromara.heron.domain.HeronNewsCandidate;
 import org.junit.jupiter.api.DisplayName;
@@ -102,5 +103,46 @@ class EditorialLineEditorFrozenPoolTest {
         assertTrue(choice.isPresent());
         assertEquals(10L, choice.get().selection().candidateId());
         assertFalse(choice.get().fallbackApplied());
+    }
+
+    private static HeronDataOpportunity opportunity(long id, String sourceKey) {
+        HeronDataOpportunity item = new HeronDataOpportunity();
+        item.setOpportunityId(id);
+        item.setSourceKey(sourceKey);
+        item.setHeadline("Frankfurter 近 7 日 -2.39%");
+        item.setScore(java.math.BigDecimal.valueOf(69.94));
+        return item;
+    }
+
+    @Test
+    @DisplayName("总编辑锁定数据机会：直接用它的源，不再让选源器重挑")
+    void focusedOpportunityLocksItsSource() {
+        DatasetRouter router = mock(DatasetRouter.class);
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router);
+        EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(), item -> true,
+            List.of(), List.of(), List.of(), List.of(opportunity(900L, "frankfurter-audcny")));
+
+        Optional<EditorialChoice> choice = editor.select(DATA_BOARD, pool, "讲人民币", null, 900L);
+
+        assertTrue(choice.isPresent());
+        assertEquals("frankfurter-audcny", choice.get().selection().dataSourceKey());
+        assertFalse(choice.get().selection().digest(), "被机会选中的源不是「没题材时的速览」");
+        assertEquals(900L, choice.get().selection().opportunityId(), "要记住这条片子的来源机会，产出后好置 used");
+        assertFalse(choice.get().fallbackApplied());
+        verify(router, never()).pick(any(), any(), anyList());
+    }
+
+    @Test
+    @DisplayName("只有数据机会、没有数据源清单：数据看板线照样能出")
+    void opportunityAloneKeepsDataBoard() {
+        DatasetRouter router = mock(DatasetRouter.class);
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router);
+        EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(), item -> true,
+            List.of(), List.of(), List.of(), List.of(opportunity(900L, "frankfurter-audcny")));
+
+        Optional<EditorialChoice> choice = editor.select(DATA_BOARD, pool, "讲人民币", null);
+
+        assertTrue(choice.isPresent(), "机会非空时不该回退到解说线");
+        assertEquals(DATA_BOARD, choice.get().finalLine());
     }
 }

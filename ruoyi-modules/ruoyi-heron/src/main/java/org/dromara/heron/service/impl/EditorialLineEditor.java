@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.dromara.heron.domain.EditorialCandidatePool;
 import org.dromara.heron.domain.EditorialChoice;
 import org.dromara.heron.domain.EditorialSelection;
+import org.dromara.heron.domain.HeronDataOpportunity;
 import org.dromara.heron.domain.HeronDataSource;
 import org.dromara.heron.domain.HeronNewsCandidate;
 import org.dromara.heron.domain.ProductionBizType;
@@ -44,13 +45,19 @@ public class EditorialLineEditor {
      * <p>选不到就回退另一条线再试一次：日更账号直接弃更的代价比多调一次模型高得多。
      * 回退必须留痕，否则槽位上的「选了数据看板」和片子实际走的解说线永远对不上。
      *
-     * @param focusCandidateId 总编辑锁定的候选，可为空；仅解说线生效
+     * @param focusCandidateId   总编辑锁定的候选，可为空；仅解说线生效
+     * @param focusOpportunityId 总编辑锁定的数据机会，可为空；仅数据看板线生效
      */
     public Optional<EditorialChoice> select(String line, EditorialCandidatePool pool, String intent,
                                             Long focusCandidateId) {
+        return select(line, pool, intent, focusCandidateId, null);
+    }
+
+    public Optional<EditorialChoice> select(String line, EditorialCandidatePool pool, String intent,
+                                            Long focusCandidateId, Long focusOpportunityId) {
         boolean dataBoard = EditorialDecisionService.DATA_BOARD.equals(line);
         Optional<EditorialSelection> first = dataBoard
-            ? editDataBoard(intent, pool.datasets())
+            ? editDataBoard(intent, pool.datasets(), pool.opportunities(), focusOpportunityId)
             : editExplainer(pool.articles(), intent, focusCandidateId);
         if (first.isPresent()) {
             return Optional.of(new EditorialChoice(first.get(), line, false, null));
@@ -58,7 +65,7 @@ public class EditorialLineEditor {
         String reason = dataBoard ? "data_board_empty" : "explainer_empty";
         Optional<EditorialSelection> second = dataBoard
             ? editExplainer(pool.articles(), intent, focusCandidateId)
-            : editDataBoard(intent, pool.datasets());
+            : editDataBoard(intent, pool.datasets(), pool.opportunities(), focusOpportunityId);
         return second.map(selection -> new EditorialChoice(selection, line, true, reason));
     }
 
@@ -98,8 +105,39 @@ public class EditorialLineEditor {
      * 这里不再查库：启用状态、探测结果、7 天去重都已在建池时判定过，
      * 重查一次就会出现「池子里说能用、选的时候已经不能用」的两套事实。
      * 没有可用数据源是正常结果，交给调用方回退到解说线。
+     *
+     * <p>总编辑锁定了数据机会时直接用它绑定的源：那条机会本身就是「今天为什么做这个」，
+     * 再让选源器重挑一次等于把决策推翻。
      */
     public Optional<EditorialSelection> editDataBoard(String intent, List<HeronDataSource> datasets) {
+        return editDataBoard(intent, datasets, List.of(), null);
+    }
+
+    public Optional<EditorialSelection> editDataBoard(String intent, List<HeronDataSource> datasets,
+                                                      List<HeronDataOpportunity> opportunities,
+                                                      Long focusOpportunityId) {
+        HeronDataOpportunity focused = focusOpportunityId == null || opportunities == null ? null
+            : opportunities.stream()
+                .filter(item -> focusOpportunityId.equals(item.getOpportunityId()))
+                .findFirst().orElse(null);
+        if (focused == null && opportunities != null && !opportunities.isEmpty()) {
+            // 没锁定就用分数最高的那条：选源器拿到的是写死的题材，不可能比算出来的机会更懂今天
+            focused = opportunities.get(0);
+        }
+        if (focused != null) {
+            HeronDataOpportunity chosen = focused;
+            String sourceName = datasets == null ? null : datasets.stream()
+                .filter(item -> item.getSourceKey().equals(chosen.getSourceKey()))
+                .map(HeronDataSource::getName).findFirst().orElse(null);
+            String name = sourceName == null ? chosen.getHeadline() : sourceName;
+            String template = templatePicker.pick(name, "数据看板", EditorialDecisionService.DATA_BOARD);
+            if (template == null) {
+                return Optional.empty();
+            }
+            // digest=false：这是被机会明确选中的源，不是「没题材时的速览」
+            return Optional.of(new EditorialSelection(EditorialDecisionService.DATA_BOARD,
+                null, chosen.getSourceKey(), false, template, intent, List.of(), chosen.getOpportunityId()));
+        }
         if (datasets == null || datasets.isEmpty()) {
             return Optional.empty();
         }

@@ -1,6 +1,7 @@
 package org.dromara.heron.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.vo.ProductionRunVo;
 import org.dromara.heron.service.NewsScriptAuthor;
@@ -13,6 +14,7 @@ import tools.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -32,12 +34,13 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
 
     private final OpenAiModelClient model;
     private final FrozenArticleService articles;
+    private final HeronProductionProperties properties;
 
     @Override
     public String author(ProductionRunVo run) {
         JsonNode input = JSON.readTree(run.inputJson());
         NewsArticleBody article = articles.of(run.taskId(), input);
-        ObjectNode script = withEvidence(parse(model.chat(run, "script", SYSTEM, prompt(input, article))), article);
+        ObjectNode script = withEvidence(parse(model.chat(run, "script", SYSTEM, prompt(input, article, sceneCapability(input)))), article);
         List<String> violations = NewsScriptContract.violations(script);
         if (!violations.isEmpty()) {
             // 一次定向修复：把违规条目原样回给模型，只改不合规的字段；再不过就按规则失败，不盲目重跑
@@ -94,7 +97,7 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
      * 这些字段躺在快照里不读，等于总编辑白干——「决策失效」就是这么来的。
      * 老快照（手工路径）没有 editorial 节点，对应的行整行省略，不塞空字符串。
      */
-    static String prompt(JsonNode input, NewsArticleBody article) {
+    static String prompt(JsonNode input, NewsArticleBody article, String sceneCapability) {
         ArrayNode images = ArticleImages.extract(article.html(), article.url());
         StringBuilder text = new StringBuilder()
             .append("标题：").append(input.path("title").asString("")).append('\n')
@@ -104,8 +107,26 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
             .append("（抓取时间 ").append(article.fetchedAt()).append("）\n")
             .append("正文 HTML：\n").append(article.html()).append('\n')
             .append(ArticleImages.promptHint(images)).append('\n')
-            .append("只用上面正文里能站住的事实，按契约输出完整稿件 JSON。");
+            .append("只用上面正文里能站住的事实，按契约输出完整稿件 JSON。").append(sceneCapability);
         return text.toString();
+    }
+
+    /**
+     * 把本次模板能渲染的场景类型告诉模型。
+     * 模板不支持的类型写了也过不了渲染闸，与其让模型猜，不如在写稿前就把范围收窄。
+     */
+    private String sceneCapability(JsonNode input) {
+        String templateKey = input.path("assets").path("templateKey").asString("");
+        Path root = properties.getNewsTemplate();
+        if (templateKey.isBlank() || root == null) {
+            return "";
+        }
+        java.util.Set<String> types = NewsProductionPipeline.supportedSceneTypes(root.resolve(templateKey));
+        if (types.isEmpty()) {
+            return "";
+        }
+        return "\n本次模板（" + templateKey + "）只支持这些 scene_type，只能用这些："
+            + String.join("、", types) + "。其余类型一律不要写。";
     }
 
     private static void appendEditorial(StringBuilder text, JsonNode editorial) {

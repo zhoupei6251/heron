@@ -62,11 +62,16 @@
             <artifactId>ruoyi-common-mail</artifactId>
         </dependency>
 
-        <!-- mcp模块 -->
+        <!-- mcp模块：暂不装配进应用。
+             原因：spring-ai 2.0.2 依赖 victools 5.0（Jackson 3），而研究层要用的 AgentScope 依赖 victools 4.x（Jackson 2），
+             victools 5.0 的 generateSchema 返回类型已换成 tools.jackson.*，两者不能共处一个 classpath。
+             代码保留在 ruoyi-common/ruoyi-common-mcp，恢复装配只需放开这段注释。 -->
+        <!--
         <dependency>
             <groupId>org.dromara</groupId>
             <artifactId>ruoyi-common-mcp</artifactId>
         </dependency>
+        -->
 
         <!-- api模块 -->
         <dependency>
@@ -91,17 +96,23 @@
             <artifactId>ruoyi-job</artifactId>
         </dependency>
 
-        <!-- AI业务模块 -->
+        <!-- AI业务模块：暂不装配进应用，原因同上方 mcp 模块（Snail AI 经 spring-ai 带入 victools 5.0）。
+             代码保留在 ruoyi-modules/ruoyi-ai，恢复装配只需放开这段注释。 -->
+        <!--
         <dependency>
             <groupId>org.dromara</groupId>
             <artifactId>ruoyi-ai</artifactId>
         </dependency>
+        -->
 
-        <!--  demo模块  -->
+        <!--  demo模块：其 MCP 示例无条件依赖 ruoyi-common-mcp，会重新带回 spring-ai，故一并暂不装配。
+             代码保留在 ruoyi-modules/ruoyi-demo。 -->
+        <!--
         <dependency>
             <groupId>org.dromara</groupId>
             <artifactId>ruoyi-demo</artifactId>
         </dependency>
+        -->
 
         <!--  工作流模块  -->
         <dependency>

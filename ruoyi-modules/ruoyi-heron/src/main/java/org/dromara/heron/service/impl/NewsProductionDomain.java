@@ -83,6 +83,10 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         node.put("templateId", selection.templateId());
         node.put("storyAngle", selection.storyAngle());
         node.put("sourceEvidenceIds", selection.sourceEvidenceIds());
+        // 只有从数据机会来的片子才带这一项：留空就不写，解说线的冻结快照与改动前逐字节一致
+        if (selection.opportunityId() != null) {
+            node.put("opportunityId", selection.opportunityId());
+        }
         return node;
     }
 
@@ -451,10 +455,6 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
                 return dataBoard == EditorialSelection.DATA_BOARD.equals(line);
             }
             return supportedLines.contains(line);
-        }
-
-        public boolean supportsScenes() {
-            return supportedSceneTypes != null && !supportedSceneTypes.isEmpty();
         }
     }
 

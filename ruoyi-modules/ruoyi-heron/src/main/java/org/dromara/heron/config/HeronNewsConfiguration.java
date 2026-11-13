@@ -2,6 +2,8 @@ package org.dromara.heron.config;
 
 import org.dromara.heron.service.INewsSourceService;
 import org.dromara.heron.service.impl.ApacheNewsTransport;
+import org.dromara.heron.service.impl.DataOpportunityRunner;
+import org.dromara.heron.service.impl.DataOpportunityService;
 import org.dromara.heron.service.impl.NewsAutoRunner;
 import org.dromara.heron.service.impl.NewsAutoService;
 import org.dromara.heron.service.impl.NewsSourceRunner;
@@ -38,5 +40,13 @@ public class HeronNewsConfiguration {
     public NewsAutoRunner newsAutoRunner(NewsAutoService auto, HeronNewsProperties news,
                                          @Qualifier("scheduledExecutorService") ScheduledExecutorService scheduler) {
         return new NewsAutoRunner(auto, news, scheduler);
+    }
+
+    /** 数据机会分析同样只在显式打开时装配：第一步不接入生产，默认不跑。 */
+    @Bean
+    @ConditionalOnProperty(prefix = "heron.news", name = "data-analysis-enabled", havingValue = "true")
+    public DataOpportunityRunner dataOpportunityRunner(DataOpportunityService opportunities, HeronNewsProperties news,
+                                                       @Qualifier("scheduledExecutorService") ScheduledExecutorService scheduler) {
+        return new DataOpportunityRunner(opportunities, news, scheduler);
     }
 }

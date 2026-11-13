@@ -154,9 +154,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
         JsonNode renderScript = dataBoard ? DatasetPlaceholders.resolve(script, dataset) : script;
         // 解说线的图片场景：把稿子里引用的资产下载进工作目录，再以 sceneN_image 变量交给模板
         Map<String, String> images = dataBoard ? Map.of() : materializeImages(composition, renderScript, input);
+        // 只给模板自己声明过的变量：--strict-variables 会把「多给的变量」判成未声明并直接中止渲染
+        java.util.Set<String> declared = declaredVariables(templateDir);
         write(work.resolve(VARS_FILE), dataBoard
-            ? dataTemplateVariables(renderScript, dataset)
-            : templateVariables(renderScript, images));
+            ? dataTemplateVariables(renderScript, dataset, declared)
+            : templateVariables(renderScript, images, declared));
         gates.add(assetsGate(composition, input.path("assets"), templateDir));
         gates.add(sceneTypeGate(script, templateDir));
 
@@ -250,7 +252,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     /** 模板没写 supportedSceneTypes 时返回空集，表示不做类型约束（老模板）。 */
     @SuppressWarnings("unchecked")
-    private static java.util.Set<String> supportedSceneTypes(Path templateDir) {
+    static java.util.Set<String> supportedSceneTypes(Path templateDir) {
         Path meta = templateDir.resolve("template.json");
         if (!java.nio.file.Files.isRegularFile(meta)) {
             return java.util.Set.of();
@@ -752,7 +754,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     /** 稿件 → 变量：只搬文本；时长一律走磁盘补丁，因为根时长编译期就读一次。 */
     static String templateVariables(JsonNode script) {
-        return templateVariables(script, Map.of());
+        return templateVariables(script, Map.of(), java.util.Set.of());
     }
 
     /**
@@ -760,6 +762,14 @@ public class NewsProductionPipeline implements IProductionPipeline {
      *               模板据此决定是否展开图片区，避免留一块空白。
      */
     static String templateVariables(JsonNode script, Map<String, String> images) {
+        return templateVariables(script, images, java.util.Set.of());
+    }
+
+    /**
+     * @param declared 模板声明过的变量名；空集表示模板没声明能力，全部输出（旧模板与预览用）。
+     *                 非空时只输出声明过的键——多给的变量会被 --strict-variables 判成未声明并中止渲染。
+     */
+    static String templateVariables(JsonNode script, Map<String, String> images, java.util.Set<String> declared) {
         JsonNode scenes = script.path("scenes");
         Map<String, Object> vars = new TreeMap<>();
         vars.put("title", script.path("title").asString(""));
@@ -775,6 +785,9 @@ public class NewsProductionPipeline implements IProductionPipeline {
             vars.put("scene" + (index + 1) + "_image", images.getOrDefault(String.valueOf(index + 1), ""));
             // 场景类型是渲染信号，不只是契约层的分类：模板按它切换版式变体
             vars.put("scene" + (index + 1) + "_type", scene.path("scene_type").asString(""));
+        }
+        if (!declared.isEmpty()) {
+            vars.keySet().retainAll(declared);
         }
         return JSON.writeValueAsString(vars);
     }
@@ -845,10 +858,57 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     /** 数据看板变量：沿用文章线文本变量，再补图表类型与整份快照（模板自己解析）。 */
     static String dataTemplateVariables(JsonNode script, JsonNode dataset) {
-        ObjectNode vars = (ObjectNode) JSON.readTree(templateVariables(script));
+        return dataTemplateVariables(script, dataset, java.util.Set.of());
+    }
+
+    static String dataTemplateVariables(JsonNode script, JsonNode dataset, java.util.Set<String> declared) {
+        ObjectNode vars = (ObjectNode) JSON.readTree(templateVariables(script, Map.of(), declared));
         vars.put("chart", DatasetScriptContract.chartFor(dataset.path("shape").asString("")));
         vars.put("dataset_json", dataset.toString());
+        if (!declared.isEmpty()) {
+            java.util.List<String> extra = new ArrayList<>();
+            for (String key : vars.propertyNames()) {
+                if (!declared.contains(key)) {
+                    extra.add(key);
+                }
+            }
+            extra.forEach(vars::remove);
+        }
         return JSON.writeValueAsString(vars);
+    }
+
+    /**
+     * 模板声明过的变量名，取自 index.html 的 data-composition-variables。
+     * 读不到就返回空集，交给调用方按「未声明」处理（不因为读不到就拒绝渲染）。
+     */
+    static java.util.Set<String> declaredVariables(java.nio.file.Path templateDir) {
+        java.nio.file.Path index = templateDir.resolve("index.html");
+        if (!java.nio.file.Files.isRegularFile(index)) {
+            return java.util.Set.of();
+        }
+        String marker = "data-composition-variables='";
+        try {
+            String html = java.nio.file.Files.readString(index, java.nio.charset.StandardCharsets.UTF_8);
+            int at = html.indexOf(marker);
+            if (at < 0) {
+                return java.util.Set.of();
+            }
+            int start = at + marker.length();
+            int end = html.indexOf('\'', start);
+            if (end < 0) {
+                return java.util.Set.of();
+            }
+            java.util.Set<String> out = new java.util.LinkedHashSet<>();
+            JSON.readTree(html.substring(start, end)).forEach(item -> {
+                String id = item.path("id").asString("");
+                if (!id.isBlank()) {
+                    out.add(id);
+                }
+            });
+            return out;
+        } catch (RuntimeException | java.io.IOException e) {
+            return java.util.Set.of();
+        }
     }
 
     /**

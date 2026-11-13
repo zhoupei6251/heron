@@ -28,16 +28,46 @@ public final class PoolDigest {
     private PoolDigest() {
     }
 
+    /** 老入口：没有数据机会时的摘要。 */
     public static String of(List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,
                             List<HeronDataSource> datasets, List<HeronNewsSource> sources,
                             List<HeronNewsWork> recent) {
+        return of(hot, articles, datasets, sources, recent, List.of());
+    }
+
+    public static String of(List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,
+                            List<HeronDataSource> datasets, List<HeronNewsSource> sources,
+                            List<HeronNewsWork> recent, List<HeronDataOpportunity> opportunities) {
         Map<String, Object> canonical = new TreeMap<>();
         canonical.put("articles", candidates(articles));
         canonical.put("datasets", datasets(datasets));
         canonical.put("hot", candidates(hot));
+        canonical.put("opportunities", opportunities(opportunities));
         canonical.put("recent", recent(recent));
         canonical.put("sources", sources(sources));
         return DigestUtil.sha256Hex(JSON.writeValueAsString(canonical));
+    }
+
+    /** 机会只纳入决策真正读的字段：分数、标题、信号依据。 */
+    private static List<Map<String, Object>> opportunities(List<HeronDataOpportunity> items) {
+        if (items == null) {
+            return List.of();
+        }
+        return items.stream()
+            .sorted(Comparator.comparing(HeronDataOpportunity::getOpportunityId,
+                Comparator.nullsLast(Comparator.naturalOrder())))
+            .map(item -> {
+                Map<String, Object> node = new TreeMap<>();
+                node.put("entity", text(item.getEntity()));
+                node.put("headline", text(item.getHeadline()));
+                node.put("observedAt", epoch(item.getObservedAt()));
+                node.put("opportunityId", item.getOpportunityId());
+                node.put("score", item.getScore() == null ? null : item.getScore().doubleValue());
+                node.put("signals", text(item.getSignals()));
+                node.put("sourceKey", text(item.getSourceKey()));
+                return node;
+            })
+            .toList();
     }
 
     private static List<Map<String, Object>> candidates(List<HeronNewsCandidate> items) {

@@ -149,10 +149,14 @@ class DataBoardPipelineRenderTest {
         assertEquals(List.of("asset_manifest", "checks", "contact_sheet", "dataset", "mp4", "script", "subtitles"),
             kinds.stream().sorted().toList());
         JsonNode checks = content.path("checks");
-        assertEquals(11, checks.size(), checks.toString());
+        // 断闸名而不是个数：多一道少一道都要看得见
+        java.util.Set<String> gateNames = new java.util.HashSet<>();
         for (JsonNode gate : checks) {
+            gateNames.add(gate.path("gate").asString(""));
             assertTrue(gate.path("passed").asBoolean(), gate.path("gate").asString("") + " 未通过");
         }
+        assertEquals(java.util.Set.of("schema", "evidence", "data", "audio", "subtitles", "render", "decode",
+            "visual", "aigc_metadata", "aigc_visible", "assets", "scene_type"), gateNames, checks.toString());
 
         Path mp4 = dataRoot.resolve(byKind(result, "mp4").storageKey());
         Path sheet = dataRoot.resolve(byKind(result, "contact_sheet").storageKey());

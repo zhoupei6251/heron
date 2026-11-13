@@ -57,6 +57,44 @@ class NewsProductionPipelineTest {
     }
 
     @Test
+    @DisplayName("变量只输出模板声明过的键：多给一个就会被 --strict-variables 中止渲染")
+    void variableKeysStayWithinTemplateDeclaration() throws Exception {
+        java.nio.file.Path root = java.nio.file.Path.of("..", "..", "data", "templates")
+            .toAbsolutePath().normalize();
+        assertTrue(java.nio.file.Files.isDirectory(root), "模板目录不存在：" + root);
+        JsonNode script = JSON.readTree(SCRIPT);
+        JsonNode dataset = JSON.readTree("""
+            {"shape":"rows","base":"usd","period":"2026-11","data_sha256":"%s","source_key":"sina-futures-gold",
+             "metric":{"key":"gold","label":"金价","unit":"美元","precision":2}}
+            """.formatted("b".repeat(64)));
+        java.util.List<java.nio.file.Path> dirs;
+        try (var stream = java.nio.file.Files.list(root)) {
+            dirs = stream.filter(java.nio.file.Files::isDirectory).sorted().toList();
+        }
+        assertFalse(dirs.isEmpty(), "模板目录里没有模板");
+        for (java.nio.file.Path dir : dirs) {
+            java.util.Set<String> declared = NewsProductionPipeline.declaredVariables(dir);
+            assertFalse(declared.isEmpty(), dir.getFileName() + " 没声明任何变量");
+            for (JsonNode vars : java.util.List.of(
+                JSON.readTree(NewsProductionPipeline.templateVariables(script, java.util.Map.of(), declared)),
+                JSON.readTree(NewsProductionPipeline.dataTemplateVariables(script, dataset, declared)))) {
+                for (String key : vars.propertyNames()) {
+                    assertTrue(declared.contains(key), dir.getFileName() + " 会收到未声明变量：" + key);
+                }
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("模板未声明能力时全部输出，不清空变量")
+    void undeclaredTemplateKeepsAllVariables() {
+        JsonNode vars = JSON.readTree(NewsProductionPipeline.templateVariables(
+            JSON.readTree(SCRIPT), java.util.Map.of(), java.util.Set.of()));
+        assertEquals("新一代旗舰手机发布", vars.path("title").asString(""));
+        assertEquals("", vars.path("scene1_image").asString("x"), "无图场景给空串");
+    }
+
+    @Test
     @DisplayName("时间轴按实测音频缩放，末段吃掉舍入余量")
     void scalesTimelineOntoDisk() {
         String patched = NewsProductionPipeline.timeCompositionString(SLOTS, JSON.readTree(SCRIPT), 41.5);

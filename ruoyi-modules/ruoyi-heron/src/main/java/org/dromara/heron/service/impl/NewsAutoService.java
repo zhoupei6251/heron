@@ -7,6 +7,7 @@ import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.domain.EditorialCandidatePool;
 import org.dromara.heron.domain.EditorialChoice;
 import org.dromara.heron.domain.HeronAutoSlot;
+import org.dromara.heron.domain.HeronDataOpportunity;
 import org.dromara.heron.domain.HeronDataSource;
 import org.dromara.heron.domain.HeronNewsCandidate;
 import org.dromara.heron.domain.HeronNewsSource;
@@ -14,6 +15,7 @@ import org.dromara.heron.domain.HeronNewsWork;
 import org.dromara.heron.domain.HeronVideoVersion;
 import org.dromara.heron.domain.vo.NewsWorkVo;
 import org.dromara.heron.mapper.HeronAutoSlotMapper;
+import org.dromara.heron.mapper.HeronDataOpportunityMapper;
 import org.dromara.heron.mapper.HeronNewsCandidateMapper;
 import org.dromara.heron.mapper.HeronNewsSourceMapper;
 import org.dromara.heron.mapper.HeronNewsWorkMapper;
@@ -46,6 +48,9 @@ public class NewsAutoService {
     private static final int SWEEP_LIMIT = 10;
     private static final int DATASET_POOL_LIMIT = 20;
     private static final int RECENT_LIMIT = 10;
+    /** 数据机会:只认 24 小时内算出来的，进池取前 10 条。 */
+    private static final int OPPORTUNITY_HOURS = 24;
+    private static final int OPPORTUNITY_LIMIT = 10;
     /** 本地 mapper：决策留痕要在纯单测里可验，不能依赖 Spring 上下文里的 JsonUtils。 */
     private static final tools.jackson.databind.json.JsonMapper JSON =
         tools.jackson.databind.json.JsonMapper.builder().build();
@@ -56,6 +61,7 @@ public class NewsAutoService {
     private final HeronNewsWorkMapper workMapper;
     private final HeronVideoVersionMapper versionMapper;
     private final HeronAutoSlotMapper slotMapper;
+    private final HeronDataOpportunityMapper opportunityMapper;
     private final NewsWorkServiceImpl newsWork;
     private final AutoPauseStore pauseStore;
     private final NewsCandidateScreener screener;
@@ -69,16 +75,18 @@ public class NewsAutoService {
     public NewsAutoService(HeronNewsProperties news, HeronNewsSourceMapper sourceMapper,
                            HeronNewsCandidateMapper candidateMapper, HeronNewsWorkMapper workMapper,
                            HeronVideoVersionMapper versionMapper, HeronAutoSlotMapper slotMapper,
+                           HeronDataOpportunityMapper opportunityMapper,
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
                            EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
                            DatasetRouter datasetRouter) {
-        this(news, sourceMapper, candidateMapper, workMapper, versionMapper, slotMapper, newsWork, pauseStore,
-            screener, editorial, domain, lineEditor, datasetRouter, Clock.systemUTC());
+        this(news, sourceMapper, candidateMapper, workMapper, versionMapper, slotMapper, opportunityMapper, newsWork,
+            pauseStore, screener, editorial, domain, lineEditor, datasetRouter, Clock.systemUTC());
     }
 
     public NewsAutoService(HeronNewsProperties news, HeronNewsSourceMapper sourceMapper,
                            HeronNewsCandidateMapper candidateMapper, HeronNewsWorkMapper workMapper,
                            HeronVideoVersionMapper versionMapper, HeronAutoSlotMapper slotMapper,
+                           HeronDataOpportunityMapper opportunityMapper,
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
                            EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
                            DatasetRouter datasetRouter, Clock clock) {
@@ -88,6 +96,7 @@ public class NewsAutoService {
         this.workMapper = workMapper;
         this.versionMapper = versionMapper;
         this.slotMapper = slotMapper;
+        this.opportunityMapper = opportunityMapper;
         this.newsWork = newsWork;
         this.pauseStore = pauseStore;
         this.screener = screener;
@@ -151,9 +160,10 @@ public class NewsAutoService {
         EditorialDecisionService.Decision decision;
         EditorialCandidatePool pool;
         try {
-            pool = candidatePool(now);
+            BuiltPool built = buildPool(now);
+            pool = built.pool();
             if (pool.isEmpty()) {
-                finish(slot, "skipped", "no_candidate", null);
+                finish(slot, "skipped", built.emptyReason(), null);
                 return;
             }
             pools = pools(pool);
@@ -173,7 +183,7 @@ public class NewsAutoService {
         try {
             // 传池子而不是摘要：线内编辑必须从总编辑看过的那批数据里挑
             choice = lineEditor.select(decision.selectedLine(), pool, decision.editorialIntent(),
-                decision.focusCandidateId());
+                decision.focusCandidateId(), decision.focusOpportunityId());
         } catch (RuntimeException e) {
             finish(slot, "failed", "line_editor: " + e.getMessage(), null);
             return;
@@ -194,7 +204,9 @@ public class NewsAutoService {
         NewsWorkVo work = null;
         try {
             work = newsWork.claimForAuto(picked.selection(), news.getAutoActorId());
-            newsWork.generateForAuto(work.getWorkId(), "auto:" + today + ":" + slotTime, decision, picked.selection());
+            org.dromara.heron.domain.vo.ProductionReceiptVo receipt = newsWork.generateForAuto(
+                work.getWorkId(), "auto:" + today + ":" + slotTime, decision, picked.selection());
+            markOpportunityUsed(picked.selection(), receipt);
             finish(slot, "produced", picked.finalLine() + "：" + decision.editorialIntent(), work.getWorkId());
         } catch (RuntimeException e) {
             // 失败留痕即可；下一槽位会重新挑，不跨槽位补发
@@ -219,34 +231,82 @@ public class NewsAutoService {
      * 总编辑看到的池子和真正被挑的池子是两批数据。
      */
     private EditorialCandidatePool candidatePool(LocalDateTime now) {
+        return buildPool(now).pool();
+    }
+
+    /**
+     * @param emptyReason 空池的原因；槽位 detail 用它，否则排查时看到 no_candidate 会以为
+     *                    是「没有素材」，实际可能是「没有配新闻源」或「今天没算出机会」
+     */
+    record BuiltPool(EditorialCandidatePool pool, String emptyReason) { }
+
+    BuiltPool buildPool(LocalDateTime now) {
         List<HeronNewsSource> sources = autoSources();
         if (sources.isEmpty()) {
-            log.warn("自动源白名单为空，本期不产出");
-            return EditorialCandidatePool.empty();
+            log.warn("自动源白名单为空：本期没有新闻候选");
         }
         Set<String> autoHosts = hosts(sources);
-        List<HeronNewsCandidate> candidates = candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
-            .isNull(HeronNewsCandidate::getPublishedAt)
-            .isNull(HeronNewsCandidate::getClaimedBy)
-            .isNull(HeronNewsCandidate::getActiveTaskId)
-            .ge(HeronNewsCandidate::getLastSeenAt, now.minusHours(24))
-            .orderByDesc(HeronNewsCandidate::getHeatScore)
-            .orderByAsc(HeronNewsCandidate::getBestRank)
-            .last("LIMIT " + POOL_LIMIT).build());
         List<HeronNewsCandidate> allowed = new ArrayList<>();
-        for (HeronNewsCandidate candidate : candidates) {
-            String host = firstHost(candidate.getEvidence());
-            // 没开自动的来源不进池：这是「可下架」的边界，不是权重
-            if (host != null && autoHosts.contains(host)) {
-                allowed.add(candidate);
+        if (!sources.isEmpty()) {
+            List<HeronNewsCandidate> candidates = candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
+                .isNull(HeronNewsCandidate::getPublishedAt)
+                .isNull(HeronNewsCandidate::getClaimedBy)
+                .isNull(HeronNewsCandidate::getActiveTaskId)
+                .ge(HeronNewsCandidate::getLastSeenAt, now.minusHours(24))
+                .orderByDesc(HeronNewsCandidate::getHeatScore)
+                .orderByAsc(HeronNewsCandidate::getBestRank)
+                .last("LIMIT " + POOL_LIMIT).build());
+            for (HeronNewsCandidate candidate : candidates) {
+                String host = firstHost(candidate.getEvidence());
+                // 没开自动的来源不进池：这是「可下架」的边界，不是权重
+                if (host != null && autoHosts.contains(host)) {
+                    allowed.add(candidate);
+                }
             }
         }
-        if (allowed.isEmpty()) {
-            // 没有稿子就不必再查数据源：两条线都做不了，这一步也不该产生额外查询
-            return EditorialCandidatePool.empty();
+        List<HeronDataOpportunity> opportunities = opportunities(now);
+        if (allowed.isEmpty() && opportunities.isEmpty()) {
+            // 新闻和数据机会都空才是真的没得做；只有数据机会时，数据看板照样能出
+            String reason = sources.isEmpty()
+                ? "no_news_source_and_no_opportunity"
+                : "no_fresh_candidate_and_no_opportunity";
+            return new BuiltPool(EditorialCandidatePool.empty(), reason);
         }
-        return EditorialCandidatePool.of(allowed, EditorialLineEditor::hasBody,
-            datasets(now), sources, recentWorks());
+        return new BuiltPool(EditorialCandidatePool.of(allowed, EditorialLineEditor::hasBody,
+            datasets(now), sources, recentWorks(), opportunities), null);
+    }
+
+    /**
+     * 今天过线且未淘汰的数据机会，分数高的在前。
+     * 读失败按「没有机会」处理：不能让一个附属查询把整个槽位打挂。
+     */
+    private List<HeronDataOpportunity> opportunities(LocalDateTime now) {
+        try {
+            return opportunityMapper.selectList(QueryBuilder.lambda(HeronDataOpportunity.class)
+                .eq(HeronDataOpportunity::getStatus, DataOpportunityService.STATUS_NEW)
+                .ge(HeronDataOpportunity::getObservedAt, now.minusHours(OPPORTUNITY_HOURS))
+                .orderByDesc(HeronDataOpportunity::getScore)
+                .last("LIMIT " + OPPORTUNITY_LIMIT).build());
+        } catch (RuntimeException e) {
+            log.warn("读取数据机会失败，本期按没有机会处理: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 机会做成片子之后置 used：不置的话，同一天的下一个槽位会把它再挑一次，产出同一条内容。
+     * 记账失败不回滚已经产出的片子——片子是对的，账错了不能倒过来。
+     */
+    private void markOpportunityUsed(org.dromara.heron.domain.EditorialSelection selection,
+                                     org.dromara.heron.domain.vo.ProductionReceiptVo receipt) {
+        if (selection.opportunityId() == null || receipt == null || receipt.versionId() <= 0) {
+            return;
+        }
+        try {
+            opportunityMapper.markUsed(selection.opportunityId(), receipt.versionId(), LocalDateTime.now(clock));
+        } catch (RuntimeException e) {
+            log.warn("标记数据机会已用失败 opportunityId={}: {}", selection.opportunityId(), e.getMessage());
+        }
     }
 
     /** 数据源候选：启用、探测 ok、7 天内没用过。取不到就当空，不让整个槽位失败。 */
@@ -273,9 +333,18 @@ public class NewsAutoService {
             .map(item -> new EditorialDecisionService.CandidateRef(item.getCandidateId(), item.getTitle())).toList();
         List<EditorialDecisionService.DatasetRef> datasets = pool.datasets().stream()
             .map(source -> new EditorialDecisionService.DatasetRef(source.getSourceKey(), datasetLabel(source))).toList();
+        // 机会的 label 必须带分数与变化：只给标题，总编辑没有依据判断值不值得做
+        List<EditorialDecisionService.OpportunityRef> opportunities = pool.opportunities().stream()
+            .map(item -> new EditorialDecisionService.OpportunityRef(item.getOpportunityId(), opportunityLabel(item))).toList();
         List<String> recent = pool.recent().stream().map(HeronNewsWork::getTitle)
             .filter(title -> title != null && !title.isBlank()).toList();
-        return new EditorialDecisionService.Pools(pool.poolId(), pool.poolHash(), hot, articles, datasets, recent);
+        return new EditorialDecisionService.Pools(pool.poolId(), pool.poolHash(), hot, articles, datasets,
+            opportunities, recent);
+    }
+
+    static String opportunityLabel(HeronDataOpportunity item) {
+        String score = item.getScore() == null ? "" : "，分 " + item.getScore().stripTrailingZeros().toPlainString();
+        return item.getHeadline() + score;
     }
 
     private static String datasetLabel(HeronDataSource source) {
@@ -389,6 +458,9 @@ public class NewsAutoService {
         pools.articles().forEach(ref -> articles.add(ref.label()));
         ArrayNode dataSources = root.putArray("dataSources");
         pools.datasets().forEach(ref -> dataSources.add(ref.label()));
+        // 新键平级追加：前端只认上面四个原键，多出来的键它不解析也不会白屏
+        ArrayNode opportunities = root.putArray("opportunities");
+        pools.opportunities().forEach(ref -> opportunities.add(ref.label()));
         ArrayNode recent = root.putArray("recentPublications");
         pools.recentPublications().forEach(recent::add);
         root.put("poolId", pools.poolId());
@@ -396,6 +468,9 @@ public class NewsAutoService {
         ObjectNode trail = root.putObject("decision");
         trail.put("originalLine", decision.publish() ? decision.selectedLine() : EditorialDecisionService.NO_PUBLISH);
         trail.put("finalLine", executedLine(decision, choice));
+        if (decision.focusOpportunityId() != null) {
+            trail.put("focusOpportunityId", decision.focusOpportunityId());
+        }
         trail.put("fallbackApplied", choice != null && choice.fallbackApplied());
         if (choice != null && choice.fallbackReason() != null) {
             trail.put("fallbackReason", choice.fallbackReason());

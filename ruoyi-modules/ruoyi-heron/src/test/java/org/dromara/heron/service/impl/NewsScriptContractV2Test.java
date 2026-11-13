@@ -96,4 +96,39 @@ class NewsScriptContractV2Test {
             + scene("二", "") + "," + scene("三", "") + "]");
         assertTrue(items.stream().anyMatch(s -> s.contains("schema_version")), items.toString());
     }
+
+    @Test
+    @DisplayName("合法 scene_id 通过")
+    void sceneIdValid() {
+        assertTrue(check("\"scenes\":["
+            + scene("一", ",\"scene_id\":\"scene_001\"") + ","
+            + scene("二", ",\"scene_id\":\"scene_002\"") + ","
+            + scene("三", ",\"scene_id\":\"scene_003\"") + "]").isEmpty());
+    }
+
+    @Test
+    @DisplayName("scene_id 形态不对被拒")
+    void sceneIdMalformed() {
+        List<String> items = check("\"scenes\":["
+            + scene("一", ",\"scene_id\":\"scene-1\"") + ","
+            + scene("二", "") + "," + scene("三", "") + "]");
+        assertTrue(items.stream().anyMatch(s -> s.contains("scene_001 形态")), items.toString());
+    }
+
+    @Test
+    @DisplayName("scene_id 重复被拒：人工改稿会指错屏")
+    void sceneIdDuplicate() {
+        List<String> items = check("\"scenes\":["
+            + scene("一", ",\"scene_id\":\"scene_001\"") + ","
+            + scene("二", ",\"scene_id\":\"scene_001\"") + ","
+            + scene("三", "") + "]");
+        assertTrue(items.stream().anyMatch(s -> s.contains("重复")), items.toString());
+    }
+
+    @Test
+    @DisplayName("老稿没有 scene_id 仍然合法：历史作品要能重渲")
+    void sceneIdOptionalForLegacy() {
+        assertTrue(check("\"scenes\":[" + scene("一", ",\"scene_type\":\"text\"") + ","
+            + scene("二", "") + "," + scene("三", "") + "]").isEmpty());
+    }
 }

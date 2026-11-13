@@ -27,7 +27,7 @@ public final class EastmoneyMarketCapAdapter implements DatasetAdapter {
         "0.300750", "0.002594", "1.688981", "1.601138");
     private static final String QUOTE = "https://push2.eastmoney.com/api/qt/ulist.np/get"
         + "?secids=" + SECIDS + "&fields=f12,f13,f14,f20";
-    private static final String FX = "https://api.frankfurter.app/latest?from=%s&to=CNY";
+    private static final String FX = "https://api.frankfurter.dev/v1/latest?from=%s&to=CNY";
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final int MAX_ROWS = 20;
 

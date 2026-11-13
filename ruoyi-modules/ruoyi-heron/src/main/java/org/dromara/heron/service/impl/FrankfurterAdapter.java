@@ -35,7 +35,8 @@ public final class FrankfurterAdapter implements DatasetAdapter {
         new PairSpec("frankfurter-nokcny", "NOK", "CNY", "挪威克朗兑人民币"),
         new PairSpec("frankfurter-dkkcny", "DKK", "CNY", "丹麦克朗兑人民币"));
 
-    private static final String BASE = "https://api.frankfurter.app";
+    // 旧域名 api.frankfurter.app 已 301 到 api.frankfurter.dev/v1，适配器不跟重定向，只能直接改地址
+    private static final String BASE = "https://api.frankfurter.dev/v1";
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final int PRECISION = 4;
 

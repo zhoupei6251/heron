@@ -56,4 +56,22 @@ class DatasetFetchServiceTest {
     void requireReadyPasses() {
         assertDoesNotThrow(() -> DatasetFetchService.requireReady(source("0", "ok"), "sina-gold-xau"));
     }
+
+    @Test
+    @DisplayName("分析不受 probe 状态限制：blocked 的源也要能探一次，否则永远恢复不了")
+    void requireReadyIgnoresProbeForAnalysis() {
+        assertDoesNotThrow(() -> DatasetFetchService.requireReady(source("0", "blocked"), "sina-gold-xau", true));
+        assertThrows(HeronBusinessException.class,
+            () -> DatasetFetchService.requireReady(source("1", "ok"), "sina-gold-xau", true),
+            "未启用仍然拒绝，绕过只针对探测状态");
+    }
+
+    @Test
+    @DisplayName("健康状态：连续失败够多才 blocked，单次抖动只留计数")
+    void statusAfterFailureEscalates() {
+        assertEquals("ok", DatasetFetchService.statusAfterFailure(1));
+        assertEquals("ok", DatasetFetchService.statusAfterFailure(2));
+        assertEquals("blocked", DatasetFetchService.statusAfterFailure(3));
+        assertEquals("blocked", DatasetFetchService.statusAfterFailure(10));
+    }
 }

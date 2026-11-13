@@ -74,3 +74,6 @@ application-ga.yml
 /data/templates/**/.hyperframes/
 *.rp
 *.rplib
+
+# AgentScope 运行时会话记录：默认写在工作目录下，不进仓库
+.agentscope/

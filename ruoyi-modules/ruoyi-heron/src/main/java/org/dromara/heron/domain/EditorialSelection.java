@@ -14,11 +14,18 @@ public record EditorialSelection(
     boolean digest,
     String templateId,
     String storyAngle,
-    java.util.List<String> sourceEvidenceIds
+    java.util.List<String> sourceEvidenceIds,
+    Long opportunityId
 ) {
 
     public static final String DATA_BOARD = "DATA_BOARD";
     public static final String NEWS_EXPLAINER = "NEWS_EXPLAINER";
+
+    /** 老入口：不是从数据机会来的（解说线、以及数据看板的旧选源路径）。 */
+    public EditorialSelection(String line, Long candidateId, String dataSourceKey, boolean digest,
+                              String templateId, String storyAngle, java.util.List<String> sourceEvidenceIds) {
+        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, null);
+    }
 
     public boolean dataBoard() {
         return DATA_BOARD.equals(line);

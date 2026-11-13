@@ -123,7 +123,7 @@ class NewsScriptContractTest {
     private static NewsModelScriptAuthor author(ScriptClient client) {
         return new NewsModelScriptAuthor(client, new org.dromara.heron.service.impl.FrozenArticleService(
             org.mockito.Mockito.mock(org.dromara.heron.mapper.HeronProductionArtifactMapper.class),
-            new StubFetcher()));
+            new StubFetcher()), new org.dromara.heron.config.HeronProductionProperties());
     }
 
     private ProductionRunVo run() {        String input = JSON.writeValueAsString(Map.of("workId", 7L, "candidateId", 8L, "versionNo", 1, "revision", 1L,

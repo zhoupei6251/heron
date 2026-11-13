@@ -21,7 +21,8 @@ public class NewsTemplatePicker {
     private static final int BLOCK_LIMIT = 2;
     private static final int SCAN_LIMIT = 20;
     private static final String SYSTEM =
-        "你是新闻短视频频道的排版编辑。根据标题与摘要，从给出的版式里选一个最合适的。只回复一个版式标识，不要解释。";
+        "你是新闻短视频频道的排版编辑。根据标题与摘要，从给出的版式里选一个最合适的。"
+            + "题材有配图、引语或排序时，优先选画面支持它的版式。只回复一个版式标识，不要解释。";
 
     private final NewsProductionDomain domain;
     private final ObjectProvider<OpenAiModelClient> modelProvider;
@@ -115,10 +116,15 @@ public class NewsTemplatePicker {
         StringBuilder prompt = new StringBuilder();
         prompt.append("本期标题：").append(nullToEmpty(title)).append('\n');
         prompt.append("本期摘要：").append(nullToEmpty(summary)).append('\n');
-        prompt.append("可用版式（标识 名称：说明）：\n");
+        prompt.append("可用版式（标识 名称：说明；画面支持哪些场景类型写在其后）：\n");
         for (NewsProductionDomain.TemplateInfo item : candidates) {
             prompt.append("- ").append(item.key()).append(' ').append(item.name())
-                .append('：').append(item.description()).append('\n');
+                .append('：').append(item.description());
+            // 画面能力进选版式：有原文配图的题材选不了图片版式，出片后只能退化成纯文字
+            if (item.supportedSceneTypes() != null && !item.supportedSceneTypes().isEmpty()) {
+                prompt.append("（画面支持：").append(String.join("、", item.supportedSceneTypes())).append('）');
+            }
+            prompt.append('\n');
         }
         if (!recent.isEmpty()) {
             prompt.append("最近已用过，不要选：").append(String.join("、", recent)).append('\n');

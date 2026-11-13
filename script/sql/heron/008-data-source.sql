@@ -55,7 +55,7 @@ VALUES
  'line,race,compare,kpi','1','ok',
  '实时价实测通过；历史接口未测',UTC_TIMESTAMP(3),UTC_TIMESTAMP(3)),
 ('frankfurter','Frankfurter·汇率','finance',
- 'https://api.frankfurter.app',
+ 'https://api.frankfurter.dev',
  NULL,'GET','json','daily',NULL,'unknown','https://www.frankfurter.app/docs/',
  'line','0','ok',
  '区间由适配器拼接；需跟随 301',UTC_TIMESTAMP(3),UTC_TIMESTAMP(3)),

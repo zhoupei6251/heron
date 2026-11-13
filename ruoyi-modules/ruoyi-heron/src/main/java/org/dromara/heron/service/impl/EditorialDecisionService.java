@@ -39,17 +39,38 @@ public class EditorialDecisionService {
     /** 数据集摘要：sourceKey 是给校验用的。 */
     public record DatasetRef(String sourceKey, String label) { }
 
+    /** 数据机会摘要：id 给校验用，label 必须带数值——没有数字总编辑判断不了值不值得做。 */
+    public record OpportunityRef(long opportunityId, String label) { }
+
     /**
      * 两条线的候选概况。热榜侧只有标题，正文侧只有带正文的文章——这个差别由代码保证，
      * 模型不能凭标题去选需要正文的线。poolId/poolHash 让决策与选择可对齐到同一份快照。
      */
     public record Pools(String poolId, String poolHash,
                         List<CandidateRef> hot, List<CandidateRef> articles,
-                        List<DatasetRef> datasets, List<String> recentPublications) { }
+                        List<DatasetRef> datasets, List<OpportunityRef> opportunities,
+                        List<String> recentPublications) {
 
-    /** focusCandidateId 可空：模型没锁定具体候选时保持原行为。 */
+        /** 老入口：没有数据机会时的摘要。 */
+        public Pools(String poolId, String poolHash, List<CandidateRef> hot, List<CandidateRef> articles,
+                     List<DatasetRef> datasets, List<String> recentPublications) {
+            this(poolId, poolHash, hot, articles, datasets, List.of(), recentPublications);
+        }
+    }
+
+    /**
+     * focusOpportunityId 与 focusCandidateId 一样是可选的锚点：
+     * 总编辑不指定时由线内编辑自己挑。
+     */
     public record Decision(String decision, String selectedLine, String reason, String editorialIntent,
-                           Long focusCandidateId) {
+                           Long focusCandidateId, Long focusOpportunityId) {
+
+        /** 老入口：没有锁定数据机会。 */
+        public Decision(String decision, String selectedLine, String reason, String editorialIntent,
+                        Long focusCandidateId) {
+            this(decision, selectedLine, reason, editorialIntent, focusCandidateId, null);
+        }
+
         public boolean publish() {
             return "PUBLISH".equals(decision);
         }
@@ -75,7 +96,7 @@ public class EditorialDecisionService {
         String reason = node.path("reason").asString("").strip();
         if (NO_PUBLISH.equals(decision)) {
             if (reason.isBlank()) throw invalid("NO_PUBLISH 必须给出 reason");
-            return new Decision(NO_PUBLISH, "", reason, "", null);
+            return new Decision(NO_PUBLISH, "", reason, "", null, null);
         }
         if (!"PUBLISH".equals(decision)) {
             throw invalid("未知 decision：" + decision);
@@ -87,14 +108,15 @@ public class EditorialDecisionService {
         if (reason.isBlank()) throw invalid("PUBLISH 必须给出 reason");
         String intent = node.path("editorialIntent").asString("").strip();
         if (intent.isBlank()) throw invalid("PUBLISH 必须给出 editorialIntent");
-        if (DATA_BOARD.equals(line) && pools.datasets().isEmpty()) {
-            throw poolEmpty("数据看板线没有可用数据集");
+        if (DATA_BOARD.equals(line) && pools.opportunities().isEmpty() && pools.datasets().isEmpty()) {
+            throw poolEmpty("数据看板线既没有数据机会也没有可用数据集");
         }
         if (NEWS_EXPLAINER.equals(line) && pools.articles().isEmpty()) {
             throw poolEmpty("解说线没有带正文的文章");
         }
         Long focus = focus(node, pools);
-        return new Decision("PUBLISH", line, reason, intent, focus);
+        Long focusOpportunity = focusOpportunity(node, pools);
+        return new Decision("PUBLISH", line, reason, intent, focus, focusOpportunity);
     }
 
     /** 锁定的候选必须真的在池子里；对不上就是模型编了一个 ID，不能猜。 */
@@ -112,11 +134,26 @@ public class EditorialDecisionService {
         return id;
     }
 
+    /** 机会 ID 同样必须对得上：编一个不存在的 ID 等于让线内编辑去猜。 */
+    private static Long focusOpportunity(JsonNode node, Pools pools) {
+        JsonNode raw = node.path("focusOpportunityId");
+        if (raw.isMissingNode() || raw.isNull()) {
+            return null;
+        }
+        long id = raw.asLong(0L);
+        boolean known = pools.opportunities().stream().anyMatch(ref -> ref.opportunityId() == id);
+        if (id == 0L || !known) {
+            throw invalid("focusOpportunityId 不在候选池里：" + raw);
+        }
+        return id;
+    }
+
     static String prompt(Pools pools) {
         StringBuilder text = new StringBuilder("今天的候选概况：\n");
         append(text, "热榜标题", pools.hot());
         append(text, "带正文的文章", pools.articles());
         appendDatasets(text, "可用数据集", pools.datasets());
+        append(text, "数据机会（带分数与变化，分数越高越值得做）", pools.opportunities());
         append(text, "最近已发布", pools.recentPublications());
         return text.append("按契约输出 JSON。").toString();
     }
@@ -126,6 +163,8 @@ public class EditorialDecisionService {
         for (Object item : items) {
             if (item instanceof CandidateRef ref) {
                 text.append("- [").append(ref.candidateId()).append("] ").append(ref.label()).append('\n');
+            } else if (item instanceof OpportunityRef ref) {
+                text.append("- [").append(ref.opportunityId()).append("] ").append(ref.label()).append('\n');
             } else {
                 text.append("- ").append(item).append('\n');
             }

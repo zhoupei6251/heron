@@ -26,7 +26,9 @@ class NewsAutoTickTest extends NewsMysqlTestSupport {
 
         assertEquals(1, slotCount(), "同一槽位重复触发不能产生第二行");
         assertEquals("skipped", jdbc.queryForObject("SELECT status FROM heron_auto_slot", String.class));
-        assertEquals("no_candidate", jdbc.queryForObject("SELECT detail FROM heron_auto_slot", String.class));
+        assertEquals("no_news_source_and_no_opportunity",
+            jdbc.queryForObject("SELECT detail FROM heron_auto_slot", String.class),
+            "空槽原因要看得出是没配源，还是没算出机会");
     }
 
     @Test
@@ -65,6 +67,7 @@ class NewsAutoTickTest extends NewsMysqlTestSupport {
 
     private NewsAutoService newAuto(HeronNewsProperties properties) {
         return new NewsAutoService(properties, sourceMapper, candidateMapper, workMapper, versionMapper, slotMapper,
+            org.mockito.Mockito.mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class),
             maintenance, memoryPause(), noModelScreener(),
             org.mockito.Mockito.mock(org.dromara.heron.service.impl.EditorialDecisionService.class),
             org.mockito.Mockito.mock(org.dromara.heron.service.impl.NewsProductionDomain.class),

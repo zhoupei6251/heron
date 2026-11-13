@@ -43,4 +43,16 @@ public class HeronNewsProperties {
 
     /** 浏览器自动化发布耗时几十秒，超时判失败并提示去后台确认。 */
     private int publishTimeoutSeconds = 180;
+
+    /**
+     * 数据机会分析开关。第一步只算机会、不接入生产，默认关闭；
+     * 关闭时既没有定时任务，也不影响任何现有链路，只能由接口手动触发。
+     */
+    private boolean dataAnalysisEnabled;
+
+    /** 数据机会分析的 cron：跑在第一个产出槽位之前，产出决策才有机会看到当天结果。 */
+    private List<String> dataAnalysisSlots = new ArrayList<>();
+
+    /** 分析窗口点数；与源的 cadence 一起解释，同一个数字对日频与年频含义不同。 */
+    private int dataAnalysisWindowPoints = 120;
 }

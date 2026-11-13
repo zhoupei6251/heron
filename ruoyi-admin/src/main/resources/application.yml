@@ -1,7 +1,7 @@
 # 开发环境配置
 server:
   # 服务器的HTTP端口，默认为8080
-  port: 8080
+  port: 8085
   servlet:
     # 应用的访问路径
     context-path: /
@@ -353,10 +353,12 @@ easy-es:
       refresh-policy: immediate
 
 --- # MCP 服务端配置
+# 当前 ruoyi-common-mcp 未装配进应用（见 ruoyi-admin/pom.xml 说明），本节配置不生效；
+# 恢复装配时再改回 true，避免依赖回来时服务端被意外打开。
 spring.ai.mcp:
   server:
     # 与 ruoyi-admin 共用端口，默认端点为 /mcp
-    enabled: true
+    enabled: false
     protocol: STREAMABLE
     name: ${spring.application.name}
     version: ${project.version}

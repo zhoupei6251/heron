@@ -17,7 +17,7 @@ import java.util.function.Predicate;
 public record EditorialCandidatePool(String poolId, String poolHash,
                                      List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,
                                      List<HeronDataSource> datasets, List<HeronNewsSource> sources,
-                                     List<HeronNewsWork> recent) {
+                                     List<HeronNewsWork> recent, List<HeronDataOpportunity> opportunities) {
 
     public EditorialCandidatePool {
         if (poolId == null || poolId.isBlank()) {
@@ -31,21 +31,32 @@ public record EditorialCandidatePool(String poolId, String poolHash,
         datasets = datasets == null ? List.of() : List.copyOf(datasets);
         sources = sources == null ? List.of() : List.copyOf(sources);
         recent = recent == null ? List.of() : List.copyOf(recent);
+        opportunities = opportunities == null ? List.of() : List.copyOf(opportunities);
     }
 
     public static EditorialCandidatePool empty() {
-        return build(List.of(), List.of(), List.of(), List.of(), List.of());
+        return build(List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+    }
+
+    /** 老入口：没有数据机会时的池子（机会是后加的一条线）。 */
+    public static EditorialCandidatePool of(List<HeronNewsCandidate> candidates,
+                                            Predicate<HeronNewsCandidate> hasBody,
+                                            List<HeronDataSource> datasets,
+                                            List<HeronNewsSource> sources,
+                                            List<HeronNewsWork> recent) {
+        return of(candidates, hasBody, datasets, sources, recent, List.of());
     }
 
     /**
-     * 建池：先按「有没有正文」分线，再连同其余三类候选一起算摘要。
+     * 建池：先按「有没有正文」分线，再连同其余候选一起算摘要。
      * 标题为空的候选直接丢掉，不占名额。
      */
     public static EditorialCandidatePool of(List<HeronNewsCandidate> candidates,
                                             Predicate<HeronNewsCandidate> hasBody,
                                             List<HeronDataSource> datasets,
                                             List<HeronNewsSource> sources,
-                                            List<HeronNewsWork> recent) {
+                                            List<HeronNewsWork> recent,
+                                            List<HeronDataOpportunity> opportunities) {
         List<HeronNewsCandidate> hot = new ArrayList<>();
         List<HeronNewsCandidate> articles = new ArrayList<>();
         for (HeronNewsCandidate candidate : candidates == null ? List.<HeronNewsCandidate>of() : candidates) {
@@ -59,19 +70,19 @@ public record EditorialCandidatePool(String poolId, String poolHash,
                 hot.add(candidate);
             }
         }
-        return build(hot, articles, datasets, sources, recent);
+        return build(hot, articles, datasets, sources, recent, opportunities);
     }
 
-    /** 新闻候选为空才算空池：只有数据源没有稿子时，两条线都做不了。 */
+    /** 三条线都空才算空池：没有新闻但数据里有值得做的东西时，数据看板照样能产。 */
     public boolean isEmpty() {
-        return hot.isEmpty() && articles.isEmpty();
+        return hot.isEmpty() && articles.isEmpty() && opportunities.isEmpty();
     }
 
     private static EditorialCandidatePool build(List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,
                                                 List<HeronDataSource> datasets, List<HeronNewsSource> sources,
-                                                List<HeronNewsWork> recent) {
+                                                List<HeronNewsWork> recent, List<HeronDataOpportunity> opportunities) {
         return new EditorialCandidatePool(UUID.randomUUID().toString(),
-            PoolDigest.of(hot, articles, datasets, sources, recent),
-            hot, articles, datasets, sources, recent);
+            PoolDigest.of(hot, articles, datasets, sources, recent, opportunities),
+            hot, articles, datasets, sources, recent, opportunities);
     }
 }

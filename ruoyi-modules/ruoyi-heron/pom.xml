@@ -37,9 +37,32 @@
             <groupId>org.dromara</groupId>
             <artifactId>ruoyi-common-push</artifactId>
         </dependency>
+        <!-- Snail AI：暂不装配。它会经 spring-ai 带入 victools 5.0（Jackson 3），
+             与研究层的 AgentScope（victools 4.x / Jackson 2）冲突，详见 ruoyi-admin/pom.xml 的说明。
+             heron 业务代码对 org.springframework.ai / aizuda 零引用，去掉不影响编译与运行。 -->
+        <!--
         <dependency>
             <groupId>org.dromara</groupId>
             <artifactId>ruoyi-common-ai</artifactId>
+        </dependency>
+        -->
+        <!-- 研究层 Agent 运行时：不引官方 spring-boot starter（钉 Boot 4.0.x），由 AgentRuntimeConfig 手工装配 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-harness</artifactId>
+            <version>2.0.4</version>
+        </dependency>
+        <!-- 模型实现本身不在 core/harness 里；走 OpenAI 兼容协议，配置沿用 sys_config 的 heron.model.* -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-openai</artifactId>
+            <version>2.0.4</version>
+        </dependency>
+        <!-- AgentState 落 MySQL：不落用户目录，多副本也能共用 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-mysql</artifactId>
+            <version>2.0.4</version>
         </dependency>
         <!-- 定稿产物落对象存储：复用基座 sys_oss_config 与 S3 客户端，不自建第二套存储配置 -->
         <dependency>

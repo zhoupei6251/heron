@@ -12,13 +12,37 @@
 | `fetched_at` | 是 | 正文抓取时间 |
 | `body_sha256` | 是 | 抓取正文的完整 SHA-256 |
 | `title` | 是 | 屏幕标题，不超过 15 字 |
-| `scenes` | 是 | 3–6 段，每段 `{lead, body, duration_s}` |
+| `scenes` | 是 | 3–6 段，每段字段见下方「场景字段」 |
 | `closing` | 是 | 结尾一句话 |
 | `source_name` | 是 | 画面「来源：xxx」文案 |
 
 - 每段 `lead` ≤ 20 字、`body` ≤ 70 字、`duration_s` 为正数秒；全部段落 `duration_s` 合计 30–75 秒。
 - 只允许上述字段。出现未知字段直接退回。
 - `title` 不得与任何一段的 `lead` 或 `body` 相同。
+
+## 场景字段
+
+每段必须给 `lead`、`body`、`duration_s`、`scene_id`；画面不是纯文字时再加 `scene_type`，`image` 场景还要给 `visual.assets`。
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `scene_id` | 是 | `scene_001` 起的稳定标识，三段就是 001/002/003，全篇唯一 |
+| `scene_type` | 建议 | 本段画面形态，只能取下面列出的类型 |
+| `visual.assets` | image 场景必填 | 从给定 `asset_id` 里选，不要自造；不要自己写文件路径 |
+
+`scene_type` 的使用条件：
+
+| 类型 | 什么时候用 |
+|---|---|
+| `headline` | 开场那一屏，放最强的单一事实 |
+| `text` | 纯文字信息，默认选择 |
+| `image` | 原文有配图，且这张图直接对应本段事实 |
+| `quote` | 本段主体是原文的直接引语 |
+| `rank` | 本段是几条并列信息的高低排序 |
+
+上面没列出的类型（如 `compare`、`timeline`、`number`）当前没有模板能渲染，**不要输出**。
+
+输入末尾会追加一行「本次模板只支持哪些 scene_type」，以那一行为准；与上表冲突时服从它。
 
 ## 事实口径
 

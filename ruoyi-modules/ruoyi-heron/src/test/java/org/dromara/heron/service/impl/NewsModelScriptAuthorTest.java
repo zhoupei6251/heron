@@ -31,7 +31,7 @@ class NewsModelScriptAuthorTest {
         String prompt = NewsModelScriptAuthor.prompt(input("""
             {"title":"金价创新高","draft":"草稿",
              "editorial":{"editorialIntent":"讲清谁在买","reason":"数据对比强","storyAngle":"央行视角"}}
-            """), ARTICLE);
+            """), ARTICLE, "");
 
         assertTrue(prompt.contains("编辑意图：讲清谁在买"), prompt);
         assertTrue(prompt.contains("为什么选它：数据对比强"), prompt);
@@ -43,7 +43,7 @@ class NewsModelScriptAuthorTest {
     void legacyInputOmitsEditorialLines() {
         String prompt = NewsModelScriptAuthor.prompt(input("""
             {"title":"金价创新高","draft":"草稿"}
-            """), ARTICLE);
+            """), ARTICLE, "");
 
         assertFalse(prompt.contains("编辑意图"), prompt);
         assertFalse(prompt.contains("故事视角"), prompt);
@@ -55,9 +55,21 @@ class NewsModelScriptAuthorTest {
     void partialEditorialIsHonest() {
         String prompt = NewsModelScriptAuthor.prompt(input("""
             {"title":"标题","draft":"草稿","editorial":{"editorialIntent":"讲趋势"}}
-            """), ARTICLE);
+            """), ARTICLE, "");
 
         assertTrue(prompt.contains("编辑意图：讲趋势"), prompt);
         assertFalse(prompt.contains("故事视角"), prompt);
+    }
+
+    @Test
+    @DisplayName("模板场景能力进提示词：模型不该写渲染不出来的类型")
+    void promptCarriesTemplateSceneCapability() {
+        String capability = "本次模板（news-poster-9x16）只支持这些 scene_type，只能用这些：headline、text。";
+        String prompt = NewsModelScriptAuthor.prompt(input("""
+            {"title":"标题","draft":"草稿"}
+            """), ARTICLE, capability);
+
+        assertTrue(prompt.contains("news-poster-9x16"), prompt);
+        assertTrue(prompt.contains("headline、text"), prompt);
     }
 }

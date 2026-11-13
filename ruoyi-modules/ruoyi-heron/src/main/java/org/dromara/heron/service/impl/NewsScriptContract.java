@@ -24,10 +24,14 @@ public final class NewsScriptContract {
         "closing", "source_name", "schema_version");
     /** v1 段落字段。 */
     private static final Set<String> SCENE_FIELDS_V1 = Set.of("lead", "body", "duration_s");
+    /** 纯文字段也允许带场景标识。 */
+    private static final Set<String> SCENE_ID_EXTRA = Set.of("scene_id");
     /** v2 在 v1 之上增加的字段；scene_type 是启用 v2 校验的开关。 */
-    private static final Set<String> SCENE_V2_EXTRA = Set.of("scene_type", "visual");
+    private static final Set<String> SCENE_V2_EXTRA = Set.of("scene_type", "visual", "scene_id");
     private static final Set<String> VISUAL_FIELDS = Set.of("layout", "motion", "assets");
     private static final Set<String> ASSET_FIELDS = Set.of("asset_id", "role", "source_url");
+    /** 场景标识：给人工改稿和版本比对一个稳定锚点，不能由数组下标临时推。 */
+    private static final java.util.regex.Pattern SCENE_ID = java.util.regex.Pattern.compile("scene_[0-9]{3}");
     /** 允许出现在稿件里的场景类型。新增类型要同时出现在模板 template.json 的 supportedSceneTypes。 */
     private static final Set<String> SCENE_TYPES = Set.of(
         "headline", "text", "image", "chart", "quote", "list", "compare",
@@ -81,6 +85,7 @@ public final class NewsScriptContract {
         }
         String title = script.path("title").asString("");
         double total = 0;
+        java.util.Map<String, Integer> seenIds = new java.util.HashMap<>();
         for (int index = 0; index < scenes.size(); index++) {
             JsonNode scene = scenes.get(index);
             if (!scene.isObject()) {
@@ -88,7 +93,8 @@ public final class NewsScriptContract {
                 continue;
             }
             boolean v2 = scene.has("scene_type");
-            Set<String> allowed = v2 ? union(SCENE_FIELDS_V1, SCENE_V2_EXTRA) : SCENE_FIELDS_V1;
+            // scene_id 与画面无关，纯文字段也可以有：它是人工改稿定位一屏的锚点
+            Set<String> allowed = v2 ? union(SCENE_FIELDS_V1, SCENE_V2_EXTRA) : union(SCENE_FIELDS_V1, SCENE_ID_EXTRA);
             for (String field : scene.propertyNames()) {
                 if (!allowed.contains(field)) items.add("第 " + (index + 1) + " 段有未知字段 " + field);
             }
@@ -101,9 +107,28 @@ public final class NewsScriptContract {
                 items.add("第 " + (index + 1) + " 段与标题重复");
             }
             if (v2) visual(items, index, scene);
+            if (scene.has("scene_id")) sceneId(items, index, scene, seenIds);
         }
         if (total > 0 && (total < MIN_TOTAL_SECONDS || total > MAX_TOTAL_SECONDS)) {
             items.add("总时长 " + (int) total + " 秒不在 " + MIN_TOTAL_SECONDS + "–" + MAX_TOTAL_SECONDS + " 秒");
+        }
+    }
+
+    /**
+     * 场景标识可省略——早期 v2 稿没有这个字段，强行必填会让历史作品无法重渲。
+     * 一旦出现就必须是 scene_001 形态且在整篇里唯一，否则人工改稿与版本对比会指错屏。
+     */
+    private static void sceneId(List<String> items, int index, JsonNode scene,
+                                java.util.Map<String, Integer> seenIds) {
+        int number = index + 1;
+        String id = scene.path("scene_id").asString("");
+        if (!SCENE_ID.matcher(id).matches()) {
+            items.add("第 " + number + " 段 scene_id 不是 scene_001 形态：" + id);
+            return;
+        }
+        Integer first = seenIds.putIfAbsent(id, number);
+        if (first != null) {
+            items.add("第 " + number + " 段 scene_id 与第 " + first + " 段重复：" + id);
         }
     }
 

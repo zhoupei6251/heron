@@ -130,4 +130,72 @@ class EditorialDecisionTest {
         assertTrue(prompt.contains("[100] 正文稿"), prompt);
         assertTrue(prompt.contains("worldbank-gdp"), prompt);
     }
+
+    private static EditorialDecisionService.Pools withOpportunities(List<String> data, List<String> labels) {
+        List<EditorialDecisionService.OpportunityRef> opportunities =
+            java.util.stream.IntStream.range(0, labels.size())
+                .mapToObj(index -> new EditorialDecisionService.OpportunityRef(900L + index, labels.get(index)))
+                .toList();
+        List<EditorialDecisionService.DatasetRef> dataRefs = data.stream()
+            .map(key -> new EditorialDecisionService.DatasetRef(key, key)).toList();
+        return new EditorialDecisionService.Pools("pool-1", "0".repeat(64),
+            List.of(), List.of(), dataRefs, opportunities, List.of());
+    }
+
+    @Test
+    @DisplayName("数据机会带编号和分数进提示词：没有数字就判断不了值不值得做")
+    void promptCarriesOpportunityNumbers() {
+        String prompt = EditorialDecisionService.prompt(
+            withOpportunities(List.of(), List.of("Frankfurter 近 7 日 -2.39%，创窗口新低（3.6σ），分 69.94")));
+
+        assertTrue(prompt.contains("[900]"), prompt);
+        assertTrue(prompt.contains("3.6σ"), prompt);
+        assertTrue(prompt.contains("69.94"), prompt);
+        assertTrue(prompt.contains("数据机会"), prompt);
+    }
+
+    @Test
+    @DisplayName("只有数据机会、没有数据源清单时，数据看板线仍然可选")
+    void dataBoardAllowedByOpportunityAlone() {
+        var decision = EditorialDecisionService.plan("""
+            {"decision":"PUBLISH","selectedLine":"DATA_BOARD",
+             "reason":"人民币走强值得讲","editorialIntent":"看人民币对主要货币的变化"}
+            """, withOpportunities(List.of(), List.of("Frankfurter 近 7 日 -2.39%，分 69.94")));
+
+        assertTrue(decision.publish());
+        assertEquals(EditorialDecisionService.DATA_BOARD, decision.selectedLine());
+    }
+
+    @Test
+    @DisplayName("既没机会也没数据集：数据看板线不许选")
+    void dataBoardRejectedWithoutAnyMaterial() {
+        var error = assertThrows(org.dromara.heron.domain.HeronBusinessException.class,
+            () -> EditorialDecisionService.plan("""
+                {"decision":"PUBLISH","selectedLine":"DATA_BOARD",
+                 "reason":"随便做一条","editorialIntent":"数据"}
+                """, withOpportunities(List.of(), List.of())));
+        assertEquals("editorial_pool_empty", error.getCode());
+    }
+
+    @Test
+    @DisplayName("锁定的数据机会必须真的在池子里")
+    void unknownFocusOpportunityRejected() {
+        var error = assertThrows(org.dromara.heron.domain.HeronBusinessException.class,
+            () -> EditorialDecisionService.plan("""
+                {"decision":"PUBLISH","selectedLine":"DATA_BOARD","focusOpportunityId":123,
+                 "reason":"就做这条","editorialIntent":"数据"}
+                """, withOpportunities(List.of(), List.of("Frankfurter 近 7 日 -2.39%，分 69.94"))));
+        assertEquals("editorial_decision_invalid", error.getCode());
+    }
+
+    @Test
+    @DisplayName("锁定的数据机会被原样保留，交给线内编辑直接锁源")
+    void focusOpportunityKept() {
+        var decision = EditorialDecisionService.plan("""
+            {"decision":"PUBLISH","selectedLine":"DATA_BOARD","focusOpportunityId":900,
+             "reason":"就做这条","editorialIntent":"数据"}
+            """, withOpportunities(List.of(), List.of("Frankfurter 近 7 日 -2.39%，分 69.94")));
+
+        assertEquals(900L, decision.focusOpportunityId());
+    }
 }
