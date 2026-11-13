@@ -63,7 +63,6 @@ import org.dromara.workflow.mapper.FlwHisTaskMapper;
 import org.dromara.workflow.mapper.FlwTaskMapper;
 import org.dromara.workflow.service.IFlwCommonService;
 import org.dromara.workflow.service.IFlwNodeExtService;
-import org.dromara.workflow.service.IFlwTaskAssigneeService;
 import org.dromara.workflow.service.IFlwTaskService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -105,7 +104,6 @@ public class FlwTaskServiceImpl implements IFlwTaskService {
     private final FlwHisTaskMapper flwHisTaskMapper;
     private final FlwCategoryMapper flwCategoryMapper;
     private final FlowNodeMapper flowNodeMapper;
-    private final IFlwTaskAssigneeService flwTaskAssigneeService;
     private final IFlwCommonService flwCommonService;
     private final IFlwNodeExtService flwNodeExtService;
 
@@ -150,8 +148,7 @@ public class FlwTaskServiceImpl implements IFlwTaskService {
         if (CollUtil.isEmpty(flowCopyList)) {
             return;
         }
-        WorkflowContext context = new WorkflowContext();
-        context.setHandler(LoginHelper.getUserIdStr());
+        WorkflowContext context = WorkflowContext.create(LoginHelper.getUserIdStr());
         context.setMessage("【抄送给】" + StreamUtils.join(flowCopyList, FlowCopyBo::getNickName));
         // 抄送留痕交给引擎：按「同一待办 + 同一人」幂等，抄送人挂在抄送历史主键上，办结后仍可补抄送。
         HisTask copyHis = taskService.copy(task.getId()
@@ -567,25 +564,20 @@ public class FlwTaskServiceImpl implements IFlwTaskService {
         if (CollUtil.isEmpty(nextNodeList)) {
             return new ArrayList<>();
         }
-        List<FlowNode> nextFlowNodes = BeanUtil.copyToList(nextNodeList, FlowNode.class);
         // 只获取中间节点
-        nextFlowNodes = StreamUtils.filter(nextFlowNodes, node -> NodeType.BETWEEN.getKey().equals(node.getNodeType()));
-        if (CollUtil.isNotEmpty(nextNodeList)) {
-            //构建以下节点数据
-            List<Task> buildNextTaskList = StreamUtils.toList(nextNodeList, node -> taskService.addTask(node, instance
-                , definition, new WorkflowContext(), SkipType.PASS.getKey()));
-            //办理人变量替换
-            ExpressionUtil.evalVariable(buildNextTaskList, mergeVariable, null, false);
-            for (FlowNode flowNode : nextFlowNodes) {
-                StreamUtils.findFirst(buildNextTaskList, t -> t.getNodeCode().equals(flowNode.getNodeCode()))
-                    .ifPresent(first -> {
-                        List<UserDTO> users;
-                        if (CollUtil.isNotEmpty(first.getPermissionList())
-                            && CollUtil.isNotEmpty(users = flwTaskAssigneeService.fetchUsersByStorageIds(StringUtils.joinComma(first.getPermissionList())))) {
-                            flowNode.setPermissionFlag(StreamUtils.join(users, e -> Convert.toStr(e.getUserId())));
-                        }
-                    });
-            }
+        nextNodeList = StreamUtils.filter(nextNodeList, node -> NodeType.BETWEEN.getKey().equals(node.getNodeType()));
+        if (CollUtil.isEmpty(nextNodeList)) {
+            return new ArrayList<>();
+        }
+        List<FlowNode> nextFlowNodes = BeanUtil.copyToList(nextNodeList, FlowNode.class);
+        //构建以下节点数据
+        List<Task> buildNextTaskList = StreamUtils.toList(nextNodeList, node -> taskService.addTask(node, instance
+            , definition, WorkflowContext.create(), SkipType.PASS.getKey()));
+        //办理人变量替换
+        ExpressionUtil.evalVariable(buildNextTaskList, mergeVariable, null, false);
+        Map<String, List<String>> map = StreamUtils.toMap(buildNextTaskList, Task::getNodeCode, Task::getPermissionList);
+        for (FlowNode node : nextFlowNodes) {
+            node.setPermissionFlag(StringUtils.joinComma(map.get(node.getNodeCode())));
         }
         return nextFlowNodes;
     }

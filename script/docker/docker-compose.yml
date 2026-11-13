@@ -97,7 +97,7 @@ services:
     network_mode: "host"
 
   heron-server1:
-    image: heron-server:6.0.0
+    image: heron-server:6.1.0
     container_name: heron-server1
     environment:
       # 时区上海
@@ -115,7 +115,7 @@ services:
     network_mode: "host"
 
   heron-server2:
-    image: heron-server:6.0.0
+    image: heron-server:6.1.0
     container_name: heron-server2
     environment:
       # 时区上海
@@ -133,7 +133,7 @@ services:
     network_mode: "host"
 
   ruoyi-monitor-admin:
-    image: ruoyi/ruoyi-monitor-admin:6.0.0
+    image: ruoyi/ruoyi-monitor-admin:6.1.0
     container_name: ruoyi-monitor-admin
     environment:
       # 时区上海
@@ -145,7 +145,7 @@ services:
     network_mode: "host"
 
   ruoyi-snailjob-server:
-    image: ruoyi/ruoyi-snailjob-server:6.0.0
+    image: ruoyi/ruoyi-snailjob-server:6.1.0
     container_name: ruoyi-snailjob-server
     environment:
       # 时区上海
@@ -161,7 +161,7 @@ services:
     network_mode: "host"
 
   ruoyi-snailai-server:
-    image: ruoyi/ruoyi-snailai-server:6.0.0
+    image: ruoyi/ruoyi-snailai-server:6.1.0
     container_name: ruoyi-snailai-server
     environment:
       # 时区上海
