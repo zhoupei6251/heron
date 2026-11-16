@@ -446,7 +446,10 @@ plan.md §14 要求「每组至少 30 个样本」。但 Phase 0 盘点发现：
 > Phase 4：独立核验员——另起会话与提示词、同一批只读工具，只对 `PRODUCE` 跑，
 > 判定与研究员结论分开存以便识别冲突。未打开 `disableSubagents`，用业务层编排实现。
 > 详见 `docs/reports/heron-content-decision.md`。
-> **未做：** L1/L2/L3 三级策略、重复选题检测接入触发链路、核验链路的真跑验证。
+> **补完（2026-11-16）：** L1/L2/L3 三级策略（普通 LLM / ReActAgent / HarnessAgent，按机会评分定档）；
+> 重复选题检测接进建单入口；`DISAGREE` 路径用伪造结论真跑验证并固化为常驻测试。
+> 详见 `docs/reports/heron-research-grading.md`。
+> **未做：** 每日预算、L3→核验在完整链路上的验证、阈值按账单校准。
 
 **做：** 补齐 8 个只读工具；实现「调查结束判断」；证据收集；结构化研究报告；结果绑定 `FrozenContext`。
 

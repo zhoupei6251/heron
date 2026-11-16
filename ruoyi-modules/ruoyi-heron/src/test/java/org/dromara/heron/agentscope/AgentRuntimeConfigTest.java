@@ -10,6 +10,7 @@ import org.dromara.heron.mapper.HeronDataOpportunityMapper;
 import org.dromara.heron.mapper.HeronDataSourceMapper;
 import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.dromara.heron.service.impl.DatasetFetchService;
+import org.dromara.heron.service.impl.OpenAiModelClient;
 import org.dromara.system.api.ConfigService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,6 +46,9 @@ class AgentRuntimeConfigTest {
         .withBean(HeronDataSourceMapper.class, () -> mock(HeronDataSourceMapper.class))
         .withBean(HeronVideoVersionMapper.class, () -> mock(HeronVideoVersionMapper.class))
         .withBean(HeronAgentToolCallMapper.class, () -> mock(HeronAgentToolCallMapper.class))
+        // L1 档走轻量模型客户端，装配时需要有这个 Bean
+        .withBean(OpenAiModelClient.class,
+            () -> mock(OpenAiModelClient.class, org.mockito.Mockito.withSettings().lenient()))
         // 存储换成内存实现：MySQL 那个构造时要校验表，单测不该连库
         .withBean(AgentStateStore.class, InMemoryAgentStateStore::new);
 

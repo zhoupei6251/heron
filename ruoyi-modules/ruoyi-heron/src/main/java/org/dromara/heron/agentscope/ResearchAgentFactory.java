@@ -1,6 +1,7 @@
 package org.dromara.heron.agentscope;
 
 import cn.hutool.crypto.digest.DigestUtil;
+import io.agentscope.core.ReActAgent;
 import io.agentscope.core.hook.Hook;import io.agentscope.core.model.ExecutionConfig;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.state.AgentStateStore;
@@ -111,6 +112,38 @@ public class ResearchAgentFactory {
         return build(sessionId, VERIFIER_NAME, VERIFIER_PROMPT,
             budget == null ? tools : tools.withBudget(budget),
             hook, new ResearchVerificationTool(verification));
+    }
+
+    /**
+     * 建 L2 执行器：裸 ReActAgent。
+     *
+     * <p>为什么不用 HarnessAgent：plan §12 的口径就是 L2=ReActAgent、L3=HarnessAgent。
+     * Harness 额外带的是计划模式、任务清单、子 Agent 那一整套——中档机会用不上，
+     * 带着它们反而多一层可能出问题的地方。
+     */
+    public ReActAgent createReAct(String sessionId, ResearchBudget budget, Hook hook,
+                                  ResearchFindings findings) {
+        checkSession(sessionId);
+        Toolkit toolkit = new Toolkit(ToolkitConfig.builder()
+            .executionConfig(ExecutionConfig.builder()
+                .timeout(toolTimeout)
+                .maxAttempts(1)
+                .build())
+            .build());
+        toolkit.registerTool(budget == null ? tools.withFindings(findings)
+            : tools.withBudget(budget).withFindings(findings));
+
+        ReActAgent.Builder builder = ReActAgent.builder()
+            .name(AGENT_NAME + "-react")
+            .sysPrompt(resource(SYSTEM_PROMPT))
+            .model(model)
+            .toolkit(toolkit)
+            .maxIters(maxIters)
+            .stateStore(stateStore);
+        if (hook != null) {
+            builder.hook(hook);
+        }
+        return builder.build();
     }
 
     private static void checkSession(String sessionId) {

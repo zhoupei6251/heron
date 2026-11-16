@@ -11,10 +11,13 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
 import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.heron.domain.HeronBusinessException;
+import org.dromara.heron.agentscope.ResearchGrade;
 import org.dromara.heron.domain.HeronContentDecision;
+import org.dromara.heron.domain.HeronDataOpportunity;
 import org.dromara.heron.domain.HeronResearchTask;
 import org.dromara.heron.domain.bo.ResearchTaskQueryBo;
 import org.dromara.heron.domain.vo.ResearchTaskVo;
+import org.dromara.heron.mapper.HeronDataOpportunityMapper;
 import org.dromara.heron.mapper.HeronResearchTaskMapper;
 import org.dromara.heron.service.IContentDecisionService;
 import org.dromara.heron.service.IResearchAgent;
@@ -50,10 +53,43 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
     private static final int MAX_REASON = 2000;
 
     private final HeronResearchTaskMapper researchTaskMapper;
+    private final HeronDataOpportunityMapper opportunityMapper;
     private final IResearchAgent researchAgent;
     private final ObjectProvider<Clock> clocks;
     /** 决策服务可选：它不受 {@code heron.agent.enabled} 约束，测试里也可能没有。 */
     private final ObjectProvider<IContentDecisionService> decisionService;
+    /**
+     * 重复选题检测：这个机会是否已经有待处理或已采纳的决策。
+     *
+     * <p>为什么在这里拦：建单是花钱的入口。等到跑完再提示重复，token 已经烧掉了。
+     *
+     * @return 那条决策；没有重复时返回 null
+     */
+    private HeronContentDecision repeatOf(long opportunityId) {
+        IContentDecisionService decisions = decisionService.getIfAvailable();
+        if (decisions == null) {
+            return null;
+        }
+        try {
+            return decisions.findExistingDecision(opportunityId);
+        } catch (RuntimeException e) {
+            // 查重失败不该挡住建单：宁可多花一次钱，也不要让用户点不动
+            log.warn("重复选题检测失败 opportunityId={} cause={}", opportunityId, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 机会评分；查不到或没评分时返回 null，由 {@link ResearchGrade#of} 降到最低档。 */
+    private Double opportunityScore(long opportunityId) {
+        try {
+            HeronDataOpportunity row = opportunityMapper.selectById(opportunityId);
+            return row == null || row.getScore() == null ? null : row.getScore().doubleValue();
+        } catch (RuntimeException e) {
+            // 读不到评分不该让建单失败：降到最低档继续
+            return null;
+        }
+    }
+
     /** 是否对「建议生产」的判断再跑一次独立核验；默认开，关掉就是省一份 token。 */
     @Value("${heron.agent.verify-enabled:true}")
     private boolean verifyEnabled;
@@ -77,10 +113,25 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
         if (existing != null) {
             return existing.getResearchId();
         }
+        // 同一天的去重键之外，再看有没有跨天的未处理/已采纳决策：
+        // 昨天研究过并留了待处理判断的机会，今天再花一次钱重查没有意义
+        HeronContentDecision repeated = repeatOf(opportunityId);
+        if (repeated != null) {
+            // 只有那条决策挂的研究还在时才复用：它可能已被清理，指回去等于返回一个不存在的任务
+            HeronResearchTask reusable = researchTaskMapper.selectById(repeated.getResearchId());
+            if (reusable != null) {
+                log.info("机会 {} 已有待处理或已采纳的决策，复用研究 {}", opportunityId, reusable.getResearchId());
+                return reusable.getResearchId();
+            }
+            log.info("机会 {} 的旧决策仍在但研究 {} 已不存在，按新任务处理",
+                opportunityId, repeated.getResearchId());
+        }
 
         long researchId = IdUtil.getSnowflakeNextId();
         // 定时与脚本入口没有登录态，这时才记 0；人工触发要留真实操作人
         long actor = currentUserId();
+        // 定档看机会评分：L1 覆盖大多数、L3 只给真正突出的。没评分的按最低档处理
+        ResearchGrade grade = ResearchGrade.of(opportunityScore(opportunityId));
         HeronResearchTask row = new HeronResearchTask();
         row.setResearchId(researchId);
         row.setResearchNo("R" + researchId);
@@ -90,7 +141,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
         // 机会 id 必须进目标：模型只有按 id 查的工具，目标里不带 id 它会直接反问 id，一次工具都不调
         row.setGoal("机会 " + opportunityId + " 在候选里。" + goal);
         row.setSnapshotRef(String.valueOf(opportunityId));
-        row.setGrade("L2");
+        row.setGrade(grade.code());
         row.setStatus(HeronResearchTask.STATUS_QUEUED);
         row.setAttemptNo(0);
         // 会话标识在创建时定死：同一个任务重试才会续上同一段上下文
@@ -135,9 +186,10 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             keeper.start();
             // opportunity_id 在库里可空；空的时候不绑定快照，但研究照跑
             long opportunityId = task.getOpportunityId() == null ? 0L : task.getOpportunityId();
+            ResearchGrade grade = ResearchGrade.parse(task.getGrade());
             IResearchAgent.Outcome outcome = researchAgent.research(new IResearchAgent.Request(
                 task.getSessionId(), researchId, opportunityId, attempt,
-                task.getGoal(), keeper::cancelled));
+                task.getGoal(), grade, keeper::cancelled));
 
             var findings = outcome.findings() == null
                 ? new IResearchAgent.Findings(null, null, false, null, null)
@@ -174,7 +226,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             // 落决策要放在状态写回之后：它读的是刚落库的 report_json。
             // 决策落不下来不该把已经跑完的研究判成失败——研究是研究，决策是它下游的一步。
             Long decisionId = recordDecision(researchId, attempt);
-            verifyIfNeeded(task, researchId, attempt, decisionId, keeper::cancelled);
+            verifyIfNeeded(task, researchId, attempt, decisionId, grade, keeper::cancelled);
             return status;
         } catch (RuntimeException e) {
             log.warn("研究任务失败 researchId={} cause={}", researchId, e.getMessage());
@@ -288,16 +340,20 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
     }
 
     /**
-     * 独立核验，只对「建议生产」的判断跑。
+     * 独立核验，只对最高档且「建议生产」的判断跑。
      *
-     * <p>判错成「不值得做」代价小——只是少做一条；判错成「值得做」会一路走到生产。
-     * 所以核验的预算只花在 PRODUCE 上，这也符合 plan.md §16「多 Agent 不强制全上」。
+     * <p>两道条件缺一不可：
+     * <ul>
+     *   <li>等级 L3——核验要再花一次完整 Agent 调用，中低档机会不值得；</li>
+     *   <li>判断 PRODUCE——判错成「不值得做」只是少做一条，判错成「值得做」会一路走到生产。</li>
+     * </ul>
+     * 这也符合 plan.md §12「只有达到相应价值阈值的内容才升级到更高等级」与 §16「多 Agent 不强制全上」。
      *
      * <p>核验失败只记日志：它是结论的下游校验，不能把已经跑完的研究一起带崩。
      */
     private void verifyIfNeeded(HeronResearchTask task, long researchId, int attempt,
-                                Long decisionId, BooleanSupplier cancelled) {
-        if (decisionId == null || !verifyEnabled) {
+                                Long decisionId, ResearchGrade grade, BooleanSupplier cancelled) {
+        if (decisionId == null || !verifyEnabled || grade == null || !grade.verifies()) {
             return;
         }
         IContentDecisionService decisions = decisionService.getIfAvailable();

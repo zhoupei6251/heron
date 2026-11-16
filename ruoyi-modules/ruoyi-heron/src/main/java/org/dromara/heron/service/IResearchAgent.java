@@ -1,5 +1,7 @@
 package org.dromara.heron.service;
 
+import org.dromara.heron.agentscope.ResearchGrade;
+
 import java.math.BigDecimal;
 import java.util.function.BooleanSupplier;
 
@@ -52,17 +54,16 @@ public interface IResearchAgent {
     /**
      * 一次研究的输入。
      *
-     * <p>用记录而不是位置参数：这里已经连着两个 long 和一个 int，再多一个 order 错了编译器不会报。
-     *
      * @param sessionId     研究级会话标识；同一个研究重试要传同一个值，才能续上上下文
      * @param researchId    研究任务 id，用于工具调用记账
      * @param opportunityId 研究对象的机会 id，用于绑定它依据的那份快照
      * @param attemptNo     第几次执行，用于区分重试
      * @param goal          研究目标，人读得懂的自然语言
+     * @param grade         分析等级：决定走哪个执行器、预算与是否核验
      * @param cancelled     取消信号；为 true 时后续工具调用一律被拒，研究收尾
      */
     record Request(String sessionId, long researchId, long opportunityId, int attemptNo,
-                   String goal, BooleanSupplier cancelled) {
+                   String goal, ResearchGrade grade, BooleanSupplier cancelled) {
     }
 
     /**

@@ -10,6 +10,7 @@ import org.dromara.heron.mapper.HeronDataOpportunityMapper;
 import org.dromara.heron.mapper.HeronDataSourceMapper;
 import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.dromara.heron.service.IResearchAgent;
+import org.dromara.heron.service.impl.OpenAiModelClient;
 import org.dromara.heron.service.impl.DatasetFetchService;
 import org.dromara.system.api.ConfigService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -89,9 +90,11 @@ public class AgentRuntimeConfig {
     public IResearchAgent heronResearchAgent(ResearchAgentFactory heronResearchAgentFactory,
                                              HeronAgentToolCallMapper toolCallMapper,
                                              HeronDataOpportunityMapper opportunityMapper,
+                                             OpenAiModelClient modelClient,
                                              Environment environment,
                                              ObjectProvider<Clock> clocks) {
         return new AgentscopeResearchAgent(heronResearchAgentFactory, toolCallMapper, opportunityMapper,
+            modelClient,
             clocks.getIfAvailable(Clock::systemDefaultZone),
             environment.getProperty("heron.agent.max-tool-calls", Integer.class, 12),
             environment.getProperty("heron.agent.max-tokens", Long.class, 300_000L),

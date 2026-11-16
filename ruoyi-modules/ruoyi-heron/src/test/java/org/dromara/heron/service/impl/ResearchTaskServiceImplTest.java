@@ -53,7 +53,8 @@ class ResearchTaskServiceImplTest {
     private static ResearchTaskServiceImpl service(HeronResearchTaskMapper mapper) {
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
         when(clocks.getIfAvailable()).thenReturn(null);
-        return new ResearchTaskServiceImpl(mapper, mock(IResearchAgent.class), clocks, noDecisions());
+        return new ResearchTaskServiceImpl(mapper, mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class),
+            mock(IResearchAgent.class), clocks, noDecisions());
     }
 
     /** 已领取的一次执行：每次取 wrapper 都是新的，按顺序收进 chains。 */
@@ -90,7 +91,106 @@ class ResearchTaskServiceImplTest {
         when(agent.research(any())).thenReturn(outcome);
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
         when(clocks.getIfAvailable()).thenReturn(null);
-        return new ResearchTaskServiceImpl(harness.mapper(), agent, clocks, noDecisions()).run(9L);
+        return new ResearchTaskServiceImpl(harness.mapper(),
+            mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class), agent, clocks, noDecisions()).run(9L);
+    }
+
+    @Test
+    @DisplayName("建单按机会评分定档，没评分就最低档")
+    void gradesFromOpportunityScore() {
+        HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
+        when(mapper.selectOne(any())).thenReturn(null);
+        org.dromara.heron.mapper.HeronDataOpportunityMapper opportunities =
+            mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class);
+        var row = new org.dromara.heron.domain.HeronDataOpportunity();
+        row.setOpportunityId(7L);
+        row.setScore(new java.math.BigDecimal("82.5"));
+        when(opportunities.selectById(7L)).thenReturn(row);
+        ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
+        when(clocks.getIfAvailable()).thenReturn(null);
+
+        new ResearchTaskServiceImpl(mapper, opportunities, mock(IResearchAgent.class), clocks, noDecisions())
+            .createFor(7L, "目标");
+
+        var captor = org.mockito.ArgumentCaptor.forClass(HeronResearchTask.class);
+        verify(mapper).insert(captor.capture());
+        assertEquals("L3", captor.getValue().getGrade(), "高评分该走最高档");
+    }
+
+    /**
+     * 查重必须发生在建单之前：等到跑完再提示重复，token 已经烧掉了。
+     */
+    @Test
+    @DisplayName("已有待处理决策的机会复用原研究，不新建")
+    void reusesResearchWithExistingDecision() {
+        HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
+        when(mapper.selectOne(any())).thenReturn(null);
+        var decision = new org.dromara.heron.domain.HeronContentDecision();
+        decision.setResearchId(314L);
+        var oldTask = new HeronResearchTask();
+        oldTask.setResearchId(314L);
+        when(mapper.selectById(314L)).thenReturn(oldTask);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<org.dromara.heron.service.IContentDecisionService> decisions = mock(ObjectProvider.class);
+        var service = mock(org.dromara.heron.service.IContentDecisionService.class);
+        when(service.findExistingDecision(7L)).thenReturn(decision);
+        when(decisions.getIfAvailable()).thenReturn(service);
+        ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
+        when(clocks.getIfAvailable()).thenReturn(null);
+
+        long id = new ResearchTaskServiceImpl(mapper,
+            mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class),
+            mock(IResearchAgent.class), clocks, decisions).createFor(7L, "目标");
+
+        assertEquals(314L, id);
+        verify(mapper, never()).insert(any(HeronResearchTask.class));
+    }
+
+    /**
+     * 决策还在、引用的研究已经被清理：这时候复用等于返回一个不存在的任务，
+     * 调用方拿到的 data 会是 null。应当按新任务处理。
+     */
+    @Test
+    @DisplayName("决策引用的研究已不存在时按新任务处理，不返回悬空 id")
+    void ignoresDecisionWhoseResearchIsGone() {
+        HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
+        when(mapper.selectOne(any())).thenReturn(null);
+        when(mapper.selectById(314L)).thenReturn(null);
+        var decision = new org.dromara.heron.domain.HeronContentDecision();
+        decision.setResearchId(314L);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<org.dromara.heron.service.IContentDecisionService> decisions = mock(ObjectProvider.class);
+        var service = mock(org.dromara.heron.service.IContentDecisionService.class);
+        when(service.findExistingDecision(7L)).thenReturn(decision);
+        when(decisions.getIfAvailable()).thenReturn(service);
+        ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
+        when(clocks.getIfAvailable()).thenReturn(null);
+
+        long id = new ResearchTaskServiceImpl(mapper,
+            mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class),
+            mock(IResearchAgent.class), clocks, decisions).createFor(7L, "目标");
+
+        assertNotEquals(314L, id);
+        verify(mapper).insert(any(HeronResearchTask.class));
+    }
+
+    @Test
+    @DisplayName("查重失败不挡建单：宁可多花一次钱，也别让用户点不动")
+    void dedupFailureDoesNotBlock() {
+        HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
+        when(mapper.selectOne(any())).thenReturn(null);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<org.dromara.heron.service.IContentDecisionService> decisions = mock(ObjectProvider.class);
+        var service = mock(org.dromara.heron.service.IContentDecisionService.class);
+        when(service.findExistingDecision(7L)).thenThrow(new IllegalStateException("db down"));
+        when(decisions.getIfAvailable()).thenReturn(service);
+        ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
+        when(clocks.getIfAvailable()).thenReturn(null);
+
+        assertDoesNotThrow(() -> new ResearchTaskServiceImpl(mapper,
+            mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class),
+            mock(IResearchAgent.class), clocks, decisions).createFor(7L, "目标"));
+        verify(mapper).insert(any(HeronResearchTask.class));
     }
 
     @Test
@@ -247,7 +347,8 @@ class ResearchTaskServiceImplTest {
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
         when(clocks.getIfAvailable()).thenReturn(null);
 
-        String status = new ResearchTaskServiceImpl(mapper, agent, clocks, noDecisions()).run(9L);
+        String status = new ResearchTaskServiceImpl(mapper,
+            mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class), agent, clocks, noDecisions()).run(9L);
 
         assertEquals(HeronResearchTask.STATUS_CANCELLED, status);
     }
