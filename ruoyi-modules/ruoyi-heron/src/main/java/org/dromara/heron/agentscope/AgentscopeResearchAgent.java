@@ -46,11 +46,15 @@ public class AgentscopeResearchAgent implements IResearchAgent {
             Msg reply = agent.call(goal).block(maxDuration.plus(GRACE));
             String text = reply == null ? "" : reply.getTextContent();
             int rounds = ledger.rounds();
+            // 证据链要在跑完之后采：账本此时才完整
+            String evidence = new EvidenceCollector(toolCallMapper)
+                .collect(researchId, attemptNo, findings.cited(), findings.submitted());
             // 框架到 maxIters 就不再推理、直接转去总结，所以轮数跑满就等于被上限截断
             return new Outcome(text, rounds, budget.toolUsed(),
                 budget.inputTokens(), budget.outputTokens(),
                 budget.exceeded(), rounds >= factory.maxIters(),
-                findings.decisionType(), findings.confidence(), findings.submitted());
+                new IResearchAgent.Findings(findings.decisionType(), findings.confidence(),
+                    findings.submitted(), evidence));
         }
     }
 }

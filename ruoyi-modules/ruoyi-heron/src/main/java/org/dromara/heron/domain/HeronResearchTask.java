@@ -61,6 +61,11 @@ public class HeronResearchTask extends BaseEntity {
     private LocalDateTime heartbeatAt;
     /** 模型的完整结论文本。 */
     private String resultText;
+    /**
+     * 证据链 JSON：结论引用了哪些调用、哪些引用在账本里查不到。
+     * 只存引用关系不存原始返回——账本里已经有了，存两遍迟早对不上。
+     */
+    private String evidenceJson;
     private String errorCode;
     private String errorReason;
     /** 同一机会同一天只研究一次。 */

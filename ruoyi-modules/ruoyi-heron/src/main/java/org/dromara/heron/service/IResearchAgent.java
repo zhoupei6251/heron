@@ -33,13 +33,21 @@ public interface IResearchAgent {
      * @param outputTokens    供应商报告的输出 token，未报告时为 0
      * @param budgetExceeded  是否因预算到点被强制收尾（此时结论标 partial）
      * @param maxItersReached 是否撞上轮数上限（同样是「不完整但可用」，标 partial）
-     * @param decision        模型主动收尾时给出的判断（PRODUCE/OBSERVE/REJECT），没给时为 null
-     * @param confidence      模型自报的把握程度，没给时为 null
-     * @param stoppedEarly    是否由模型自己判断「证据够了」而停下，而不是被闸打停
+     * @param findings        模型自己交的结论；没交时各字段为 null/false
      */
     record Outcome(String text, int rounds, int toolCalls,
                    long inputTokens, long outputTokens,
-                   boolean budgetExceeded, boolean maxItersReached,
-                   String decision, BigDecimal confidence, boolean stoppedEarly) {
+                   boolean budgetExceeded, boolean maxItersReached, Findings findings) {
+    }
+
+    /**
+     * 模型主动交的结论，以及从账本反查出来的证据链。
+     *
+     * @param decision      PRODUCE / OBSERVE / REJECT，没交时为 null
+     * @param confidence    0 到 1，没给时为 null
+     * @param stoppedEarly  是否由模型自己判断「证据够了」而停下，而不是被闸打停
+     * @param evidenceJson  证据链 JSON，见 {@code EvidenceCollector}
+     */
+    record Findings(String decision, BigDecimal confidence, boolean stoppedEarly, String evidenceJson) {
     }
 }

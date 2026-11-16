@@ -132,7 +132,7 @@ class ResearchTaskServiceImplTest {
     void claimAcceptsQueuedAndExpiredLease() {
         Harness harness = claimed();
 
-        runWith(harness, new IResearchAgent.Outcome("结论", 1, 0, 0, 0, false, false, null, null, false));
+        runWith(harness, new IResearchAgent.Outcome("结论", 1, 0, 0, 0, false, false, null));
 
         String where = harness.chains().get(0).getCustomSqlSegment();
         assertTrue(where.contains("status"), "要按状态判定：" + where);
@@ -143,7 +143,7 @@ class ResearchTaskServiceImplTest {
     @DisplayName("轮数跑满标 partial，不是 succeeded")
     void maxItersMarksPartial() {
         String status = runWith(claimed(),
-            new IResearchAgent.Outcome("半截结论", 8, 2, 100, 50, false, true, null, null, false));
+            new IResearchAgent.Outcome("半截结论", 8, 2, 100, 50, false, true, null));
 
         assertEquals(HeronResearchTask.STATUS_PARTIAL, status);
     }
@@ -152,7 +152,7 @@ class ResearchTaskServiceImplTest {
     @DisplayName("预算到点同样标 partial")
     void budgetExceededMarksPartial() {
         String status = runWith(claimed(),
-            new IResearchAgent.Outcome("半截结论", 3, 2, 100, 50, true, false, null, null, false));
+            new IResearchAgent.Outcome("半截结论", 3, 2, 100, 50, true, false, null));
 
         assertEquals(HeronResearchTask.STATUS_PARTIAL, status);
     }
@@ -161,7 +161,7 @@ class ResearchTaskServiceImplTest {
     @DisplayName("正常跑完就是 succeeded")
     void cleanRunSucceeds() {
         String status = runWith(claimed(),
-            new IResearchAgent.Outcome("结论", 3, 2, 100, 50, false, false, null, null, false));
+            new IResearchAgent.Outcome("结论", 3, 2, 100, 50, false, false, null));
 
         assertEquals(HeronResearchTask.STATUS_SUCCEEDED, status);
     }
@@ -174,7 +174,8 @@ class ResearchTaskServiceImplTest {
     @DisplayName("轮数跑满但模型主动收尾：算 succeeded，不算 partial")
     void selfStoppedRunIsNotPartial() {
         String status = runWith(claimed(),
-            new IResearchAgent.Outcome("完整结论", 8, 6, 100, 50, false, true, "REJECT", null, true));
+            new IResearchAgent.Outcome("完整结论", 8, 6, 100, 50, false, true,
+                new IResearchAgent.Findings("REJECT", null, true, null)));
 
         assertEquals(HeronResearchTask.STATUS_SUCCEEDED, status);
     }
@@ -185,7 +186,7 @@ class ResearchTaskServiceImplTest {
         Harness harness = claimed();
 
         runWith(harness, new IResearchAgent.Outcome("结论", 3, 2, 100, 50, false, false,
-            "PRODUCE", new java.math.BigDecimal("0.8"), true));
+            new IResearchAgent.Findings("PRODUCE", new java.math.BigDecimal("0.8"), true, null)));
 
         var values = harness.chains().get(harness.chains().size() - 1).getParamNameValuePairs().values();
         assertTrue(values.contains("PRODUCE"), "decision_type 没写进去");
@@ -200,7 +201,7 @@ class ResearchTaskServiceImplTest {
     void writesTokenUsage() {
         Harness harness = claimed();
 
-        runWith(harness, new IResearchAgent.Outcome("结论", 3, 2, 7927L, 3288L, false, false, null, null, false));
+        runWith(harness, new IResearchAgent.Outcome("结论", 3, 2, 7927L, 3288L, false, false, null));
 
         // 最后一次更新是结果写回；领取那次是另一份 wrapper
         var values = harness.chains().get(harness.chains().size() - 1).getParamNameValuePairs().values();
@@ -234,7 +235,7 @@ class ResearchTaskServiceImplTest {
 
         IResearchAgent agent = mock(IResearchAgent.class);
         when(agent.research(any(), anyLong(), anyInt(), any(), any())).thenReturn(
-            new IResearchAgent.Outcome("结论", 3, 2, 100, 50, false, false, null, null, false));
+            new IResearchAgent.Outcome("结论", 3, 2, 100, 50, false, false, null));
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
         when(clocks.getIfAvailable()).thenReturn(null);
 

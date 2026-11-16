@@ -127,12 +127,15 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             IResearchAgent.Outcome outcome = researchAgent.research(
                 task.getSessionId(), researchId, attempt, task.getGoal(), keeper::cancelled);
 
+            var findings = outcome.findings() == null
+                ? new IResearchAgent.Findings(null, null, false, null)
+                : outcome.findings();
             String status;
             if (keeper.cancelled() || rowCancelledSince(researchId)) {
                 // 取消优先于完成：短任务可能在续命线程下一拍之前就跑完了，
                 // 这时库里已经是 cancelled，用户要的是「别用这个结果」，不是「其实做完了」
                 status = HeronResearchTask.STATUS_CANCELLED;
-            } else if (outcome.budgetExceeded() || (outcome.maxItersReached() && !outcome.stoppedEarly())) {
+            } else if (outcome.budgetExceeded() || (outcome.maxItersReached() && !findings.stoppedEarly())) {
                 // 预算到点或轮数跑满：结论可用但不完整。
                 // 模型自己主动收尾时不算被截断——它已经判断「证据够了」
                 status = HeronResearchTask.STATUS_PARTIAL;
@@ -146,8 +149,9 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
                 .set(HeronResearchTask::getToolCalls, outcome.toolCalls())
                 .set(HeronResearchTask::getInputTokens, outcome.inputTokens())
                 .set(HeronResearchTask::getOutputTokens, outcome.outputTokens())
-                .set(HeronResearchTask::getDecisionType, outcome.decision())
-                .set(HeronResearchTask::getConfidence, outcome.confidence())
+                .set(HeronResearchTask::getDecisionType, findings.decision())
+                .set(HeronResearchTask::getConfidence, findings.confidence())
+                .set(HeronResearchTask::getEvidenceJson, findings.evidenceJson())
                 .set(HeronResearchTask::getErrorCode, null)
                 .set(HeronResearchTask::getErrorReason, null)
                 .set(HeronResearchTask::getLeaseUntil, null)

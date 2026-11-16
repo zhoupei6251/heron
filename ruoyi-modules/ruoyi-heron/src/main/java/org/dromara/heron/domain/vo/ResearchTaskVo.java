@@ -35,6 +35,8 @@ public class ResearchTaskVo implements Serializable {
     private String sessionId;
     private Integer attemptNo;
     private String resultText;
+    /** 证据链 JSON：结论引用了哪些调用、哪些引用在账本里查不到。 */
+    private String evidenceJson;
     private String errorCode;
     private String errorReason;
     private LocalDateTime createTime;
