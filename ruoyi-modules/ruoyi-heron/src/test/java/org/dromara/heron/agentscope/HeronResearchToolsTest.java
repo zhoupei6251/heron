@@ -1,7 +1,14 @@
 package org.dromara.heron.agentscope;
 
+import io.agentscope.core.model.ToolSchema;
+import io.agentscope.core.tool.Toolkit;
+import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.HeronDataOpportunity;
+import org.dromara.heron.domain.HeronDataSource;
+import org.dromara.heron.domain.HeronVideoVersion;
 import org.dromara.heron.mapper.HeronDataOpportunityMapper;
+import org.dromara.heron.mapper.HeronDataSourceMapper;
+import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.dromara.heron.service.impl.DatasetFetchService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,6 +18,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -27,7 +35,8 @@ class HeronResearchToolsTest {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private static HeronResearchTools tools(DatasetFetchService datasets, HeronDataOpportunityMapper mapper) {
-        return new HeronResearchTools(datasets, mapper);
+        return new HeronResearchTools(datasets, mapper,
+            mock(HeronDataSourceMapper.class), mock(HeronVideoVersionMapper.class));
     }
 
     private static JsonNode snapshot(int pointCount) {
@@ -46,28 +55,39 @@ class HeronResearchToolsTest {
     }
 
     @Test
-    @DisplayName("点数被夹到上限，不会把整条序列塞进上下文")
-    void capsPointsToUpperBound() {
+    @DisplayName("不传点数走默认值")
+    void appliesDefaultPoints() {
         DatasetFetchService datasets = mock(DatasetFetchService.class);
         when(datasets.snapshot(anyString(), anyInt())).thenReturn(snapshot(3));
 
-        tools(datasets, mock(HeronDataOpportunityMapper.class)).queryTrendSeries("frankfurter-audcny", 9999);
+        tools(datasets, mock(HeronDataOpportunityMapper.class)).queryTrendSeries("k", 0);
 
-        verify(datasets).snapshot("frankfurter-audcny", HeronResearchTools.MAX_POINTS);
+        verify(datasets).snapshot("k", HeronResearchTools.DEFAULT_POINTS);
+    }
+
+    /**
+     * 夹紧与拒绝是两种语义：夹紧会让模型以为自己查到了想要的范围，拒绝才会让它换个问法。
+     */
+    @Test
+    @DisplayName("越界点数直接拒绝，不悄悄夹紧")
+    void rejectsOutOfRangePoints() {
+        DatasetFetchService datasets = mock(DatasetFetchService.class);
+        HeronResearchTools subject = tools(datasets, mock(HeronDataOpportunityMapper.class));
+
+        assertThrows(HeronBusinessException.class, () -> subject.queryTrendSeries("k", 1));
+        assertThrows(HeronBusinessException.class, () -> subject.queryTrendSeries("k", 9999));
+        verify(datasets, never()).snapshot(anyString(), anyInt());
     }
 
     @Test
-    @DisplayName("不传点数走默认值，传 1 也不低于下限")
-    void appliesDefaultAndLowerBound() {
+    @DisplayName("空 sourceKey 直接拒绝，不拿空串去查源")
+    void rejectsBlankSourceKey() {
         DatasetFetchService datasets = mock(DatasetFetchService.class);
-        when(datasets.snapshot(anyString(), anyInt())).thenReturn(snapshot(3));
         HeronResearchTools subject = tools(datasets, mock(HeronDataOpportunityMapper.class));
 
-        subject.queryTrendSeries("k", 0);
-        verify(datasets).snapshot("k", HeronResearchTools.DEFAULT_POINTS);
-
-        subject.queryTrendSeries("k", 1);
-        verify(datasets).snapshot("k", 2);
+        assertThrows(HeronBusinessException.class, () -> subject.queryTrendSeries("  ", 7));
+        assertThrows(HeronBusinessException.class, () -> subject.queryDatasetSnapshot(null));
+        verify(datasets, never()).snapshot(anyString(), anyInt());
     }
 
     @Test
@@ -155,5 +175,126 @@ class HeronResearchToolsTest {
         assertEquals(2, result.get("snapshotSourcePoints"));
         assertEquals(false, result.get("snapshotTruncated"));
         assertEquals(2, ((List<?>) result.get("snapshotPoints")).size());
+    }
+
+    @Test
+    @DisplayName("八个工具的 schema 都能派生出来，参数名对得上")
+    void registersAllToolsWithSchema() {
+        Toolkit toolkit = new Toolkit();
+        toolkit.registerTool(new HeronResearchTools(null, null, null, null));
+
+        assertEquals(Set.of(
+            "query_opportunities", "query_opportunity_detail", "query_trend_series",
+            "query_dataset_snapshot", "compare_series", "query_data_sources",
+            "query_source_health", "query_recent_productions"), toolkit.getToolNames());
+
+        List<ToolSchema> schemas = toolkit.getToolSchemas();
+        assertEquals(8, schemas.size());
+        for (ToolSchema schema : schemas) {
+            assertNotNull(schema.getParameters(), schema.getName() + " 没有派生出入参 schema");
+        }
+
+        ToolSchema compare = schemas.stream()
+            .filter(schema -> "compare_series".equals(schema.getName()))
+            .findFirst().orElseThrow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> props = (Map<String, Object>) compare.getParameters().get("properties");
+        assertTrue(props.containsKey("sourceKeys"));
+        assertTrue(props.containsKey("points"));
+    }
+
+    @Test
+    @DisplayName("数据集快照给结构与首尾样本，够判断口径而不灌满上下文")
+    void returnsSnapshotStructure() {
+        DatasetFetchService datasets = mock(DatasetFetchService.class);
+        when(datasets.snapshot(anyString(), anyInt())).thenReturn(snapshot(30));
+
+        Map<String, Object> result = tools(datasets, mock(HeronDataOpportunityMapper.class))
+            .queryDatasetSnapshot("frankfurter-audcny");
+
+        assertEquals("dataset/1", result.get("contract"));
+        assertEquals("wide", result.get("shape"));
+        assertEquals("aud_cny", result.get("metric"));
+        assertEquals(30, result.get("totalRows"));
+        assertEquals(2, ((List<?>) result.get("firstRows")).size());
+        assertEquals(2, ((List<?>) result.get("lastRows")).size());
+    }
+
+    @Test
+    @DisplayName("交叉比较一次最多三个源")
+    void rejectsTooManyCompareKeys() {
+        HeronResearchTools subject = tools(mock(DatasetFetchService.class), mock(HeronDataOpportunityMapper.class));
+
+        assertThrows(HeronBusinessException.class, () -> subject.compareSeries("a,b,c,d", 7));
+    }
+
+    @Test
+    @DisplayName("算不出信号的源如实说不支持，不编一个 0")
+    void reportsUnsupportedComparison() {
+        DatasetFetchService datasets = mock(DatasetFetchService.class);
+        // 只有 3 个点，够不到基线长度，DatasetSignal 会返回 null
+        when(datasets.snapshot(anyString(), anyInt())).thenReturn(snapshot(3));
+
+        Map<String, Object> result = tools(datasets, mock(HeronDataOpportunityMapper.class))
+            .compareSeries("frankfurter-audcny", 7);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> first = ((List<Map<String, Object>>) result.get("series")).get(0);
+        assertEquals("unsupported", first.get("status"));
+        assertNull(first.get("zscore"), "算不出来就不要给数");
+    }
+
+    @Test
+    @DisplayName("数据源列表只回判断用得上的字段，不回端点与条款")
+    void listsSourcesWithoutEndpoint() {
+        HeronDataSource source = new HeronDataSource();
+        source.setSourceKey("frankfurter-audcny");
+        source.setName("Frankfurter 汇率");
+        source.setCategory("rate");
+        source.setCadence("daily");
+        source.setEnabled("0");
+        source.setCommercialOk("true");
+        source.setProbeStatus("ok");
+        source.setEndpoint("https://example.invalid/should-not-leak");
+        HeronDataSourceMapper sources = mock(HeronDataSourceMapper.class);
+        when(sources.selectList(any())).thenReturn(List.of(source));
+
+        HeronResearchTools subject = new HeronResearchTools(
+            mock(DatasetFetchService.class), mock(HeronDataOpportunityMapper.class), sources,
+            mock(HeronVideoVersionMapper.class));
+
+        Map<String, Object> result = subject.queryDataSources(null);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> item = ((List<Map<String, Object>>) result.get("sources")).get(0);
+        assertEquals("frankfurter-audcny", item.get("sourceKey"));
+        assertEquals(true, item.get("enabled"));
+        assertFalse(item.containsKey("endpoint"), "端点不进模型上下文");
+        assertFalse(item.containsKey("termsUrl"));
+    }
+
+    @Test
+    @DisplayName("最近产出：id 转成字符串，避免 Long 精度问题")
+    void listsRecentProductions() {
+        HeronVideoVersion version = new HeronVideoVersion();
+        version.setVersionId(2121151796750819328L);
+        version.setWorkId(2121151796750819900L);
+        version.setVersionNo(2);
+        version.setReviewStatus("approved");
+        version.setPublishSource("sandbox");
+        HeronVideoVersionMapper videos = mock(HeronVideoVersionMapper.class);
+        when(videos.selectList(any())).thenReturn(List.of(version));
+
+        HeronResearchTools subject = new HeronResearchTools(
+            mock(DatasetFetchService.class), mock(HeronDataOpportunityMapper.class),
+            mock(HeronDataSourceMapper.class), videos);
+
+        Map<String, Object> result = subject.queryRecentProductions(5);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> item = ((List<Map<String, Object>>) result.get("productions")).get(0);
+        assertEquals("2121151796750819328", item.get("versionId"));
+        assertEquals(2, item.get("versionNo"));
+        assertEquals("approved", item.get("reviewStatus"));
     }
 }

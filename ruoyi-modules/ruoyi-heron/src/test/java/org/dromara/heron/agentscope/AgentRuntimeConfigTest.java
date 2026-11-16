@@ -7,6 +7,8 @@ import io.agentscope.core.ReActAgent;
 import io.agentscope.harness.agent.HarnessAgent;
 import org.dromara.heron.mapper.HeronAgentToolCallMapper;
 import org.dromara.heron.mapper.HeronDataOpportunityMapper;
+import org.dromara.heron.mapper.HeronDataSourceMapper;
+import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.dromara.heron.service.impl.DatasetFetchService;
 import org.dromara.system.api.ConfigService;
 import org.junit.jupiter.api.DisplayName;
@@ -40,6 +42,8 @@ class AgentRuntimeConfigTest {
         })
         .withBean(DatasetFetchService.class, () -> mock(DatasetFetchService.class))
         .withBean(HeronDataOpportunityMapper.class, () -> mock(HeronDataOpportunityMapper.class))
+        .withBean(HeronDataSourceMapper.class, () -> mock(HeronDataSourceMapper.class))
+        .withBean(HeronVideoVersionMapper.class, () -> mock(HeronVideoVersionMapper.class))
         .withBean(HeronAgentToolCallMapper.class, () -> mock(HeronAgentToolCallMapper.class))
         // 存储换成内存实现：MySQL 那个构造时要校验表，单测不该连库
         .withBean(AgentStateStore.class, InMemoryAgentStateStore::new);
@@ -64,7 +68,9 @@ class AgentRuntimeConfigTest {
                 ReActAgent delegate = agent.getDelegate();
                 Set<String> names = delegate.getToolkit().getToolNames();
                 assertThat(names)
-                    .contains("query_trend_series", "query_opportunity_detail")
+                    .contains("query_opportunities", "query_opportunity_detail", "query_trend_series",
+                        "query_dataset_snapshot", "compare_series", "query_data_sources",
+                        "query_source_health", "query_recent_productions")
                     .allSatisfy(name -> assertThat(name.toLowerCase())
                         .doesNotContain("shell", "bash", "file", "write", "edit"));
             }

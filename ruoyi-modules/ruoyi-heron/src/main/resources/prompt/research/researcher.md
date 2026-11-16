@@ -5,6 +5,16 @@
 - 你只有查询工具。查到的事实必须带上来源，不允许凭印象补数字。
 - 一次结论如果缺关键数据，就继续查；查到预算用尽还没有结论，就直说不确定。
 
+## 手上有哪些工具
+
+- 看机会：`query_opportunities`（候选池里还有什么）、`query_opportunity_detail`（一条机会的依据与快照）。
+- 看数据：`query_trend_series`（某个源的序列）、`query_dataset_snapshot`（某个源的结构、频率与首尾样本）。
+- 做交叉验证：`compare_series`（把一到三个源的近期窗口与各自基线比较，给出变化率与 z-score）。
+- 看边界：`query_data_sources`（还能查什么）、`query_source_health`（哪些源现在取不到数）、
+  `query_recent_productions`（最近做过什么，避免重复选题）。
+
+拿不准的时候优先想「还缺什么证据」，而不是把已知的东西再查一遍。
+
 ## 必须遵守
 
 - 所有数字都必须来自工具返回，不许推算、不许估计、不许引用训练记忆。

@@ -7,6 +7,8 @@ import io.agentscope.extensions.mysql.state.MysqlAgentStateStore;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.mapper.HeronAgentToolCallMapper;
 import org.dromara.heron.mapper.HeronDataOpportunityMapper;
+import org.dromara.heron.mapper.HeronDataSourceMapper;
+import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.dromara.heron.service.IResearchAgent;
 import org.dromara.heron.service.impl.DatasetFetchService;
 import org.dromara.system.api.ConfigService;
@@ -21,6 +23,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Clock;
+import java.time.Duration;
 
 /**
  * 研究层 Agent 装配。默认关闭：不开 {@code heron.agent.enabled} 时应用行为与引入依赖前完全一致。
@@ -52,8 +55,10 @@ public class AgentRuntimeConfig {
 
     @Bean
     public HeronResearchTools heronResearchTools(DatasetFetchService datasets,
-                                                 HeronDataOpportunityMapper opportunities) {
-        return new HeronResearchTools(datasets, opportunities);
+                                                 HeronDataOpportunityMapper opportunities,
+                                                 HeronDataSourceMapper sources,
+                                                 HeronVideoVersionMapper videos) {
+        return new HeronResearchTools(datasets, opportunities, sources, videos);
     }
 
     /** 状态存储单独成 Bean：构造时会校验表，测试里可以用内存实现替掉，不碰库。 */
@@ -74,7 +79,9 @@ public class AgentRuntimeConfig {
                                                           Environment environment,
                                                           AgentStateStore heronAgentStateStore) {
         return new ResearchAgentFactory(heronAgentModel, heronResearchTools, heronAgentStateStore,
-            environment.getProperty("heron.agent.max-iters", Integer.class, 8));
+            environment.getProperty("heron.agent.max-iters", Integer.class, 8),
+            // 单个取数工具卡住会吃掉整个调查窗口，框架默认 5 分钟太长
+            Duration.ofSeconds(environment.getProperty("heron.agent.tool-timeout-seconds", Long.class, 10L)));
     }
 
     /** 业务侧只认这个端口，不认 AgentScope。 */
@@ -86,7 +93,8 @@ public class AgentRuntimeConfig {
         return new AgentscopeResearchAgent(heronResearchAgentFactory, toolCallMapper,
             clocks.getIfAvailable(Clock::systemDefaultZone),
             environment.getProperty("heron.agent.max-tool-calls", Integer.class, 12),
-            environment.getProperty("heron.agent.max-tokens", Long.class, 300_000L));
+            environment.getProperty("heron.agent.max-tokens", Long.class, 300_000L),
+            Duration.ofSeconds(environment.getProperty("heron.agent.max-duration-seconds", Long.class, 300L)));
     }
 
     /**

@@ -64,7 +64,8 @@ class ResearchBudgetTest {
     @DisplayName("取消信号置位后，下一次工具调用被拒且不占工具名额")
     void cancelSignalRejectsTools() {
         boolean[] cancelled = {false};
-        ResearchBudget budget = new ResearchBudget(5, 0, () -> cancelled[0]);
+        ResearchBudget budget = new ResearchBudget(5, 0, java.time.Duration.ofMinutes(5),
+            java.time.Clock.systemDefaultZone(), () -> cancelled[0]);
         assertNull(budget.tryAcquireTool());
 
         cancelled[0] = true;
@@ -72,6 +73,37 @@ class ResearchBudgetTest {
         assertEquals(ResearchBudget.CANCELLED, budget.tryAcquireTool());
         assertEquals(1, budget.toolUsed(), "被取消拒掉的那次不该多算一个工具名额");
         assertFalse(budget.exceeded(), "取消不是预算到点，不该顺手标 partial");
+    }
+
+    @Test
+    @DisplayName("时长到点：下一次工具被拒，且标 partial")
+    void timeBudgetRejectsTools() {
+        // 可推进的时钟：构造时定下 deadline，之后把它拨过 5 分钟
+        java.time.Instant[] now = {java.time.Instant.parse("2026-11-13T10:00:00Z")};
+        java.time.Clock clock = new java.time.Clock() {
+            @Override
+            public java.time.ZoneId getZone() {
+                return java.time.ZoneId.of("UTC");
+            }
+
+            @Override
+            public java.time.Clock withZone(java.time.ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public java.time.Instant instant() {
+                return now[0];
+            }
+        };
+        ResearchBudget budget = new ResearchBudget(12, 0, java.time.Duration.ofMinutes(5), clock, null);
+
+        assertNull(budget.tryAcquireTool());
+        now[0] = now[0].plus(java.time.Duration.ofMinutes(5)).plusSeconds(1);
+
+        assertEquals(ResearchBudget.TIME_EXCEEDED, budget.tryAcquireTool());
+        assertTrue(budget.exceeded(), "时长到点也算预算到点");
+        assertEquals(1, budget.toolUsed(), "被时长拒掉的那次不该多算一个工具名额");
     }
 
     @Test

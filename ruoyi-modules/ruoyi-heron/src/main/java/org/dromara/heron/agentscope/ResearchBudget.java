@@ -1,11 +1,14 @@
 package org.dromara.heron.agentscope;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 
 /**
- * 一次研究的预算：工具调用次数 + token 总量。
+ * 一次研究的预算：工具次数 + token 总量 + 墙钟时长。
  *
  * <p>为什么不在 hook 里停：同一轮推理可能一次发出多个工具调用，{@code stopAgent()} 拦不住已经发出的那些，
  * 实测预算是 2 却实际执行了 5 次。在工具入口处拦才是真的把工作量关住。
@@ -13,18 +16,23 @@ import java.util.function.BooleanSupplier;
  * <p>超限不是抛异常终止研究，而是让该次工具调用失败：模型会看到「预算已用尽」，
  * 转而基于已有信息总结——这正是 plan.md §5.2 要的「保存已获取证据、输出部分结果」。
  *
- * <p>token 只能在事后算：模型调用的用量要等这一轮结束才知道。所以它在下一次工具入口生效，
- * 那时花费已经发生，能拦住的是之后的继续烧钱，这与工具次数的口径一致。
+ * <p>token 与时长只能事后算，所以它们在下一次工具入口生效：花费已经发生，
+ * 能拦住的是之后的继续烧钱。这与工具次数的口径一致。
  */
 public final class ResearchBudget {
 
     static final String TOOL_EXCEEDED = "tool_budget_exceeded";
     static final String TOKEN_EXCEEDED = "token_budget_exceeded";
+    static final String TIME_EXCEEDED = "time_budget_exceeded";
     static final String CANCELLED = "research_cancelled";
 
     private final int toolLimit;
     /** 小于等于 0 表示不设 token 上限。 */
     private final long tokenLimit;
+    /** 单次调查最长时长（plan.md §5.2 初始值 5 分钟）。 */
+    private final Duration maxDuration;
+    private final Clock clock;
+    private final Instant deadline;
     /** 取消信号：由租约续命线程读库状态后置位；null 表示不可取消。 */
     private final BooleanSupplier cancelSignal;
     private final AtomicInteger toolUsed = new AtomicInteger();
@@ -35,12 +43,16 @@ public final class ResearchBudget {
     private volatile boolean exceeded;
 
     public ResearchBudget(int toolLimit, long tokenLimit) {
-        this(toolLimit, tokenLimit, null);
+        this(toolLimit, tokenLimit, Duration.ofMinutes(5), Clock.systemDefaultZone(), null);
     }
 
-    public ResearchBudget(int toolLimit, long tokenLimit, BooleanSupplier cancelSignal) {
+    public ResearchBudget(int toolLimit, long tokenLimit, Duration maxDuration, Clock clock,
+                          BooleanSupplier cancelSignal) {
         this.toolLimit = Math.max(1, toolLimit);
         this.tokenLimit = tokenLimit;
+        this.maxDuration = maxDuration == null ? Duration.ofMinutes(5) : maxDuration;
+        this.clock = clock == null ? Clock.systemDefaultZone() : clock;
+        this.deadline = this.clock.instant().plus(this.maxDuration);
         this.cancelSignal = cancelSignal;
     }
 
@@ -51,7 +63,13 @@ public final class ResearchBudget {
             lastRejection = CANCELLED;
             return CANCELLED;
         }
-        // token 先判：被 token 拒掉的调用不该再吃掉一个工具名额
+        // 时长在次数之前：跑到点就该收尾，不该先用完次数才想起来超时
+        if (!clock.instant().isBefore(deadline)) {
+            lastRejection = TIME_EXCEEDED;
+            exceeded = true;
+            return TIME_EXCEEDED;
+        }
+        // token 先于工具计数：被 token 拒掉的调用不该再吃掉一个工具名额
         if (tokenLimit > 0 && totalTokens() >= tokenLimit) {
             lastRejection = TOKEN_EXCEEDED;
             exceeded = true;
@@ -104,6 +122,10 @@ public final class ResearchBudget {
 
     public long tokenLimit() {
         return tokenLimit;
+    }
+
+    public Duration maxDuration() {
+        return maxDuration;
     }
 
     /** 任一项到顶：结论标 partial。 */

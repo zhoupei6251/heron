@@ -1,14 +1,17 @@
 package org.dromara.heron.agentscope;
 
 import io.agentscope.core.hook.Hook;
+import io.agentscope.core.model.ExecutionConfig;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
+import io.agentscope.core.tool.ToolkitConfig;
 import io.agentscope.harness.agent.HarnessAgent;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 /**
  * 按会话创建研究 Agent。
@@ -29,12 +32,15 @@ public class ResearchAgentFactory {
     private final HeronResearchTools tools;
     private final AgentStateStore stateStore;
     private final int maxIters;
+    private final Duration toolTimeout;
 
-    public ResearchAgentFactory(Model model, HeronResearchTools tools, AgentStateStore stateStore, int maxIters) {
+    public ResearchAgentFactory(Model model, HeronResearchTools tools, AgentStateStore stateStore,
+                                int maxIters, Duration toolTimeout) {
         this.model = model;
         this.tools = tools;
         this.stateStore = stateStore;
         this.maxIters = maxIters;
+        this.toolTimeout = toolTimeout;
     }
 
     /** 轮数上限：撞上它等于「跑满了还没结论」，要标 partial。 */
@@ -59,7 +65,13 @@ public class ResearchAgentFactory {
         if (sessionId == null || sessionId.isBlank()) {
             throw new IllegalArgumentException("会话标识不能为空，否则所有研究共用一段上下文");
         }
-        Toolkit toolkit = new Toolkit();
+        // 单工具超时由 Toolkit 统一给：框架默认是 5 分钟，一个卡住的取数会吃掉整个调查窗口
+        Toolkit toolkit = new Toolkit(ToolkitConfig.builder()
+            .executionConfig(ExecutionConfig.builder()
+                .timeout(toolTimeout)
+                .maxAttempts(1)
+                .build())
+            .build());
         toolkit.registerTool(budget == null ? tools : tools.withBudget(budget));
 
         HarnessAgent.Builder builder = HarnessAgent.builder()

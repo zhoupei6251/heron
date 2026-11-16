@@ -108,7 +108,9 @@ class AgentResearchRealRunTest {
         when(opportunities.selectById(900L)).thenReturn(opportunity());
 
         Toolkit toolkit = new Toolkit();
-        toolkit.registerTool(new HeronResearchTools(datasets, opportunities));
+        toolkit.registerTool(new HeronResearchTools(datasets, opportunities,
+            mock(org.dromara.heron.mapper.HeronDataSourceMapper.class),
+            mock(org.dromara.heron.mapper.HeronVideoVersionMapper.class)));
 
         Model model = OpenAIChatModel.builder()
             .baseUrl(baseUrl)

@@ -67,7 +67,9 @@ public class ResearchTaskController extends BaseController {
         String goal = body.getGoal() == null || body.getGoal().isBlank()
             ? DEFAULT_GOAL : body.getGoal().trim();
         long researchId = researchTasks.createFor(body.getOpportunityId(), goal);
-        return R.ok(toVo(researchTasks.trigger(researchId)));
+        // 走 requeue 而不是 trigger：同一天再点一次时拿到的是已结束的旧任务，
+        // 而 trigger 只领得到的排队中或租约过期的行——直接调它按钮就变成静默无反应
+        return R.ok(toVo(researchTasks.requeue(researchId)));
     }
 
     /** 重跑：只有排队中或租约已过期的任务会被重新领走。 */
