@@ -77,3 +77,20 @@ application-ga.yml
 
 # AgentScope 运行时会话记录：默认写在工作目录下，不进仓库
 .agentscope/
+
+# AI 工具本机挂载（junction 指向 harness-factory 与前端仓库，不提交）
+.agents/
+.qoder/
+.codebuddy/
+.workbuddy/
+.openidea/
+.ai-runtime-artifacts/
+harness-factory
+harness.json
+.claude/skills/
+.claude/launch.json
+.claude/agents/frontend-*.md
+
+# 原型与设计产物：仅本机留存，不进仓库
+axure/
+docs/design/

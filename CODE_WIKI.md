@@ -27,10 +27,10 @@
 
 ## 1. 仓库地图
 
-工作区 `D:\zhoupei\heron` **不是 Git 仓库**（本文件位于其中的 `heron/`），里面是两个彼此独立、各自提交的仓库：
+前后端是 `D:\zhoupei\` 下两个彼此独立、各自提交的仓库，同级并列：
 
 ```text
-D:\zhoupei\heron\
+D:\zhoupei\
 ├── heron\                 # 后端仓库（独立 Git）：RuoYi-Vue-Plus 6.1.0 + Heron 业务模块
 │   ├── ruoyi-admin\       # 唯一启动入口，聚合所有模块
 │   ├── ruoyi-api\         # 跨模块 API 接口（RemoteXxx）
@@ -38,15 +38,16 @@ D:\zhoupei\heron\
 │   ├── ruoyi-extend\      # 扩展服务：monitor-admin、snailjob-server、snailai-server
 │   ├── ruoyi-modules\     # 业务模块：system/job/gen/demo/workflow/ai/heron
 │   ├── script\            # sql / docker / bin 部署脚本
-│   └── data\              # 运行时数据根（模板、字体、音频、工作区、样例）
+│   ├── data\              # 运行时数据根（模板、字体、音频、工作区、样例）
+│   ├── docs\design\       # UI 阶段性报告
+│   └── axure\             # Axure RP9 空白模板等原语
 ├── heron-ui\              # 前端仓库（独立 Git）：plus-ui 分支
 │   └── src\
 │       ├── api\heron\     # Heron 接口封装
 │       ├── views\heron\   # Heron 页面
 │       └── ...            # 基座页面与框架代码
-├── docs\design\           # UI 阶段性报告
-├── axure\                 # Axure RP9 空白模板等原语
-└── harness-factory\       # AI 工具/技能仓库，与 Heron 产品无关
+├── harness-factory\       # AI 工具/技能仓库，与 Heron 产品无关
+└── personal-ai-context\   # 个人 AI 上下文仓库，与 Heron 产品无关
 ```
 
 **命名约定**：产品名统一用 Heron；`ruoyi-*` 坐标、模块名、基座类名保持不变，不要为了「干净」去改。
@@ -486,8 +487,8 @@ heron:
     python: python
     guard-enabled: false
     node: D:/Users/zhoupei/AppData/Local/nvm/v24.22.1/node.exe
-    hyperframes: D:/zhoupei/heron/heron/data/tools/node_modules/hyperframes/bin/hyperframes.mjs
-    news-template: D:/zhoupei/heron/heron/data/templates
+    hyperframes: D:/zhoupei/heron/data/tools/node_modules/hyperframes/bin/hyperframes.mjs
+    news-template: D:/zhoupei/heron/data/templates
     zee-rp: D:/zhoupei/tmp/zee-rp-v0.2.1
     prototype-template: D:/zhoupei/heron/axure/blank-rp9.rp
     worker-enabled: true          # 与 heron-production.yml 默认值相反
@@ -502,7 +503,7 @@ heron:
     auto-enabled: false
     auto-slots: ["0 0 11 * * ?", "0 0 15 * * ?", "0 0 19 * * ?"]
     publish-adapter: douyin-cli
-    publish-command: D:/zhoupei/heron/heron/data/tools/social-auto-upload/.venv/Scripts/sau.exe
+    publish-command: D:/zhoupei/heron/data/tools/social-auto-upload/.venv/Scripts/sau.exe
     publish-account: heron
     publish-timeout-seconds: 240
 ```
