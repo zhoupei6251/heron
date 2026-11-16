@@ -11,13 +11,16 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
 import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.heron.domain.HeronBusinessException;
+import org.dromara.heron.domain.HeronContentDecision;
 import org.dromara.heron.domain.HeronResearchTask;
 import org.dromara.heron.domain.bo.ResearchTaskQueryBo;
 import org.dromara.heron.domain.vo.ResearchTaskVo;
 import org.dromara.heron.mapper.HeronResearchTaskMapper;
+import org.dromara.heron.service.IContentDecisionService;
 import org.dromara.heron.service.IResearchAgent;
 import org.dromara.heron.service.IResearchTaskService;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +29,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -48,6 +52,11 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
     private final HeronResearchTaskMapper researchTaskMapper;
     private final IResearchAgent researchAgent;
     private final ObjectProvider<Clock> clocks;
+    /** 决策服务可选：它不受 {@code heron.agent.enabled} 约束，测试里也可能没有。 */
+    private final ObjectProvider<IContentDecisionService> decisionService;
+    /** 是否对「建议生产」的判断再跑一次独立核验；默认开，关掉就是省一份 token。 */
+    @Value("${heron.agent.verify-enabled:true}")
+    private boolean verifyEnabled;
 
     /** 研究是长任务，触发接口不能同步等它跑完。 */
     private final ExecutorService runner = Executors.newFixedThreadPool(2, runnable -> {
@@ -162,6 +171,10 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
                 .set(HeronResearchTask::getUpdateTime, now())
                 .eq(HeronResearchTask::getResearchId, researchId)
                 .update();
+            // 落决策要放在状态写回之后：它读的是刚落库的 report_json。
+            // 决策落不下来不该把已经跑完的研究判成失败——研究是研究，决策是它下游的一步。
+            Long decisionId = recordDecision(researchId, attempt);
+            verifyIfNeeded(task, researchId, attempt, decisionId, keeper::cancelled);
             return status;
         } catch (RuntimeException e) {
             log.warn("研究任务失败 researchId={} cause={}", researchId, e.getMessage());
@@ -258,6 +271,62 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
     private boolean rowCancelledSince(long researchId) {
         HeronResearchTask current = researchTaskMapper.selectById(researchId);
         return current != null && HeronResearchTask.STATUS_CANCELLED.equals(current.getStatus());
+    }
+
+    /** 决策落库失败只记日志：研究已经跑完且有结论，不能因为下游没接住就连结论一起丢。 */
+    private Long recordDecision(long researchId, int attempt) {
+        IContentDecisionService decisions = decisionService.getIfAvailable();
+        if (decisions == null) {
+            return null;
+        }
+        try {
+            return decisions.recordFromResearch(researchId, attempt);
+        } catch (RuntimeException e) {
+            log.warn("研究结论转决策失败 researchId={} attempt={} cause={}", researchId, attempt, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 独立核验，只对「建议生产」的判断跑。
+     *
+     * <p>判错成「不值得做」代价小——只是少做一条；判错成「值得做」会一路走到生产。
+     * 所以核验的预算只花在 PRODUCE 上，这也符合 plan.md §16「多 Agent 不强制全上」。
+     *
+     * <p>核验失败只记日志：它是结论的下游校验，不能把已经跑完的研究一起带崩。
+     */
+    private void verifyIfNeeded(HeronResearchTask task, long researchId, int attempt,
+                                Long decisionId, BooleanSupplier cancelled) {
+        if (decisionId == null || !verifyEnabled) {
+            return;
+        }
+        IContentDecisionService decisions = decisionService.getIfAvailable();
+        if (decisions == null) {
+            return;
+        }
+        try {
+            HeronContentDecision decision = decisions.findDecisionById(decisionId);
+            if (decision == null || !HeronContentDecision.DECISION_PRODUCE.equals(decision.getDecisionType())) {
+                return;
+            }
+            String claim = "判断：" + decision.getDecisionType()
+                + "\n理由：" + decision.getDecisionReason()
+                + "\n依据的快照标识：" + (decision.getEvidenceRef() == null ? "未绑定" : decision.getEvidenceRef());
+            IResearchAgent.Verification result = researchAgent.verify(new IResearchAgent.VerifyRequest(
+                "verify-" + researchId + "-" + attempt, researchId, attempt,
+                task.getGoal(), claim, cancelled));
+            if (result.submitted()) {
+                decisions.attachVerification(decisionId, result.verdict(), result.reason(),
+                    result.conflictsJson());
+                if ("DISAGREE".equals(result.verdict())) {
+                    // 冲突是最需要人看的状态：日志留痕，页面上也会以红色标出
+                    log.warn("核验与研究员结论冲突 researchId={} decisionId={} reason={}",
+                        researchId, decisionId, result.reason());
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("核验失败 researchId={} cause={}", researchId, e.getMessage());
+        }
     }
 
     /** 同一机会同一天只研究一次：日期参与摘要，跨天才有新任务。 */

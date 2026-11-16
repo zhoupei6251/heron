@@ -17,6 +17,39 @@ public interface IResearchAgent {
     Outcome research(Request request);
 
     /**
+     * 独立核验一次研究结论。
+     *
+     * <p>核验员是另一个 Agent、另一段会话、另一份提示词：它看不到研究员的推理过程，
+     * 必须自己去查原始数据。共用上下文就等于让它「记得」研究员是怎么推的，那不叫复核。
+     */
+    Verification verify(VerifyRequest request);
+
+    /**
+     * 核验输入。
+     *
+     * @param sessionId     核验专用会话标识，必须与研究用的不同
+     * @param researchId    被核验的研究
+     * @param attemptNo     被核验的那次执行
+     * @param goal          原始研究目标：核验员要知道「它在回答什么问题」
+     * @param claim         被核验的结论：判断与理由，核验员要独立复查它站不站得住
+     * @param cancelled     取消信号
+     */
+    record VerifyRequest(String sessionId, long researchId, int attemptNo,
+                         String goal, String claim, BooleanSupplier cancelled) {
+    }
+
+    /**
+     * 核验结果。
+     *
+     * @param verdict      AGREE / DISAGREE / UNCERTAIN，没交时为 null
+     * @param reason       判定理由
+     * @param conflictsJson 冲突项 JSON 数组；没有时为空数组文本
+     * @param submitted    核验员是否真的给出了判定
+     */
+    record Verification(String verdict, String reason, String conflictsJson, boolean submitted) {
+    }
+
+    /**
      * 一次研究的输入。
      *
      * <p>用记录而不是位置参数：这里已经连着两个 long 和一个 int，再多一个 order 错了编译器不会报。

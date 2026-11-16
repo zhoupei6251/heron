@@ -8,6 +8,7 @@ import org.dromara.heron.mapper.HeronDataOpportunityMapper;
 import org.dromara.heron.service.IResearchAgent;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -22,6 +23,8 @@ public class AgentscopeResearchAgent implements IResearchAgent {
 
     private static final Duration GRACE = Duration.ofMinutes(1);
     private static final String AGENT_VERSION = "agentscope-2.0.4";
+    /** 核验的账本尝试号偏移：与研究员的 attempt 分开，谁查了什么一眼可辨。 */
+    private static final int VERIFY_ATTEMPT_OFFSET = 1000;
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final ResearchAgentFactory factory;
@@ -89,5 +92,24 @@ public class AgentscopeResearchAgent implements IResearchAgent {
             // 绑定不上快照不该让整次研究失败：报告里会写 bound=false
             return null;
         }
+    }
+
+    @Override
+    public Verification verify(VerifyRequest request) {
+        ResearchVerification verification = new ResearchVerification();
+        ResearchBudget budget = new ResearchBudget(maxToolCalls, maxTokens, maxDuration, clock,
+            request.cancelled());
+        // 核验的账本尝试号加偏移：和研究员的调用混在同一个 attempt 里会分不清谁查了什么
+        int ledgerAttempt = request.attemptNo() + VERIFY_ATTEMPT_OFFSET;
+        ToolCallLedger ledger = new ToolCallLedger(request.researchId(), ledgerAttempt,
+            toolCallMapper, clock, budget);
+        String prompt = "研究目标：" + request.goal() + "\n\n被核验的结论：\n" + request.claim();
+        try (HarnessAgent agent = factory.createVerifier(request.sessionId(), budget, ledger, verification)) {
+            agent.call(prompt).block(maxDuration.plus(GRACE));
+        }
+        ArrayNode conflicts = JSON.createArrayNode();
+        verification.conflicts().forEach(conflicts::add);
+        return new Verification(verification.verdict(), verification.reason(),
+            conflicts.toString(), verification.submitted());
     }
 }

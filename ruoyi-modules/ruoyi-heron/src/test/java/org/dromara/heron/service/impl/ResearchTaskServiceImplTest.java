@@ -41,11 +41,19 @@ class ResearchTaskServiceImplTest {
             new MapperBuilderAssistant(new MybatisConfiguration(), "researchTask"), HeronResearchTask.class);
     }
 
+    /** 决策服务在测试里通常不存在：用空 provider 模拟「没接上」。 */
+    @SuppressWarnings("unchecked")
+    private static ObjectProvider<org.dromara.heron.service.IContentDecisionService> noDecisions() {
+        ObjectProvider<org.dromara.heron.service.IContentDecisionService> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(null);
+        return provider;
+    }
+
     @SuppressWarnings("unchecked")
     private static ResearchTaskServiceImpl service(HeronResearchTaskMapper mapper) {
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
         when(clocks.getIfAvailable()).thenReturn(null);
-        return new ResearchTaskServiceImpl(mapper, mock(IResearchAgent.class), clocks);
+        return new ResearchTaskServiceImpl(mapper, mock(IResearchAgent.class), clocks, noDecisions());
     }
 
     /** 已领取的一次执行：每次取 wrapper 都是新的，按顺序收进 chains。 */
@@ -82,7 +90,7 @@ class ResearchTaskServiceImplTest {
         when(agent.research(any())).thenReturn(outcome);
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
         when(clocks.getIfAvailable()).thenReturn(null);
-        return new ResearchTaskServiceImpl(harness.mapper(), agent, clocks).run(9L);
+        return new ResearchTaskServiceImpl(harness.mapper(), agent, clocks, noDecisions()).run(9L);
     }
 
     @Test
@@ -239,7 +247,7 @@ class ResearchTaskServiceImplTest {
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
         when(clocks.getIfAvailable()).thenReturn(null);
 
-        String status = new ResearchTaskServiceImpl(mapper, agent, clocks).run(9L);
+        String status = new ResearchTaskServiceImpl(mapper, agent, clocks, noDecisions()).run(9L);
 
         assertEquals(HeronResearchTask.STATUS_CANCELLED, status);
     }

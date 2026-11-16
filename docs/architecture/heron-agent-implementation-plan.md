@@ -440,6 +440,14 @@ plan.md §14 要求「每组至少 30 个样本」。但 Phase 0 盘点发现：
 > `heron-research-evidence.md`、`heron-research-report.md`。
 > **下一步：** Phase 4 多 Agent 协作；或先做 Phase 5 内容决策中心，把报告接进业务。
 
+> **进度（2026-11-16）：Phase 4 与 Phase 5 已落地。**
+> Phase 5：`heron_content_decision` 存决策快照（不引用报告，因为报告会被重跑覆盖）、
+> 人工采纳/否决（否决必填理由）、决策中心页面。
+> Phase 4：独立核验员——另起会话与提示词、同一批只读工具，只对 `PRODUCE` 跑，
+> 判定与研究员结论分开存以便识别冲突。未打开 `disableSubagents`，用业务层编排实现。
+> 详见 `docs/reports/heron-content-decision.md`。
+> **未做：** L1/L2/L3 三级策略、重复选题检测接入触发链路、核验链路的真跑验证。
+
 **做：** 补齐 8 个只读工具；实现「调查结束判断」；证据收集；结构化研究报告；结果绑定 `FrozenContext`。
 
 **验收：** 能从研究目标自主发起调查、能按中间结果改查询方向、能发现异常、能形成证据链、能在证据不足时停下并说明原因。

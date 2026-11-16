@@ -27,6 +27,9 @@ public class ResearchAgentFactory {
 
     static final String AGENT_NAME = "heron-research";
     private static final String SYSTEM_PROMPT = "/prompt/research/researcher.md";
+    /** 核验员是另一个 Agent：独立会话、独立提示词，看不到研究员的过程，只看数据本身。 */
+    static final String VERIFIER_NAME = "heron-verifier";
+    private static final String VERIFIER_PROMPT = "/prompt/research/verifier.md";
 
     private final Model model;
     private final HeronResearchTools tools;
@@ -63,6 +66,11 @@ public class ResearchAgentFactory {
         return DigestUtil.sha256Hex(resource(SYSTEM_PROMPT)).substring(0, 12);
     }
 
+    /** 核验员的提示词版本，单独算：改核验口径不该影响研究提示词的版本号。 */
+    public String verifierPromptVersion() {
+        return DigestUtil.sha256Hex(resource(VERIFIER_PROMPT)).substring(0, 12);
+    }
+
     /** 不带账本的简用入口。 */
     public HarnessAgent create(String sessionId) {
         return create(sessionId, null, null);
@@ -85,9 +93,34 @@ public class ResearchAgentFactory {
      */
     public HarnessAgent create(String sessionId, ResearchBudget budget, Hook hook,
                                ResearchFindings findings) {
+        checkSession(sessionId);
+        return build(sessionId, AGENT_NAME, SYSTEM_PROMPT,
+            budget == null ? tools.withFindings(findings) : tools.withBudget(budget).withFindings(findings),
+            hook);
+    }
+
+    /**
+     * 建核验员：同一批查询工具，换成核验的提示词和收尾工具。
+     *
+     * <p>会话标识要和研究区分开（调用方传 {@code verify-<researchId>-<attempt>}）：
+     * 共用一段上下文就等于让它「记得」研究员是怎么推的，那还叫独立复核吗。
+     */
+    public HarnessAgent createVerifier(String sessionId, ResearchBudget budget, Hook hook,
+                                       ResearchVerification verification) {
+        checkSession(sessionId);
+        return build(sessionId, VERIFIER_NAME, VERIFIER_PROMPT,
+            budget == null ? tools : tools.withBudget(budget),
+            hook, new ResearchVerificationTool(verification));
+    }
+
+    private static void checkSession(String sessionId) {
         if (sessionId == null || sessionId.isBlank()) {
             throw new IllegalArgumentException("会话标识不能为空，否则所有研究共用一段上下文");
         }
+    }
+
+    private HarnessAgent build(String sessionId, String name, String prompt, Object toolObject,
+                               Hook hook, Object... extraTools) {
         // 单工具超时由 Toolkit 统一给：框架默认是 5 分钟，一个卡住的取数会吃掉整个调查窗口
         Toolkit toolkit = new Toolkit(ToolkitConfig.builder()
             .executionConfig(ExecutionConfig.builder()
@@ -95,12 +128,15 @@ public class ResearchAgentFactory {
                 .maxAttempts(1)
                 .build())
             .build());
-        toolkit.registerTool(budget == null ? tools.withFindings(findings) : tools.withBudget(budget).withFindings(findings));
+        toolkit.registerTool(toolObject);
+        for (Object extra : extraTools) {
+            toolkit.registerTool(extra);
+        }
 
         HarnessAgent.Builder builder = HarnessAgent.builder()
-            .name(AGENT_NAME)
+            .name(name)
             .defaultSessionId(sessionId)
-            .sysPrompt(resource(SYSTEM_PROMPT))
+            .sysPrompt(resource(prompt))
             .model(model)
             .toolkit(toolkit)
             .maxIters(maxIters)
