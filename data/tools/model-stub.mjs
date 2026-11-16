@@ -5,7 +5,7 @@ import fs from 'node:fs';
 
 // 原型线的写稿请求按 RP/1 契约回一份引擎自带的示例 spec（含动态面板 + Repeater + 事件），
 // 新闻线回固定稿件。两者都只为验证接缝，不代表模型真实产出质量。
-const RP1_SPEC = '/d/zhoupei/tmp/zee-rp-v0.2.1/examples/authoring/list-detail.rp1';
+const RP1_SPEC = 'D:/zhoupei/zee-rp-v0.2.1/examples/authoring/list-detail.rp1';
 
 const SCRIPT = {
   title: '新款折叠屏手机上市',
@@ -39,8 +39,8 @@ http
         response.writeHead(404).end('{"error":"not found"}');
         return;
       }
-      const content = raw.includes('rp/1') && fs.existsSync('D:/zhoupei/tmp/zee-rp-v0.2.1/examples/authoring/list-detail.rp1')
-        ? fs.readFileSync('D:/zhoupei/tmp/zee-rp-v0.2.1/examples/authoring/list-detail.rp1', 'utf8')
+      const content = raw.includes('rp/1') && fs.existsSync(RP1_SPEC)
+        ? fs.readFileSync(RP1_SPEC, 'utf8')
         : JSON.stringify(SCRIPT);
       const body = JSON.stringify({
         id: `stub-${Date.now()}`,

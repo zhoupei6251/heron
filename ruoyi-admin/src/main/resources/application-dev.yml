@@ -335,8 +335,9 @@ heron:
     node: ${HERON_NODE:node}
     hyperframes: ${HERON_HYPERFRAMES:./data/tools/node_modules/hyperframes/bin/hyperframes.mjs}
     news-template: ${HERON_NEWS_TEMPLATE:./data/templates}
-    # zee-rp 只作 oracle：引擎根目录（内含 scripts/proto.mjs），本机解包在 D:/zhoupei/tmp 下
-    zee-rp: D:/zhoupei/tmp/zee-rp-v0.2.1
+    # zee-rp 只作 oracle：引擎根目录（内含 scripts/proto.mjs）
+    # 外部仓库 github.com/LilZeeCN/zee-rp，按 tag v0.2.1 clone 到工作区平级；勿放临时目录（会被清理）
+    zee-rp: ${HERON_ZEE_RP:D:/zhoupei/zee-rp-v0.2.1}
     # Axure RP9 空白基底，在两仓库之外；引擎读它需要 AXURE_BLANK_TEMPLATE_RP9，由 Java 注入子进程
     prototype-template: D:/zhoupei/heron/axure/blank-rp9.rp
     worker-enabled: true

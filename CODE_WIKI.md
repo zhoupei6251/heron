@@ -489,7 +489,7 @@ heron:
     node: D:/Users/zhoupei/AppData/Local/nvm/v24.22.1/node.exe
     hyperframes: D:/zhoupei/heron/data/tools/node_modules/hyperframes/bin/hyperframes.mjs
     news-template: D:/zhoupei/heron/data/templates
-    zee-rp: D:/zhoupei/tmp/zee-rp-v0.2.1
+    zee-rp: D:/zhoupei/zee-rp-v0.2.1
     prototype-template: D:/zhoupei/heron/axure/blank-rp9.rp
     worker-enabled: true          # 与 heron-production.yml 默认值相反
     oss-config-key: qiniu
