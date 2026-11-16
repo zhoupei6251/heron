@@ -9,6 +9,7 @@ import org.dromara.heron.domain.HeronDataSource;
 import org.dromara.heron.domain.HeronVideoVersion;
 import org.dromara.heron.mapper.HeronDataOpportunityMapper;
 import org.dromara.heron.mapper.HeronDataSourceMapper;
+import org.dromara.heron.mapper.HeronNewsMetricMapper;
 import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.dromara.heron.service.impl.DatasetFetchService;
 import org.dromara.heron.service.impl.DatasetSignal;
@@ -58,31 +59,46 @@ public class HeronResearchTools {
     private final ResearchBudget budget;
     /** 每次研究一份：模型主动收尾时写结论到这里。 */
     private final ResearchFindings findings;
+    /** 历史发布表现；可选——没有它时该工具如实说不可用，而不是返回空数组冒充「没表现」。 */
+    private final HeronNewsMetricMapper metrics;
 
     public HeronResearchTools(DatasetFetchService datasets, HeronDataOpportunityMapper opportunities,
                               HeronDataSourceMapper sources, HeronVideoVersionMapper videos) {
-        this(datasets, opportunities, sources, videos, null, new ResearchFindings());
+        this(datasets, opportunities, sources, videos, null, new ResearchFindings(), null);
     }
 
     public HeronResearchTools(DatasetFetchService datasets, HeronDataOpportunityMapper opportunities,
                               HeronDataSourceMapper sources, HeronVideoVersionMapper videos,
                               ResearchBudget budget, ResearchFindings findings) {
+        this(datasets, opportunities, sources, videos, budget, findings, null);
+    }
+
+    public HeronResearchTools(DatasetFetchService datasets, HeronDataOpportunityMapper opportunities,
+                              HeronDataSourceMapper sources, HeronVideoVersionMapper videos,
+                              ResearchBudget budget, ResearchFindings findings,
+                              HeronNewsMetricMapper metrics) {
         this.datasets = datasets;
         this.opportunities = opportunities;
         this.sources = sources;
         this.videos = videos;
         this.budget = budget;
         this.findings = findings;
+        this.metrics = metrics;
     }
 
     /** 同协作者、换一份预算的副本：每次研究一个预算，不共享。 */
     public HeronResearchTools withBudget(ResearchBudget budget) {
-        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings);
+        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings, metrics);
     }
 
     /** 同协作者、换一份结论容器的副本：每次研究一份，不共享。 */
     public HeronResearchTools withFindings(ResearchFindings findings) {
-        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings);
+        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings, metrics);
+    }
+
+    /** 接上历史表现数据源；没有它时 query_published_performance 会如实说不可用。 */
+    public HeronResearchTools withMetrics(HeronNewsMetricMapper metrics) {
+        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings, metrics);
     }
 
     // ==================== 预算与参数闸 ====================
@@ -454,8 +470,37 @@ public class HeronResearchTools {
         return result;
     }
 
-    // ==================== 收尾 ====================
+    @Tool(name = "query_published_performance",
+        description = "已发布视频的实际表现（播放、完播、点赞）：用来判断哪类选题真的有人看，而不是只看数据本身多极端",
+        readOnly = true)
+    public Map<String, Object> queryPublishedPerformance(
+        @ToolParam(name = "limit", description = "返回几条，1 到 20，默认 10", required = false) int limit) {
 
+        acquireBudget();
+        if (metrics == null) {
+            // 没接数据源时如实说不可用：返回空列表会让模型以为「历史上没发布过东西」
+            return Map.of("available", false, "reason", "历史表现数据源未接入");
+        }
+        int bounded = limit <= 0 ? 10 : boundedLimit(limit);
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (HeronNewsMetricMapper.Performance row : metrics.recentPerformance(bounded)) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("title", truncate(row.title(), 120));
+            item.put("plays", row.plays());
+            item.put("completionRate", row.completionRate() == null ? null : row.completionRate().toPlainString());
+            items.add(item);
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("available", true);
+        result.put("count", items.size());
+        result.put("performances", items);
+        if (items.isEmpty()) {
+            result.put("note", "还没有已发布的视频，历史表现暂时为空");
+        }
+        return result;
+    }
+
+    // ==================== 收尾 ====================
     /**
      * 主动收尾：证据够了就停，不再多花一轮。
      *

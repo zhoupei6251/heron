@@ -10,13 +10,17 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.heron.domain.bo.ContentDecisionQueryBo;
 import org.dromara.heron.domain.vo.ContentDecisionVo;
+import org.dromara.heron.domain.vo.ResearchCostVo;
 import org.dromara.heron.service.IContentDecisionService;
+import org.dromara.heron.service.impl.ResearchCostService;
+import org.dromara.heron.service.IResearchPromotionService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -32,6 +36,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class ContentDecisionController extends BaseController {
 
     private final IContentDecisionService decisions;
+    private final IResearchPromotionService promotions;
+    private final ResearchCostService costs;
 
     @SaCheckPermission("heron:decision:list")
     @GetMapping("/list")
@@ -63,7 +69,36 @@ public class ContentDecisionController extends BaseController {
         return R.ok(decisions.decide(decisionId, false, body == null ? null : body.note()));
     }
 
+    /**
+     * 采纳并提升为选题候选。
+     *
+     * <p>两个动作合成一个接口是刻意的：采纳之后不做提升，那条判断就停在决策中心里没人用。
+     * 分成两步的话，第二步一定会被忘掉。
+     *
+     * <p>提升只产出候选，不建生产任务——plan.md §16 要求它「作为候选之一，不取代总编辑」。
+     */
+    @SaCheckPermission("heron:decision:decide")
+    @Log(title = "内容决策", businessType = BusinessType.UPDATE)
+    @PostMapping("/{decisionId}/promote")
+    public R<PromotionVo> promote(@PathVariable long decisionId,
+                                  @RequestBody(required = false) DecisionNoteBo body) {
+        decisions.decide(decisionId, true, body == null ? null : body.note());
+        long candidateId = promotions.promote(decisionId);
+        return R.ok(new PromotionVo(decisionId, candidateId));
+    }
+
+    /** 成本与质量概览：监督工作台用。 */
+    @SaCheckPermission("heron:decision:list")
+    @GetMapping("/cost")
+    public R<ResearchCostVo> cost(@RequestParam(required = false) Integer days) {
+        return R.ok(costs.overview(days == null ? 30 : days));
+    }
+
     /** 裁决意见。采纳时可省略，否决时必填。 */
     public record DecisionNoteBo(String note) {
+    }
+
+    /** 提升结果：决策 id 与产出的候选 id。 */
+    public record PromotionVo(long decisionId, long candidateId) {
     }
 }

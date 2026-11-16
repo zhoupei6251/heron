@@ -46,7 +46,7 @@ D:\zhoupei\heron\
 │       └── ...            # 基座页面与框架代码
 ├── docs\design\           # UI 阶段性报告
 ├── axure\                 # Axure RP9 空白模板等原语
-└── harness-foundry\       # AI 工具/技能仓库，与 Heron 产品无关
+└── harness-factory\       # AI 工具/技能仓库，与 Heron 产品无关
 ```
 
 **命名约定**：产品名统一用 Heron；`ruoyi-*` 坐标、模块名、基座类名保持不变，不要为了「干净」去改。

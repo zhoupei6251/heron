@@ -186,11 +186,11 @@ class HeronResearchToolsTest {
         assertEquals(Set.of(
             "query_opportunities", "query_opportunity_detail", "query_trend_series",
             "query_dataset_snapshot", "compare_series", "query_data_sources",
-            "query_source_health", "query_recent_productions", "submit_findings"),
+            "query_source_health", "query_recent_productions", "query_published_performance", "submit_findings"),
             toolkit.getToolNames());
 
         List<ToolSchema> schemas = toolkit.getToolSchemas();
-        assertEquals(9, schemas.size());
+        assertEquals(10, schemas.size());
         for (ToolSchema schema : schemas) {
             assertNotNull(schema.getParameters(), schema.getName() + " 没有派生出入参 schema");
         }
@@ -324,6 +324,33 @@ class HeronResearchToolsTest {
         assertEquals(true, item.get("enabled"));
         assertFalse(item.containsKey("endpoint"), "端点不进模型上下文");
         assertFalse(item.containsKey("termsUrl"));
+    }
+
+    @Test
+    @DisplayName("没接历史表现数据源时如实说不可用，不返回空列表冒充「没发布过」")
+    void performanceUnavailable() {
+        Map<String, Object> result = tools(mock(DatasetFetchService.class),
+            mock(HeronDataOpportunityMapper.class)).queryPublishedPerformance(5);
+
+        assertEquals(false, result.get("available"));
+        assertNotNull(result.get("reason"));
+    }
+
+    @Test
+    @DisplayName("接了数据源时返回表现列表，空表说明是真空")
+    void performanceFromMetrics() {
+        var metrics = mock(org.dromara.heron.mapper.HeronNewsMetricMapper.class);
+        when(metrics.recentPerformance(anyInt())).thenReturn(java.util.List.of(
+            new org.dromara.heron.mapper.HeronNewsMetricMapper.Performance(
+                "澳元创窗口新低", 1200L, new java.math.BigDecimal("0.42"))));
+
+        Map<String, Object> result = new HeronResearchTools(mock(DatasetFetchService.class),
+            mock(HeronDataOpportunityMapper.class), mock(HeronDataSourceMapper.class),
+            mock(HeronVideoVersionMapper.class), null, new ResearchFindings(), metrics)
+            .queryPublishedPerformance(5);
+
+        assertEquals(true, result.get("available"));
+        assertEquals(1, result.get("count"));
     }
 
     @Test

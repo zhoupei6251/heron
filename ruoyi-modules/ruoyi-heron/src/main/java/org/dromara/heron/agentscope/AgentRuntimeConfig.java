@@ -8,6 +8,7 @@ import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.mapper.HeronAgentToolCallMapper;
 import org.dromara.heron.mapper.HeronDataOpportunityMapper;
 import org.dromara.heron.mapper.HeronDataSourceMapper;
+import org.dromara.heron.mapper.HeronNewsMetricMapper;
 import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.dromara.heron.service.IResearchAgent;
 import org.dromara.heron.service.impl.OpenAiModelClient;
@@ -58,8 +59,13 @@ public class AgentRuntimeConfig {
     public HeronResearchTools heronResearchTools(DatasetFetchService datasets,
                                                  HeronDataOpportunityMapper opportunities,
                                                  HeronDataSourceMapper sources,
-                                                 HeronVideoVersionMapper videos) {
-        return new HeronResearchTools(datasets, opportunities, sources, videos);
+                                                 HeronVideoVersionMapper videos,
+                                                 ObjectProvider<HeronNewsMetricMapper> metrics) {
+        // 历史表现是可选依赖：没有它时 query_published_performance 会如实说不可用，
+        // 不该让整个 Agent 装配失败
+        HeronResearchTools tools = new HeronResearchTools(datasets, opportunities, sources, videos);
+        HeronNewsMetricMapper metricMapper = metrics.getIfAvailable();
+        return metricMapper == null ? tools : tools.withMetrics(metricMapper);
     }
 
     /** 状态存储单独成 Bean：构造时会校验表，测试里可以用内存实现替掉，不碰库。 */

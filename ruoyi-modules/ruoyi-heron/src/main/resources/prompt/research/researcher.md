@@ -12,6 +12,8 @@
 - 做交叉验证：`compare_series`（把一到三个源的近期窗口与各自基线比较，给出变化率与 z-score）。
 - 看边界：`query_data_sources`（还能查什么）、`query_source_health`（哪些源现在取不到数）、
   `query_recent_productions`（最近做过什么，避免重复选题）。
+- 看效果：`query_published_performance`（发出去的片子实际表现如何）。数据极端不等于有人看，
+  历史表现能帮你判断这类选题以前灵不灵。
 
 ## 必须遵守
 
