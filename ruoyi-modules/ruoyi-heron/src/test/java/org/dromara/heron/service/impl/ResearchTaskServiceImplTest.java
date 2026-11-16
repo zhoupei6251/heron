@@ -79,7 +79,7 @@ class ResearchTaskServiceImplTest {
     @SuppressWarnings("unchecked")
     private static String runWith(Harness harness, IResearchAgent.Outcome outcome) {
         IResearchAgent agent = mock(IResearchAgent.class);
-        when(agent.research(any(), anyLong(), anyInt(), any(), any())).thenReturn(outcome);
+        when(agent.research(any())).thenReturn(outcome);
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
         when(clocks.getIfAvailable()).thenReturn(null);
         return new ResearchTaskServiceImpl(harness.mapper(), agent, clocks).run(9L);
@@ -175,7 +175,7 @@ class ResearchTaskServiceImplTest {
     void selfStoppedRunIsNotPartial() {
         String status = runWith(claimed(),
             new IResearchAgent.Outcome("完整结论", 8, 6, 100, 50, false, true,
-                new IResearchAgent.Findings("REJECT", null, true, null)));
+                new IResearchAgent.Findings("REJECT", null, true, null, null)));
 
         assertEquals(HeronResearchTask.STATUS_SUCCEEDED, status);
     }
@@ -186,7 +186,7 @@ class ResearchTaskServiceImplTest {
         Harness harness = claimed();
 
         runWith(harness, new IResearchAgent.Outcome("结论", 3, 2, 100, 50, false, false,
-            new IResearchAgent.Findings("PRODUCE", new java.math.BigDecimal("0.8"), true, null)));
+            new IResearchAgent.Findings("PRODUCE", new java.math.BigDecimal("0.8"), true, null, null)));
 
         var values = harness.chains().get(harness.chains().size() - 1).getParamNameValuePairs().values();
         assertTrue(values.contains("PRODUCE"), "decision_type 没写进去");
@@ -234,7 +234,7 @@ class ResearchTaskServiceImplTest {
             new LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>(mapper));
 
         IResearchAgent agent = mock(IResearchAgent.class);
-        when(agent.research(any(), anyLong(), anyInt(), any(), any())).thenReturn(
+        when(agent.research(any())).thenReturn(
             new IResearchAgent.Outcome("结论", 3, 2, 100, 50, false, false, null));
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
         when(clocks.getIfAvailable()).thenReturn(null);

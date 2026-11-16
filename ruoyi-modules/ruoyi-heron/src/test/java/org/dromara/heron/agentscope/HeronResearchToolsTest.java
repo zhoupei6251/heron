@@ -213,7 +213,8 @@ class HeronResearchToolsTest {
             mock(DatasetFetchService.class), mock(HeronDataOpportunityMapper.class),
             mock(HeronDataSourceMapper.class), mock(HeronVideoVersionMapper.class), budget, findings);
 
-        String reply = subject.submitFindings("reject", "独立信息量为零", List.of("frankfurter-audcny"), " ", 0.7);
+        String reply = subject.submitFindings("reject", "独立信息量为零", List.of("frankfurter-audcny"),
+            List.of("丹麦克朗挂钩欧元"), List.of("只有 8 个点，无独立基线"), " ", 0.7);
 
         assertEquals("REJECT", findings.decisionType());
         assertEquals("独立信息量为零", findings.reason());
@@ -230,10 +231,10 @@ class HeronResearchToolsTest {
             mock(DatasetFetchService.class), mock(HeronDataOpportunityMapper.class),
             mock(HeronDataSourceMapper.class), mock(HeronVideoVersionMapper.class));
 
-        assertThrows(HeronBusinessException.class, () -> subject.submitFindings("MAYBE", "理由", null, null, 0));
-        assertThrows(HeronBusinessException.class, () -> subject.submitFindings("PRODUCE", " ", null, null, 0));
-        assertThrows(HeronBusinessException.class, () -> subject.submitFindings("PRODUCE", "理由", null, null, 1.5));
-        assertFalse(subject.submitFindings("OBSERVE", "还不够", null, null, 0).isEmpty());
+        assertThrows(HeronBusinessException.class, () -> subject.submitFindings("MAYBE", "理由", null, null, null, null, 0));
+        assertThrows(HeronBusinessException.class, () -> subject.submitFindings("PRODUCE", " ", null, null, null, null, 0));
+        assertThrows(HeronBusinessException.class, () -> subject.submitFindings("PRODUCE", "理由", null, null, null, null, 1.5));
+        assertFalse(subject.submitFindings("OBSERVE", "还不够", null, null, null, null, 0).isEmpty());
     }
 
     /**
@@ -250,7 +251,7 @@ class HeronResearchToolsTest {
 
         new HeronResearchTools(mock(DatasetFetchService.class), mock(HeronDataOpportunityMapper.class),
             mock(HeronDataSourceMapper.class), mock(HeronVideoVersionMapper.class), budget, findings)
-            .submitFindings("OBSERVE", "预算已用尽，基于已有数据判断", null, null, 0);
+            .submitFindings("OBSERVE", "预算已用尽，基于已有数据判断", null, null, null, null, 0);
 
         assertEquals("OBSERVE", findings.decisionType());
     }

@@ -124,11 +124,14 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
         try (ResearchLeaseKeeper keeper =
                  new ResearchLeaseKeeper(researchTaskMapper, researchId, clock(), LEASE)) {
             keeper.start();
-            IResearchAgent.Outcome outcome = researchAgent.research(
-                task.getSessionId(), researchId, attempt, task.getGoal(), keeper::cancelled);
+            // opportunity_id 在库里可空；空的时候不绑定快照，但研究照跑
+            long opportunityId = task.getOpportunityId() == null ? 0L : task.getOpportunityId();
+            IResearchAgent.Outcome outcome = researchAgent.research(new IResearchAgent.Request(
+                task.getSessionId(), researchId, opportunityId, attempt,
+                task.getGoal(), keeper::cancelled));
 
             var findings = outcome.findings() == null
-                ? new IResearchAgent.Findings(null, null, false, null)
+                ? new IResearchAgent.Findings(null, null, false, null, null)
                 : outcome.findings();
             String status;
             if (keeper.cancelled() || rowCancelledSince(researchId)) {
@@ -152,6 +155,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
                 .set(HeronResearchTask::getDecisionType, findings.decision())
                 .set(HeronResearchTask::getConfidence, findings.confidence())
                 .set(HeronResearchTask::getEvidenceJson, findings.evidenceJson())
+                .set(HeronResearchTask::getReportJson, findings.reportJson())
                 .set(HeronResearchTask::getErrorCode, null)
                 .set(HeronResearchTask::getErrorReason, null)
                 .set(HeronResearchTask::getLeaseUntil, null)

@@ -88,9 +88,10 @@ public class AgentRuntimeConfig {
     @Bean
     public IResearchAgent heronResearchAgent(ResearchAgentFactory heronResearchAgentFactory,
                                              HeronAgentToolCallMapper toolCallMapper,
+                                             HeronDataOpportunityMapper opportunityMapper,
                                              Environment environment,
                                              ObjectProvider<Clock> clocks) {
-        return new AgentscopeResearchAgent(heronResearchAgentFactory, toolCallMapper,
+        return new AgentscopeResearchAgent(heronResearchAgentFactory, toolCallMapper, opportunityMapper,
             clocks.getIfAvailable(Clock::systemDefaultZone),
             environment.getProperty("heron.agent.max-tool-calls", Integer.class, 12),
             environment.getProperty("heron.agent.max-tokens", Long.class, 300_000L),

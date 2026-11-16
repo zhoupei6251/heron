@@ -1,7 +1,7 @@
 package org.dromara.heron.agentscope;
 
-import io.agentscope.core.hook.Hook;
-import io.agentscope.core.model.ExecutionConfig;
+import cn.hutool.crypto.digest.DigestUtil;
+import io.agentscope.core.hook.Hook;import io.agentscope.core.model.ExecutionConfig;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
@@ -46,6 +46,21 @@ public class ResearchAgentFactory {
     /** 轮数上限：撞上它等于「跑满了还没结论」，要标 partial。 */
     public int maxIters() {
         return maxIters;
+    }
+
+    /** 模型名进报告：从实例本身取，不再读一遍配置，免得两处不一致。 */
+    public String modelName() {
+        String name = model.getModelName();
+        return name == null ? "unknown" : name;
+    }
+
+    /**
+     * 提示词版本：内容摘要前 12 位。
+     *
+     * <p>用摘要而不是手写版本号：改了提示词却忘了改版本号，是这个领域最常见的谎报。
+     */
+    public String promptVersion() {
+        return DigestUtil.sha256Hex(resource(SYSTEM_PROMPT)).substring(0, 12);
     }
 
     /** 不带账本的简用入口。 */

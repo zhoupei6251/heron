@@ -473,6 +473,8 @@ public class HeronResearchTools {
         @ToolParam(name = "decision", description = "PRODUCE 值得做 / OBSERVE 还需要更多数据 / REJECT 不值得", required = true) String decision,
         @ToolParam(name = "reason", description = "为什么，一两句话，要指向具体数字", required = true) String reason,
         @ToolParam(name = "evidence", description = "支撑这个判断的数据源 key 或机会 id，每个是一个字符串；只写真的查过的", required = false) List<String> evidence,
+        @ToolParam(name = "keyInsights", description = "支撑判断的关键要点，每条一句，可省略", required = false) List<String> keyInsights,
+        @ToolParam(name = "risks", description = "风险与不确定性：口径可疑、样本不足、无法交叉验证等，可省略", required = false) List<String> risks,
         @ToolParam(name = "angle", description = "如果决定做，从哪个角度讲；不做就留空", required = false) String angle,
         @ToolParam(name = "confidence", description = "把握程度 0 到 1，可省略", required = false) double confidence) {
 
@@ -491,7 +493,8 @@ public class HeronResearchTools {
         // 0 表示模型没传（double 参数拿不到 null），当未知而不是「零把握」
         BigDecimal trust = confidence == 0 ? null : BigDecimal.valueOf(confidence);
         findings.record(normalized, why,
-            angle == null || angle.isBlank() ? null : angle.trim(), trust, evidence);
+            angle == null || angle.isBlank() ? null : angle.trim(), trust,
+            keyInsights, risks, evidence);
 
         return "结论已记录：decision=" + normalized + "。" + why;
     }

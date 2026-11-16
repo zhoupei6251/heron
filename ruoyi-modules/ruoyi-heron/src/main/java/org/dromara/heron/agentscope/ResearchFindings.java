@@ -27,22 +27,34 @@ public final class ResearchFindings {
     private String reason;
     private String angle;
     private BigDecimal confidence;
+    /** 支撑判断的关键要点，每条一句。 */
+    private final List<String> keyInsights = new ArrayList<>();
+    /** 风险与不确定性：口径可疑、样本不足、无法交叉验证等。 */
+    private final List<String> riskWarnings = new ArrayList<>();
     /** 模型声明的证据来源：数据源 key 或机会 id，按出现顺序去重。 */
     private final List<String> cited = new ArrayList<>();
 
     void record(String decisionType, String reason, String angle, BigDecimal confidence,
-                List<String> citations) {
-        this.decisionType = decisionType;
+                List<String> insights, List<String> risks, List<String> citations) {
+        // 归一化放在存储边界：工具入口校验完就归一化过一次，但换个调用路径（重放、测试）就会漏
+        this.decisionType = decisionType == null ? null : decisionType.trim().toUpperCase();
         this.reason = reason;
         this.angle = angle;
         this.confidence = confidence;
-        this.cited.clear();
-        if (citations != null) {
-            for (String item : citations) {
-                String trimmed = item == null ? "" : item.trim();
-                if (!trimmed.isEmpty() && !cited.contains(trimmed)) {
-                    cited.add(trimmed);
-                }
+        replaceAll(keyInsights, insights);
+        replaceAll(riskWarnings, risks);
+        replaceAll(cited, citations);
+    }
+
+    private static void replaceAll(List<String> target, List<String> source) {
+        target.clear();
+        if (source == null) {
+            return;
+        }
+        for (String item : source) {
+            String trimmed = item == null ? "" : item.trim();
+            if (!trimmed.isEmpty() && !target.contains(trimmed)) {
+                target.add(trimmed);
             }
         }
     }
@@ -70,5 +82,13 @@ public final class ResearchFindings {
 
     public List<String> cited() {
         return List.copyOf(cited);
+    }
+
+    public List<String> keyInsights() {
+        return List.copyOf(keyInsights);
+    }
+
+    public List<String> riskWarnings() {
+        return List.copyOf(riskWarnings);
     }
 }

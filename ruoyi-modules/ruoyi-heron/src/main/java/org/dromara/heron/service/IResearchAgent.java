@@ -13,15 +13,24 @@ public interface IResearchAgent {
 
     /**
      * 在指定会话里跑一次研究。
-     *
-     * @param sessionId  研究级会话标识；同一个研究重试要传同一个值，才能续上上下文
-     * @param researchId 研究任务 id，用于工具调用记账
-     * @param attemptNo  第几次执行，用于区分重试
-     * @param goal       研究目标，人读得懂的自然语言
-     * @param cancelled  取消信号；为 true 时后续工具调用一律被拒，研究收尾
      */
-    Outcome research(String sessionId, long researchId, int attemptNo, String goal,
-                     BooleanSupplier cancelled);
+    Outcome research(Request request);
+
+    /**
+     * 一次研究的输入。
+     *
+     * <p>用记录而不是位置参数：这里已经连着两个 long 和一个 int，再多一个 order 错了编译器不会报。
+     *
+     * @param sessionId     研究级会话标识；同一个研究重试要传同一个值，才能续上上下文
+     * @param researchId    研究任务 id，用于工具调用记账
+     * @param opportunityId 研究对象的机会 id，用于绑定它依据的那份快照
+     * @param attemptNo     第几次执行，用于区分重试
+     * @param goal          研究目标，人读得懂的自然语言
+     * @param cancelled     取消信号；为 true 时后续工具调用一律被拒，研究收尾
+     */
+    record Request(String sessionId, long researchId, long opportunityId, int attemptNo,
+                   String goal, BooleanSupplier cancelled) {
+    }
 
     /**
      * 一次研究的结果。
@@ -47,7 +56,9 @@ public interface IResearchAgent {
      * @param confidence    0 到 1，没给时为 null
      * @param stoppedEarly  是否由模型自己判断「证据够了」而停下，而不是被闸打停
      * @param evidenceJson  证据链 JSON，见 {@code EvidenceCollector}
+     * @param reportJson    结构化研究报告，见 {@code ResearchReport}；含结论、要点、风险与快照绑定
      */
-    record Findings(String decision, BigDecimal confidence, boolean stoppedEarly, String evidenceJson) {
+    record Findings(String decision, BigDecimal confidence, boolean stoppedEarly,
+                    String evidenceJson, String reportJson) {
     }
 }

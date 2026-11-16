@@ -66,6 +66,11 @@ public class HeronResearchTask extends BaseEntity {
      * 只存引用关系不存原始返回——账本里已经有了，存两遍迟早对不上。
      */
     private String evidenceJson;
+    /**
+     * 结构化研究报告：结论、要点、风险，以及它依据的那份快照标识（data_sha256 + retrieved_at）。
+     * 自然语言的 {@code resultText} 给人看，这份给下游用。
+     */
+    private String reportJson;
     private String errorCode;
     private String errorReason;
     /** 同一机会同一天只研究一次。 */
