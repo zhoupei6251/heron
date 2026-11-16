@@ -433,11 +433,13 @@ plan.md §14 要求「每组至少 30 个样本」。但 Phase 0 盘点发现：
 
 ### Phase 3：自主调查能力
 
-> **进度（2026-11-13）：** 8 个只读工具已齐（`query_opportunities` / `query_opportunity_detail` /
+> **进度（2026-11-16）：** 8 个只读工具已齐（`query_opportunities` / `query_opportunity_detail` /
 > `query_trend_series` / `query_dataset_snapshot` / `compare_series` / `query_data_sources` /
 > `query_source_health` / `query_recent_productions`）；单次调查 5 分钟、单工具 10 秒、参数越界拒绝已收口。
-> 真实模型一轮内把 8 个工具全调过。详见 `docs/reports/heron-research-tools-phase3.md`。
-> **未做：** 调查结束判断、证据收集、结构化研究报告、结果绑定 `FrozenContext`。
+> **调查结束判断已完成**：`submit_findings` 用 `returnDirect` 短路 ReAct 循环，模型判断证据够了就主动收尾；
+> 真跑在 5 轮停手（上限 8），decision 与 confidence 已进库。
+> 详见 `docs/reports/heron-research-tools-phase3.md`、`docs/reports/heron-research-stop-condition.md`。
+> **未做：** 证据收集、结构化研究报告、结果绑定 `FrozenContext`。
 
 **做：** 补齐 8 个只读工具；实现「调查结束判断」；证据收集；结构化研究报告；结果绑定 `FrozenContext`。
 

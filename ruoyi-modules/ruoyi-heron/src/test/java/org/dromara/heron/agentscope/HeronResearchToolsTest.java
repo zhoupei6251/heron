@@ -186,10 +186,11 @@ class HeronResearchToolsTest {
         assertEquals(Set.of(
             "query_opportunities", "query_opportunity_detail", "query_trend_series",
             "query_dataset_snapshot", "compare_series", "query_data_sources",
-            "query_source_health", "query_recent_productions"), toolkit.getToolNames());
+            "query_source_health", "query_recent_productions", "submit_findings"),
+            toolkit.getToolNames());
 
         List<ToolSchema> schemas = toolkit.getToolSchemas();
-        assertEquals(8, schemas.size());
+        assertEquals(9, schemas.size());
         for (ToolSchema schema : schemas) {
             assertNotNull(schema.getParameters(), schema.getName() + " 没有派生出入参 schema");
         }
@@ -201,6 +202,57 @@ class HeronResearchToolsTest {
         Map<String, Object> props = (Map<String, Object>) compare.getParameters().get("properties");
         assertTrue(props.containsKey("sourceKeys"));
         assertTrue(props.containsKey("points"));
+    }
+
+    @Test
+    @DisplayName("收尾工具把结论写进容器，且不占工具名额")
+    void submitFindingsRecordsDecision() {
+        ResearchFindings findings = new ResearchFindings();
+        ResearchBudget budget = new ResearchBudget(1, 0);
+        HeronResearchTools subject = new HeronResearchTools(
+            mock(DatasetFetchService.class), mock(HeronDataOpportunityMapper.class),
+            mock(HeronDataSourceMapper.class), mock(HeronVideoVersionMapper.class), budget, findings);
+
+        String reply = subject.submitFindings("reject", "独立信息量为零", " ", 0.7);
+
+        assertEquals("REJECT", findings.decisionType());
+        assertEquals("独立信息量为零", findings.reason());
+        assertNull(findings.angle(), "空白 angle 存成 null，不要存一个空格");
+        assertEquals(new java.math.BigDecimal("0.7"), findings.confidence());
+        assertTrue(reply.contains("REJECT"));
+        assertEquals(0, budget.toolUsed(), "收尾不查数据，不该占工具名额");
+    }
+
+    @Test
+    @DisplayName("收尾工具拒绝非法 decision 与越界 confidence")
+    void submitFindingsValidates() {
+        HeronResearchTools subject = new HeronResearchTools(
+            mock(DatasetFetchService.class), mock(HeronDataOpportunityMapper.class),
+            mock(HeronDataSourceMapper.class), mock(HeronVideoVersionMapper.class));
+
+        assertThrows(HeronBusinessException.class, () -> subject.submitFindings("MAYBE", "理由", null, 0));
+        assertThrows(HeronBusinessException.class, () -> subject.submitFindings("PRODUCE", " ", null, 0));
+        assertThrows(HeronBusinessException.class, () -> subject.submitFindings("PRODUCE", "理由", null, 1.5));
+        assertFalse(subject.submitFindings("OBSERVE", "还不够", null, 0).isEmpty());
+    }
+
+    /**
+     * 预算刚好用尽时模型也必须交得出结论，否则 partial 会变成「停了但什么都没有」。
+     */
+    @Test
+    @DisplayName("预算用尽后仍能收尾")
+    void submitFindingsIgnoresBudget() {
+        ResearchFindings findings = new ResearchFindings();
+        ResearchBudget budget = new ResearchBudget(1, 0);
+        budget.tryAcquireTool();
+        budget.tryAcquireTool();   // 已超额
+        assertTrue(budget.exceeded());
+
+        new HeronResearchTools(mock(DatasetFetchService.class), mock(HeronDataOpportunityMapper.class),
+            mock(HeronDataSourceMapper.class), mock(HeronVideoVersionMapper.class), budget, findings)
+            .submitFindings("OBSERVE", "预算已用尽，基于已有数据判断", null, 0);
+
+        assertEquals("OBSERVE", findings.decisionType());
     }
 
     @Test

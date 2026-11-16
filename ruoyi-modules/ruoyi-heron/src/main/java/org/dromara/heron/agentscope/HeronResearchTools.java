@@ -15,6 +15,7 @@ import org.dromara.heron.service.impl.DatasetSignal;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -55,25 +56,33 @@ public class HeronResearchTools {
     private final HeronVideoVersionMapper videos;
     /** 每次研究一份；为 null 表示不限（单测与冒烟用）。 */
     private final ResearchBudget budget;
+    /** 每次研究一份：模型主动收尾时写结论到这里。 */
+    private final ResearchFindings findings;
 
     public HeronResearchTools(DatasetFetchService datasets, HeronDataOpportunityMapper opportunities,
                               HeronDataSourceMapper sources, HeronVideoVersionMapper videos) {
-        this(datasets, opportunities, sources, videos, null);
+        this(datasets, opportunities, sources, videos, null, new ResearchFindings());
     }
 
     public HeronResearchTools(DatasetFetchService datasets, HeronDataOpportunityMapper opportunities,
                               HeronDataSourceMapper sources, HeronVideoVersionMapper videos,
-                              ResearchBudget budget) {
+                              ResearchBudget budget, ResearchFindings findings) {
         this.datasets = datasets;
         this.opportunities = opportunities;
         this.sources = sources;
         this.videos = videos;
         this.budget = budget;
+        this.findings = findings;
     }
 
     /** 同协作者、换一份预算的副本：每次研究一个预算，不共享。 */
     public HeronResearchTools withBudget(ResearchBudget budget) {
-        return new HeronResearchTools(datasets, opportunities, sources, videos, budget);
+        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings);
+    }
+
+    /** 同协作者、换一份结论容器的副本：每次研究一份，不共享。 */
+    public HeronResearchTools withFindings(ResearchFindings findings) {
+        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings);
     }
 
     // ==================== 预算与参数闸 ====================
@@ -443,6 +452,46 @@ public class HeronResearchTools {
         result.put("count", items.size());
         result.put("productions", items);
         return result;
+    }
+
+    // ==================== 收尾 ====================
+
+    /**
+     * 主动收尾：证据够了就停，不再多花一轮。
+     *
+     * <p>{@code returnDirect = true} 让这次结果直接成为本轮最终回答、跳过下一轮推理。
+     * 这正是 plan.md §5.3「已找到足够证据支持结论」与「继续调查的边际价值较低」两条的落地方式——
+     * 没有它，模型只能一路查到轮数到顶。
+     *
+     * <p>不过闸：收尾不查数据，不该占工具名额，否则预算刚好用尽时模型连结论都交不出来。
+     */
+    @Tool(name = "submit_findings",
+        description = "调查到此为止：把结论交出来。证据已经够、或者再查也不会有新东西时调用它，不要为了多用几次工具而继续查",
+        readOnly = true,
+        returnDirect = true)
+    public String submitFindings(
+        @ToolParam(name = "decision", description = "PRODUCE 值得做 / OBSERVE 还需要更多数据 / REJECT 不值得", required = true) String decision,
+        @ToolParam(name = "reason", description = "为什么，一两句话，要指向具体数字", required = true) String reason,
+        @ToolParam(name = "angle", description = "如果决定做，从哪个角度讲；不做就留空", required = false) String angle,
+        @ToolParam(name = "confidence", description = "把握程度 0 到 1，可省略", required = false) double confidence) {
+
+        String normalized = requireText(decision, "decision").toUpperCase();
+        if (!ResearchFindings.PRODUCE.equals(normalized)
+            && !ResearchFindings.OBSERVE.equals(normalized)
+            && !ResearchFindings.REJECT.equals(normalized)) {
+            throw new HeronBusinessException(400, "invalid_argument",
+                "decision 只能是 PRODUCE / OBSERVE / REJECT，收到 " + decision);
+        }
+        String why = requireText(reason, "reason");
+        if (confidence < 0 || confidence > 1) {
+            throw new HeronBusinessException(400, "invalid_argument",
+                "confidence 必须在 0 到 1 之间，收到 " + confidence);
+        }
+        // 0 表示模型没传（double 参数拿不到 null），当未知而不是「零把握」
+        BigDecimal trust = confidence == 0 ? null : BigDecimal.valueOf(confidence);
+        findings.record(normalized, why, angle == null || angle.isBlank() ? null : angle.trim(), trust);
+
+        return "结论已记录：decision=" + normalized + "。" + why;
     }
 
     // ==================== 工具方法 ====================

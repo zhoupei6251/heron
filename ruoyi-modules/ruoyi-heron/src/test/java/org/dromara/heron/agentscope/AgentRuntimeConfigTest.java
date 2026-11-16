@@ -70,7 +70,7 @@ class AgentRuntimeConfigTest {
                 assertThat(names)
                     .contains("query_opportunities", "query_opportunity_detail", "query_trend_series",
                         "query_dataset_snapshot", "compare_series", "query_data_sources",
-                        "query_source_health", "query_recent_productions")
+                        "query_source_health", "query_recent_productions", "submit_findings")
                     .allSatisfy(name -> assertThat(name.toLowerCase())
                         .doesNotContain("shell", "bash", "file", "write", "edit"));
             }

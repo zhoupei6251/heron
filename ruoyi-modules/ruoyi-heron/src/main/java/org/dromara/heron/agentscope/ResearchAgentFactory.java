@@ -62,6 +62,14 @@ public class ResearchAgentFactory {
      * @param hook      可选的观测/预算钩子（工具调用账本挂在这里）
      */
     public HarnessAgent create(String sessionId, ResearchBudget budget, Hook hook) {
+        return create(sessionId, budget, hook, new ResearchFindings());
+    }
+
+    /**
+     * @param findings 模型主动收尾时写入的结论；每次研究一份，不共享
+     */
+    public HarnessAgent create(String sessionId, ResearchBudget budget, Hook hook,
+                               ResearchFindings findings) {
         if (sessionId == null || sessionId.isBlank()) {
             throw new IllegalArgumentException("会话标识不能为空，否则所有研究共用一段上下文");
         }
@@ -72,7 +80,7 @@ public class ResearchAgentFactory {
                 .maxAttempts(1)
                 .build())
             .build());
-        toolkit.registerTool(budget == null ? tools : tools.withBudget(budget));
+        toolkit.registerTool(budget == null ? tools.withFindings(findings) : tools.withBudget(budget).withFindings(findings));
 
         HarnessAgent.Builder builder = HarnessAgent.builder()
             .name(AGENT_NAME)
