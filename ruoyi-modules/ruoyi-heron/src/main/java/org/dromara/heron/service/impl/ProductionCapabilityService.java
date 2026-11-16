@@ -81,7 +81,7 @@ public class ProductionCapabilityService {
             return Files.isRegularFile(path.resolve("scripts").resolve("proto.mjs"));
         }
         boolean posix = File.separatorChar == '/';
-        if (path.isAbsolute() || tool.indexOf('/') >= 0 || tool.indexOf('\\') >= 0) {
+        if (path.isAbsolute() || configured.indexOf('/') >= 0 || configured.indexOf('\\') >= 0) {
             return Files.isRegularFile(path) && (!posix || Files.isExecutable(path));
         }
         String pathEnvironment = System.getenv("PATH");
