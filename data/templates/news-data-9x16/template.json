@@ -1,6 +1,15 @@
 {
   "name": "数据看板",
-  "description": "折线/排行/赛跑/堆叠/多线/雷达，1080×1920，数据由 dataset/1 快照驱动",
+  "description": "动态数据解释：折线/排行/赛跑/堆叠/多线/雷达，1080×1920，数据由 dataset/1 快照驱动",
+  "style": {
+    "key": "data-board",
+    "name": "Dynamic Data Explainer",
+    "label": "动态数据解释",
+    "role": "数据看板解读、指标变化、排行与趋势",
+    "bg": "#0c1417",
+    "fg": "#f3f0e8",
+    "accent": "#18b7c9"
+  },
   "supportedLines": [
     "DATA_BOARD"
   ],

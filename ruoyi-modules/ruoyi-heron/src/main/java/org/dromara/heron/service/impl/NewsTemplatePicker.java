@@ -20,22 +20,26 @@ public class NewsTemplatePicker {
     private static final int RECENT_LIMIT = 5;
     private static final int BLOCK_LIMIT = 2;
     private static final int SCAN_LIMIT = 20;
+    /**
+     * 每个模板带着自己的视觉风格（说明里写清适用场景），所以选模板就是选风格：
+     * 同一期不该出现两套皮，也不该随机换皮。
+     */
     private static final String SYSTEM =
-        "你是新闻短视频频道的排版编辑。根据标题与摘要，从给出的版式里选一个最合适的。"
+        "你是新闻短视频频道的排版与视觉风格编辑。根据标题与摘要，从给出的版式里选一个最合适的；"
+            + "版式说明里写了这套画面的视觉风格与适用场景，按它选。"
             + "题材有配图、引语或排序时，优先选画面支持它的版式。只回复一个版式标识，不要解释。";
 
     private final NewsProductionDomain domain;
     private final ObjectProvider<OpenAiModelClient> modelProvider;
     private final HeronNewsWorkMapper workMapper;
 
-    /** 手工认领：两条线的模板都进候选，由模型按标题摘要选。 */
-    public String pick(String title, String summary) {
-        return pickFrom(domain.templateCatalog(), title, summary, null);
-    }
-
     /**
      * 按生产线收窄候选。判断依据是模板自己声明的 supportedLines，不是命名前缀——
      * 改模板名不该改出片逻辑。没写 supportedLines 的老模板才退回前缀推断。
+     *
+     * <p>不提供「不传线路」的重载：那会让两条线的模板都进候选，
+     * 于是一条文章候选可能选中数据看板模板，脚本却按解说线写 text 场景，
+     * 契约校验当场炸。线路是调用方必须交代清楚的事。
      */
     public String pick(String title, String summary, String line) {
         return pickFrom(domain.templateCatalog().stream()

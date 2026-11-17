@@ -1,0 +1,41 @@
+{
+  "templateKey": "news-data-broadcast-9x16",
+  "templateVersion": "1",
+  "files": [
+    {
+      "path": "fonts/NotoSansSC-Regular.otf",
+      "sha256": "763146584cf0710223441356b4395e279021b0806c196614377a7a0174ae074a",
+      "bytes": 17773244
+    },
+    {
+      "path": "gsap.min.js",
+      "sha256": "c174bfce53a729418d57a8ad8625e7247c793a22fef8e2851e3cfa3de9cd8280",
+      "bytes": 72779
+    },
+    {
+      "path": "index.html",
+      "sha256": "0298bc5fbf40504389fa6b29ee24d96c245af82663b52d18c71a55be6448cf56",
+      "bytes": 52549
+    },
+    {
+      "path": "index.motion.json",
+      "sha256": "b02cc58c005cc756b37f8eb1c40f22343baeae2845a0968577a437df7bbee3e5",
+      "bytes": 483
+    },
+    {
+      "path": "narration.mp3",
+      "sha256": "f42dfbf9155145b9dd3d284cad0e7c88a25b3fe47bbbe87be92874051038f623",
+      "bytes": 179522
+    },
+    {
+      "path": "template.config.json",
+      "sha256": "d1972a39d7e12ab7a175e1b3d559733ce63cdd45cb09c2d50c6ee1b35f729a6b",
+      "bytes": 3151
+    },
+    {
+      "path": "template.json",
+      "sha256": "974ecd88b25084928eab41d1f00014a185d51739c68fd5793e0b688f18853de7",
+      "bytes": 701
+    }
+  ]
+}

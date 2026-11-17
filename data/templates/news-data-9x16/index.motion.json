@@ -3,6 +3,11 @@
   "assertions": [
     {
       "kind": "appearsBy",
+      "selector": ".ambient",
+      "bySec": 2
+    },
+    {
+      "kind": "appearsBy",
       "selector": "#aigc-badge",
       "bySec": 0.5
     },
@@ -18,7 +23,7 @@
     {
       "kind": "keepsMoving",
       "withinSelector": "#root",
-      "maxStaticSec": 6
+      "maxStaticSec": 4
     }
   ]
 }

@@ -1,286 +1,226 @@
 <!doctype html>
-<html lang="zh-CN" data-composition-variables='[
-  {
-    "id": "title",
-    "type": "string",
-    "label": "标题",
-    "maxLength": 15,
-    "default": "金价创阶段新高"
-  },
-  {
-    "id": "scene1_lead",
-    "type": "string",
-    "label": "第一屏领句",
-    "maxLength": 40,
-    "default": "金价站上关键位"
-  },
-  {
-    "id": "scene1_body",
-    "type": "string",
-    "label": "第一屏正文",
-    "maxLength": 600,
-    "default": "最新收于 4113.34 美元，创下阶段新高。"
-  },
-  {
-    "id": "scene2_lead",
-    "type": "string",
-    "label": "第二屏领句",
-    "maxLength": 40,
-    "default": "较前一日走高"
-  },
-  {
-    "id": "scene2_body",
-    "type": "string",
-    "label": "第二屏正文",
-    "maxLength": 600,
-    "default": "较前一日上涨 21.79 美元，涨幅 0.53%。"
-  },
-  {
-    "id": "scene3_lead",
-    "type": "string",
-    "label": "第三屏领句",
-    "maxLength": 40,
-    "default": "区间高点确认"
-  },
-  {
-    "id": "scene3_body",
-    "type": "string",
-    "label": "第三屏正文",
-    "maxLength": 600,
-    "default": "近两周区间最高 4113.34 美元，最低 3988.20 美元。"
-  },
-  {
-    "id": "scene4_lead",
-    "type": "string",
-    "label": "第四屏领句",
-    "maxLength": 40,
-    "default": ""
-  },
-  {
-    "id": "scene4_body",
-    "type": "string",
-    "label": "第四屏正文",
-    "maxLength": 600,
-    "default": ""
-  },
-  {
-    "id": "scene5_lead",
-    "type": "string",
-    "label": "第五屏领句",
-    "maxLength": 40,
-    "default": ""
-  },
-  {
-    "id": "scene5_body",
-    "type": "string",
-    "label": "第五屏正文",
-    "maxLength": 600,
-    "default": ""
-  },
-  {
-    "id": "scene6_lead",
-    "type": "string",
-    "label": "第六屏领句",
-    "maxLength": 40,
-    "default": ""
-  },
-  {
-    "id": "scene6_body",
-    "type": "string",
-    "label": "第六屏正文",
-    "maxLength": 600,
-    "default": ""
-  },
-  {
-    "id": "closing",
-    "type": "string",
-    "label": "结尾口播",
-    "maxLength": 200,
-    "default": "关注接下来的走势。"
-  },
-  {
-    "id": "source_name",
-    "type": "string",
-    "label": "来源名称",
-    "maxLength": 80,
-    "default": "来源：新浪财经"
-  },
-  {
-    "id": "accent",
-    "type": "color",
-    "label": "品牌色",
-    "default": "#18b7c9"
-  },
-  {
-    "id": "scene_count",
-    "type": "number",
-    "label": "场景数",
-    "min": 3,
-    "max": 6,
-    "default": 3
-  },
-  {
-    "id": "chart",
-    "type": "enum",
-    "label": "图表模块",
-    "options": [
-      {
-        "value": "line",
-        "label": "折线"
-      },
-      {
-        "value": "bars",
-        "label": "排行"
-      },
-      {
-        "value": "race",
-        "label": "赛跑"
-      },
-      {
-        "value": "stacked",
-        "label": "堆叠"
-      },
-      {
-        "value": "multiline",
-        "label": "多线"
-      },
-      {
-        "value": "radar",
-        "label": "雷达"
-      }
-    ],
-    "default": "line"
-  },
-  {
-    "id": "dataset_json",
-    "type": "string",
-    "label": "数据快照",
-    "default": "{\"contract\":\"dataset/1\",\"source_key\":\"sina-gold-xau\",\"source_name\":\"新浪财经\",\"cadence\":\"daily\",\"shape\":\"wide\",\"columns\":[\"date\",\"value\"],\"metric\":{\"key\":\"close\",\"label\":\"伦敦金收盘价\",\"unit\":\"USD/oz\",\"precision\":2},\"rows\":[[\"2026-10-26\",3988.2],[\"2026-10-27\",3996.4],[\"2026-10-28\",4002.1],[\"2026-10-29\",3991.8],[\"2026-10-30\",4008.6],[\"2026-11-02\",4021.3],[\"2026-11-03\",4033.0],[\"2026-11-04\",4042.7],[\"2026-11-05\",4091.55],[\"2026-11-06\",4105.5],[\"2026-11-09\",4110.04],[\"2026-11-10\",4113.34]],\"time_range\":{\"start\":\"2026-10-26\",\"end\":\"2026-11-10\",\"points\":12}}"
-  },
-  {
-    "id": "scene1_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  },
-  {
-    "id": "scene2_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  },
-  {
-    "id": "scene3_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  },
-  {
-    "id": "scene4_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  },
-  {
-    "id": "scene5_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  },
-  {
-    "id": "scene6_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  }
-]'>
+<html lang="zh-CN" data-composition-variables='[{"id":"title","type":"string","label":"标题","maxLength":15,"default":"金价创阶段新高"},{"id":"kicker","type":"string","label":"栏目标签","maxLength":12,"default":"数据观察"},{"id":"scene1_lead","type":"string","label":"第1屏领句","maxLength":40,"default":"金价站上关键位"},{"id":"scene1_body","type":"string","label":"第1屏正文","maxLength":600,"default":"最新收于 4113.34 美元，接近区间高点。"},{"id":"scene2_lead","type":"string","label":"第2屏领句","maxLength":40,"default":"较两周前走高"},{"id":"scene2_body","type":"string","label":"第2屏正文","maxLength":600,"default":"较区间起点上涨 125.14 美元，涨幅 3.14%。"},{"id":"scene3_lead","type":"string","label":"第3屏领句","maxLength":40,"default":"区间高点确认"},{"id":"scene3_body","type":"string","label":"第3屏正文","maxLength":600,"default":"近两周区间最高 4113.34 美元，最低 3988.20 美元。"},{"id":"scene4_lead","type":"string","label":"第4屏领句","maxLength":40,"default":""},{"id":"scene4_body","type":"string","label":"第4屏正文","maxLength":600,"default":""},{"id":"scene5_lead","type":"string","label":"第5屏领句","maxLength":40,"default":""},{"id":"scene5_body","type":"string","label":"第5屏正文","maxLength":600,"default":""},{"id":"scene6_lead","type":"string","label":"第6屏领句","maxLength":40,"default":""},{"id":"scene6_body","type":"string","label":"第6屏正文","maxLength":600,"default":""},{"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"关注接下来的走势。"},{"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"来源：新浪财经"},{"id":"accent","type":"color","label":"品牌色","default":"#18b7c9"},{"id":"scene_count","type":"number","label":"场景数","min":3,"max":6,"default":3},{"id":"chart","type":"enum","label":"图表模块","default":"line","options":[{"value":"line","label":"折线"},{"value":"bars","label":"排行"},{"value":"race","label":"赛跑"},{"value":"stacked","label":"堆叠"},{"value":"multiline","label":"多线"},{"value":"radar","label":"雷达"}]},{"id":"dataset_json","type":"string","label":"数据快照","default":"{\"contract\":\"dataset/1\",\"source_key\":\"sina-gold-xau\",\"source_name\":\"新浪财经\",\"cadence\":\"daily\",\"shape\":\"wide\",\"columns\":[\"date\",\"value\"],\"metric\":{\"key\":\"close\",\"label\":\"伦敦金收盘价\",\"unit\":\"USD/oz\",\"precision\":2},\"rows\":[[\"2026-10-26\",3988.2],[\"2026-10-27\",3996.4],[\"2026-10-28\",4002.1],[\"2026-10-29\",3991.8],[\"2026-10-30\",4008.6],[\"2026-11-02\",4021.3],[\"2026-11-03\",4033],[\"2026-11-04\",4042.7],[\"2026-11-05\",4091.55],[\"2026-11-06\",4105.5],[\"2026-11-09\",4110.04],[\"2026-11-10\",4113.34]],\"time_range\":{\"start\":\"2026-10-26\",\"end\":\"2026-11-10\",\"points\":12},\"facts\":{\"first\":{\"date\":\"2026-10-26\",\"value\":3988.2},\"last\":{\"date\":\"2026-11-10\",\"value\":4113.34},\"min\":{\"date\":\"2026-10-26\",\"value\":3988.2},\"max\":{\"date\":\"2026-11-10\",\"value\":4113.34},\"change\":125.14,\"change_pct\":3.14,\"period\":{\"start_year\":2026,\"end_year\":2026}}}"}]'>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
     <title>Heron 数据看板竖版</title>
     <style>
-      @font-face {
-        font-family: "Noto Sans SC";
-        src: url("fonts/NotoSansSC-Regular.otf") format("truetype");
-        font-weight: 100 900;
-        font-display: block;
-      }
-      * { box-sizing: border-box; }
-      body { margin: 0; background: #0c1417; color: #f3f0e8; font-family: "Noto Sans SC", sans-serif; }
-      #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0c1417; }
-      .clip { position: absolute; inset: 0; }
-      #title-card { padding: 128px 84px 0 84px; }
-      #title { margin: 0; font-size: 92px; font-weight: 800; line-height: 1.16; letter-spacing: -0.02em; color: #f3f0e8; }
-      #rule { margin-top: 26px; width: 100%; height: 3px; background: var(--accent); }
-      #kpi { display: flex; align-items: baseline; gap: 14px; margin-top: 24px; }
-      #kpi-value { font-size: 64px; font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
-      #kpi-unit { font-size: 28px; color: #7f949b; }
-      #kpi-change { font-size: 32px; font-weight: 600; color: #f3f0e8; font-variant-numeric: tabular-nums; }
-      #chart-slot { top: 430px; left: 84px; right: 84px; height: 760px; overflow: hidden; }
-      #chart { width: 100%; height: 100%; display: block; }
-      .axis { stroke: rgba(243, 240, 232, 0.14); stroke-width: 2; }
-      .axis-label { fill: #7f949b; font-size: 28px; font-variant-numeric: tabular-nums; }
-      .annotation { fill: #f3f0e8; font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
-      .series-line { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round;
-                     filter: drop-shadow(0 0 8px rgba(24, 183, 201, 0.35)); }
-      .series-area { fill: var(--accent); opacity: 0.16; }
-      .dot { fill: var(--accent); filter: drop-shadow(0 0 10px rgba(24, 183, 201, 0.7)); }
-      .dot-label { fill: #f3f0e8; font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
-      .bar { fill: var(--accent); transform-box: fill-box; transform-origin: left center; }
-      .bar-label { fill: #f3f0e8; font-size: 28px; font-weight: 600; }
-      .bar-value { fill: #9fb0b6; font-size: 28px; font-variant-numeric: tabular-nums; }
-      .band { stroke: #0c1417; stroke-width: 2; }
-      .multi-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-      .baseline { stroke: rgba(243, 240, 232, 0.28); stroke-width: 2; stroke-dasharray: 10 10; }
-      .legend-name { fill: #dde6e8; font-weight: 600; }
-      .legend-value { fill: #9fb0b6; font-variant-numeric: tabular-nums; }
-      .radar-grid { fill: none; stroke: rgba(243, 240, 232, 0.12); stroke-width: 2; }
-      .radar-spoke { stroke: rgba(243, 240, 232, 0.12); stroke-width: 2; }
-      .radar-poly { fill: var(--accent); fill-opacity: 0.18; stroke: var(--accent); stroke-width: 5;
-                    stroke-linejoin: round; filter: drop-shadow(0 0 10px rgba(24, 183, 201, 0.35)); }
-      .radar-dot { fill: var(--accent); }
-      .radar-label { fill: #dde6e8; font-weight: 600; }
-      .radar-value { fill: #9fb0b6; font-weight: 400; font-variant-numeric: tabular-nums; }
-      .chart-note { fill: #7f949b; font-size: 22px; }
-      .scene {
-        top: 1230px;
-        bottom: 420px;
-        left: 0;
-        right: 0;
-        padding: 0 84px;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-      }
-      .lead { margin: 0 0 18px; font-size: 54px; font-weight: 700; line-height: 1.35; color: #f3f0e8;
-              display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-      .body { margin: 0; font-size: 38px; font-weight: 400; line-height: 1.6; color: #b7c4c9;
-              max-height: 170px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-      #closing-slot { top: 1230px; bottom: 420px; padding: 0 84px; display: flex; align-items: flex-start; }
-      #closing { margin: 0; padding: 24px 28px; font-size: 38px; font-weight: 500; line-height: 1.55; color: #f3f0e8;
-                 background: rgba(243, 240, 232, 0.06); border-left: 10px solid var(--accent); border-radius: 8px;
-                 display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
-      #bottom-bar { position: absolute; left: 0; right: 0; bottom: 300px; padding: 0 84px; }
-      #progress { display: block; height: 6px; border-radius: 3px; background: var(--accent);
-                  transform-origin: left center; margin-bottom: 28px; }
-      #meta-row { display: flex; align-items: center; justify-content: space-between; }
-      #aigc-badge { font-size: 28px; padding: 12px 24px; border-radius: 999px; white-space: nowrap;
-                    color: #0c1417; background: #f3f0e8; }
-      #source-line { font-size: 28px; max-width: 560px; text-align: right; color: #7f949b; }
+/* 所有模板共享的画布基础。令牌由 _shared/tokens 下的同名样式文件提供。
+   注意：注释里不要出现 style 标签的字面写法，它会被 HTML 解析器当成真的开始标签。 */
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("fonts/NotoSansSC-Regular.otf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+}
+#root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+.clip { position: absolute; inset: 0; }
+
+/* 纵深：环境层是最远的一层，永远在内容之下、永远在动。
+   三层各自可开关（透明度为 0 即视为关闭），但网格与光晕是默认配置。 */
+.ambient { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.ambient > div { position: absolute; inset: 0; }
+.ambient-grid {
+  background-image:
+    linear-gradient(to right, var(--rule-faint) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule-faint) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  opacity: var(--grid-opacity);
+}
+.ambient-glow {
+  background: radial-gradient(circle at var(--glow-x) var(--glow-y),
+              var(--glow-color) 0%, transparent var(--glow-spread));
+  opacity: var(--glow-opacity);
+}
+.ambient-grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.55'/></svg>");
+  background-size: 140px 140px;
+  opacity: var(--grain-opacity);
+}
+/* 内容层压在环境层之上：骨架里的每块都自己定位，这里只统一抬 z-index。 */
+#title-card, #chart-slot, .scene, #closing-slot, #bottom-bar { z-index: 1; }
+
+/* 场景序号：给画面一个「第几拍」的锚点，避免每屏长得一样。 */
+.scene-no {
+  display: block;
+  font-family: var(--font-num);
+  font-size: var(--fs-note);
+  font-weight: 700;
+  letter-spacing: var(--track-kicker);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 硬规则 1：视频字号下限 24px，竖屏 32px。这条不能靠 CSS 强制，只作为约定写在这里，由构建期校验兜底。 */
+/* 风格 C · Dynamic Data Explainer：深底、高对比、等宽数字、网格装饰。
+   定位：数据看板解读、指标变化、排行与趋势。信息密度最高的一套。
+   注意：--accent 不在这里定义——它由 HyperFrames 从 composition 的
+   color 类型变量自动注入为同名 CSS 自定义属性，手写会与之冲突。 */
+:root {
+  --bg: #0c1417;
+  --fg: #f3f0e8;
+  --muted: #7f949b;
+  --muted-2: #9fb0b6;
+  --body: #b7c4c9;
+  --legend: #dde6e8;
+  --down: #e06c5a;
+
+  --rule-faint: rgba(243, 240, 232, 0.12);
+  --rule-soft: rgba(243, 240, 232, 0.14);
+  --rule-strong: rgba(243, 240, 232, 0.28);
+  --panel: rgba(243, 240, 232, 0.06);
+  --glow-color: rgba(24, 183, 201, 0.20);
+  --accent-glow: rgba(24, 183, 201, 0.35);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 92px;
+  --fs-title-lg: 76px;
+  --fs-title-sm: 68px;
+  --fs-data: 64px;
+  --fs-data-sm: 34px;
+  --fs-lead: 54px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 24px;
+
+  --pad-frame: 84px;
+  --rule-width: 3px;
+  --radius: 8px;
+  --track-kicker: 0.16em;
+
+  /* 环境层：网格给结构感，光晕给焦点，颗粒给质感。透明度不得低于 0.1，否则等于没有。 */
+  --grid-size: 72px;
+  --grid-opacity: 0.55;
+  --glow-x: 78%;
+  --glow-y: 18%;
+  --glow-spread: 62%;
+  --glow-opacity: 0.9;
+  --grain-opacity: 0.16;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.32s;
+  --dur-ambient: 7s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+}
+/* chart 能力专用样式。仅在 capabilities 含 chart 时注入。 */
+#kpi { display: flex; align-items: baseline; gap: 14px; margin-top: 24px; }
+#kpi-value { font-size: var(--fs-data); font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
+#kpi-unit { font-size: var(--fs-label); color: var(--muted); }
+#kpi-change { font-size: 32px; font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+#chart-slot { top: 430px; left: var(--pad-frame); right: var(--pad-frame); height: 760px; overflow: hidden; }
+#chart { width: 100%; height: 100%; display: block; }
+.axis { stroke: var(--rule-soft); stroke-width: 2; }
+.axis-label { fill: var(--muted); font-size: var(--fs-label); font-variant-numeric: tabular-nums; }
+.annotation { fill: var(--fg); font-size: var(--fs-label); font-weight: 600; font-variant-numeric: tabular-nums; }
+.series-line { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round;
+               filter: drop-shadow(0 0 8px var(--accent-glow)); }
+.series-area { fill: var(--accent); opacity: 0.16; }
+.dot { fill: var(--accent); filter: drop-shadow(0 0 10px var(--accent-glow)); }
+.dot-label { fill: var(--fg); font-size: var(--fs-data-sm); font-weight: 700; font-variant-numeric: tabular-nums; }
+.bar { fill: var(--accent); transform-box: fill-box; transform-origin: left center; }
+.bar-label { fill: var(--fg); font-size: var(--fs-label); font-weight: 600; }
+.bar-value { fill: var(--muted-2); font-size: var(--fs-label); font-variant-numeric: tabular-nums; }
+.band { stroke: var(--bg); stroke-width: 2; }
+.multi-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.baseline { stroke: var(--rule-strong); stroke-width: 2; stroke-dasharray: 10 10; }
+.legend-name { fill: var(--legend); font-weight: 600; }
+.legend-value { fill: var(--muted-2); font-variant-numeric: tabular-nums; }
+.radar-grid { fill: none; stroke: var(--rule-faint); stroke-width: 2; }
+.radar-spoke { stroke: var(--rule-faint); stroke-width: 2; }
+.radar-poly { fill: var(--accent); fill-opacity: 0.18; stroke: var(--accent); stroke-width: 5;
+              stroke-linejoin: round; filter: drop-shadow(0 0 10px var(--accent-glow)); }
+.radar-dot { fill: var(--accent); }
+.radar-label { fill: var(--legend); font-weight: 600; }
+.radar-value { fill: var(--muted-2); font-weight: 400; font-variant-numeric: tabular-nums; }
+.chart-note { fill: var(--muted); font-size: var(--fs-note); }
+/* news-data-9x16 的版式差异（风格 C · 动态数据解释）。令牌见 _shared/tokens/data-board.css。
+   纵向预算（1080×1920）：标题区 0–500 / 图表 520–1120 / 场景 1130–1550 / 底栏 1600–1690。
+   改任何一段高度都要重算这条线，否则文字会被自己的盒子裁掉。 */
+#title-card { padding: 104px var(--pad-frame) 0 var(--pad-frame); }
+#kicker { display: flex; align-items: center; gap: 16px; margin-bottom: 26px; }
+#kicker-flag { width: 56px; height: 8px; background: var(--accent); }
+#kicker-text { font-size: var(--fs-note); font-weight: 700; letter-spacing: var(--track-kicker); color: var(--muted-2); }
+#title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 800;
+  line-height: 1.16;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+#rule { margin-top: 26px; width: 100%; height: var(--rule-width); background: var(--accent); transform-origin: left center; }
+#chart-slot { top: 500px; height: 550px; }
+
+.scene {
+  top: 1075px;
+  bottom: 410px;
+  left: 0;
+  right: 0;
+  padding: 0 var(--pad-frame);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+/* flex: none——默认的 flex-shrink 会在内容超高时把文字盒压扁，再由 overflow 裁掉字形 */
+.scene-no { flex: none; color: var(--accent); margin-bottom: 12px; }
+.lead { flex: none; margin: 0 0 18px; font-size: var(--fs-lead); font-weight: 700; line-height: 1.5; color: var(--fg);
+        max-height: 164px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.body { flex: none; margin: 0; font-size: var(--fs-body); font-weight: 400; line-height: 1.7; color: var(--body);
+        max-height: 198px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.scene-figure { flex: none; margin: 0 0 20px; height: 280px; border-radius: var(--radius); overflow: hidden; }
+.scene-figure img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+#closing-slot { top: 1075px; bottom: 410px; padding: 0 var(--pad-frame); display: flex; align-items: flex-start; }
+#closing { margin: 0; padding: 24px 28px; font-size: var(--fs-body); font-weight: 500; line-height: 1.7; color: var(--fg);
+           background: var(--panel); border-left: 10px solid var(--accent); border-radius: var(--radius);
+           display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 300px; padding: 0 var(--pad-frame); }
+#progress { display: block; height: 6px; border-radius: 3px; background: var(--accent);
+            transform-origin: left center; margin-bottom: 28px; }
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+#aigc-badge { font-size: var(--fs-label); padding: 12px 24px; border-radius: 999px; white-space: nowrap;
+              color: var(--bg); background: var(--fg); }
+#source-line { font-size: var(--fs-label); max-width: 560px; text-align: right; color: var(--muted); }
     </style>
   </head>
   <body>
-    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920" data-duration="45">
+    <div id="root" data-composition-id="main" data-style="data-board" data-start="0" data-width="1080" data-height="1920" data-duration="45">
+      <div class="ambient" aria-hidden="true">
+        <div class="ambient-grid" data-ambient="drift"></div>
+        <div class="ambient-glow" data-ambient="pulse"></div>
+        <div class="ambient-grain" data-ambient="flicker"></div>
+      </div>
+
       <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="45" data-track-index="9"></audio>
 
       <header id="title-card" class="clip" data-start="0" data-duration="45" data-track-index="0">
+        <div id="kicker">
+          <span id="kicker-flag"></span>
+          <span id="kicker-text" data-var-text="kicker">数据观察</span>
+        </div>
         <h1 id="title" data-var-text="title">金价创阶段新高</h1>
         <div id="rule"></div>
         <div id="kpi">
-          <span id="kpi-value">4113.34</span>
-          <span id="kpi-unit">USD/oz</span>
-          <span id="kpi-change">▲ 21.79（0.53%）</span>
+          <span id="kpi-value"></span>
+          <span id="kpi-unit"></span>
+          <span id="kpi-change"></span>
         </div>
       </header>
 
@@ -289,26 +229,32 @@
       </section>
 
       <section id="scene-1" class="clip scene" data-start="0" data-duration="15" data-track-index="2" data-scene-index="1">
+        <span class="scene-no">01</span>
         <p class="lead" data-var-text="scene1_lead">金价站上关键位</p>
-        <p class="body" data-var-text="scene1_body">最新收于 4113.34 美元，创下阶段新高。</p>
+        <p class="body" data-var-text="scene1_body">最新收于 4113.34 美元，接近区间高点。</p>
       </section>
       <section id="scene-2" class="clip scene" data-start="15" data-duration="15" data-track-index="2" data-scene-index="2">
-        <p class="lead" data-var-text="scene2_lead">较前一日走高</p>
-        <p class="body" data-var-text="scene2_body">较前一日上涨 21.79 美元，涨幅 0.53%。</p>
+        <span class="scene-no">02</span>
+        <p class="lead" data-var-text="scene2_lead">较两周前走高</p>
+        <p class="body" data-var-text="scene2_body">较区间起点上涨 125.14 美元，涨幅 3.14%。</p>
       </section>
       <section id="scene-3" class="clip scene" data-start="30" data-duration="15" data-track-index="2" data-scene-index="3">
+        <span class="scene-no">03</span>
         <p class="lead" data-var-text="scene3_lead">区间高点确认</p>
         <p class="body" data-var-text="scene3_body">近两周区间最高 4113.34 美元，最低 3988.20 美元。</p>
       </section>
       <section id="scene-4" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="4">
+        <span class="scene-no">04</span>
         <p class="lead" data-var-text="scene4_lead"></p>
         <p class="body" data-var-text="scene4_body"></p>
       </section>
       <section id="scene-5" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="5">
+        <span class="scene-no">05</span>
         <p class="lead" data-var-text="scene5_lead"></p>
         <p class="body" data-var-text="scene5_body"></p>
       </section>
       <section id="scene-6" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="6">
+        <span class="scene-no">06</span>
         <p class="lead" data-var-text="scene6_lead"></p>
         <p class="body" data-var-text="scene6_body"></p>
       </section>
@@ -328,14 +274,42 @@
 
     <script src="gsap.min.js"></script>
     <script>
-      const declared = window.__hyperframes && window.__hyperframes.getVariables
-        ? window.__hyperframes.getVariables()
-        : {};
+// 变量注入与通用填充。所有模板共用，必须最先执行。
+const declared = window.__hyperframes && window.__hyperframes.getVariables
+  ? window.__hyperframes.getVariables()
+  : {};
+const root = document.getElementById("root");
+const tl = gsap.timeline({ paused: true });
+const total = parseFloat(root.dataset.duration);
+
+// 模板里的尺寸一律来自令牌，避免 JS 和 CSS 各写一份而漂移
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// 标题按字数降档：92px → 76px → 68px
+const titleEl = document.getElementById("title");
+const titleLen = Array.from(declared.title || titleEl.textContent || "").length;
+if (titleLen > 11) titleEl.style.fontSize = cssVar("--fs-title-sm");
+else if (titleLen > 9) titleEl.style.fontSize = cssVar("--fs-title-lg");
+
+// 实际播几屏由稿件决定，模板只负责准备好槽位
+const sceneCount = Number.isFinite(Number(declared.scene_count)) ? Number(declared.scene_count) : 3;
+
+// 屏次编号与配图同理：槽位先备好，有没有编号和有没有图由稿件与模板能力决定。
+document.querySelectorAll(".scene").forEach((slot) => {
+  const index = slot.dataset.sceneIndex;
+  const no = slot.querySelector(".scene-no");
+  if (no) no.textContent = String(index).padStart(2, "0");
+  const figure = slot.querySelector(".scene-figure");
+  const src = declared["scene" + index + "_image"];
+  if (!figure || !src) return;
+  // img 由脚本创建而不是写在 HTML 里：静态 <img> 会被版式闸判成同组重复媒体节点
+  const img = document.createElement("img");
+  img.alt = "";
+  img.src = src;
+  figure.appendChild(img);
+});
+
       const dataset = JSON.parse(declared.dataset_json);
-      const titleEl = document.getElementById("title");
-      const titleLen = Array.from(declared.title || titleEl.textContent || "").length;
-      if (titleLen > 11) titleEl.style.fontSize = "68px";
-      else if (titleLen > 9) titleEl.style.fontSize = "76px";
       const chart = declared.chart || "line";
       const precision = Number(dataset.metric && dataset.metric.precision);
       const unit = dataset.metric && dataset.metric.unit ? dataset.metric.unit : "";
@@ -356,10 +330,10 @@
         document.getElementById("kpi-unit").textContent = unit;
         if (typeof facts.change === "number") {
           const arrow = facts.change >= 0 ? "▲" : "▼";
-          const pct = typeof facts.change_pct === "number" ? "（" + facts.change_pct.toFixed(2) + "%）" : "";
+          const pct = typeof facts.change_pct === "number" ? "（" + Math.abs(facts.change_pct).toFixed(2) + "%）" : "";
           const changeEl = document.getElementById("kpi-change");
           changeEl.textContent = arrow + " " + fmt(Math.abs(facts.change)) + pct;
-          changeEl.style.color = facts.change >= 0 ? "var(--accent)" : "#e06c5a";
+          changeEl.style.color = facts.change >= 0 ? "var(--accent)" : "var(--down)";
         }
       } else if (facts.leader) {
         kpiTarget = facts.leader.value;
@@ -371,8 +345,6 @@
       const W = 912;
       const H = 760;
       const pad = { left: 132, right: 36, top: 56, bottom: 72 };
-      const tl = gsap.timeline({ paused: true });
-      const total = parseFloat(document.getElementById("root").dataset.duration);
       tl.fromTo("#chart", { scale: 1 }, { scale: 1.04, duration: total, ease: "none", transformOrigin: "center center" }, 0);
       if (Number.isFinite(kpiTarget) && chart !== "race") {
         const counter = { v: 0 };
@@ -381,7 +353,6 @@
         tl.to(counter, { v: kpiTarget, duration: 1.2, ease: "power2.out",
           onUpdate: () => { kpiValue.textContent = fmt(counter.v); } }, 0.35);
       }
-
       const clip = (text) => {
         const list = Array.from(text);
         const max = /[一-鿿]/.test(text) ? 10 : 22;
@@ -854,30 +825,87 @@
         }
       }
 
-      tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
-      tl.from("#title", { y: 40, opacity: 0, duration: 0.8, ease: "power3.out" }, 0.2);
-      tl.from("#kpi", { y: 20, opacity: 0, duration: 0.6, ease: "power2.out" }, 0.35);
-      tl.from("#rule", { scaleX: 0, duration: 0.8, ease: "power2.out" }, 0.5);
-      tl.from("#aigc-badge", { opacity: 0, duration: 0.4, ease: "none" }, 0.2);
-      tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
+// 全局时间线与场景进出。所有模板共用，必须在 chart 之后执行。
+// 只做三个动作：enter / ambient / swap。参数全部来自令牌，
+// 风格差异靠改令牌而不是另写一套动画——否则三套风格很快就会长成三份真相。
+// 数字滚动不在这里：KPI 的小数位与单位随数据集变化，由 chart.js 按 precision 驱动。
+const has = (selector) => document.querySelector(selector) !== null;
+const numberVar = (name, fallback) => {
+  const value = parseFloat(cssVar(name));
+  return Number.isFinite(value) ? value : fallback;
+};
+const EASE_OUT = cssVar("--ease-out") || "power3.out";
+const EASE_IN = cssVar("--ease-in") || "power2.in";
+const DUR = {
+  entrance: numberVar("--dur-entrance", 0.5),
+  swap: numberVar("--dur-swap", 0.3),
+  ambient: numberVar("--dur-ambient", 7),
+};
+const FROM = { up: { y: 30 }, down: { y: -30 }, left: { x: 46 }, right: { x: -46 }, none: {} };
 
-      const sceneCount = Number.isFinite(Number(declared.scene_count)) ? Number(declared.scene_count) : 3;
-      document.querySelectorAll(".scene").forEach((slot) => {
-        if (Number(slot.dataset.sceneIndex) > sceneCount) {
-          slot.hidden = true;
-          slot.style.display = "none";
-          return;
-        }
-        const start = parseFloat(slot.dataset.start);
-        const end = start + parseFloat(slot.dataset.duration);
-        tl.from(slot.querySelector(".lead"), { y: 28, opacity: 0, duration: 0.5, ease: "power3.out" }, start);
-        tl.from(slot.querySelector(".body"), { y: 28, opacity: 0, duration: 0.5, ease: "power3.out" }, start + 0.12);
-        const outAt = Math.max(start + 0.5, end - 0.35);
-        tl.to(slot.querySelector(".lead"), { opacity: 0, y: -16, duration: 0.3, ease: "power1.in" }, outAt);
-        tl.to(slot.querySelector(".body"), { opacity: 0, y: -16, duration: 0.3, ease: "power1.in" }, outAt);
-      });
+// immediateRender：动画排在中段时 GSAP 默认不提前写起始值，元素会先裸着露出来
+function enter(targets, { dir = "up", at = 0, stagger = 0 } = {}) {
+  if (!targets) return;
+  const list = typeof targets === "string" ? document.querySelectorAll(targets) : targets;
+  if (!list || (!list.nodeType && !list.length)) return;
+  tl.from(list, { ...FROM[dir], opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger, immediateRender: true }, at);
+}
 
-      window.__timelines["main"] = tl;
+function ambient(scope = document) {
+  scope.querySelectorAll("[data-ambient]").forEach((el) => {
+    const base = parseFloat(getComputedStyle(el).opacity);
+    const dim = Number.isFinite(base) ? base : 1;
+    const kind = el.dataset.ambient;
+    if (kind === "drift") {
+      tl.to(el, { x: 18, y: -14, duration: DUR.ambient, ease: "sine.inOut", repeat: -1, yoyo: true }, 0);
+    } else if (kind === "pulse") {
+      tl.to(el, { opacity: dim * 0.55, scale: 1.06, duration: DUR.ambient * 0.8, ease: "sine.inOut", repeat: -1, yoyo: true }, 0);
+    } else if (kind === "flicker") {
+      tl.to(el, { opacity: dim * 0.7, duration: DUR.ambient * 0.35, ease: "sine.inOut", repeat: -1, yoyo: true }, 0);
+    }
+  });
+}
+
+function swap(slot, start, end) {
+  const parts = slot.querySelectorAll(".scene-no, .lead, .body");
+  if (!parts.length) return;
+  tl.from(parts, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, start);
+  const outAt = Math.max(start + DUR.entrance, end - DUR.swap);
+  tl.to(parts, { y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, outAt);
+}
+
+ambient();
+
+tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
+enter("#kicker", { dir: "left", at: 0.1 });
+enter("#title", { dir: "up", at: 0.2 });
+tl.from("#rule", { scaleX: 0, duration: DUR.entrance, ease: EASE_OUT, immediateRender: true }, 0.45);
+if (has("#kpi")) enter("#kpi", { dir: "up", at: 0.35 });
+enter("#aigc-badge", { dir: "none", at: 0.2 });
+// 只淡出标题区，栏目标签留作画面锚点
+tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
+
+document.querySelectorAll(".scene").forEach((slot) => {
+  if (Number(slot.dataset.sceneIndex) > sceneCount) {
+    slot.hidden = true;
+    slot.style.display = "none";
+    return;
+  }
+  const start = parseFloat(slot.dataset.start);
+  const end = start + parseFloat(slot.dataset.duration);
+  swap(slot, start, end);
+});
+
+// 结尾口播占最后一屏让出的时间窗；模板默认值下它就落在片尾，不另外排动画
+const closingSlot = document.getElementById("closing-slot");
+if (closingSlot) {
+  const at = parseFloat(closingSlot.dataset.start);
+  if (Number.isFinite(at) && at < total - 0.1) {
+    enter(closingSlot.querySelector("#closing"), { dir: "up", at });
+  }
+}
+
+window.__timelines["main"] = tl;
     </script>
   </body>
 </html>

@@ -20,6 +20,15 @@
         ],
         "createdAt": "2026-11-12T04:09:11.598Z",
         "reason": "broadcast video composition, not web UI; thick accent bar on the closing callout is intended broadcast graphics, predates this session"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "data/templates/layouts/news-broadcast/news-data-broadcast-9x16.css"
+        ],
+        "createdAt": "2026-11-17T07:12:37.144Z",
+        "reason": "design intent: plan_impl.md 风格A 明确要求下三分之一信息条（Lower Third），左侧立标是播报图形的行业惯例；这是视频画幅内的图形，不是网页卡片"
       }
     ]
   }

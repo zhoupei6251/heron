@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='{{VARIABLES_JSON}}'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width={{WIDTH}}, height={{HEIGHT}}" />
+    <title>{{PAGE_TITLE}}</title>
+    <style>
+{{STYLES}}
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-style="{{STYLE}}" data-start="0" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" data-duration="{{DURATION}}">
+      <div class="ambient" aria-hidden="true">
+        <div class="ambient-grid" data-ambient="drift"></div>
+        <div class="ambient-glow" data-ambient="pulse"></div>
+        <div class="ambient-grain" data-ambient="flicker"></div>
+      </div>
+
+      <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="{{DURATION}}" data-track-index="9"></audio>
+
+      <header id="title-card" class="clip" data-start="0" data-duration="{{DURATION}}" data-track-index="0">
+        <div id="kicker">
+          <span id="kicker-flag"></span>
+          <span id="kicker-text" data-var-text="kicker">{{DEFAULT_KICKER}}</span>
+        </div>
+        <h1 id="title" data-var-text="title">{{DEFAULT_TITLE}}</h1>
+        <div id="rule"></div>
+{{KPI_BLOCK}}
+      </header>
+{{CHART_SLOT}}
+{{SCENES_BLOCK}}
+
+      <section id="closing-slot" class="clip" data-start="{{DURATION}}" data-duration="0.01" data-track-index="2">
+        <p id="closing" data-var-text="closing">{{DEFAULT_CLOSING}}</p>
+      </section>
+
+      <div id="bottom-bar">
+        <div id="progress"></div>
+        <div id="meta-row">
+          <span id="aigc-badge">内容由 AI 生成</span>
+          <span id="source-line" data-var-text="source_name">{{DEFAULT_SOURCE}}</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="gsap.min.js"></script>
+    <script>
+{{SCRIPT}}
+    </script>
+  </body>
+</html>

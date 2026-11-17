@@ -1,0 +1,53 @@
+/* 风格 C · Dynamic Data Explainer：深底、高对比、等宽数字、网格装饰。
+   定位：数据看板解读、指标变化、排行与趋势。信息密度最高的一套。
+   注意：--accent 不在这里定义——它由 HyperFrames 从 composition 的
+   color 类型变量自动注入为同名 CSS 自定义属性，手写会与之冲突。 */
+:root {
+  --bg: #0c1417;
+  --fg: #f3f0e8;
+  --muted: #7f949b;
+  --muted-2: #9fb0b6;
+  --body: #b7c4c9;
+  --legend: #dde6e8;
+  --down: #e06c5a;
+
+  --rule-faint: rgba(243, 240, 232, 0.12);
+  --rule-soft: rgba(243, 240, 232, 0.14);
+  --rule-strong: rgba(243, 240, 232, 0.28);
+  --panel: rgba(243, 240, 232, 0.06);
+  --glow-color: rgba(24, 183, 201, 0.20);
+  --accent-glow: rgba(24, 183, 201, 0.35);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 92px;
+  --fs-title-lg: 76px;
+  --fs-title-sm: 68px;
+  --fs-data: 64px;
+  --fs-data-sm: 34px;
+  --fs-lead: 54px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 24px;
+
+  --pad-frame: 84px;
+  --rule-width: 3px;
+  --radius: 8px;
+  --track-kicker: 0.16em;
+
+  /* 环境层：网格给结构感，光晕给焦点，颗粒给质感。透明度不得低于 0.1，否则等于没有。 */
+  --grid-size: 72px;
+  --grid-opacity: 0.55;
+  --glow-x: 78%;
+  --glow-y: 18%;
+  --glow-spread: 62%;
+  --glow-opacity: 0.9;
+  --grain-opacity: 0.16;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.32s;
+  --dur-ambient: 7s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+}

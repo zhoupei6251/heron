@@ -2,6 +2,7 @@ package org.dromara.heron.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.dromara.heron.domain.HeronBusinessException;
+import org.dromara.heron.domain.vo.VideoStyleVo;
 import org.dromara.heron.domain.vo.VideoTemplateVo;
 import org.springframework.stereotype.Service;
 
@@ -28,14 +29,20 @@ public class TemplateCatalogService {
                     text(lock.get("templateVersion")), text(lock.get("voiceKey")),
                     text(lock.get("assetManifestSha256")),
                     info.supportedLines(), info.supportedSceneTypes(), info.aspectRatio(),
-                    info.minDuration(), info.maxDuration());
+                    info.minDuration(), info.maxDuration(), style(info.style()));
             } catch (HeronBusinessException e) {
                 // LOCK 缺失或与目录不一致：模板仍要出现在列表里，否则「少了一个模板」没人发现
                 return new VideoTemplateVo(info.key(), info.name(), info.description(), false, e.getMessage(),
                     null, null, null, info.supportedLines(), info.supportedSceneTypes(), info.aspectRatio(),
-                    info.minDuration(), info.maxDuration());
+                    info.minDuration(), info.maxDuration(), style(info.style()));
             }
         }).toList();
+    }
+
+    private static VideoStyleVo style(NewsProductionDomain.TemplateStyle style) {
+        // 老模板没有风格声明：返回 null 让前端画「未声明」，而不是编一套默认色
+        return style == null ? null : new VideoStyleVo(style.key(), style.name(), style.label(), style.role(),
+            style.bg(), style.fg(), style.accent());
     }
 
     private static String text(Object value) {

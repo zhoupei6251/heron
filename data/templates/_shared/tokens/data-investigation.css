@@ -1,0 +1,51 @@
+/* 风格 B · Data Investigation：纪录片式暗调，暖灰纸面文字，单一琥珀强调色。
+   定位：数据异常、产业变化、市场趋势、深度分析。比 C 慢一拍，留白更大。
+   本套用「暗底 + 颗粒 + 大字重差」造电影感；没有引入衬线字体，靠字距与字重承担编辑气质。 */
+:root {
+  --bg: #0e0d0b;
+  --fg: #f2ece1;
+  --muted: #8a8378;
+  --muted-2: #a69d90;
+  --body: #c9c1b4;
+  --legend: #e2dacd;
+  --down: #c9705f;
+
+  --rule-faint: rgba(242, 236, 225, 0.14);
+  --rule-soft: rgba(242, 236, 225, 0.18);
+  --rule-strong: rgba(242, 236, 225, 0.34);
+  --panel: rgba(242, 236, 225, 0.05);
+  --glow-color: rgba(217, 160, 91, 0.22);
+  --accent-glow: rgba(217, 160, 91, 0.35);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 100px;
+  --fs-title-lg: 84px;
+  --fs-title-sm: 72px;
+  --fs-data: 96px;
+  --fs-data-sm: 38px;
+  --fs-lead: 50px;
+  --fs-body: 36px;
+  --fs-label: 26px;
+  --fs-note: 24px;
+
+  --pad-frame: 92px;
+  --rule-width: 2px;
+  --radius: 2px;
+  --track-kicker: 0.32em;
+
+  --grid-size: 108px;
+  --grid-opacity: 0.35;
+  --glow-x: 22%;
+  --glow-y: 74%;
+  --glow-spread: 70%;
+  --glow-opacity: 0.85;
+  --grain-opacity: 0.34;
+
+  --dur-entrance: 0.9s;
+  --dur-swap: 0.5s;
+  --dur-ambient: 11s;
+  --ease-out: power2.out;
+  --ease-in: sine.in;
+}

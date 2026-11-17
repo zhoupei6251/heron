@@ -1,0 +1,145 @@
+{
+  "key": "news-data-investigate-9x16",
+  "name": "数据调查",
+  "pageTitle": "Heron 数据调查竖版",
+  "line": "DATA_BOARD",
+  "style": "data-investigation",
+  "layout": "news-data-investigate-9x16",
+  "width": 1080,
+  "height": 1920,
+  "duration": 45,
+  "scenes": 6,
+  "activeScenes": 3,
+  "capabilities": [
+    "chart"
+  ],
+  "sceneTypes": [],
+  "supportedSceneTypes": [
+    "headline",
+    "chart"
+  ],
+  "description": "数据调查纪录片：慢节奏、大字重差、颗粒质感，1080×1920，数据由 dataset/1 快照驱动",
+  "recommendedDuration": {
+    "min": 35,
+    "max": 75
+  },
+  "version": "1.0.0",
+  "defaults": {
+    "title": "价格连跌十二周",
+    "kicker": "深度调查",
+    "closing": "下跌还没有停下来的迹象。",
+    "sourceName": "来源：示例数据集",
+    "accent": "#d9a05b",
+    "chart": "line",
+    "scenes": [
+      [
+        "连跌三个月",
+        "最新一期报 0.68 元，较三个月前低了接近三成。"
+      ],
+      [
+        "跌势没有停",
+        "最近五期里只有一期小幅回升，其余四期都在下行。"
+      ],
+      [
+        "区间低点刷新",
+        "这一期的价格是近十二周里的最低值。"
+      ]
+    ],
+    "dataset": {
+      "contract": "dataset/1",
+      "source_key": "sample-solar-price",
+      "source_name": "示例数据集",
+      "cadence": "weekly",
+      "shape": "wide",
+      "columns": [
+        "date",
+        "value"
+      ],
+      "metric": {
+        "key": "price",
+        "label": "组件均价",
+        "unit": "元/W",
+        "precision": 2
+      },
+      "rows": [
+        [
+          "2026-08-24",
+          0.94
+        ],
+        [
+          "2026-08-31",
+          0.93
+        ],
+        [
+          "2026-09-07",
+          0.91
+        ],
+        [
+          "2026-09-14",
+          0.88
+        ],
+        [
+          "2026-09-21",
+          0.86
+        ],
+        [
+          "2026-09-28",
+          0.83
+        ],
+        [
+          "2026-10-05",
+          0.81
+        ],
+        [
+          "2026-10-12",
+          0.79
+        ],
+        [
+          "2026-10-19",
+          0.77
+        ],
+        [
+          "2026-10-26",
+          0.74
+        ],
+        [
+          "2026-11-02",
+          0.71
+        ],
+        [
+          "2026-11-09",
+          0.68
+        ]
+      ],
+      "time_range": {
+        "start": "2026-08-24",
+        "end": "2026-11-09",
+        "points": 12
+      },
+      "facts": {
+        "first": {
+          "date": "2026-08-24",
+          "value": 0.94
+        },
+        "last": {
+          "date": "2026-11-09",
+          "value": 0.68
+        },
+        "min": {
+          "date": "2026-11-09",
+          "value": 0.68
+        },
+        "max": {
+          "date": "2026-08-24",
+          "value": 0.94
+        },
+        "change": -0.26,
+        "change_pct": -27.66,
+        "period": {
+          "start_year": 2026,
+          "end_year": 2026
+        }
+      }
+    }
+  }
+}

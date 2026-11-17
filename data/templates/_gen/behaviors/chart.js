@@ -1,0 +1,515 @@
+      const dataset = JSON.parse(declared.dataset_json);
+      const chart = declared.chart || "line";
+      const precision = Number(dataset.metric && dataset.metric.precision);
+      const unit = dataset.metric && dataset.metric.unit ? dataset.metric.unit : "";
+      const rows = dataset.rows.map((row) => ({ label: String(row[0]), value: Number(row[1]) }));
+      const svg = document.getElementById("chart");
+      const NS = "http://www.w3.org/2000/svg";
+      const make = (name, attrs) => {
+        const node = document.createElementNS(NS, name);
+        Object.keys(attrs).forEach((key) => node.setAttribute(key, attrs[key]));
+        return node;
+      };
+      const fmt = (value) => Number(value).toFixed(Number.isFinite(precision) ? precision : 2);
+      const facts = dataset.facts || {};
+      let kpiTarget = NaN;
+      if (facts.last && typeof facts.last.value === "number") {
+        kpiTarget = facts.last.value;
+        document.getElementById("kpi-value").textContent = fmt(facts.last.value);
+        document.getElementById("kpi-unit").textContent = unit;
+        if (typeof facts.change === "number") {
+          const arrow = facts.change >= 0 ? "▲" : "▼";
+          const pct = typeof facts.change_pct === "number" ? "（" + Math.abs(facts.change_pct).toFixed(2) + "%）" : "";
+          const changeEl = document.getElementById("kpi-change");
+          changeEl.textContent = arrow + " " + fmt(Math.abs(facts.change)) + pct;
+          changeEl.style.color = facts.change >= 0 ? "var(--accent)" : "var(--down)";
+        }
+      } else if (facts.leader) {
+        kpiTarget = facts.leader.value;
+        document.getElementById("kpi-value").textContent = fmt(facts.leader.value);
+        document.getElementById("kpi-unit").textContent = unit;
+        document.getElementById("kpi-change").textContent = facts.leader.label || facts.leader.location
+          || facts.leader.name || "";
+      }
+      const W = 912;
+      const H = 760;
+      const pad = { left: 132, right: 36, top: 56, bottom: 72 };
+      tl.fromTo("#chart", { scale: 1 }, { scale: 1.04, duration: total, ease: "none", transformOrigin: "center center" }, 0);
+      if (Number.isFinite(kpiTarget) && chart !== "race") {
+        const counter = { v: 0 };
+        const kpiValue = document.getElementById("kpi-value");
+        kpiValue.textContent = fmt(0);
+        tl.to(counter, { v: kpiTarget, duration: 1.2, ease: "power2.out",
+          onUpdate: () => { kpiValue.textContent = fmt(counter.v); } }, 0.35);
+      }
+      const clip = (text) => {
+        const list = Array.from(text);
+        const max = /[一-鿿]/.test(text) ? 10 : 22;
+        return list.length > max ? list.slice(0, max).join("") + "…" : text;
+      };
+
+      // long 形态：(date, series, value)。折线/排行两种 wide 形态不走这里。
+      const parseLong = () => {
+        const byName = new Map();
+        const dateSet = new Set();
+        dataset.rows.forEach((row) => {
+          const date = String(row[0]);
+          const name = String(row[1]);
+          const value = Number(row[2]);
+          if (!Number.isFinite(value)) return;
+          dateSet.add(date);
+          if (!byName.has(name)) byName.set(name, new Map());
+          byName.get(name).set(date, value);
+        });
+        return { byName, dates: Array.from(dateSet).sort() };
+      };
+      const lastValue = (points, dates) => {
+        for (let i = dates.length - 1; i >= 0; i--) {
+          if (points.has(dates[i])) return points.get(dates[i]);
+        }
+        return NaN;
+      };
+      const accentHue = () => {
+        const hex = getComputedStyle(document.getElementById("root")).getPropertyValue("--accent")
+          .trim().replace("#", "");
+        if (!/^[0-9a-f]{6}$/i.test(hex)) return 187;
+        const rgb = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+        const max = Math.max(...rgb);
+        const min = Math.min(...rgb);
+        const d = max - min;
+        if (!d) return 187;
+        const h = max === rgb[0] ? ((rgb[1] - rgb[2]) / d) % 6
+          : max === rgb[1] ? (rgb[2] - rgb[0]) / d + 2
+          : (rgb[0] - rgb[1]) / d + 4;
+        return (h * 60 + 360) % 360;
+      };
+      const baseHue = accentHue();
+      // 20 个系列也不彩虹：色相只在强调色两侧小幅摆动，相邻靠明度错开。
+      const seriesColor = (index, count) => {
+        const sweep = Math.min(76, 10 + count * 6);
+        const angle = count <= 1 ? 0 : (index / (count - 1) - 0.5) * sweep;
+        const lightness = [46, 58, 66][index % 3];
+        return "hsl(" + ((baseHue + angle + 360) % 360).toFixed(1) + " " + (count > 12 ? 52 : 64)
+          + "% " + lightness + "%)";
+      };
+      const charEm = (ch) => /[\x00-\xff]/.test(ch) ? 0.56 : 1;
+      const clipTo = (text, px, size) => {
+        const list = Array.from(text);
+        let used = 0;
+        let keep = 0;
+        for (const ch of list) {
+          if ((used + charEm(ch)) * size > px) break;
+          used += charEm(ch);
+          keep += 1;
+        }
+        if (keep >= list.length) return text;
+        return list.slice(0, Math.max(1, keep - 1)).join("") + "…";
+      };
+      // 图例行：行高够就名字一行、数值一行，不够就单行。字号按行高反推，下限 16。
+      const legendItem = (x, right, y, rowH, color, name, value) => {
+        const twoLine = rowH >= 56;
+        const size = Math.max(16, Math.min(24, Math.round(rowH * (twoLine ? 0.26 : 0.42))));
+        const row = make("g", {});
+        row.appendChild(make("rect", { x, y: y - 10, width: 20, height: 20, rx: 3, fill: color }));
+        const nameText = make("text", { x: x + 30, y: twoLine ? y + 2 : y + size * 0.36,
+          class: "legend-name", style: "font-size:" + size + "px" });
+        nameText.textContent = clipTo(name, right - x - 30, size);
+        const valueText = make("text", { x: right, y: twoLine ? y + size * 1.15 : y + size * 0.36,
+          "text-anchor": "end", class: "legend-value", style: "font-size:" + Math.max(16, Math.round(size * 0.8)) + "px" });
+        valueText.textContent = value;
+        row.append(nameText, valueText);
+        return row;
+      };
+
+      if (chart === "bars") {
+        // 画全部行：facts 的 count/spread 是全量口径，截断会让口播和画面互相打脸。
+        const top = rows.slice().sort((a, b) => b.value - a.value);
+        const max = Math.max(...top.map((row) => row.value)) || 1;
+        const rowH = (H - pad.top - pad.bottom) / Math.max(top.length, 1);
+        const typeSize = Math.max(16, Math.min(28, Math.round(rowH * 0.44)));
+        const fontStyle = "font-size:" + typeSize + "px";
+        const x0 = 430;
+        // 右侧留 210：最长那条的数值要落在柱子外面，不压柱身。
+        const x1 = W - pad.right - 210;
+        const bars = [];
+        top.forEach((row, index) => {
+          const y = pad.top + index * rowH + rowH * 0.16;
+          const height = rowH * 0.56;
+          const label = make("text", { x: pad.left, y: y + height * 0.72, class: "bar-label", style: fontStyle });
+          label.textContent = clip(row.label);
+          const bar = make("rect", { x: x0, y, width: Math.max(6, (row.value / max) * (x1 - x0)), height, rx: 6, class: "bar" });
+          const value = make("text", { x: W - pad.right, y: y + height * 0.72, "text-anchor": "end",
+            class: "bar-value", style: fontStyle });
+          value.textContent = fmt(row.value) + " " + unit;
+          svg.append(label, bar, value);
+          bars.push(bar);
+        });
+        tl.from(bars, { scaleX: 0, duration: 1.1, stagger: Math.min(0.1, 1.2 / bars.length), ease: "power3.out" }, 0.8);
+      } else if (chart === "race") {
+        // long 形态：(date, series, value)。全部实体都建节点，超出可视窗口的沉到槽位下方由 overflow 裁掉。
+        const { byName, dates: timeline } = parseLong();
+        const names = Array.from(byName.keys());
+        const visibleMax = Math.max(1, Math.min(names.length, 14));
+        const rowH = (H - pad.top - pad.bottom) / visibleMax;
+        const typeSize = Math.max(16, Math.min(28, Math.round(rowH * 0.44)));
+        const fontStyle = "font-size:" + typeSize + "px";
+        const barH = Math.max(6, rowH * 0.56);
+        const x0 = 430;
+        const x1 = W - pad.right - 210;
+        const offSlot = H + rowH;
+        const nodes = new Map();
+        names.forEach((name) => {
+          const label = make("text", { x: pad.left, y: offSlot, class: "bar-label", style: fontStyle });
+          label.textContent = clip(name);
+          const bar = make("rect", { x: x0, y: offSlot, width: 0, height: barH, rx: 6, class: "bar" });
+          const value = make("text", { x: W - pad.right, y: offSlot, "text-anchor": "end",
+            class: "bar-value", style: fontStyle });
+          svg.append(label, bar, value);
+          nodes.set(name, { label, bar, value });
+        });
+        const start = 1.5;
+        const step = Math.max(0.12, (total - start - 3.5) / Math.max(timeline.length - 1, 1));
+        const move = (node, y, at, duration) => {
+          tl.to(node.bar, { attr: { y }, duration, ease: "power2.out" }, at);
+          tl.to(node.label, { attr: { y: y + barH * 0.72 }, duration, ease: "power2.out" }, at);
+          tl.to(node.value, { attr: { y: y + barH * 0.72 }, duration, ease: "power2.out" }, at);
+        };
+        timeline.forEach((date, index) => {
+          const ranked = names
+            .map((name) => ({ name, value: byName.get(name).get(date) }))
+            .filter((item) => Number.isFinite(item.value))
+            .sort((a, b) => b.value - a.value);
+          const max = ranked.length ? ranked[0].value : 1;
+          const at = start + index * step;
+          const duration = index === 0 ? 0.5 : step * 0.85;
+          // KPI 跟着当前帧的榜首走：否则开头的 KPI 是终局冠军，和柱子上的当年数字互相打脸
+          const top = ranked[0];
+          if (top) {
+            if (index === 0) {
+              document.getElementById("kpi-value").textContent = fmt(top.value);
+              document.getElementById("kpi-change").textContent = top.name;
+            }
+            tl.call(() => {
+              document.getElementById("kpi-value").textContent = fmt(top.value);
+              document.getElementById("kpi-change").textContent = top.name;
+            }, null, at);
+          }
+          ranked.forEach((item, rank) => {
+            const node = nodes.get(item.name);
+            const hidden = rank >= visibleMax;
+            const y = hidden ? offSlot : pad.top + rank * rowH + rowH * 0.16;
+            move(node, y, at, duration);
+            tl.to(node.bar, { attr: { width: Math.max(6, (item.value / max) * (x1 - x0)) },
+              duration, ease: "power2.out" }, at);
+            // 数值只能用 call 写：文本没法 tween，且同一帧重放写的是同一个值，可 seek
+            tl.call(() => { node.value.textContent = fmt(item.value) + " " + unit; }, null, at);
+          });
+        });
+      } else if (chart === "stacked") {
+        // 份额堆叠：每个日期归一到 100%，系列按末日规模排序，前 9 名 + 其他，避免 20 条带子糊成一片。
+        const { byName, dates } = parseLong();
+        const ranked = Array.from(byName.entries())
+          .map(([name, points]) => ({ name, points, last: lastValue(points, dates) }))
+          .filter((item) => Number.isFinite(item.last) && item.last > 0)
+          .sort((a, b) => b.last - a.last);
+        const bands = ranked.slice(0, 9)
+          .map((item) => ({ name: item.name, get: (date) => item.points.get(date) || 0 }));
+        const rest = ranked.slice(9);
+        if (rest.length) {
+          bands.push({ name: "其他", get: (date) => rest.reduce((sum, item) => sum + (item.points.get(date) || 0), 0) });
+        }
+        const totals = dates.map((date) => bands.reduce((sum, band) => sum + band.get(date), 0));
+        const shareOf = (band, index) => totals[index] ? (band.get(dates[index]) / totals[index]) * 100 : 0;
+        const padL = 96;
+        const padR = 292;
+        const padT = 44;
+        const padB = 68;
+        const plotW = W - padL - padR;
+        const plotH = H - padT - padB;
+        const xOf = (index) => padL + (index / Math.max(dates.length - 1, 1)) * plotW;
+        const yOf = (pct) => padT + (1 - pct / 100) * plotH;
+        for (let i = 0; i <= 4; i++) {
+          const yy = yOf(i * 25);
+          svg.appendChild(make("line", { x1: padL, y1: yy, x2: padL + plotW, y2: yy, class: "axis" }));
+          const label = make("text", { x: padL - 14, y: yy + 9, "text-anchor": "end", class: "axis-label" });
+          label.textContent = i * 25 + "%";
+          svg.appendChild(label);
+        }
+        const note = make("text", { x: padL, y: padT - 14, class: "chart-note" });
+        note.textContent = "份额 %";
+        const shortDate = (date) => date.endsWith("-01-01") ? date.slice(0, 4) : date;
+        const first = make("text", { x: padL, y: H - padB + 40, class: "axis-label" });
+        first.textContent = shortDate(dates[0]);
+        const last = make("text", { x: padL + plotW, y: H - padB + 40, "text-anchor": "end", class: "axis-label" });
+        last.textContent = shortDate(dates[dates.length - 1]);
+        const axisLabels = make("g", {});
+        axisLabels.append(first, last);
+        svg.append(note, axisLabels);
+        const defs = make("defs", {});
+        const revealRect = make("rect", { x: padL - 2, y: 0, width: 0, height: H });
+        const revealClip = make("clipPath", { id: "stack-reveal" });
+        revealClip.appendChild(revealRect);
+        defs.appendChild(revealClip);
+        svg.appendChild(defs);
+        const bandGroup = make("g", { "clip-path": "url(#stack-reveal)" });
+        svg.appendChild(bandGroup);
+        const cumulative = dates.map(() => 0);
+        const legendX = padL + plotW + 24;
+        const legendRight = W - 36;
+        const rowH = plotH / Math.max(bands.length, 1);
+        const legendRows = [];
+        bands.forEach((band, index) => {
+          const color = seriesColor(index, bands.length);
+          const tops = [];
+          const bottoms = [];
+          dates.forEach((date, i) => {
+            const share = shareOf(band, i);
+            bottoms.push(cumulative[i]);
+            cumulative[i] += share;
+            tops.push(cumulative[i]);
+          });
+          const forward = tops.map((value, i) => (i ? "L" : "M") + xOf(i).toFixed(1) + "," + yOf(value).toFixed(1));
+          const backward = dates.map((_, i) =>
+            "L" + xOf(dates.length - 1 - i).toFixed(1) + "," + yOf(bottoms[dates.length - 1 - i]).toFixed(1));
+          bandGroup.appendChild(make("path", { d: forward.concat(backward).join(" ") + " Z", class: "band", fill: color }));
+          const row = legendItem(legendX, legendRight, padT + index * rowH + rowH / 2, rowH, color,
+            band.name, shareOf(band, dates.length - 1).toFixed(1) + "%");
+          svg.appendChild(row);
+          legendRows.push(row);
+        });
+        const drawStart = 0.8;
+        const drawDur = Math.max(1.2, total - drawStart - 2.2);
+        tl.to(revealRect, { attr: { width: plotW + 4 }, duration: drawDur, ease: "none" }, drawStart);
+        tl.from(axisLabels, { opacity: 0, duration: 0.5, ease: "sine.out" }, drawStart);
+        tl.from(legendRows, { opacity: 0, x: 18, duration: 0.5, stagger: Math.min(0.08, 0.8 / Math.max(bands.length, 1)), ease: "power2.out" }, drawStart + 0.2);
+      } else if (chart === "multiline") {
+        // 多线对照：各系列按首个有效值归一到 100；系列超过 20 只画前 20，图例注明。
+        const { byName, dates } = parseLong();
+        const all = Array.from(byName.entries())
+          .map(([name, points]) => ({
+            name,
+            points,
+            base: dates.map((date) => points.get(date))
+              .find((value) => Number.isFinite(value) && value !== 0)
+          }))
+          .filter((item) => Number.isFinite(item.base))
+          .map((item) => ({ ...item, last: lastValue(item.points, dates) }))
+          .sort((a, b) => b.last - a.last);
+        const entries = all.slice(0, 20);
+        const series = entries.map((item) => {
+          const points = dates.map((date) => item.points.has(date) ? (item.points.get(date) / item.base) * 100 : NaN);
+          let final = NaN;
+          for (let i = points.length - 1; i >= 0; i--) {
+            if (Number.isFinite(points[i])) { final = points[i]; break; }
+          }
+          return { name: item.name, points, final };
+        });
+        const flat = series.flatMap((item) => item.points).filter(Number.isFinite);
+        let lo = Math.min(100, ...flat);
+        let hi = Math.max(100, ...flat);
+        const padL = 96;
+        const padR = 292;
+        const padT = 48;
+        const padB = 68;
+        const plotW = W - padL - padR;
+        const plotH = H - padT - padB;
+        const raw = (hi - lo) / 4 || 1;
+        const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+        const factor = raw / pow;
+        let step = (factor <= 1 ? 1 : factor <= 2 ? 2 : factor <= 5 ? 5 : 10) * pow;
+        while ((hi - lo) / step > 6) step *= 2;
+        lo = Math.floor(lo / step) * step;
+        hi = Math.ceil(hi / step) * step;
+        const xOf = (index) => padL + (index / Math.max(dates.length - 1, 1)) * plotW;
+        const yOf = (value) => padT + (1 - (value - lo) / (hi - lo || 1)) * plotH;
+        const tickText = (value) => step < 1 ? value.toFixed(1) : String(Math.round(value));
+        for (let value = lo; value <= hi + step * 0.001; value += step) {
+          const yy = yOf(value);
+          svg.appendChild(make("line", { x1: padL, y1: yy, x2: padL + plotW, y2: yy, class: "axis" }));
+          const label = make("text", { x: padL - 14, y: yy + 9, "text-anchor": "end", class: "axis-label" });
+          label.textContent = tickText(value);
+          svg.appendChild(label);
+        }
+        svg.appendChild(make("line", { x1: padL, y1: yOf(100), x2: padL + plotW, y2: yOf(100), class: "baseline" }));
+        const note = make("text", { x: padL, y: padT - 14, class: "chart-note" });
+        note.textContent = "指数（基期=100）" + (all.length > entries.length ? " · 显示前 20 项" : "");
+        const shortDate = (date) => date.endsWith("-01-01") ? date.slice(0, 4) : date;
+        const first = make("text", { x: padL, y: H - padB + 40, class: "axis-label" });
+        first.textContent = shortDate(dates[0]);
+        const last = make("text", { x: padL + plotW, y: H - padB + 40, "text-anchor": "end", class: "axis-label" });
+        last.textContent = shortDate(dates[dates.length - 1]);
+        const axisLabels = make("g", {});
+        axisLabels.append(first, last);
+        svg.append(note, axisLabels);
+        const drawStart = 0.9;
+        const drawDur = Math.max(1.2, total - drawStart - 2.2);
+        const stagger = Math.min(0.06, (drawDur * 0.35) / Math.max(series.length, 1));
+        const legendX = padL + plotW + 24;
+        const legendRight = W - 36;
+        const rowH = plotH / Math.max(series.length, 1);
+        const legendRows = [];
+        series.forEach((item, index) => {
+          let d = "";
+          let drawing = false;
+          item.points.forEach((value, i) => {
+            if (!Number.isFinite(value)) { drawing = false; return; }
+            d += (drawing ? "L" : "M") + xOf(i).toFixed(1) + "," + yOf(value).toFixed(1);
+            drawing = true;
+          });
+          const path = make("path", { d, class: "multi-line", stroke: seriesColor(index, series.length),
+            "stroke-width": series.length > 12 ? 4 : 5 });
+          svg.appendChild(path);
+          const length = path.getTotalLength();
+          gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
+          tl.to(path, { strokeDashoffset: 0, duration: drawDur, ease: "none" }, drawStart + index * stagger);
+          const row = legendItem(legendX, legendRight, padT + index * rowH + rowH / 2, rowH,
+            seriesColor(index, series.length), item.name, Number.isFinite(item.final) ? item.final.toFixed(0) : "—");
+          svg.appendChild(row);
+          legendRows.push(row);
+        });
+        tl.from(axisLabels, { opacity: 0, duration: 0.5, ease: "sine.out" }, drawStart);
+        tl.from(legendRows, { opacity: 0, x: 18, duration: 0.5, stagger: Math.min(0.06, 0.8 / Math.max(series.length, 1)), ease: "power2.out" }, drawStart + 0.2);
+      } else if (chart === "radar") {
+        // 雷达：每个系列一根轴，取最后有效值；半径按所有轴的最大值归一，形状反映彼此的相对量级。
+        const { byName, dates } = parseLong();
+        const all = Array.from(byName.entries()).map(([name, points]) => {
+          return { name, last: lastValue(points, dates) };
+        }).filter((item) => Number.isFinite(item.last) && item.last > 0)
+          .sort((a, b) => b.last - a.last);
+        const axes = all.slice(0, 12);
+        const n = axes.length;
+        const maxLast = Math.max(...axes.map((item) => item.last), 1);
+        const ratioOf = (item) => Math.max(0, Math.min(1, item.last / maxLast));
+        const cx = W / 2;
+        const cy = H / 2;
+        const R = Math.min(W, H) * 0.33;
+        const angleOf = (index) => (-90 + (index * 360) / Math.max(n, 1)) * Math.PI / 180;
+        const pointOf = (index, ratio) => [
+          cx + Math.cos(angleOf(index)) * R * ratio,
+          cy + Math.sin(angleOf(index)) * R * ratio
+        ];
+        [0.25, 0.5, 0.75, 1].forEach((level) => {
+          const points = Array.from({ length: n }, (_, i) => pointOf(i, level).map((v) => v.toFixed(1)).join(",")).join(" ");
+          svg.appendChild(make("polygon", { points, class: "radar-grid" }));
+        });
+        const arc = (2 * Math.PI * (R + 24)) / Math.max(n, 1);
+        const allowed = arc * 0.92;
+        // 字号按最长系列名反推：英文约 0.56em、中文 1em，下限 16。
+        const nameUnits = Math.max(...axes.map((item) =>
+          Array.from(item.name).reduce((sum, ch) => sum + charEm(ch), 0)), 1);
+        const typeSize = Math.max(16, Math.min(24, Math.floor(allowed / nameUnits)));
+        const labels = [];
+        const dots = [];
+        axes.forEach((item, index) => {
+          const [x, y] = pointOf(index, 1);
+          svg.appendChild(make("line", { x1: cx, y1: cy, x2: x.toFixed(1), y2: y.toFixed(1), class: "radar-spoke" }));
+          const a = angleOf(index);
+          const lx = cx + Math.cos(a) * (R + 24);
+          const ly = cy + Math.sin(a) * (R + 24);
+          const anchor = Math.cos(a) > 0.3 ? "start" : Math.cos(a) < -0.3 ? "end" : "middle";
+          const label = make("text", { x: lx.toFixed(1), y: ly.toFixed(1), "text-anchor": anchor,
+            class: "radar-label", style: "font-size:" + typeSize + "px", "dominant-baseline": "middle" });
+          label.textContent = clipTo(item.name, allowed, typeSize);
+          const value = make("tspan", { x: lx.toFixed(1), dy: typeSize * 0.9, class: "radar-value",
+            style: "font-size:" + Math.max(16, Math.round(typeSize * 0.78)) + "px" });
+          value.textContent = clipTo(fmt(item.last), allowed, typeSize * 0.78);
+          label.appendChild(value);
+          svg.appendChild(label);
+          labels.push(label);
+          const [dx, dy] = pointOf(index, ratioOf(item));
+          const dot = make("circle", { cx: dx.toFixed(1), cy: dy.toFixed(1), r: 8, class: "radar-dot" });
+          svg.appendChild(dot);
+          dots.push(dot);
+        });
+        const polyPoints = axes.map((item, index) =>
+          pointOf(index, ratioOf(item)).map((v) => v.toFixed(1)).join(",")).join(" ");
+        const poly = make("polygon", { points: polyPoints, class: "radar-poly" });
+        if (dots.length) svg.insertBefore(poly, dots[0]);
+        else svg.appendChild(poly);
+        const note = make("text", { x: 24, y: 34, class: "chart-note" });
+        note.textContent = "各系列最新值 · 按最大值归一" + (all.length > axes.length ? " · 显示前 12 项" : "");
+        svg.appendChild(note);
+        tl.from(svg.querySelectorAll(".radar-grid"), { opacity: 0, duration: 0.5, stagger: 0.1, ease: "sine.out" }, 0.6);
+        tl.from(svg.querySelectorAll(".radar-spoke"), { opacity: 0, duration: 0.4, stagger: 0.03 }, 0.7);
+        tl.from(poly, { scale: 0.15, opacity: 0, duration: 1.2, ease: "back.out(1.3)", svgOrigin: cx + " " + cy }, 1.1);
+        tl.from(dots, { attr: { r: 0 }, duration: 0.4, stagger: 0.04, ease: "back.out(2)" }, 1.6);
+        tl.from(labels, { opacity: 0, duration: 0.4, stagger: 0.03 }, 1.7);
+        tl.from(note, { opacity: 0, duration: 0.4, ease: "sine.out" }, 0.8);
+      } else {
+        const values = rows.map((row) => row.value);
+        let min = Math.min(...values);
+        let max = Math.max(...values);
+        const span = max - min || 1;
+        min -= span * 0.14;
+        max += span * 0.14;
+        const x = (index) => pad.left + (index / Math.max(rows.length - 1, 1)) * (W - pad.left - pad.right);
+        const y = (value) => pad.top + (1 - (value - min) / (max - min)) * (H - pad.top - pad.bottom);
+        for (let i = 0; i < 4; i++) {
+          const yy = pad.top + (i * (H - pad.top - pad.bottom)) / 3;
+          svg.appendChild(make("line", { x1: pad.left, y1: yy, x2: W - pad.right, y2: yy, class: "axis" }));
+          const label = make("text", { x: pad.left - 14, y: yy + 9, "text-anchor": "end", class: "axis-label" });
+          label.textContent = fmt(max - (i * (max - min)) / 3);
+          svg.appendChild(label);
+        }
+        const line = rows.map((row, index) => (index ? "L" : "M") + x(index) + "," + y(row.value)).join(" ");
+        const area = line + " L" + x(rows.length - 1) + "," + (H - pad.bottom) + " L" + x(0) + "," + (H - pad.bottom) + " Z";
+        const areaPath = make("path", { d: area, class: "series-area" });
+        // 面积跟着折线一起推进；整块先出现会把结尾走势提前泄底。
+        const revealRect = make("rect", { x: 0, y: 0, width: 0, height: H });
+        const revealClip = make("clipPath", { id: "area-reveal" });
+        revealClip.appendChild(revealRect);
+        const defs = make("defs", {});
+        defs.appendChild(revealClip);
+        areaPath.setAttribute("clip-path", "url(#area-reveal)");
+        svg.append(defs, areaPath);
+        const path = make("path", { d: line, class: "series-line" });
+        svg.appendChild(path);
+        const dot = make("circle", { cx: x(rows.length - 1), cy: y(rows[rows.length - 1].value), r: 12, class: "dot" });
+        svg.appendChild(dot);
+        const dotLabel = make("text", { x: x(rows.length - 1), y: y(rows[rows.length - 1].value) - 26,
+          "text-anchor": "end", class: "dot-label" });
+        dotLabel.textContent = fmt(rows[rows.length - 1].value) + " " + unit;
+        svg.appendChild(dotLabel);
+        const shortDate = (date) => date.endsWith("-01-01") ? date.slice(0, 4) : date;
+        const first = make("text", { x: pad.left, y: H - pad.bottom + 42, class: "axis-label" });
+        first.textContent = shortDate(rows[0].label);
+        const last = make("text", { x: W - pad.right, y: H - pad.bottom + 42, "text-anchor": "end", class: "axis-label" });
+        last.textContent = shortDate(rows[rows.length - 1].label);
+        svg.append(first, last);
+        const length = path.getTotalLength();
+        gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
+        tl.to(path, { strokeDashoffset: 0, duration: 16, ease: "none" }, 1);
+        tl.to(revealRect, { attr: { width: W }, duration: 16, ease: "none" }, 1);
+        tl.from(dot, { scale: 0, transformOrigin: "center", duration: 0.6, ease: "back.out(2)" }, 16.6);
+        tl.from(dotLabel, { opacity: 0, y: 12, duration: 0.6, ease: "power2.out" }, 16.8);
+        // 有限次呼吸，保持后段画面有动感；不用 repeat:-1，保证可 seek。
+        const pulseRepeats = Math.max(0, Math.floor((parseFloat(document.getElementById("root").dataset.duration) - 18) / 2) - 1);
+        if (pulseRepeats > 0) {
+          tl.to(dot, { scale: 1.3, transformOrigin: "center", duration: 0.9, yoyo: true,
+            repeat: pulseRepeats, ease: "sine.inOut" }, 17.5);
+        }
+        const annotate = (index, text, color) => {
+          if (index < 0 || index >= rows.length) return;
+          const cx = x(index);
+          const cy = y(rows[index].value);
+          const anchor = cx > W * 0.72 ? "end" : "start";
+          const labelY = cy < 90 ? cy + 34 : cy - 18;
+          const group = make("g", {});
+          const point = make("circle", { cx, cy, r: 7, fill: color });
+          const label = make("text", { x: cx + (anchor === "end" ? -14 : 14), y: labelY,
+            "text-anchor": anchor, class: "annotation" });
+          label.textContent = text;
+          group.append(point, label);
+          svg.appendChild(group);
+          tl.from(group, { opacity: 0, duration: 0.4, ease: "sine.out" },
+            1 + 16 * (index / Math.max(rows.length - 1, 1)));
+        };
+        const maxIndex = rows.findIndex((row) => row.label === (facts.max && facts.max.date));
+        const minIndex = rows.findIndex((row) => row.label === (facts.min && facts.min.date));
+        if (maxIndex >= 0 && maxIndex !== rows.length - 1) {
+          annotate(maxIndex, "最高 " + fmt(facts.max.value), "#18b7c9");
+        }
+        if (minIndex >= 0 && minIndex !== rows.length - 1) {
+          annotate(minIndex, "最低 " + fmt(facts.min.value), "#e06c5a");
+        }
+      }

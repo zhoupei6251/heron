@@ -1,0 +1,17 @@
+{
+  "news-broadcast": {
+    "name": "Professional News",
+    "label": "专业新闻",
+    "role": "热点新闻、重要事件、权威信息解读"
+  },
+  "data-investigation": {
+    "name": "Data Investigation",
+    "label": "数据调查",
+    "role": "数据异常、产业变化、市场趋势、深度分析"
+  },
+  "data-board": {
+    "name": "Dynamic Data Explainer",
+    "label": "动态数据解释",
+    "role": "数据看板解读、指标变化、排行与趋势"
+  }
+}

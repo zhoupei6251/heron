@@ -441,11 +441,12 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
      */
     public record TemplateInfo(String key, String name, String description,
                                List<String> supportedLines, List<String> supportedSceneTypes,
-                               String aspectRatio, Integer minDuration, Integer maxDuration) {
+                               String aspectRatio, Integer minDuration, Integer maxDuration,
+                               TemplateStyle style) {
 
         /** 只关心名字与描述的调用方（运行回放、提示词摘要）用这个。 */
         public TemplateInfo(String key, String name, String description) {
-            this(key, name, description, List.of(), List.of(), null, null, null);
+            this(key, name, description, List.of(), List.of(), null, null, null, null);
         }
 
         /** 老模板没写 supportedLines 时按命名前缀推：news-data-* 是看板线，其余是解说线。 */
@@ -458,6 +459,10 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         }
     }
 
+    /** 风格只用于展示与前端预览，不参与选模板：选模板看的是线路与场景能力。 */
+    public record TemplateStyle(String key, String name, String label, String role,
+                                String bg, String fg, String accent) { }
+
     public List<TemplateInfo> templateCatalog() {
         Path root = properties.getNewsTemplate();
         return availableTemplates().stream().map(key -> {
@@ -468,6 +473,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             String aspectRatio = null;
             Integer minDuration = null;
             Integer maxDuration = null;
+            TemplateStyle style = null;
             if (root != null) {
                 Path meta = root.toAbsolutePath().normalize().resolve(key).resolve("template.json");
                 if (Files.isRegularFile(meta)) {
@@ -483,13 +489,24 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
                             minDuration = duration.path("min").isInt() ? duration.path("min").asInt() : null;
                             maxDuration = duration.path("max").isInt() ? duration.path("max").asInt() : null;
                         }
+                        JsonNode styleNode = node.path("style");
+                        if (styleNode.isObject()) {
+                            style = new TemplateStyle(
+                                styleNode.path("key").asString(""),
+                                styleNode.path("name").asString(""),
+                                styleNode.path("label").asString(""),
+                                styleNode.path("role").asString(""),
+                                styleNode.path("bg").asString(""),
+                                styleNode.path("fg").asString(""),
+                                styleNode.path("accent").asString(""));
+                        }
                     } catch (IOException | RuntimeException e) {
                         // 元信息只是选择用的辅助信息，读坏了退回模板标识与空能力；模板本身仍由 LOCK.json 与闸判定
                     }
                 }
             }
             return new TemplateInfo(key, name, description, lines, sceneTypes,
-                aspectRatio == null || aspectRatio.isBlank() ? null : aspectRatio, minDuration, maxDuration);
+                aspectRatio == null || aspectRatio.isBlank() ? null : aspectRatio, minDuration, maxDuration, style);
         }).toList();
     }
 

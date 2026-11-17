@@ -94,3 +94,7 @@ harness.json
 # 原型与设计产物：仅本机留存，不进仓库
 axure/
 docs/design/
+
+# 样片 mp4 只留本机：三条 45 秒 1080×1920 加起来 60MB+，
+# 进仓库会拖垮 clone。分镜图（storyboard-*.png）留在仓库里作为质量证据。
+docs/samples/*.mp4

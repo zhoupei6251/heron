@@ -1,0 +1,53 @@
+/* news-data-broadcast-9x16 的版式差异（风格 A · 专业新闻）。
+   视觉签名是下三分之一信息条：整幅色带 + 左侧红色立标 + 屏次编号。
+   纵向预算（1080×1920）：标题区 0–530 / 图表 550–1070 / 播报条 1100–1540 / 底栏 1610–1700。 */
+#title-card { padding: 130px var(--pad-frame) 0 var(--pad-frame); }
+#kicker { display: flex; align-items: center; gap: 18px; margin-bottom: 28px; }
+#kicker-flag { width: 10px; height: 34px; background: var(--accent); }
+#kicker-text { font-size: var(--fs-note); font-weight: 700; letter-spacing: var(--track-kicker); color: var(--muted-2); }
+#title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 900;
+  line-height: 1.18;
+  letter-spacing: -0.015em;
+  color: var(--fg);
+}
+#rule { margin-top: 28px; width: 100%; height: var(--rule-width); background: var(--accent); transform-origin: left center; }
+
+/* 图表压扁一点给播报条让位：播报条是这套风格的签名，不能被图表挤掉。 */
+#chart-slot { top: 540px; height: 520px; }
+
+.scene {
+  top: auto;
+  bottom: 420px;
+  left: 0;
+  right: 0;
+  padding: 40px var(--pad-frame) 36px var(--pad-frame);
+  background: var(--band);
+  border-left: 10px solid var(--accent);
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  column-gap: 24px;
+  align-content: start;
+  overflow: hidden;
+}
+.scene-no { grid-column: 1; grid-row: 1 / span 2; color: var(--accent); font-size: var(--fs-data-sm); letter-spacing: 0.18em; }
+.lead { grid-column: 2; margin: 0 0 14px; font-size: var(--fs-lead); font-weight: 800; line-height: 1.5; color: var(--fg);
+        max-height: 152px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.body { grid-column: 2; margin: 0; font-size: var(--fs-body); font-weight: 400; line-height: 1.8; color: var(--body);
+        max-height: 186px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.scene-figure { grid-column: 1 / span 2; margin: 0 0 18px; height: 280px; border-radius: var(--radius); overflow: hidden; }
+.scene-figure img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+#closing-slot { top: auto; bottom: 420px; left: 0; right: 0; padding: 40px var(--pad-frame) 36px var(--pad-frame);
+                background: var(--band); border-left: 10px solid var(--accent); display: flex; align-items: flex-start; }
+#closing { margin: 0; font-size: var(--fs-body); font-weight: 600; line-height: 1.7; color: var(--fg);
+           display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 300px; padding: 0 var(--pad-frame); }
+#progress { display: block; height: 8px; background: var(--accent); transform-origin: left center; margin-bottom: 28px; }
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+#aigc-badge { font-size: var(--fs-note); padding: 10px 20px; border: 1px solid var(--rule-strong); border-radius: 999px;
+              white-space: nowrap; color: var(--muted-2); }
+#source-line { font-size: var(--fs-note); max-width: 560px; text-align: right; color: var(--muted); }

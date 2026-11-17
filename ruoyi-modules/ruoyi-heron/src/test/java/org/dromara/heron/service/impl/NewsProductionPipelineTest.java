@@ -69,7 +69,11 @@ class NewsProductionPipelineTest {
             """.formatted("b".repeat(64)));
         java.util.List<java.nio.file.Path> dirs;
         try (var stream = java.nio.file.Files.list(root)) {
-            dirs = stream.filter(java.nio.file.Files::isDirectory).sorted().toList();
+            // data/templates 下还住着生成器的输入（_gen / _shared / layouts），它们不是模板；
+            // 「有 index.html」才是模板的判定，跟 NewsProductionDomain.availableTemplates 一致
+            dirs = stream.filter(java.nio.file.Files::isDirectory)
+                .filter(dir -> java.nio.file.Files.isRegularFile(dir.resolve("index.html")))
+                .sorted().toList();
         }
         assertFalse(dirs.isEmpty(), "模板目录里没有模板");
         for (java.nio.file.Path dir : dirs) {

@@ -1,0 +1,145 @@
+{
+  "key": "news-data-9x16",
+  "name": "数据看板",
+  "pageTitle": "Heron 数据看板竖版",
+  "line": "DATA_BOARD",
+  "style": "data-board",
+  "layout": "news-data-9x16",
+  "width": 1080,
+  "height": 1920,
+  "duration": 45,
+  "scenes": 6,
+  "activeScenes": 3,
+  "capabilities": [
+    "chart"
+  ],
+  "sceneTypes": [],
+  "supportedSceneTypes": [
+    "headline",
+    "chart"
+  ],
+  "description": "动态数据解释：折线/排行/赛跑/堆叠/多线/雷达，1080×1920，数据由 dataset/1 快照驱动",
+  "recommendedDuration": {
+    "min": 30,
+    "max": 60
+  },
+  "version": "1.0.0",
+  "defaults": {
+    "title": "金价创阶段新高",
+    "kicker": "数据观察",
+    "closing": "关注接下来的走势。",
+    "sourceName": "来源：新浪财经",
+    "accent": "#18b7c9",
+    "chart": "line",
+    "scenes": [
+      [
+        "金价站上关键位",
+        "最新收于 4113.34 美元，接近区间高点。"
+      ],
+      [
+        "较两周前走高",
+        "较区间起点上涨 125.14 美元，涨幅 3.14%。"
+      ],
+      [
+        "区间高点确认",
+        "近两周区间最高 4113.34 美元，最低 3988.20 美元。"
+      ]
+    ],
+    "dataset": {
+      "contract": "dataset/1",
+      "source_key": "sina-gold-xau",
+      "source_name": "新浪财经",
+      "cadence": "daily",
+      "shape": "wide",
+      "columns": [
+        "date",
+        "value"
+      ],
+      "metric": {
+        "key": "close",
+        "label": "伦敦金收盘价",
+        "unit": "USD/oz",
+        "precision": 2
+      },
+      "rows": [
+        [
+          "2026-10-26",
+          3988.2
+        ],
+        [
+          "2026-10-27",
+          3996.4
+        ],
+        [
+          "2026-10-28",
+          4002.1
+        ],
+        [
+          "2026-10-29",
+          3991.8
+        ],
+        [
+          "2026-10-30",
+          4008.6
+        ],
+        [
+          "2026-11-02",
+          4021.3
+        ],
+        [
+          "2026-11-03",
+          4033.0
+        ],
+        [
+          "2026-11-04",
+          4042.7
+        ],
+        [
+          "2026-11-05",
+          4091.55
+        ],
+        [
+          "2026-11-06",
+          4105.5
+        ],
+        [
+          "2026-11-09",
+          4110.04
+        ],
+        [
+          "2026-11-10",
+          4113.34
+        ]
+      ],
+      "time_range": {
+        "start": "2026-10-26",
+        "end": "2026-11-10",
+        "points": 12
+      },
+      "facts": {
+        "first": {
+          "date": "2026-10-26",
+          "value": 3988.2
+        },
+        "last": {
+          "date": "2026-11-10",
+          "value": 4113.34
+        },
+        "min": {
+          "date": "2026-10-26",
+          "value": 3988.2
+        },
+        "max": {
+          "date": "2026-11-10",
+          "value": 4113.34
+        },
+        "change": 125.14,
+        "change_pct": 3.14,
+        "period": {
+          "start_year": 2026,
+          "end_year": 2026
+        }
+      }
+    }
+  }
+}

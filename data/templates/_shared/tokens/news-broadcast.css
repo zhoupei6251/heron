@@ -1,0 +1,52 @@
+/* 风格 A · Professional News：深夜蓝底、白色正文、单一新闻红强调。
+   定位：热点新闻、重要事件、权威信息解读。比 C 克制、比 B 快，信息层级最像播报。
+   视觉签名是下三分之一信息条（.scene 的整幅横向色带）与顶部的栏目标签。 */
+:root {
+  --bg: #0a1626;
+  --fg: #ffffff;
+  --muted: #8ea6c0;
+  --muted-2: #a9bdd4;
+  --body: #d5e0ec;
+  --legend: #eaf1f8;
+  --down: #ef7a6a;
+
+  --rule-faint: rgba(255, 255, 255, 0.16);
+  --rule-soft: rgba(255, 255, 255, 0.20);
+  --rule-strong: rgba(255, 255, 255, 0.38);
+  --panel: rgba(255, 255, 255, 0.07);
+  --band: rgba(6, 14, 24, 0.86);
+  --glow-color: rgba(226, 59, 46, 0.20);
+  --accent-glow: rgba(226, 59, 46, 0.35);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 86px;
+  --fs-title-lg: 72px;
+  --fs-title-sm: 64px;
+  --fs-data: 72px;
+  --fs-data-sm: 34px;
+  --fs-lead: 50px;
+  --fs-body: 34px;
+  --fs-label: 28px;
+  --fs-note: 24px;
+
+  --pad-frame: 80px;
+  --rule-width: 8px;
+  --radius: 4px;
+  --track-kicker: 0.24em;
+
+  --grid-size: 96px;
+  --grid-opacity: 0.30;
+  --glow-x: 50%;
+  --glow-y: 6%;
+  --glow-spread: 58%;
+  --glow-opacity: 0.8;
+  --grain-opacity: 0.10;
+
+  --dur-entrance: 0.42s;
+  --dur-swap: 0.26s;
+  --dur-ambient: 8s;
+  --ease-out: power4.out;
+  --ease-in: power2.in;
+}
