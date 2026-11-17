@@ -819,10 +819,15 @@ document.querySelectorAll(".scene").forEach((slot) => {
         };
         const maxIndex = rows.findIndex((row) => row.label === (facts.max && facts.max.date));
         const minIndex = rows.findIndex((row) => row.label === (facts.min && facts.min.date));
-        if (maxIndex >= 0 && maxIndex !== rows.length - 1) {
+        // 极值点离末点太近就不标注：末点自己的数值标签已经在那个位置了，
+        // 两个标签叠在一起谁都看不清（最低点落在最后两期时最常见）。
+        const lastX = x(rows.length - 1);
+        const lastY = y(rows[rows.length - 1].value);
+        const crowded = (index) => Math.abs(x(index) - lastX) < 90 && Math.abs(y(rows[index].value) - lastY) < 48;
+        if (maxIndex >= 0 && !crowded(maxIndex)) {
           annotate(maxIndex, "最高 " + fmt(facts.max.value), "#18b7c9");
         }
-        if (minIndex >= 0 && minIndex !== rows.length - 1) {
+        if (minIndex >= 0 && !crowded(minIndex)) {
           annotate(minIndex, "最低 " + fmt(facts.min.value), "#e06c5a");
         }
       }
