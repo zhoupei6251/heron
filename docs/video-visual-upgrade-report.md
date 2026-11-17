@@ -188,6 +188,14 @@ craft err=0  audio err=0   motion err=0（含 appearsBy 装饰层 ≤2s、keepsM
 | `build-templates --check` 只比对 `index.html` | 手改 `index.motion.json` 能悄悄放宽 `keepsMoving` 断言而检查不出来 | 三个生成物全比对；用一次人为漂移验证过退出码 1，再重新生成复原 |
 | 模板卡风格色板的「Aa」用前景色画在前景块上 | 文字与底色同色，预览里看不见 | 改为 `color: var(--bg)` |
 
+### 字体去重（第二批）
+
+`copyTemplate` 本来就会在模板没带字体时注入 `data/fonts/NotoSansSC-Regular.otf`，而 3 个生成出来的模板各存了一份同名同内容（哈希相同）的字体——每个目录 17.7MB。删掉这三份重复后，模板目录从 18MB 降到 452KB。
+
+- 生成器不再从模板目录取字体：`LOCK.fontSha256` 直接算共用那份，缺失即构建失败。
+- 模板目录因此**不能单独直接渲染**（CSS 里的 `fonts/...` 会落到系统字体上，且是静默的）。补 `--stage <key>`：复制模板并注入共用字体，产出的目录结构与渲染期工作目录一致；`--verify` 也改为在暂存目录上跑版式闸，避免缺字体导致排版测量失真。
+- 实测：暂存目录在 1080×1920 实渲一帧，中文与排版与去重前一致。
+
 ## 9. 样片存放位置
 
 | 风格 | 成片 | 分镜（6 格联络表） |
@@ -198,13 +206,13 @@ craft err=0  audio err=0   motion err=0（含 appearsBy 装饰层 ≤2s、keepsM
 
 - mp4 已加 `.gitignore`（三条共 60MB+），分镜图进仓库作为质量证据。
 - 素材是可复现的样例：A 用合成持仓序列、B 用合成组件价格、C 用模板既有的金价样例，**都标了「示例数据集」，不冒充真实新闻事实**。
-- 复现：`node data/tools/build-templates.mjs` → `hyperframes render data/templates/<key> --quality looks`。
+- 复现：`node data/tools/build-templates.mjs --stage <key>` 生成暂存目录（模板目录不含字体，暂存时注入共用字体，与渲染期 `copySharedFont` 一致），再对 `data/.stage/<key>` 执行 `hyperframes render`。
 
 ## 10. 尚未完成的问题
 
 按影响排序，每条都写清具体阻碍。
 
-1. **13 个模板只迁了 3 个。** 其余 12 个文稿模板仍是手写 HTML。阻碍：这 12 个目录**没有 `fonts/` 字体文件**（只有 `news-data-9x16` 有），`assetsGate` 要求 composition 内有 `fonts/NotoSansSC-Regular.otf`，所以它们今天即便开启文稿线也渲不出来。这是改造前就存在的状态，迁移会顺带补字体，但每个模板要多背 17.7MB，需要先决定共享字体方案。
+1. **13 个模板只迁了 3 个。** 其余 12 个文稿模板仍是手写 HTML。字体不再是阻碍——`copyTemplate` 本来就会注入 `data/fonts` 下的共用字体，它们的 LOCK 也早已指向同一份哈希；真正的成本是每个模板的排版 CSS 必须逐个抽成 `layouts/article/<key>.css` 才能进生成器，12 套版式就是 12 份设计交接。
 2. **可变字体没换。** 设计文档第 2 批的内容。现在仍是单字重 otf 声明 `100 900`，粗体是浏览器合成 —— 三条线的重量差靠字号与字距撑，不靠真实字重。要换需要抬 woff2 进仓库并重测离线渲染。
 3. **上游 Registry 组件一个都没装。** 需要 `hyperframes catalog/add` 联网取件，并在 1080×1920 实渲验证不糊不裁。本轮用自建组件替代了 `count-up` / `grain-overlay`，`caption-pill-karaoke`、`animated-bar-chart` 未评估。
 4. **Motion Skills 没有安装。** 官方安装方式需要联网拉取；本轮把它要求的工作方法（渲染→截图→检查→修复闭环）手工落在 `snapshot` + `check` 上，没有配成 Agent Skill。

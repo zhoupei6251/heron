@@ -7,6 +7,7 @@
     "templates:build": "node build-templates.mjs",
     "templates:check": "node build-templates.mjs --check",
     "templates:verify": "node build-templates.mjs --verify",
+    "templates:stage": "node build-templates.mjs --stage",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
