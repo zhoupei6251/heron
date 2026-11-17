@@ -341,13 +341,17 @@ public class NewsProductionPipeline implements IProductionPipeline {
     /**
      * 审稿没过：用 code 把「换选题能救」和「改稿能救」分开。
      * 槽位层据此决定重试还是放弃，不必再解析自然语言。
+     *
+     * <p>message 带上 coreFacts 与问题条目：审稿失败不会留下可发布的版本记录，
+     * 日志是唯一的现场，看不出是哪一档失败就没法判断该改稿还是换选题。
      */
     private static HeronBusinessException reviewBlocked(EditorialReviewer.Verdict verdict, String what) {
         String code = verdict.unverifiable() ? "editorial_review_unverifiable"
             : verdict.evidenceProblem() ? "editorial_review_unsupported"
             : "editorial_review_blocked";
+        String facts = verdict.coreFacts() == null ? "未标注" : verdict.coreFacts();
         return new HeronBusinessException(409, code,
-            what + "：" + String.join("；", verdict.blockingNotes()));
+            what + "（coreFacts=" + facts + "）：" + String.join("；", verdict.blockingNotes()));
     }
 
     /** 解说线审稿依据：只给抓到的证据片段与出处，不给模型自述。 */

@@ -269,8 +269,12 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             }
             picked = pinned;
         } else {
-            // 人工认领仍由模型挑，系统再卡「最近两期不重复」；挑不出来就落到最久未用的那套
-            picked = templatePicker.pick(candidate.getTitle(), candidate.getSummary());
+            // 人工认领也按线路挑模板：候选都是新闻条目，走解说线。
+            // 之前用不传线路的两参版本，它会从全量模板里挑——一条有正文的文章候选
+            // 可能选中 news-data-*，而脚本仍按解说线写 text 场景，
+            // 契约校验当场炸（实测 error_code = scene_type_unsupported）。
+            picked = templatePicker.pick(candidate.getTitle(), candidate.getSummary(),
+                EditorialDecisionService.NEWS_EXPLAINER);
         }
         work.setTemplateKey(picked != null ? picked : (String) locked.getOrDefault("templateKey", "default"));
         work.setVoiceKey((String) locked.getOrDefault("voiceKey", "default"));
