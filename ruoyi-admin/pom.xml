@@ -23,6 +23,17 @@
             <artifactId>mysql-connector-j</artifactId>
         </dependency>
 
+        <!-- 数据库迁移：启动时按序执行 db/migration 下未应用的脚本，执行记录写进 flyway_schema_history。
+             版本由 spring-boot-dependencies 管理；MySQL 方言在 12.x 需要单独的模块。 -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+
 <!--        &lt;!&ndash; mp支持的数据库均支持 只需要增加对应的jdbc依赖即可 &ndash;&gt;-->
 <!--        &lt;!&ndash; Oracle &ndash;&gt;-->
 <!--        <dependency>-->

@@ -60,6 +60,17 @@ spring:
       thread-name-prefix: async-
       # 由spring自己初始化线程池
       mode: force
+  # 数据库迁移：启动时按序执行 db/migration 下未应用的脚本
+  flyway:
+    enabled: true
+    # 已有库第一次接管：把当前结构记为基线，不重跑历史脚本
+    baseline-on-migrate: true
+    baseline-version: 45
+    baseline-description: 手工迁移时代累计的 001~045
+    locations: classpath:db/migration
+    table: flyway_schema_history
+    # 改过已应用的脚本要直接失败，不能悄悄按新内容跑
+    validate-on-migrate: true
   # 资源信息
   messages:
     # 国际化资源文件路径

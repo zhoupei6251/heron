@@ -109,6 +109,7 @@ class ResearchPromotionServiceImplTest {
         assertTrue(row.getEvidence().contains("sha-abc"));
         assertEquals(HeronNewsCandidate.SOURCE_RESEARCH, row.getSourceKind(),
             "来源要落在列上：自动模式靠它判准入，靠证据 JSON 推会静默失效");
+        assertEquals(9L, row.getResearchId(), "候选要能直接反查所属研究，不靠解析证据");
         assertEquals(1L, row.getHeatScore(), "研究候选不给满热度，让热榜候选同等条件下优先");
         assertNotNull(row.getDedupKey());
     }

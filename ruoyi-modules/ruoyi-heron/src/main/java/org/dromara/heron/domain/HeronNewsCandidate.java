@@ -30,6 +30,8 @@ public class HeronNewsCandidate extends BaseEntity {
     private String sourceKind;
     /** 研究候选的数据源 key；热榜来源为空。自动准入按它查源。 */
     private String sourceKey;
+    /** 研究候选所属的研究 id；热榜来源为空。「某研究产出了哪些候选」按它查。 */
+    private Long researchId;
     private String dedupKey;
     private String normalizedTitle;
     private Long hitCount;

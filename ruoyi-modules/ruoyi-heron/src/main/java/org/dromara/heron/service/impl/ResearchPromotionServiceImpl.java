@@ -143,6 +143,7 @@ public class ResearchPromotionServiceImpl implements IResearchPromotionService {
         candidate.setSourceKind(HeronNewsCandidate.SOURCE_RESEARCH);
         // 来源 key 落列而不是只留在证据里：自动准入要按源查，解析证据会随形状变化静默失效
         candidate.setSourceKey(opportunity == null ? null : opportunity.getSourceKey());
+        candidate.setResearchId(decision.getResearchId());
         candidate.setCreateTime(now());
         candidate.setUpdateTime(now());
         if (candidateMapper.insert(candidate) != 1) {

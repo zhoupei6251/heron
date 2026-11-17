@@ -62,6 +62,7 @@ Heron 业务管理系统，基座 RuoYi-Vue-Plus 6.1.0（Spring Boot 4.1.2 / JDK
 - 构建：`mvn -pl ruoyi-admin -am package`，产物 `ruoyi-admin/target/heron.jar`
 - 改 Java 至少保证目标模块编译通过；只改注释/文档不跑构建，也不做无关格式化或 import 重排
 - 运行前提：MySQL 库 `heron`（先导 `script/sql/ry_vue.sql`），**Redis 必需**（Sa-Token / Redisson）
+- schema 变更写 `ruoyi-admin/src/main/resources/db/migration/V{序号}__{描述}.sql`，应用启动时由 Flyway 自动执行未应用的部分（记录在 `flyway_schema_history`）。**不再手工跑 SQL**，也不要改已应用的迁移——校验和不匹配会直接拒绝启动。`script/sql/heron/001~045` 是手工迁移时代的历史，已作为基线跳过，只作查阅
 - 新闻线渲染前提：**Node ≥ 22**，且 `cd data/tools && npm ci`（`node_modules` 不进仓库，靠 `package-lock.json` 还原）。模板、字体、音效与 BGM 已进 git，clone 后无需另外下载
 - 渲染相关路径用 `HERON_NODE` / `HERON_HYPERFRAMES` / `HERON_NEWS_TEMPLATE` 覆盖，默认相对仓库根 `./data/...`，从 `heron/` 目录启动
 - 格式：UTF-8、LF、4 空格（JSON/YAML 2 空格）
