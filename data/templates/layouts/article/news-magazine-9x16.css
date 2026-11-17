@@ -1,0 +1,70 @@
+:root { --fs-title: 92px; --fs-title-lg: 83px; --fs-title-sm: 74px; }
+* { box-sizing: border-box; }
+.lead, .body { clip-path: inset(0); }
+/* 正文数字高亮：让数据自己跳出来，而不是混在句子里的普通文字 */
+.num {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 1.1em;
+  font-variant-numeric: tabular-nums;
+}
+body { margin: 0; background: #f6f4ef; color: #1c2226; font-family: "Noto Sans SC", sans-serif; }
+#root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #f6f4ef; }
+#title-card { padding: 150px 92px 0 92px; }
+#kicker { margin: 0 0 24px; font-size: 28px; font-weight: 500; letter-spacing: 8px; color: #6b7c80; }
+#title { margin: 0; font-size: var(--fs-title); font-weight: 600; line-height: 1.2; letter-spacing: 0.01em; color: #131a1d;
+         border-bottom: 3px solid #1c2226; padding-bottom: 34px; }
+#rule { margin-top: 26px; width: 110px; height: 6px; background: var(--accent); }
+.lead { margin: 0 0 26px; font-size: 76px; font-weight: 600; line-height: 1.4; color: #131a1d;
+        display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.lead::before { content: "— "; color: var(--accent); }
+.body { margin: 0; padding-left: 26px; border-left: 2px solid #c9cfc9; font-size: 48px; font-weight: 400;
+        line-height: 1.8; color: #3f4a4e; max-height: 660px; overflow: hidden;
+        display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 7; }
+#closing { margin: 0; font-size: 42px; font-weight: 500; line-height: 1.6; color: #3f4a4e;
+           display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+#root { --badge-fg: #131a1d; --badge-bg: transparent; }
+#aigc-badge { border: 2px solid #131a1d; }
+#source-line { color: #6b7c80; border-top: 1px solid #c9cfc9; padding-top: 22px; }
+.clip { position: absolute; inset: 0; }
+.scene {
+  top: 400px;
+  bottom: 420px;
+  left: 0;
+  right: 0;
+  padding: 0 92px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+#closing-slot {
+  top: 400px;
+  bottom: 420px;
+  padding: 0 92px;
+  display: flex;
+  align-items: center;
+}
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 300px; padding: 0 92px; }
+#progress {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  transform-origin: left center;
+  margin-bottom: 28px;
+}
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+#aigc-badge {
+  font-size: 28px;
+  padding: 12px 24px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: var(--badge-fg, #0b1418);
+  background: var(--badge-bg, var(--accent));
+}
+#source-line { font-size: 28px; max-width: 560px; text-align: right; }
+
+/* 迁移补丁：屏次号是本轮骨架新增的，原版式没有，关掉以保持原有画面。
+   来源前缀原本写死在 #source-line 里，骨架把它交给数据，这里补回前缀。 */
+.scene-no { display: none; }
+#source-line::before { content: "来源："; }

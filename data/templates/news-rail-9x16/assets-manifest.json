@@ -3,23 +3,18 @@
   "templateVersion": "1",
   "files": [
     {
-      "path": "fonts/NotoSansSC-Regular.otf",
-      "sha256": "763146584cf0710223441356b4395e279021b0806c196614377a7a0174ae074a",
-      "bytes": 17773244
-    },
-    {
       "path": "gsap.min.js",
       "sha256": "c174bfce53a729418d57a8ad8625e7247c793a22fef8e2851e3cfa3de9cd8280",
       "bytes": 72779
     },
     {
       "path": "index.html",
-      "sha256": "cbfdbccb489f5e0f16e95dbb65c30e3874291691b99100dd7e1e2e327fd501b6",
-      "bytes": 13537
+      "sha256": "919f8701ebcfa21145e6847dbc194e6c06a71b837fb725d8510dbbe49f30e353",
+      "bytes": 20738
     },
     {
       "path": "index.motion.json",
-      "sha256": "4e4fc08e14741b20f23d89386ddeb2e40aa0126d332fc855324a94834ff587ae",
+      "sha256": "7e0b191e9b88f0ba792d5bd12f1c86d836983360cade85e923c4949f2d3135f2",
       "bytes": 396
     },
     {
@@ -28,9 +23,14 @@
       "bytes": 179522
     },
     {
+      "path": "template.config.json",
+      "sha256": "9084a820357d875f15ea17c51ecb3904122a891ec3df4d5df35913d85586241b",
+      "bytes": 2212
+    },
+    {
       "path": "template.json",
-      "sha256": "f9f0ee42b28cc6a21414091ff4ee4161e9caeed0e424ec7323685ddd1816a6f0",
-      "bytes": 146
+      "sha256": "1e90bdbe7d6655b4f25377a0dee7e816df1ff5234cf414d41b52bfa79e658f40",
+      "bytes": 677
     }
   ]
 }

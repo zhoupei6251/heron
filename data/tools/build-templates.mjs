@@ -152,8 +152,19 @@ function sceneBlocks(cfg) {
   return blocks.join('\n');
 }
 
-function chartSlot(cfg) {
-  if (!cfg.capabilities.includes('chart')) return '';
+/** 环境层可以按模板关掉：文稿线 12 套版式原本没有这层，硬加等于改画面。 */
+function ambientBlock(cfg) {
+  if (cfg.ambient === false) return '';
+  return `
+      <div class="ambient" aria-hidden="true">
+        <div class="ambient-grid" data-ambient="drift"></div>
+        <div class="ambient-glow" data-ambient="pulse"></div>
+        <div class="ambient-grain" data-ambient="flicker"></div>
+      </div>
+`;
+}
+
+function chartSlot(cfg) {  if (!cfg.capabilities.includes('chart')) return '';
   return `
       <section id="chart-slot" class="clip" data-start="0" data-duration="${num(cfg.duration)}" data-track-index="1">
         <svg id="chart" viewBox="0 0 912 760" role="img" aria-label="数据图表"></svg>
@@ -212,6 +223,7 @@ function render(cfg) {
     HEIGHT: cfg.height,
     DURATION: num(cfg.duration),
     STYLE: cfg.style,
+    AMBIENT_BLOCK: ambientBlock(cfg),
     PAGE_TITLE: escapeHtml(cfg.pageTitle ?? cfg.name),
     STYLES: styles(cfg),
     KPI_BLOCK: kpiBlock(cfg),
@@ -279,7 +291,8 @@ function motionJson(cfg) {
   return JSON.stringify({
     duration: cfg.duration,
     assertions: [
-      { kind: 'appearsBy', selector: '.ambient', bySec: 2 },
+      // 关掉环境层的模板不能断言它出现：断言必须描述这套模板真的有的东西
+      ...(cfg.ambient === false ? [] : [{ kind: 'appearsBy', selector: '.ambient', bySec: 2 }]),
       { kind: 'appearsBy', selector: '#aigc-badge', bySec: 0.5 },
       { kind: 'appearsBy', selector: '#title', bySec: 1.5 },
       { kind: 'staysInFrame', selector: '#aigc-badge' },

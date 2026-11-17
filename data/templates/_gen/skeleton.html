@@ -10,12 +10,7 @@
   </head>
   <body>
     <div id="root" data-composition-id="main" data-style="{{STYLE}}" data-start="0" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" data-duration="{{DURATION}}">
-      <div class="ambient" aria-hidden="true">
-        <div class="ambient-grid" data-ambient="drift"></div>
-        <div class="ambient-glow" data-ambient="pulse"></div>
-        <div class="ambient-grain" data-ambient="flicker"></div>
-      </div>
-
+{{AMBIENT_BLOCK}}
       <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="{{DURATION}}" data-track-index="9"></audio>
 
       <header id="title-card" class="clip" data-start="0" data-duration="{{DURATION}}" data-track-index="0">

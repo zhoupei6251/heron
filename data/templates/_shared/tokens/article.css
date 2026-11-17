@@ -1,0 +1,52 @@
+/* 文稿解说线的共用令牌。12 个版式各自的配色与排版写在 layouts/article/<key>.css 里——
+   这条线本来就有 12 种长相，统一成一套皮等于把可选性砍掉。
+   这里只提供所有版式都要用的那层：字体、动效节奏、环境层兜底值。
+   注意：--accent 不在这里定义，由 HyperFrames 从 composition 的 color 变量注入。 */
+:root {
+  --bg: #0b1418;
+  --fg: #f3f0e8;
+  --muted: #7d8d92;
+  --muted-2: #9fb2bf;
+  --body: #c2d1dd;
+  --legend: #dde6e8;
+  --down: #e06c5a;
+
+  --rule-faint: rgba(243, 240, 232, 0.12);
+  --rule-soft: rgba(243, 240, 232, 0.16);
+  --rule-strong: rgba(243, 240, 232, 0.30);
+  --panel: rgba(243, 240, 232, 0.06);
+  --glow-color: rgba(111, 188, 204, 0.18);
+  --accent-glow: rgba(111, 188, 204, 0.35);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 92px;
+  --fs-title-lg: 76px;
+  --fs-title-sm: 68px;
+  --fs-data: 64px;
+  --fs-data-sm: 34px;
+  --fs-lead: 54px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 24px;
+
+  --pad-frame: 92px;
+  --rule-width: 3px;
+  --radius: 8px;
+  --track-kicker: 0.16em;
+
+  --grid-size: 96px;
+  --grid-opacity: 0.4;
+  --glow-x: 70%;
+  --glow-y: 20%;
+  --glow-spread: 60%;
+  --glow-opacity: 0.8;
+  --grain-opacity: 0.2;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.3s;
+  --dur-ambient: 8s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+}

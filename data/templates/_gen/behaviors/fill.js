@@ -23,9 +23,15 @@ document.querySelectorAll(".scene").forEach((slot) => {
   const index = slot.dataset.sceneIndex;
   const no = slot.querySelector(".scene-no");
   if (no) no.textContent = String(index).padStart(2, "0");
+  // 场景类型落到属性上：quote / rank 这类版式靠 [data-scene-type] 选择器换排版，
+  // 只声明变量不写属性，那些变体就是死代码。
+  const type = declared["scene" + index + "_type"];
+  if (type) slot.dataset.sceneType = type;
   const figure = slot.querySelector(".scene-figure");
   const src = declared["scene" + index + "_image"];
   if (!figure || !src) return;
+  // has-image 让版式知道这一屏真的有图：文稿线用它把图位展开、同时把正文压回两行
+  slot.classList.add("has-image");
   // img 由脚本创建而不是写在 HTML 里：静态 <img> 会被版式闸判成同组重复媒体节点
   const img = document.createElement("img");
   img.alt = "";

@@ -13,5 +13,10 @@
     "name": "Dynamic Data Explainer",
     "label": "动态数据解释",
     "role": "数据看板解读、指标变化、排行与趋势"
+  },
+  "article": {
+    "name": "Editorial",
+    "label": "文稿解说",
+    "role": "文稿解说线的共用底层；具体长相由各版式决定"
   }
 }

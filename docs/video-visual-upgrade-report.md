@@ -139,10 +139,11 @@ data/tools/build-templates.mjs
 data/templates/
   _gen/                      生成器输入（skeleton / motion / behaviors）
   _shared/base.css           画布基础 + 环境层 + 内容层 z-index
-  _shared/tokens/*.css       三套设计令牌
+  _shared/tokens/*.css       四套令牌（三套数据线风格 + article 共用底层）
   _shared/styles.json        风格登记表（名字/标签/适用场景）
-  layouts/<style>/<key>.css  三套版式
+  layouts/<style>/<key>.css  15 套版式（数据线 3 + 文稿线 12）
   news-data-9x16/            迁移到生成器（风格 C）
+  news-*/（12 个）            文稿线全部迁移到生成器（style=article）
   news-data-broadcast-9x16/  新增（风格 A）
   news-data-investigate-9x16/新增（风格 B）
 data/tools/build-templates.mjs  生成器
@@ -156,14 +157,14 @@ data/tools/build-templates.mjs  生成器
 
 - `VideoTemplateVo` 只**追加**字段，老调用方不受影响；`style` 可能为 `null`。
 - 新增的两个模板目录各自带 `LOCK.json`，`assetsGate` 的哈希校验照常；`NewsTemplatePicker` 按 `supportedLines` 过滤，两条线的候选集不会串。
-- 老模板（12 个文稿模板）仍是手写 `index.html`，没被生成器覆盖，行为不变。
+- 12 个文稿模板已全部迁到生成器：ID 结构与骨架本来就一致（连 `#kicker` 都有），迁移后版式差异只剩 `layouts/article/<key>.css` 与各自的 accent，`supportedSceneTypes` 逐模板保留（quote/rank/image 的声明没有丢）。
 
 ## 8. 测试结果
 
 | 项目 | 命令 | 结果 |
 | - | - | - |
-| 生成器自洽 | `node data/tools/build-templates.mjs --check` | 3/3 一致 |
-| 版式闸 | `hyperframes check <dir> --json` | 3/3 `ok=true`，`layout` / `motion` 0 error |
+| 生成器自洽 | `node data/tools/build-templates.mjs --check` | 15/15 一致 |
+| 版式闸 | `build-templates --template <key> --verify` | 15/15 通过（暂存并注入字体后跑） |
 | 关键帧目检 | `hyperframes snapshot --at 2,9,20,36` | 三套画面差异显著，中文无缺字、无溢出、无重叠 |
 | 后端编译 | `mvn -pl ruoyi-modules/ruoyi-heron -am -DskipTests compile` | 通过 |
 | 后端单测（全量） | `mvn -o -pl ruoyi-modules/ruoyi-heron test` | 437 跑，434 通过；3 个失败全在 `AgentRuntimeConfigTest`（`HeronResearchSnapshotMapper` bean 缺失导致上下文起不来），与本次改动无关 |
@@ -196,6 +197,23 @@ craft err=0  audio err=0   motion err=0（含 appearsBy 装饰层 ≤2s、keepsM
 - 模板目录因此**不能单独直接渲染**（CSS 里的 `fonts/...` 会落到系统字体上，且是静默的）。补 `--stage <key>`：复制模板并注入共用字体，产出的目录结构与渲染期工作目录一致；`--verify` 也改为在暂存目录上跑版式闸，避免缺字体导致排版测量失真。
 - 实测：暂存目录在 1080×1920 实渲一帧，中文与排版与去重前一致。
 
+### 文稿线 12 个模板迁移（第二批）
+
+12 个模板的 `<style>` 原样抽成 `layouts/article/<key>.css`，只去掉 `@font-face`（`base.css` 已提供）。它们与骨架的 ID 结构本来就一致——连 `#kicker` 都有——所以迁移是「抽出样式 + 补配置」，不是重画。
+
+四处必须单独处理：
+
+| 差异 | 处理 |
+| - | - |
+| 骨架新增 `.scene-no` 与 `.ambient` | 文稿线的版式补丁里关掉；`ambient` 另外给了配置开关，否则 motion 断言会要求一个不存在的层在 2 秒内出现 |
+| 标题字号写死在 `#title` | 改成 `--fs-title / lg / sm` 三档令牌——否则 `fill.js` 的降档会用数据线的 92/76/68，把 poster 的 138px 直接压掉 |
+| 来源文案原本写死「来源：」前缀 | 骨架把它交给数据，版式补回 `#source-line::before` |
+| `quote` / `rank` 的 `[data-scene-type]` 变体 | 长年没有运行时赋值（旧 HTML 里也搜不到），本轮补上；不补的话 `sceneTypes` 就是一句空声明 |
+
+顺带修掉一个既有对比度错误：`news-contrast` 的 kicker `#6fbccc` 落在 `#f2f5f5` 上只有 1.97:1，改成 `#5996a3`（3.0:1 以上）。这条在旧模板里就存在，只是从没被 `check` 跑过——那 12 个模板此前没有进过任何闸。
+
+**保真核对**：`news-magazine`（亮底、衬线排布）与 `news-rank`（大序号 + 计数器）在迁移前后同一时刻各渲一帧对照，版式、字号、配色、来源前缀一致，差别只在统一后的入场时序（标题淡出由各模板各自的时间改成 3.6 秒）。其余 10 套走的是同一套抽取规则，只验到版式闸与「不溢出不裁字」。
+
 ### 端到端真实出片（2026-11-17）
 
 | 线 | 实际模板 | 时长 | 闸 | 结果 |
@@ -204,6 +222,7 @@ craft err=0  audio err=0   motion err=0（含 appearsBy 装饰层 ≤2s、keepsM
 | 数据看板线 · 风格 A | `news-data-broadcast-9x16` | 37.5s | 12/12 | 红色立标 + 栏目名 + KPI + 下三分之一信息条 + 屏次号 |
 | 数据看板线 · 风格 C | `news-data-9x16` | 32.4s | 12/12 | 深青网格 + KPI 大数字 + 强调线 |
 | 数据看板线 · 风格 B | `news-data-investigate-9x16` | 40.8s | 12/12 | 暖黑 + 颗粒 + 琥珀 + 细引线 |
+| 文稿线 · 迁移后 | `news-9x16` | 58.4s | 11/11 | 迁移后的生成版式，kicker / 来源前缀 / 配色与迁移前一致 |
 
 三套风格都是真实选题、真实数据源跑出来的，不是摆拍。选哪一套由 `NewsTemplatePicker` 在「最近两期不重复」约束下挑，实测按 A → C → B 轮换：同一期不会出现两套皮，也不会随机换皮。
 
@@ -231,7 +250,7 @@ craft err=0  audio err=0   motion err=0（含 appearsBy 装饰层 ≤2s、keepsM
 
 按影响排序，每条都写清具体阻碍。
 
-1. **13 个模板只迁了 3 个。** 其余 12 个文稿模板仍是手写 HTML。字体不再是阻碍——`copyTemplate` 本来就会注入 `data/fonts` 下的共用字体，它们的 LOCK 也早已指向同一份哈希；真正的成本是每个模板的排版 CSS 必须逐个抽成 `layouts/article/<key>.css` 才能进生成器，12 套版式就是 12 份设计交接。
+1. **文稿线迁移后还有三件事没验证。** 12 个版式已全部由配置生成（`--verify` 全绿），同帧对照（magazine / rank / quote / rail）与迁移前一致，差异只在统一后的入场时序。没验到的：带配图的 `news-9x16` 只在无图状态下跑过闸；`quote` / `rank` 的 `[data-scene-type]` 变体本轮才接上运行时赋值，还没有剧本真的带过这两个类型；文稿线的环境层按「保持原画面」关掉了，这条线仍然没有纵深。
 2. **可变字体没换。** 设计文档第 2 批的内容。现在仍是单字重 otf 声明 `100 900`，粗体是浏览器合成 —— 三条线的重量差靠字号与字距撑，不靠真实字重。要换需要抬 woff2 进仓库并重测离线渲染。
 3. **上游 Registry 组件一个都没装。** 需要 `hyperframes catalog/add` 联网取件，并在 1080×1920 实渲验证不糊不裁。本轮用自建组件替代了 `count-up` / `grain-overlay`，`caption-pill-karaoke`、`animated-bar-chart` 未评估。
 4. **Motion Skills 没有安装。** 官方安装方式需要联网拉取；本轮把它要求的工作方法（渲染→截图→检查→修复闭环）手工落在 `snapshot` + `check` 上，没有配成 Agent Skill。

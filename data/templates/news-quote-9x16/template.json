@@ -1,6 +1,15 @@
 {
   "name": "引语",
   "description": "巨型引号压顶，领句当被引用的话来讲，适合发言人、声明与原文引用",
+  "style": {
+    "key": "article",
+    "name": "Editorial",
+    "label": "文稿解说",
+    "role": "文稿解说线的共用底层；具体长相由各版式决定",
+    "bg": "#0b1418",
+    "fg": "#f3f0e8",
+    "accent": "#d97706"
+  },
   "supportedLines": [
     "NEWS_EXPLAINER"
   ],

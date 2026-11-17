@@ -9,7 +9,7 @@
     {
       "kind": "appearsBy",
       "selector": "#title",
-      "bySec": 1.2
+      "bySec": 1.5
     },
     {
       "kind": "staysInFrame",

@@ -1,356 +1,387 @@
 <!doctype html>
-<html lang="zh-CN" data-composition-variables='[
-  {
-    "id": "title",
-    "type": "string",
-    "label": "标题",
-    "maxLength": 15,
-    "default": "新一代旗舰手机发布"
-  },
-  {
-    "id": "scene1_lead",
-    "type": "string",
-    "label": "第一屏领句",
-    "maxLength": 40,
-    "default": "电池容量提升两成"
-  },
-  {
-    "id": "scene1_body",
-    "type": "string",
-    "label": "第一屏正文",
-    "maxLength": 600,
-    "default": "厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。"
-  },
-  {
-    "id": "scene2_lead",
-    "type": "string",
-    "label": "第二屏领句",
-    "maxLength": 40,
-    "default": "影像算法全面重写"
-  },
-  {
-    "id": "scene2_body",
-    "type": "string",
-    "label": "第二屏正文",
-    "maxLength": 600,
-    "default": "影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。"
-  },
-  {
-    "id": "scene3_lead",
-    "type": "string",
-    "label": "第三屏领句",
-    "maxLength": 40,
-    "default": "起售价保持不变"
-  },
-  {
-    "id": "scene3_body",
-    "type": "string",
-    "label": "第三屏正文",
-    "maxLength": 600,
-    "default": "价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。"
-  },
-  {
-    "id": "scene4_lead",
-    "type": "string",
-    "label": "第四屏领句",
-    "maxLength": 40,
-    "default": "现货发售时间已定"
-  },
-  {
-    "id": "scene4_body",
-    "type": "string",
-    "label": "第四屏正文",
-    "maxLength": 600,
-    "default": "官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。"
-  },
-  {
-    "id": "scene5_lead",
-    "type": "string",
-    "label": "第五屏领句",
-    "maxLength": 40,
-    "default": "竞品同期密集上新"
-  },
-  {
-    "id": "scene5_body",
-    "type": "string",
-    "label": "第五屏正文",
-    "maxLength": 600,
-    "default": "过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。"
-  },
-  {
-    "id": "scene6_lead",
-    "type": "string",
-    "label": "第六屏领句",
-    "maxLength": 40,
-    "default": "售后政策同步调整"
-  },
-  {
-    "id": "scene6_body",
-    "type": "string",
-    "label": "第六屏正文",
-    "maxLength": 600,
-    "default": "厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。"
-  },
-  {
-    "id": "closing",
-    "type": "string",
-    "label": "结尾口播",
-    "maxLength": 200,
-    "default": "更多机型对比与实测，我们会在后续持续跟进。"
-  },
-  {
-    "id": "source_name",
-    "type": "string",
-    "label": "来源名称",
-    "maxLength": 80,
-    "default": "公开报道整理"
-  },
-  {
-    "id": "accent",
-    "type": "color",
-    "label": "品牌色",
-    "default": "#d97706"
-  },
-  {
-    "id": "scene_count",
-    "type": "number",
-    "label": "场景数",
-    "min": 3,
-    "max": 6,
-    "default": 6
-  },
-  {
-    "id": "scene1_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  },
-  {
-    "id": "scene2_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  },
-  {
-    "id": "scene3_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  },
-  {
-    "id": "scene4_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  },
-  {
-    "id": "scene5_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  },
-  {
-    "id": "scene6_type",
-    "type": "string",
-    "label": "场景类型",
-    "default": ""
-  }
-]'>
+<html lang="zh-CN" data-composition-variables='[{"id":"title","type":"string","label":"标题","maxLength":15,"default":"新一代旗舰手机发布"},{"id":"kicker","type":"string","label":"栏目标签","maxLength":12,"default":"HERON QUOTE"},{"id":"scene1_lead","type":"string","label":"第1屏领句","maxLength":40,"default":"电池容量提升两成"},{"id":"scene1_body","type":"string","label":"第1屏正文","maxLength":600,"default":"厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。"},{"id":"scene2_lead","type":"string","label":"第2屏领句","maxLength":40,"default":"影像算法全面重写"},{"id":"scene2_body","type":"string","label":"第2屏正文","maxLength":600,"default":"影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。"},{"id":"scene3_lead","type":"string","label":"第3屏领句","maxLength":40,"default":"起售价保持不变"},{"id":"scene3_body","type":"string","label":"第3屏正文","maxLength":600,"default":"价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。"},{"id":"scene4_lead","type":"string","label":"第4屏领句","maxLength":40,"default":"现货发售时间已定"},{"id":"scene4_body","type":"string","label":"第4屏正文","maxLength":600,"default":"官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。"},{"id":"scene5_lead","type":"string","label":"第5屏领句","maxLength":40,"default":"竞品同期密集上新"},{"id":"scene5_body","type":"string","label":"第5屏正文","maxLength":600,"default":"过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。"},{"id":"scene6_lead","type":"string","label":"第6屏领句","maxLength":40,"default":"售后政策同步调整"},{"id":"scene6_body","type":"string","label":"第6屏正文","maxLength":600,"default":"厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。"},{"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"更多机型对比与实测，我们会在后续持续跟进。"},{"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"公开报道整理"},{"id":"accent","type":"color","label":"品牌色","default":"#d97706"},{"id":"scene_count","type":"number","label":"场景数","min":3,"max":6,"default":6},{"id":"scene1_type","type":"string","label":"场景类型","default":""},{"id":"scene2_type","type":"string","label":"场景类型","default":""},{"id":"scene3_type","type":"string","label":"场景类型","default":""},{"id":"scene4_type","type":"string","label":"场景类型","default":""},{"id":"scene5_type","type":"string","label":"场景类型","default":""},{"id":"scene6_type","type":"string","label":"场景类型","default":""}]'>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
     <title>Heron 引语竖版</title>
     <style>
-      @font-face {
-        font-family: "Noto Sans SC";
-        src: url("fonts/NotoSansSC-Regular.otf") format("truetype");
-        font-weight: 100 900;
-        font-display: block;
-      }
-      * { box-sizing: border-box; }
-      .lead, .body { clip-path: inset(0); }
-      /* 正文数字高亮：让数据自己跳出来，而不是混在句子里的普通文字 */
-      .num {
-        color: var(--accent);
-        font-weight: 700;
-        font-size: 1.1em;
-        font-variant-numeric: tabular-nums;
-      }
-      body { margin: 0; background: #1a1310; color: #f5efe9; font-family: "Noto Sans SC", sans-serif; }
-      #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #1a1310; }
-      #title-card { padding: 132px 92px 0 92px; }
-      #kicker { margin: 0 0 24px; font-size: 28px; font-weight: 500; letter-spacing: 9px; color: #a08a76; }
-      #title { margin: 0; font-size: 96px; font-weight: 800; line-height: 1.2; letter-spacing: -0.02em; color: #f5efe9; }
-      #rule { margin-top: 28px; width: 150px; height: 8px; border-radius: 4px; background: var(--accent); }
-      .scene { --glyph: 1; }
-      /* 场景类型驱动版式：只有 quote 段画巨型引号并加大字号，text 段保持干净正文。
-         没标类型的老稿按 text 处理，版式与升级前一致。 */
-      .scene[data-scene-type="quote"] { position: relative; padding-left: 118px; }
-      .scene[data-scene-type="quote"]::before {
-        content: "「";
-        position: absolute; left: 30px; top: 6px;
-        font-size: 190px; font-weight: 700; line-height: 1;
-        color: var(--accent); opacity: 0.5;
-        transform: scale(var(--glyph)); transform-origin: left bottom;
-      }
-      .scene[data-scene-type="quote"] .lead { font-size: 92px; line-height: 1.32; }
-      .scene[data-scene-type="quote"] .body { font-size: 46px; border-left-width: 10px; }
+/* 所有模板共享的画布基础。令牌由 _shared/tokens 下的同名样式文件提供。
+   注意：注释里不要出现 style 标签的字面写法，它会被 HTML 解析器当成真的开始标签。 */
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("fonts/NotoSansSC-Regular.otf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+}
+#root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+.clip { position: absolute; inset: 0; }
 
-      .lead { margin: 0 0 30px; font-size: 74px; font-weight: 700; line-height: 1.42; letter-spacing: -0.01em; color: #fbf7f2;
-              display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
-      .body { margin: 0; padding-left: 28px; border-left: 6px solid rgba(160,138,118,0.45);
-              font-size: 46px; font-weight: 400; line-height: 1.75; color: #b7a99c;
-              max-height: 470px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; }
-      #closing { margin: 0; padding: 26px 30px; font-size: 40px; font-weight: 500; line-height: 1.55; color: #f5efe9;
-                 background: rgba(217,119,6,0.16); border-left: 12px solid var(--accent); border-radius: 8px;
-                 display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
-      #source-line { color: #a08a76; }
-      .clip { position: absolute; inset: 0; }
-      .scene {
-        top: 380px;
-        bottom: 420px;
-        left: 0;
-        right: 0;
-        padding: 230px 92px 0;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-      }
-      #closing-slot {
-        top: 380px;
-        bottom: 420px;
-        padding: 0 92px;
-        display: flex;
-        align-items: center;
-      }
-      #bottom-bar { position: absolute; left: 0; right: 0; bottom: 300px; padding: 0 92px; }
-      #progress {
-        display: block;
-        height: 6px;
-        border-radius: 3px;
-        background: var(--accent);
-        transform-origin: left center;
-        margin-bottom: 28px;
-      }
-      #meta-row { display: flex; align-items: center; justify-content: space-between; }
-      #aigc-badge {
-        font-size: 28px;
-        padding: 12px 24px;
-        border-radius: 999px;
-        white-space: nowrap;
-        color: var(--badge-fg, #0b1418);
-        background: var(--badge-bg, var(--accent));
-      }
-      #source-line { font-size: 28px; max-width: 560px; text-align: right; }
+/* 纵深：环境层是最远的一层，永远在内容之下、永远在动。
+   三层各自可开关（透明度为 0 即视为关闭），但网格与光晕是默认配置。 */
+.ambient { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.ambient > div { position: absolute; inset: 0; }
+.ambient-grid {
+  background-image:
+    linear-gradient(to right, var(--rule-faint) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule-faint) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  opacity: var(--grid-opacity);
+}
+.ambient-glow {
+  background: radial-gradient(circle at var(--glow-x) var(--glow-y),
+              var(--glow-color) 0%, transparent var(--glow-spread));
+  opacity: var(--glow-opacity);
+}
+.ambient-grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.55'/></svg>");
+  background-size: 140px 140px;
+  opacity: var(--grain-opacity);
+}
+/* 内容层压在环境层之上：骨架里的每块都自己定位，这里只统一抬 z-index。 */
+#title-card, #chart-slot, .scene, #closing-slot, #bottom-bar { z-index: 1; }
+
+/* 场景序号：给画面一个「第几拍」的锚点，避免每屏长得一样。 */
+.scene-no {
+  display: block;
+  font-family: var(--font-num);
+  font-size: var(--fs-note);
+  font-weight: 700;
+  letter-spacing: var(--track-kicker);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 硬规则 1：视频字号下限 24px，竖屏 32px。这条不能靠 CSS 强制，只作为约定写在这里，由构建期校验兜底。 */
+/* 文稿解说线的共用令牌。12 个版式各自的配色与排版写在 layouts/article/<key>.css 里——
+   这条线本来就有 12 种长相，统一成一套皮等于把可选性砍掉。
+   这里只提供所有版式都要用的那层：字体、动效节奏、环境层兜底值。
+   注意：--accent 不在这里定义，由 HyperFrames 从 composition 的 color 变量注入。 */
+:root {
+  --bg: #0b1418;
+  --fg: #f3f0e8;
+  --muted: #7d8d92;
+  --muted-2: #9fb2bf;
+  --body: #c2d1dd;
+  --legend: #dde6e8;
+  --down: #e06c5a;
+
+  --rule-faint: rgba(243, 240, 232, 0.12);
+  --rule-soft: rgba(243, 240, 232, 0.16);
+  --rule-strong: rgba(243, 240, 232, 0.30);
+  --panel: rgba(243, 240, 232, 0.06);
+  --glow-color: rgba(111, 188, 204, 0.18);
+  --accent-glow: rgba(111, 188, 204, 0.35);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 92px;
+  --fs-title-lg: 76px;
+  --fs-title-sm: 68px;
+  --fs-data: 64px;
+  --fs-data-sm: 34px;
+  --fs-lead: 54px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 24px;
+
+  --pad-frame: 92px;
+  --rule-width: 3px;
+  --radius: 8px;
+  --track-kicker: 0.16em;
+
+  --grid-size: 96px;
+  --grid-opacity: 0.4;
+  --glow-x: 70%;
+  --glow-y: 20%;
+  --glow-spread: 60%;
+  --glow-opacity: 0.8;
+  --grain-opacity: 0.2;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.3s;
+  --dur-ambient: 8s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+}
+:root { --fs-title: 96px; --fs-title-lg: 86px; --fs-title-sm: 77px; }
+* { box-sizing: border-box; }
+.lead, .body { clip-path: inset(0); }
+/* 正文数字高亮：让数据自己跳出来，而不是混在句子里的普通文字 */
+.num {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 1.1em;
+  font-variant-numeric: tabular-nums;
+}
+body { margin: 0; background: #1a1310; color: #f5efe9; font-family: "Noto Sans SC", sans-serif; }
+#root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #1a1310; }
+#title-card { padding: 132px 92px 0 92px; }
+#kicker { margin: 0 0 24px; font-size: 28px; font-weight: 500; letter-spacing: 9px; color: #a08a76; }
+#title { margin: 0; font-size: var(--fs-title); font-weight: 800; line-height: 1.2; letter-spacing: -0.02em; color: #f5efe9; }
+#rule { margin-top: 28px; width: 150px; height: 8px; border-radius: 4px; background: var(--accent); }
+.scene { --glyph: 1; }
+/* 场景类型驱动版式：只有 quote 段画巨型引号并加大字号，text 段保持干净正文。
+   没标类型的老稿按 text 处理，版式与升级前一致。 */
+.scene[data-scene-type="quote"] { position: relative; padding-left: 118px; }
+.scene[data-scene-type="quote"]::before {
+  content: "「";
+  position: absolute; left: 30px; top: 6px;
+  font-size: 190px; font-weight: 700; line-height: 1;
+  color: var(--accent); opacity: 0.5;
+  transform: scale(var(--glyph)); transform-origin: left bottom;
+}
+.scene[data-scene-type="quote"] .lead { font-size: 92px; line-height: 1.32; }
+.scene[data-scene-type="quote"] .body { font-size: 46px; border-left-width: 10px; }
+
+.lead { margin: 0 0 30px; font-size: 74px; font-weight: 700; line-height: 1.42; letter-spacing: -0.01em; color: #fbf7f2;
+        display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.body { margin: 0; padding-left: 28px; border-left: 6px solid rgba(160,138,118,0.45);
+        font-size: 46px; font-weight: 400; line-height: 1.75; color: #b7a99c;
+        max-height: 470px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; }
+#closing { margin: 0; padding: 26px 30px; font-size: 40px; font-weight: 500; line-height: 1.55; color: #f5efe9;
+           background: rgba(217,119,6,0.16); border-left: 12px solid var(--accent); border-radius: 8px;
+           display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+#source-line { color: #a08a76; }
+.clip { position: absolute; inset: 0; }
+.scene {
+  top: 380px;
+  bottom: 420px;
+  left: 0;
+  right: 0;
+  padding: 230px 92px 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+#closing-slot {
+  top: 380px;
+  bottom: 420px;
+  padding: 0 92px;
+  display: flex;
+  align-items: center;
+}
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 300px; padding: 0 92px; }
+#progress {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  transform-origin: left center;
+  margin-bottom: 28px;
+}
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+#aigc-badge {
+  font-size: 28px;
+  padding: 12px 24px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: var(--badge-fg, #0b1418);
+  background: var(--badge-bg, var(--accent));
+}
+#source-line { font-size: 28px; max-width: 560px; text-align: right; }
+
+/* 迁移补丁：屏次号是本轮骨架新增的，原版式没有，关掉以保持原有画面。
+   来源前缀原本写死在 #source-line 里，骨架把它交给数据，这里补回前缀。 */
+.scene-no { display: none; }
+#source-line::before { content: "来源："; }
     </style>
   </head>
   <body>
-    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920" data-duration="45">
+    <div id="root" data-composition-id="main" data-style="article" data-start="0" data-width="1080" data-height="1920" data-duration="45">
+
       <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="45" data-track-index="9"></audio>
 
       <header id="title-card" class="clip" data-start="0" data-duration="45" data-track-index="0">
-        <p id="kicker">HERON QUOTE</p>
+        <div id="kicker">
+          <span id="kicker-flag"></span>
+          <span id="kicker-text" data-var-text="kicker">HERON QUOTE</span>
+        </div>
         <h1 id="title" data-var-text="title">新一代旗舰手机发布</h1>
         <div id="rule"></div>
+
       </header>
 
-      <section id="scene-1" class="clip scene" data-start="0" data-duration="8" data-track-index="1" data-scene-index="1">
+      <section id="scene-1" class="clip scene" data-start="0" data-duration="7.5" data-track-index="2" data-scene-index="1">
+        <span class="scene-no">01</span>
         <p class="lead" data-var-text="scene1_lead">电池容量提升两成</p>
         <p class="body" data-var-text="scene1_body">厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。</p>
       </section>
-      <section id="scene-2" class="clip scene" data-start="8" data-duration="8" data-track-index="1" data-scene-index="2">
+      <section id="scene-2" class="clip scene" data-start="7.5" data-duration="7.5" data-track-index="2" data-scene-index="2">
+        <span class="scene-no">02</span>
         <p class="lead" data-var-text="scene2_lead">影像算法全面重写</p>
         <p class="body" data-var-text="scene2_body">影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。</p>
       </section>
-      <section id="scene-3" class="clip scene" data-start="16" data-duration="8" data-track-index="1" data-scene-index="3">
+      <section id="scene-3" class="clip scene" data-start="15" data-duration="7.5" data-track-index="2" data-scene-index="3">
+        <span class="scene-no">03</span>
         <p class="lead" data-var-text="scene3_lead">起售价保持不变</p>
         <p class="body" data-var-text="scene3_body">价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。</p>
       </section>
-      <section id="scene-4" class="clip scene" data-start="24" data-duration="7" data-track-index="1" data-scene-index="4">
+      <section id="scene-4" class="clip scene" data-start="22.5" data-duration="7.5" data-track-index="2" data-scene-index="4">
+        <span class="scene-no">04</span>
         <p class="lead" data-var-text="scene4_lead">现货发售时间已定</p>
         <p class="body" data-var-text="scene4_body">官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。</p>
       </section>
-      <section id="scene-5" class="clip scene" data-start="31" data-duration="7" data-track-index="1" data-scene-index="5">
+      <section id="scene-5" class="clip scene" data-start="30" data-duration="7.5" data-track-index="2" data-scene-index="5">
+        <span class="scene-no">05</span>
         <p class="lead" data-var-text="scene5_lead">竞品同期密集上新</p>
         <p class="body" data-var-text="scene5_body">过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。</p>
       </section>
-      <section id="scene-6" class="clip scene" data-start="38" data-duration="7" data-track-index="1" data-scene-index="6">
+      <section id="scene-6" class="clip scene" data-start="37.5" data-duration="7.5" data-track-index="2" data-scene-index="6">
+        <span class="scene-no">06</span>
         <p class="lead" data-var-text="scene6_lead">售后政策同步调整</p>
         <p class="body" data-var-text="scene6_body">厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。</p>
       </section>
 
-      <aside id="closing-slot" class="clip" data-start="38" data-duration="7" data-track-index="2">
+      <section id="closing-slot" class="clip" data-start="45" data-duration="0.01" data-track-index="2">
         <p id="closing" data-var-text="closing">更多机型对比与实测，我们会在后续持续跟进。</p>
-      </aside>
+      </section>
 
-      <footer id="bottom-bar">
-        <span id="progress"></span>
+      <div id="bottom-bar">
+        <div id="progress"></div>
         <div id="meta-row">
           <span id="aigc-badge">内容由 AI 生成</span>
-          <span id="source-line">来源：<span id="source" data-var-text="source_name">公开报道整理</span></span>
+          <span id="source-line" data-var-text="source_name">公开报道整理</span>
         </div>
-      </footer>
+      </div>
     </div>
 
     <script src="gsap.min.js"></script>
     <script>
-      // 数字高亮：变量注入可能发生在脚本之后，所以再补一次；已有 .num 就不重复包裹
-      const highlightNumbers = () => {
-        document.querySelectorAll(".body").forEach((el) => {
-          if (el.querySelector(".num")) return;
-          el.innerHTML = el.innerHTML.replace(/(\d+(?:\.\d+)?%?)/g, '<span class="num">$1</span>');
-        });
-      };
-      highlightNumbers();
-      setTimeout(highlightNumbers, 120);
+// 变量注入与通用填充。所有模板共用，必须最先执行。
+const declared = window.__hyperframes && window.__hyperframes.getVariables
+  ? window.__hyperframes.getVariables()
+  : {};
+const root = document.getElementById("root");
+const tl = gsap.timeline({ paused: true });
+const total = parseFloat(root.dataset.duration);
 
-      const root = document.getElementById("root");
-      const total = parseFloat(root.dataset.duration);
-      const slots = [...document.querySelectorAll(".scene")];
-      const declared = window.__hyperframes ? window.__hyperframes.getVariables() : {};
-      const sceneCount = Number.isFinite(declared.scene_count) ? declared.scene_count : slots.length;
-      slots.forEach((slot) => {
-        const index = slot.dataset.sceneIndex;
-        if (Number(index) > sceneCount) {
-          slot.hidden = true;
-          slot.style.display = "none";
-          return;
-        }
-        // 场景类型驱动版式：模型说这一段是引语，画面才按引语排
-        const type = declared["scene" + index + "_type"];
-        slot.dataset.sceneType = type || "text";
-      });
+// 模板里的尺寸一律来自令牌，避免 JS 和 CSS 各写一份而漂移
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-      const tl = gsap.timeline({ paused: true });
-      tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
-      tl.from("#title", { y: 40, opacity: 0, duration: 0.55, ease: "power3.out" }, 0.15);
-      tl.from("#rule", { scaleX: 0, opacity: 0, duration: 0.4, ease: "power2.out" }, 0.4);
-      tl.from("#aigc-badge", { opacity: 0, duration: 0.2, ease: "none" }, 0.05);
-      // 只淡出大标题与分隔线，保留顶部小标签作为画面锚点
-      tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 1.8);
-      const live = slots.filter((slot) => !slot.hidden);
-      live.forEach((slot, index) => {
-        const start = parseFloat(slot.dataset.start);
-        const span = parseFloat(slot.dataset.duration);
-        const isLast = index === live.length - 1;
-        // immediateRender：动画排在时间轴中段时 GSAP 默认不提前写起始值，元素会先裸着露出来
-        tl.from(slot.querySelector(".lead"), { scale: 1.04, opacity: 0, duration: 0.72, ease: "sine.out", immediateRender: true }, start + 0.1);
-        tl.from(slot.querySelector(".body"), { opacity: 0, duration: 0.7, ease: "sine.out", immediateRender: true }, start + 0.55);
-        if (isLast) {
-          // 最后一屏让位给结尾口播：正文先退场，口播接在同一段时间窗里，避免两块文字叠在一起
-          const outAt = start + Math.max(0.8, span - 3.9);
-          tl.to(slot, { opacity: 0, duration: 0.45, ease: "power1.in" }, outAt);
-          tl.from("#closing", { y: 24, opacity: 0, duration: 0.5, ease: "power2.out", immediateRender: true }, outAt + 0.35);
-        } else {
-          tl.to(slot, { opacity: 0, duration: 0.4, ease: "power1.in" }, start + span - 0.4);
-        }
-      });
-      // 引号先落、引文再定，是这套的签名：引号从略大收敛到实大
-      live.forEach((slot) => {
-        const start = parseFloat(slot.dataset.start);
-        tl.fromTo(slot, { "--glyph": 1.28 }, { "--glyph": 1, duration: 0.72, ease: "power2.out" }, start);
-      });
-      window.__timelines["main"] = tl;
+// 标题按字数降档：92px → 76px → 68px
+const titleEl = document.getElementById("title");
+const titleLen = Array.from(declared.title || titleEl.textContent || "").length;
+if (titleLen > 11) titleEl.style.fontSize = cssVar("--fs-title-sm");
+else if (titleLen > 9) titleEl.style.fontSize = cssVar("--fs-title-lg");
+
+// 实际播几屏由稿件决定，模板只负责准备好槽位
+const sceneCount = Number.isFinite(Number(declared.scene_count)) ? Number(declared.scene_count) : 3;
+
+// 屏次编号与配图同理：槽位先备好，有没有编号和有没有图由稿件与模板能力决定。
+document.querySelectorAll(".scene").forEach((slot) => {
+  const index = slot.dataset.sceneIndex;
+  const no = slot.querySelector(".scene-no");
+  if (no) no.textContent = String(index).padStart(2, "0");
+  // 场景类型落到属性上：quote / rank 这类版式靠 [data-scene-type] 选择器换排版，
+  // 只声明变量不写属性，那些变体就是死代码。
+  const type = declared["scene" + index + "_type"];
+  if (type) slot.dataset.sceneType = type;
+  const figure = slot.querySelector(".scene-figure");
+  const src = declared["scene" + index + "_image"];
+  if (!figure || !src) return;
+  // has-image 让版式知道这一屏真的有图：文稿线用它把图位展开、同时把正文压回两行
+  slot.classList.add("has-image");
+  // img 由脚本创建而不是写在 HTML 里：静态 <img> 会被版式闸判成同组重复媒体节点
+  const img = document.createElement("img");
+  img.alt = "";
+  img.src = src;
+  figure.appendChild(img);
+});
+
+// 全局时间线与场景进出。所有模板共用，必须在 chart 之后执行。
+// 只做三个动作：enter / ambient / swap。参数全部来自令牌，
+// 风格差异靠改令牌而不是另写一套动画——否则三套风格很快就会长成三份真相。
+// 数字滚动不在这里：KPI 的小数位与单位随数据集变化，由 chart.js 按 precision 驱动。
+const has = (selector) => document.querySelector(selector) !== null;
+const numberVar = (name, fallback) => {
+  const value = parseFloat(cssVar(name));
+  return Number.isFinite(value) ? value : fallback;
+};
+const EASE_OUT = cssVar("--ease-out") || "power3.out";
+const EASE_IN = cssVar("--ease-in") || "power2.in";
+const DUR = {
+  entrance: numberVar("--dur-entrance", 0.5),
+  swap: numberVar("--dur-swap", 0.3),
+  ambient: numberVar("--dur-ambient", 7),
+};
+const FROM = { up: { y: 30 }, down: { y: -30 }, left: { x: 46 }, right: { x: -46 }, none: {} };
+
+// immediateRender：动画排在中段时 GSAP 默认不提前写起始值，元素会先裸着露出来
+function enter(targets, { dir = "up", at = 0, stagger = 0 } = {}) {
+  if (!targets) return;
+  const list = typeof targets === "string" ? document.querySelectorAll(targets) : targets;
+  if (!list || (!list.nodeType && !list.length)) return;
+  tl.from(list, { ...FROM[dir], opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger, immediateRender: true }, at);
+}
+
+function ambient(scope = document) {
+  scope.querySelectorAll("[data-ambient]").forEach((el) => {
+    const base = parseFloat(getComputedStyle(el).opacity);
+    const dim = Number.isFinite(base) ? base : 1;
+    const kind = el.dataset.ambient;
+    if (kind === "drift") {
+      tl.to(el, { x: 18, y: -14, duration: DUR.ambient, ease: "sine.inOut", repeat: -1, yoyo: true }, 0);
+    } else if (kind === "pulse") {
+      tl.to(el, { opacity: dim * 0.55, scale: 1.06, duration: DUR.ambient * 0.8, ease: "sine.inOut", repeat: -1, yoyo: true }, 0);
+    } else if (kind === "flicker") {
+      tl.to(el, { opacity: dim * 0.7, duration: DUR.ambient * 0.35, ease: "sine.inOut", repeat: -1, yoyo: true }, 0);
+    }
+  });
+}
+
+function swap(slot, start, end) {
+  const parts = slot.querySelectorAll(".scene-no, .lead, .body");
+  if (!parts.length) return;
+  tl.from(parts, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, start);
+  const outAt = Math.max(start + DUR.entrance, end - DUR.swap);
+  tl.to(parts, { y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, outAt);
+}
+
+ambient();
+
+tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
+enter("#kicker", { dir: "left", at: 0.1 });
+enter("#title", { dir: "up", at: 0.2 });
+tl.from("#rule", { scaleX: 0, duration: DUR.entrance, ease: EASE_OUT, immediateRender: true }, 0.45);
+if (has("#kpi")) enter("#kpi", { dir: "up", at: 0.35 });
+enter("#aigc-badge", { dir: "none", at: 0.2 });
+// 只淡出标题区，栏目标签留作画面锚点
+tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
+
+document.querySelectorAll(".scene").forEach((slot) => {
+  if (Number(slot.dataset.sceneIndex) > sceneCount) {
+    slot.hidden = true;
+    slot.style.display = "none";
+    return;
+  }
+  const start = parseFloat(slot.dataset.start);
+  const end = start + parseFloat(slot.dataset.duration);
+  swap(slot, start, end);
+});
+
+// 结尾口播占最后一屏让出的时间窗；模板默认值下它就落在片尾，不另外排动画
+const closingSlot = document.getElementById("closing-slot");
+if (closingSlot) {
+  const at = parseFloat(closingSlot.dataset.start);
+  if (Number.isFinite(at) && at < total - 0.1) {
+    enter(closingSlot.querySelector("#closing"), { dir: "up", at });
+  }
+}
+
+window.__timelines["main"] = tl;
     </script>
   </body>
 </html>
