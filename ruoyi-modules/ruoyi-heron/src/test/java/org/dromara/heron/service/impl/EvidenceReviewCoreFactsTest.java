@@ -99,4 +99,22 @@ class EvidenceReviewCoreFactsTest {
         assertNull(verdict.coreFacts());
         assertFalse(verdict.blocked());
     }
+
+    /**
+     * 槽位层靠这两个判据决定「换选题」还是「改稿」：
+     * 证据问题改稿救不了，文案问题换选题是浪费。
+     */
+    @Test
+    @DisplayName("证据问题与文案问题可以区分")
+    void distinguishesEvidenceFromWording() {
+        var unverifiable = EditorialReviewer.plan(reply("FAIL", "\"unverifiable\"",
+            "[{\"severity\":\"MAJOR\",\"segmentId\":\"s1\",\"description\":\"核不了\",\"suggestion\":\"\"}]"), true);
+        assertTrue(unverifiable.evidenceProblem());
+        assertTrue(unverifiable.unverifiable());
+
+        var wording = EditorialReviewer.plan(reply("FAIL", "\"supported\"",
+            "[{\"severity\":\"MAJOR\",\"segmentId\":\"s1\",\"description\":\"程度被夸大\",\"suggestion\":\"\"}]"), true);
+        assertFalse(wording.evidenceProblem(), "文案问题该走改稿，不该换选题");
+        assertFalse(wording.unverifiable());
+    }
 }

@@ -50,6 +50,22 @@ public class EditorialReviewer {
             return issues.stream().anyMatch(Issue::blocking);
         }
 
+        /**
+         * 失败是不是「证据不够」而不是「文案跑在证据前面」。
+         *
+         * <p>这两类失败的自救方式完全不同：文案问题改稿能救，证据问题改稿救不了——
+         * 把核不住的断言删掉只会得到一条没有信息量的稿子，那不是自愈，是降级凑数。
+         * 数据看板线的事实由 Java 给，恒为 false。
+         */
+        public boolean evidenceProblem() {
+            return coreFacts != null && !"supported".equals(coreFacts);
+        }
+
+        /** 证据问题里更细的一档：片段提到了相关的事但核不住。早停只认这一种。 */
+        public boolean unverifiable() {
+            return "unverifiable".equals(coreFacts);
+        }
+
         /** 审稿记录落盘用；repairAttempts 区分一次通过和修出来的通过。 */
         public String toRecord(int repairAttempts, String promptVersion, LocalDateTime reviewedAt) {
             Map<String, Object> record = new LinkedHashMap<>();

@@ -81,4 +81,39 @@ class EditorialCandidatePoolTest {
         assertNotEquals(a.poolId(), b.poolId());
         assertFalse(a.poolId().isBlank());
     }
+
+    /**
+     * 审稿没过换选题时剔除已试过的。同一条源换个机会再选出来，审稿一样过不了——
+     * 所以机会按它绑定的源一起剔。
+     */
+    @Test
+    @DisplayName("剔除已试过的候选与数据源，hash 跟着重算")
+    void excludingDropsTriedItemsAndRehashes() {
+        HeronNewsCandidate tried = candidate("试过的");
+        HeronNewsCandidate fresh = candidate("没试过的");
+        HeronDataSource triedSource = new HeronDataSource();
+        triedSource.setSourceKey("tried-source");
+        HeronDataSource freshSource = new HeronDataSource();
+        freshSource.setSourceKey("fresh-source");
+
+        EditorialCandidatePool before = EditorialCandidatePool.of(
+            List.of(tried, fresh), item -> true, List.of(triedSource, freshSource), List.of(), List.of());
+
+        EditorialCandidatePool after = before.excluding(
+            java.util.Set.of(tried.getCandidateId()), java.util.Set.of("tried-source"));
+
+        assertEquals(List.of(fresh), after.articles());
+        assertTrue(after.datasets().stream().noneMatch(item -> "tried-source".equals(item.getSourceKey())));
+        assertEquals(1, after.datasets().size());
+        assertNotEquals(before.poolHash(), after.poolHash(),
+            "内容变了 hash 必须重算，留着旧的等于声称还是同一批东西");
+    }
+
+    @Test
+    @DisplayName("没试过任何选题时返回自身，不白白重算")
+    void excludingNothingReturnsSamePool() {
+        EditorialCandidatePool pool = pool(List.of(candidate("a")), item -> true);
+
+        assertSame(pool, pool.excluding(java.util.Set.of(), java.util.Set.of()));
+    }
 }

@@ -7,6 +7,7 @@ import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.domain.EditorialCandidatePool;
 import org.dromara.heron.domain.EditorialChoice;
 import org.dromara.heron.domain.HeronAutoSlot;
+import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.HeronDataOpportunity;
 import org.dromara.heron.domain.HeronDataSource;
 import org.dromara.heron.domain.HeronNewsCandidate;
@@ -48,6 +49,14 @@ public class NewsAutoService {
     private static final int POOL_LIMIT = 50;
     private static final int SWEEP_LIMIT = 10;
     private static final int DATASET_POOL_LIMIT = 20;
+    /** 审稿没过时换选题的次数上限：加上首次，同一槽位最多试 3 个选题。 */
+    private static final int MAX_REVIEW_RETRIES = 2;
+    /**
+     * 连续这么多个选题都「核不了」就停手。
+     *
+     * <p>核不了是证据片段的质量问题——换选题救不了，继续换只是多烧几轮模型调用。
+     */
+    private static final int UNVERIFIABLE_STREAK_LIMIT = 2;
     /** 研究候选单独取：它们的 heat_score 恒为 1，混进按热度排序的 LIMIT 里几乎永不上榜。 */
     private static final int RESEARCH_POOL_LIMIT = 10;
     /** RuoYi 的开关约定：'0' 是允许。 */
@@ -190,48 +199,95 @@ public class NewsAutoService {
             finish(slot, "skipped", "no_publish: " + decision.reason(), null);
             return;
         }
-        Optional<EditorialChoice> choice;
-        try {
-            // 传池子而不是摘要：线内编辑必须从总编辑看过的那批数据里挑
-            choice = lineEditor.select(decision.selectedLine(), pool, decision.editorialIntent(),
-                decision.focusCandidateId(), decision.focusOpportunityId());
-        } catch (RuntimeException e) {
-            finish(slot, "failed", "line_editor: " + e.getMessage(), null);
-            return;
-        }
-        if (choice.isEmpty()) {
-            // 线内编辑找不到可用素材：不硬做，也不回问总编辑；原判线照旧留痕
-            markDecision(slot, decision, pools, null);
-            finish(slot, "skipped", "no_fit: " + decision.selectedLine(), null);
-            return;
-        }
-        EditorialChoice picked = choice.get();
-        // 槽位记的是实际执行线：早写会把「总编辑想走数据看板、实际走了解说」写反
-        markDecision(slot, decision, pools, picked);
-        // 候选在最终选择确定后才记：之前记的是「预选候选」，会与实际生产的那条不符
-        slotMapper.lambda().set(HeronAutoSlot::getCandidateId, picked.selection().candidateId())
-            .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
-            .eq(HeronAutoSlot::getSlotTime, slot.getSlotTime()).update();
-        NewsWorkVo work = null;
-        try {
-            work = newsWork.claimForAuto(picked.selection(), news.getAutoActorId());
-            org.dromara.heron.domain.vo.ProductionReceiptVo receipt = newsWork.generateForAuto(
-                work.getWorkId(), "auto:" + today + ":" + slotTime, decision, picked.selection());
-            markOpportunityUsed(picked.selection(), receipt);
-            finish(slot, "produced", picked.finalLine() + "：" + decision.editorialIntent(), work.getWorkId());
-        } catch (RuntimeException e) {
-            // 失败留痕即可；下一槽位会重新挑，不跨槽位补发
-            log.warn("自动产出槽位失败 slot={} {}: {}", slotTime, e.getClass().getSimpleName(), e.getMessage());
-            finish(slot, "failed", e.getMessage(), null);
-            // 认领已经落库，提交失败必须把候选放回池子：不释放就再也不会被选中，且不报错
-            if (work != null) {
-                try {
-                    newsWork.abandonAuto(work.getWorkId());
-                } catch (RuntimeException compensation) {
-                    log.warn("自动产出补偿失败 workId={}: {}", work.getWorkId(), compensation.getMessage());
+        // 审稿没过时换选题自救。只对「证据问题」重试：契约、取数、渲染这类失败
+        // 换选题避不开，只会多烧一轮。
+        EditorialCandidatePool current = pool;
+        Set<Long> triedCandidates = new HashSet<>();
+        Set<String> triedSources = new HashSet<>();
+        int unverifiableStreak = 0;
+        String lastReason = null;
+        for (int attempt = 0; attempt <= MAX_REVIEW_RETRIES; attempt++) {
+            Optional<EditorialChoice> choice;
+            try {
+                // 传池子而不是摘要：线内编辑必须从总编辑看过的那批数据里挑。
+                // 重试时清掉 focus——总编辑锁定的就是刚失败的那条，留着它只会原地打转。
+                choice = lineEditor.select(decision.selectedLine(), current, decision.editorialIntent(),
+                    attempt == 0 ? decision.focusCandidateId() : null,
+                    attempt == 0 ? decision.focusOpportunityId() : null);
+            } catch (RuntimeException e) {
+                finish(slot, "failed", "line_editor: " + e.getMessage(), null);
+                return;
+            }
+            if (choice.isEmpty()) {
+                if (attempt == 0) {
+                    // 线内编辑找不到可用素材：不硬做，也不回问总编辑；原判线照旧留痕
+                    markDecision(slot, decision, pools, null);
+                    finish(slot, "skipped", "no_fit: " + decision.selectedLine(), null);
+                } else {
+                    finish(slot, "failed", "retry_no_fit: 换选题后池子里已无可用素材", null);
                 }
+                return;
+            }
+            EditorialChoice picked = choice.get();
+            // 槽位记的是实际执行线：早写会把「总编辑想走数据看板、实际走了解说」写反
+            markDecision(slot, decision, pools, picked);
+            // 候选在最终选择确定后才记：之前记的是「预选候选」，会与实际生产的那条不符
+            slotMapper.lambda().set(HeronAutoSlot::getCandidateId, picked.selection().candidateId())
+                .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
+                .eq(HeronAutoSlot::getSlotTime, slot.getSlotTime()).update();
+            NewsWorkVo work = null;
+            try {
+                work = newsWork.claimForAuto(picked.selection(), news.getAutoActorId());
+                org.dromara.heron.domain.vo.ProductionReceiptVo receipt = newsWork.generateForAuto(
+                    work.getWorkId(), "auto:" + today + ":" + slotTime, decision, picked.selection());
+                markOpportunityUsed(picked.selection(), receipt);
+                finish(slot, "produced", picked.finalLine() + "：" + decision.editorialIntent(), work.getWorkId());
+                return;
+            } catch (RuntimeException e) {
+                log.warn("自动产出槽位失败 slot={} attempt={} {}: {}",
+                    slotTime, attempt, e.getClass().getSimpleName(), e.getMessage());
+                // 认领已经落库，提交失败必须把候选放回池子：不释放就再也不会被选中，且不报错
+                if (work != null) {
+                    try {
+                        newsWork.abandonAuto(work.getWorkId());
+                    } catch (RuntimeException compensation) {
+                        log.warn("自动产出补偿失败 workId={}: {}", work.getWorkId(), compensation.getMessage());
+                    }
+                }
+                if (!isEvidenceReviewFailure(e)) {
+                    finish(slot, "failed", e.getMessage(), null);
+                    return;
+                }
+                lastReason = e.getMessage();
+                unverifiableStreak = "editorial_review_unverifiable".equals(businessCode(e))
+                    ? unverifiableStreak + 1 : 0;
+                if (unverifiableStreak >= UNVERIFIABLE_STREAK_LIMIT) {
+                    // 停手的理由要说清楚：不是选题不好，是证据片段本身不够
+                    finish(slot, "failed", "evidence_fragment_poor: 连续 " + unverifiableStreak
+                        + " 个选题都核不住，换选题救不了；" + lastReason, null);
+                    return;
+                }
+                if (picked.selection().candidateId() != null) {
+                    triedCandidates.add(picked.selection().candidateId());
+                }
+                if (picked.selection().dataSourceKey() != null) {
+                    triedSources.add(picked.selection().dataSourceKey());
+                }
+                current = current.excluding(triedCandidates, triedSources);
             }
         }
+        finish(slot, "failed", "retry_exhausted: 已试 " + (MAX_REVIEW_RETRIES + 1)
+            + " 个选题仍未过审；" + lastReason, null);
+    }
+
+    /** 审稿没过且是证据问题：换选题可能换得动，其余失败换不掉。 */
+    static boolean isEvidenceReviewFailure(RuntimeException e) {
+        String code = businessCode(e);
+        return "editorial_review_unverifiable".equals(code) || "editorial_review_unsupported".equals(code);
+    }
+
+    static String businessCode(RuntimeException e) {
+        return e instanceof HeronBusinessException business ? business.getCode() : null;
     }
 
     /**

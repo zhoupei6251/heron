@@ -2,6 +2,7 @@ package org.dromara.heron.domain;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
 
@@ -76,6 +77,29 @@ public record EditorialCandidatePool(String poolId, String poolHash,
     /** 三条线都空才算空池：没有新闻但数据里有值得做的东西时，数据看板照样能产。 */
     public boolean isEmpty() {
         return hot.isEmpty() && articles.isEmpty() && opportunities.isEmpty();
+    }
+
+    /**
+     * 重试时剔除已经试过、审稿没过的选题。
+     *
+     * <p>池子内容变了，hash 必须重算——hash 的语义是「内容没被换过」，
+     * 留着旧 hash 等于声称这一池和上一池是同一批东西。
+     *
+     * <p>机会按它绑定的源剔除：同一条数据源换个机会再选出来，审稿一样过不了。
+     *
+     * @param candidateIds 解说线已试过的候选
+     * @param sourceKeys   数据看板线已试过的数据源
+     */
+    public EditorialCandidatePool excluding(Set<Long> candidateIds, Set<String> sourceKeys) {
+        if (candidateIds.isEmpty() && sourceKeys.isEmpty()) {
+            return this;
+        }
+        return build(
+            hot.stream().filter(item -> !candidateIds.contains(item.getCandidateId())).toList(),
+            articles.stream().filter(item -> !candidateIds.contains(item.getCandidateId())).toList(),
+            datasets.stream().filter(item -> !sourceKeys.contains(item.getSourceKey())).toList(),
+            sources, recent,
+            opportunities.stream().filter(item -> !sourceKeys.contains(item.getSourceKey())).toList());
     }
 
     private static EditorialCandidatePool build(List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,

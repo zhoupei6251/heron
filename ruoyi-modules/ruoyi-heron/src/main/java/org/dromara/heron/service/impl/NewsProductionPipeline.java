@@ -302,31 +302,52 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     private ReviewOutcome reviewScript(ProductionRunVo run, String scriptJson, String basisJson,
                                        DatasetFetchService.Result datasetFetched, boolean dataBoard) {
-        EditorialReviewer.Verdict verdict = dataBoard
+        EditorialReviewer.Verdict verdict = review(run, scriptJson, basisJson, dataBoard);
+        if (!verdict.blocked()) {
+            return reviewed(scriptJson, verdict, 0, dataBoard);
+        }
+        // 证据不够：改稿救不了。把核不住的断言删掉只会得到一条没有信息量的稿子，
+        // 那不是自愈是降级凑数。这类失败交给槽位层换选题。
+        if (verdict.evidenceProblem()) {
+            throw reviewBlocked(verdict, "证据不足以支持核心断言");
+        }
+        // 文案跑在证据前面（夸大、因果、时态）：改一轮再说
+        String repaired = datasetFetched == null
+            ? author.repair(run, scriptJson, verdict.blockingNotes())
+            : datasetAuthor.repair(run, datasetFetched.json(), scriptJson, verdict.blockingNotes());
+        EditorialReviewer.Verdict again = review(run, repaired, basisJson, dataBoard);
+        if (again.blocked()) {
+            throw reviewBlocked(again, "改稿后仍未通过");
+        }
+        return reviewed(repaired, again, 1, dataBoard);
+    }
+
+    private EditorialReviewer.Verdict review(ProductionRunVo run, String scriptJson, String basisJson,
+                                             boolean dataBoard) {
+        return dataBoard
             ? reviewer.review(run, scriptJson, basisJson)
             : reviewer.reviewEvidence(run, scriptJson, basisJson);
+    }
+
+    private ReviewOutcome reviewed(String script, EditorialReviewer.Verdict verdict,
+                                   int attempts, boolean dataBoard) {
         ReviewOutcome outcome = new ReviewOutcome();
-        int attempts = 0;
-        String finalScript = scriptJson;
-        if (verdict.blocked()) {
-            String repaired = datasetFetched == null
-                ? author.repair(run, scriptJson, verdict.blockingNotes())
-                : datasetAuthor.repair(run, datasetFetched.json(), scriptJson, verdict.blockingNotes());
-            EditorialReviewer.Verdict again = dataBoard
-                ? reviewer.review(run, repaired, basisJson)
-                : reviewer.reviewEvidence(run, repaired, basisJson);
-            if (again.blocked()) {
-                throw new HeronBusinessException(409, "editorial_review_blocked",
-                    "审稿两次未过：" + String.join("；", again.blockingNotes()));
-            }
-            finalScript = repaired;
-            attempts = 1;
-            verdict = again;
-        }
-        outcome.script = finalScript;
+        outcome.script = script;
         outcome.record = verdict.toRecord(attempts, dataBoard ? "editorial-review" : "evidence-review",
             LocalDateTime.now(ZoneOffset.UTC));
         return outcome;
+    }
+
+    /**
+     * 审稿没过：用 code 把「换选题能救」和「改稿能救」分开。
+     * 槽位层据此决定重试还是放弃，不必再解析自然语言。
+     */
+    private static HeronBusinessException reviewBlocked(EditorialReviewer.Verdict verdict, String what) {
+        String code = verdict.unverifiable() ? "editorial_review_unverifiable"
+            : verdict.evidenceProblem() ? "editorial_review_unsupported"
+            : "editorial_review_blocked";
+        return new HeronBusinessException(409, code,
+            what + "：" + String.join("；", verdict.blockingNotes()));
     }
 
     /** 解说线审稿依据：只给抓到的证据片段与出处，不给模型自述。 */
