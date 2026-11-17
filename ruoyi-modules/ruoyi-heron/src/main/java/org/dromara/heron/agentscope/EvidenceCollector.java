@@ -26,6 +26,8 @@ public final class EvidenceCollector {
     private static final int MAX_SNIPPET = 400;
     /** 一条研究最多列多少条证据，防止把账本整张抄进来。 */
     static final int MAX_EVIDENCE = 40;
+    /** 收尾工具：它本身就是「交作业」，不能拿来证明「查过数据」。 */
+    static final String SUBMIT_TOOL = "submit_findings";
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -111,8 +113,13 @@ public final class EvidenceCollector {
         unmatched.forEach(ghosts::add);
         root.set("snapshots", snapshotArray(snapshots));
         root.put("snapshotCount", snapshots == null ? 0 : snapshots.size());
+        // 「没声称查过不该查的」还不够：一次有效的查询都没有，结论同样无据。
+        // 收尾工具要排除——它本身就是交作业，不能拿来当「查过数据」的证据。
+        boolean backed = calls.stream().anyMatch(call -> !SUBMIT_TOOL.equals(call.getToolName())
+            && HeronAgentToolCall.STATUS_OK.equals(call.getStatus()));
+        root.put("evidenceBacked", backed);
         // 没交结论时证据只能算「过程记录」，不能算「支撑某个判断的证据」
-        root.put("complete", submitted && unmatched.isEmpty());
+        root.put("complete", submitted && unmatched.isEmpty() && backed);
         return root.toString();
     }
 

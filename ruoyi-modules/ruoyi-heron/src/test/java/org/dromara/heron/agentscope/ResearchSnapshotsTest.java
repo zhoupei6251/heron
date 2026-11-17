@@ -56,7 +56,8 @@ class ResearchSnapshotsTest {
         ResearchSnapshots snapshots = new ResearchSnapshots(mapper, 9L, 1);
 
         assertDoesNotThrow(() -> snapshots.record("k", snapshot("sha-1")));
-        assertTrue(snapshots.recorded().containsKey("k"), "落库失败也要留住内存里的引用");
+        assertFalse(snapshots.recorded().containsKey("k"),
+            "库里没有这份快照，就不能让证据链引用它——有引用没证据比没引用更糟");
     }
 
     @Test

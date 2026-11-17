@@ -97,14 +97,33 @@ class EvidenceCollectorTest {
         assertEquals(0, root.path("unverifiedCitations").size(), "没声明过就不存在未核实引用");
     }
 
+    /**
+     * 一个工具都没调、也没声明引用、只交了结论——这种「证据链」曾经被判完整，
+     * 等于给模型留了一条不查数据直接下结论的路。
+     */
     @Test
-    @DisplayName("一次都没查就交结论：证据链仍然完整但调用数为零")
+    @DisplayName("一次都没查就交结论：不算完整")
     void emptyLedger() {
         String json = new EvidenceCollector(mapperWith(List.of())).collect(9L, 1, List.of(), true);
 
         JsonNode root = JSON.readTree(json);
         assertEquals(0, root.path("toolCallCount").asInt());
-        assertTrue(root.path("complete").asBoolean());
+        assertFalse(root.path("evidenceBacked").asBoolean());
+        assertFalse(root.path("complete").asBoolean(), "没查过数据就不能算证据完整");
+    }
+
+    /** 收尾工具本身就是「交作业」，把它算成「查过数据」等于白送一次完整性。 */
+    @Test
+    @DisplayName("只调了收尾工具，也不算查过数据")
+    void submitOnlyIsNotEvidence() {
+        var rows = List.of(call(1L, 1, EvidenceCollector.SUBMIT_TOOL, "{}", "ok"));
+
+        String json = new EvidenceCollector(mapperWith(rows)).collect(9L, 1, List.of(), true);
+
+        JsonNode root = JSON.readTree(json);
+        assertEquals(1, root.path("toolCallCount").asInt());
+        assertFalse(root.path("evidenceBacked").asBoolean());
+        assertFalse(root.path("complete").asBoolean());
     }
 
     @Test

@@ -141,4 +141,45 @@ class EditorialPublishGateTest {
             ]}
             """));
     }
+
+    /**
+     * 解说线的依据是证据片段，核不了的核心断言不能发。
+     * 上游解析已经要求过一遍，这里是落盘记录上的第二道闸——
+     * 旧记录没有这个字段同样不放行，「没写」不等于「核过」。
+     */
+    @Test
+    @DisplayName("解说线记录没确认核心断言有据：不能自动发布")
+    void evidenceReviewWithoutSupportedCoreFactsIsBlocked() {
+        assertEquals("review_core_facts_unsupported", errorCode("""
+            {"schemaVersion":"1.0","result":"PASS","promptVersion":"evidence-review",
+             "issues":[],"repairAttempts":0}
+            """));
+        assertEquals("review_core_facts_unsupported", errorCode("""
+            {"schemaVersion":"1.0","result":"PASS","promptVersion":"evidence-review",
+             "coreFacts":"unverifiable","issues":[],"repairAttempts":0}
+            """));
+        assertEquals("review_core_facts_unsupported", errorCode("""
+            {"schemaVersion":"1.0","result":"PASS","promptVersion":"evidence-review",
+             "coreFacts":"unsupported","issues":[],"repairAttempts":0}
+            """));
+    }
+
+    @Test
+    @DisplayName("解说线记录确认核心断言有据：放行")
+    void evidenceReviewWithSupportedCoreFactsPasses() {
+        assertDoesNotThrow(() -> NewsWorkServiceImpl.checkEditorialPass("""
+            {"schemaVersion":"1.0","result":"PASS","promptVersion":"evidence-review",
+             "coreFacts":"supported","issues":[],"repairAttempts":0}
+            """));
+    }
+
+    /** 数据看板线的事实清单由 Java 给，不存在「核不了」，不该被这条规则连坐。 */
+    @Test
+    @DisplayName("数据看板线记录不要求 coreFacts")
+    void editorialReviewDoesNotRequireCoreFacts() {
+        assertDoesNotThrow(() -> NewsWorkServiceImpl.checkEditorialPass("""
+            {"schemaVersion":"1.0","result":"PASS","promptVersion":"editorial-review",
+             "issues":[],"repairAttempts":0}
+            """));
+    }
 }

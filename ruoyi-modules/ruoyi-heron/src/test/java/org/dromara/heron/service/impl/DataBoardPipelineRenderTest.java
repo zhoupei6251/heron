@@ -195,12 +195,12 @@ class DataBoardPipelineRenderTest {
         return new EditorialReviewer(null) {
             @Override
             public EditorialReviewer.Verdict review(ProductionRunVo run, String scriptJson, String factsJson) {
-                return new EditorialReviewer.Verdict("PASS", List.of(), List.of());
+                return new EditorialReviewer.Verdict("PASS", null, List.of(), List.of());
             }
 
             @Override
             public EditorialReviewer.Verdict reviewEvidence(ProductionRunVo run, String scriptJson, String evidenceJson) {
-                return new EditorialReviewer.Verdict("PASS", List.of(), List.of());
+                return new EditorialReviewer.Verdict("PASS", null, List.of(), List.of());
             }
         };
     }

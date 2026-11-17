@@ -30,6 +30,8 @@ public class EditorialReviewer {
     /** 解说线：依据是证据片段，不是已验证事实，规则完全不同，不能共用一份提示词。 */
     private static final String SYSTEM_EVIDENCE = resource("/prompt/review/evidence-review.md");
     private static final Set<String> SEVERITIES = Set.of("BLOCKER", "MAJOR", "MINOR");
+    /** 核心断言的证据状态：核得住 / 核不了 / 没依据。只有第一种能通过。 */
+    private static final Set<String> CORE_FACTS = Set.of("supported", "unverifiable", "unsupported");
 
     private final OpenAiModelClient model;
 
@@ -39,7 +41,10 @@ public class EditorialReviewer {
         }
     }
 
-    public record Verdict(String result, List<Issue> issues, List<String> minorSuggestions) {
+    /**
+     * @param coreFacts 核心断言能否被证据支持；只有解说线（依据是证据片段的）才要求给
+     */
+    public record Verdict(String result, String coreFacts, List<Issue> issues, List<String> minorSuggestions) {
         /** BLOCKER 与 MAJOR 必须改；MINOR 只记录。 */
         public boolean blocked() {
             return issues.stream().anyMatch(Issue::blocking);
@@ -50,6 +55,9 @@ public class EditorialReviewer {
             Map<String, Object> record = new LinkedHashMap<>();
             record.put("schemaVersion", "1.0");
             record.put("result", result);
+            if (coreFacts != null && !coreFacts.isBlank()) {
+                record.put("coreFacts", coreFacts);
+            }
             record.put("issues", issues.stream().map(issue -> Map.of(
                 "severity", issue.severity(),
                 "segmentId", issue.segmentId(),
@@ -71,15 +79,30 @@ public class EditorialReviewer {
     }
 
     public Verdict review(ProductionRunVo run, String scriptJson, String factsJson) {
-        return plan(model.chat(run, "editorial-review", SYSTEM, prompt(scriptJson, factsJson)));
+        // 事实清单由 Java 给，不存在「核不了」，不要求 coreFacts
+        return plan(model.chat(run, "editorial-review", SYSTEM, prompt(scriptJson, factsJson)), false);
     }
 
     /** 解说线审稿：依据是抓到的证据片段，审「有没有超出原文说过的范围」。 */
     public Verdict reviewEvidence(ProductionRunVo run, String scriptJson, String evidenceJson) {
-        return plan(model.chat(run, "evidence-review", SYSTEM_EVIDENCE, evidencePrompt(scriptJson, evidenceJson)));
+        return plan(model.chat(run, "evidence-review", SYSTEM_EVIDENCE, evidencePrompt(scriptJson, evidenceJson)),
+            true);
     }
 
+    /**
+     * 默认按「事实清单由 Java 给」的语义解析，不要求 coreFacts。
+     * 解说线（依据是证据片段）必须用两参版本。
+     */
     static Verdict plan(String reply) {
+        return plan(reply, false);
+    }
+
+    /**
+     * @param requireCoreFacts 解说线要求模型明确回答「核心断言核得了吗」。
+     *                         只靠 issue 的 severity 判不住它——模型可以一边说「无法核实」
+     *                         一边把 severity 打成 MINOR，下游看到的就是一条干净的 PASS。
+     */
+    static Verdict plan(String reply, boolean requireCoreFacts) {
         JsonNode node;
         try {
             node = reply == null ? null : JSON.readTree(ModelJson.unwrap(reply));
@@ -90,6 +113,14 @@ public class EditorialReviewer {
         String result = node.path("result").asString("").strip();
         if (!"PASS".equals(result) && !"FAIL".equals(result)) {
             throw invalid("未知 result：" + result);
+        }
+        String coreFacts = node.path("coreFacts").asString("").strip();
+        if (requireCoreFacts && !CORE_FACTS.contains(coreFacts)) {
+            throw invalid("解说线审稿必须给出 coreFacts（supported/unverifiable/unsupported），收到："
+                + (coreFacts.isBlank() ? "（空）" : coreFacts));
+        }
+        if (!coreFacts.isBlank() && !CORE_FACTS.contains(coreFacts)) {
+            throw invalid("未知 coreFacts：" + coreFacts);
         }
         List<Issue> issues = new ArrayList<>();
         JsonNode list = node.path("issues");
@@ -115,7 +146,20 @@ public class EditorialReviewer {
         if ("PASS".equals(result) && issues.stream().anyMatch(Issue::blocking)) {
             throw invalid("PASS 不能带 BLOCKER/MAJOR");
         }
-        return new Verdict(result, issues, minors);
+        if (requireCoreFacts) {
+            // 先判 PASS：核心断言没被支持却判通过，是最该拦住的那条，提示也要最直接
+            if ("PASS".equals(result) && !"supported".equals(coreFacts)) {
+                throw invalid("核心断言未经证据支持（coreFacts=" + coreFacts + "），不能判 PASS");
+            }
+            long blockers = issues.stream().filter(issue -> "BLOCKER".equals(issue.severity())).count();
+            if ("unsupported".equals(coreFacts) && blockers == 0) {
+                throw invalid("coreFacts=unsupported 必须至少给出一条 BLOCKER");
+            }
+            if ("unverifiable".equals(coreFacts) && issues.stream().noneMatch(Issue::blocking)) {
+                throw invalid("coreFacts=unverifiable 必须至少给出一条 MAJOR");
+            }
+        }
+        return new Verdict(result, coreFacts.isBlank() ? null : coreFacts, issues, minors);
     }
 
     static String prompt(String scriptJson, String factsJson) {

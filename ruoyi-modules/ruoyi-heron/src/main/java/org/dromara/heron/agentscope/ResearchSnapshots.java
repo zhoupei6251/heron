@@ -53,8 +53,9 @@ public final class ResearchSnapshots {
         Ref ref = new Ref(sourceKey,
             blankToNull(snapshot.path("data_sha256").asString("")),
             blankToNull(snapshot.path("retrieved_at").asString("")));
-        recorded.put(sourceKey, ref);
         if (mapper == null) {
+            // 未接线模式（单测/冒烟）：没有库可写，只在内存里留引用
+            recorded.put(sourceKey, ref);
             return;
         }
         HeronResearchSnapshot row = new HeronResearchSnapshot();
@@ -72,10 +73,13 @@ public final class ResearchSnapshots {
         row.setUpdateTime(row.getCreateTime());
         try {
             mapper.insert(row);
+            recorded.put(sourceKey, ref);
         } catch (DuplicateKeyException e) {
-            // 同一 attempt 同一源已经落过：重试或并行工具调用，第一份就是要留的那份
+            // 同一 attempt 同一源已经落过：库里确实有这份，算数
+            recorded.put(sourceKey, ref);
         } catch (RuntimeException e) {
-            log.warn("研究快照落库失败 researchId={} attempt={} source={} cause={}",
+            // 落库失败就不进证据：只有引用、没有可复核的持久化证据，比没有更糟
+            log.warn("研究快照落库失败，本次不记入证据 researchId={} attempt={} source={} cause={}",
                 researchId, attemptNo, sourceKey, e.getMessage());
         }
     }

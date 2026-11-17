@@ -554,6 +554,16 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             throw new HeronBusinessException(409, "review_legacy",
                 "AI 审稿记录早于当前契约（schemaVersion=" + (schema.isBlank() ? "缺失" : schema) + "），不能自动发布");
         }
+        // 解说线的依据是证据片段，核不了的核心断言不能发。这里不信任上游解析结果，
+        // 直接看落盘记录：旧记录没有 coreFacts 字段的同样不放行——「没写」不等于「核过」。
+        if ("evidence-review".equals(record.path("promptVersion").asString("").strip())) {
+            String coreFacts = record.path("coreFacts").asString("").strip();
+            if (!"supported".equals(coreFacts)) {
+                throw new HeronBusinessException(409, "review_core_facts_unsupported",
+                    "解说线审稿没有确认核心断言有据（coreFacts="
+                        + (coreFacts.isBlank() ? "缺失" : coreFacts) + "），不能自动发布");
+            }
+        }
     }
 
     private NewsVideoVersionVo confirmAs(long workId, long versionId, NewsReviewBo bo, long actor, boolean system) {        NewsVideoVersionVo reviewed = reviewAs(workId, versionId, bo, actor, system);
