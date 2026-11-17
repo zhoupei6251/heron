@@ -46,12 +46,40 @@ class NewsMetricMapperXmlTest extends NewsMysqlTestSupport {
         assertTrue(metricMapper.recentPerformance(10).isEmpty());
     }
 
+    /**
+     * 来源维度回答的是「研究得出的选题和热榜来的选题，表现差多少」。
+     * 这条同时验证新分支的 SQL 能真的绑定执行——编译通过不代表语句能跑。
+     */
+    @Test
+    @DisplayName("按来源归因：研究来源与热榜分开统计")
+    void breaksDownBySource() {
+        long research = insertCandidate("研究选题", "research");
+        long hot = insertCandidate("热榜选题", null);
+        insertMetric(insertVersion(insertWork(research)), 1000L, "0.5000", "2026-11-02 10:00:00");
+        insertMetric(insertVersion(insertWork(hot)), 200L, "0.2000", "2026-11-02 10:00:00");
+
+        java.util.Map<String, HeronNewsMetricMapper.Breakdown> byBucket =
+            metricMapper.performanceBreakdown("source").stream()
+                .collect(java.util.stream.Collectors.toMap(HeronNewsMetricMapper.Breakdown::bucket, row -> row));
+
+        assertTrue(byBucket.containsKey("research"), "研究来源没被单列：" + byBucket.keySet());
+        assertTrue(byBucket.containsKey("hotlist"), "热榜来源没被单列：" + byBucket.keySet());
+        assertEquals(1L, byBucket.get("research").samples());
+        assertEquals(1000.0, byBucket.get("research").avgPlays(), 0.001);
+        assertEquals(1L, byBucket.get("hotlist").samples());
+    }
+
     private long insertCandidate(String title) {
+        return insertCandidate(title, null);
+    }
+
+    private long insertCandidate(String title, String sourceKind) {
         long id = java.util.concurrent.ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE / 4);
-        jdbc.update("insert into heron_news_candidate(candidate_id, title, summary, evidence, dedup_key, "
-                + "normalized_title, hit_count, heat_score, first_seen_at, last_seen_at, create_time, update_time) "
-                + "values(?,?,?,'{}',?,?,?,?,now(),now(),now(),now())",
-            id, title, "摘要", "dedup-" + id, title.toLowerCase(), 1L, 0L);
+        jdbc.update("insert into heron_news_candidate(candidate_id, title, summary, evidence, source_kind, "
+                + "dedup_key, normalized_title, hit_count, heat_score, first_seen_at, last_seen_at, "
+                + "create_time, update_time) "
+                + "values(?,?,?,'{}',?,?,?,?,?,now(),now(),now(),now())",
+            id, title, "摘要", sourceKind, "dedup-" + id, title.toLowerCase(), 1L, 0L);
         return id;
     }
 

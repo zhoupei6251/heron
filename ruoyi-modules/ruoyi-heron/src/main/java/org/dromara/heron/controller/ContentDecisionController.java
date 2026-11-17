@@ -13,7 +13,6 @@ import org.dromara.heron.domain.vo.ContentDecisionVo;
 import org.dromara.heron.domain.vo.ResearchCostVo;
 import org.dromara.heron.service.IContentDecisionService;
 import org.dromara.heron.service.impl.ResearchCostService;
-import org.dromara.heron.service.IResearchPromotionService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,7 +35,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class ContentDecisionController extends BaseController {
 
     private final IContentDecisionService decisions;
-    private final IResearchPromotionService promotions;
     private final ResearchCostService costs;
 
     @SaCheckPermission("heron:decision:list")
@@ -73,7 +71,7 @@ public class ContentDecisionController extends BaseController {
      * 采纳并提升为选题候选。
      *
      * <p>两个动作合成一个接口是刻意的：采纳之后不做提升，那条判断就停在决策中心里没人用。
-     * 分成两步的话，第二步一定会被忘掉。
+     * 分成两步的话，第二步一定会被忘掉。后端也把两步放进同一个事务，不留半截状态。
      *
      * <p>提升只产出候选，不建生产任务——plan.md §16 要求它「作为候选之一，不取代总编辑」。
      */
@@ -82,8 +80,10 @@ public class ContentDecisionController extends BaseController {
     @PostMapping("/{decisionId}/promote")
     public R<PromotionVo> promote(@PathVariable long decisionId,
                                   @RequestBody(required = false) DecisionNoteBo body) {
-        decisions.decide(decisionId, true, body == null ? null : body.note());
-        long candidateId = promotions.promote(decisionId);
+        long candidateId = decisions.acceptAndPromote(decisionId,
+            body == null ? null : body.note(),
+            body == null ? null : body.verificationOverride(),
+            body == null ? null : body.evidenceOverride());
         return R.ok(new PromotionVo(decisionId, candidateId));
     }
 
@@ -94,10 +94,15 @@ public class ContentDecisionController extends BaseController {
         return R.ok(costs.overview(days == null ? 30 : days));
     }
 
-    /** 裁决意见。采纳时可省略，否决时必填。 */
-    public record DecisionNoteBo(String note) {
+    /**
+     * 裁决意见。
+     *
+     * @param note                 采纳意见，采纳时可省略、否决时必填
+     * @param verificationOverride 核验判 DISAGREE 时人工放行的理由；只在提升时用
+     * @param evidenceOverride     证据链不完整时人工放行的理由；只在提升时用
+     */
+    public record DecisionNoteBo(String note, String verificationOverride, String evidenceOverride) {
     }
-
     /** 提升结果：决策 id 与产出的候选 id。 */
     public record PromotionVo(long decisionId, long candidateId) {
     }

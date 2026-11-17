@@ -126,4 +126,26 @@ class EvidenceCollectorTest {
         assertTrue(response.length() <= 401, "摘要长度 " + response.length());
         assertTrue(response.endsWith("…"));
     }
+
+    /**
+     * 只证明「某个 key 在账本里出现过」并不够：结论里的数字到底来自哪一版数据，
+     * 要能指到本次 attempt 冻结的那份快照。
+     */
+    @Test
+    @DisplayName("证据条目绑到本次 attempt 冻结的快照版本")
+    void bindsSnapshotVersion() {
+        var rows = List.of(call(1L, 1, "query_trend_series",
+            "{\"sourceKey\":\"frankfurter-audcny\"}", "returnedPoints=8"));
+        var snapshots = java.util.Map.of("frankfurter-audcny",
+            new ResearchSnapshots.Ref("frankfurter-audcny", "sha-1", "2026-11-16T10:00:00Z"));
+
+        String json = new EvidenceCollector(mapperWith(rows)).collect(9L, 1, List.of(), true, snapshots);
+
+        JsonNode root = JSON.readTree(json);
+        JsonNode item = root.path("calls").get(0);
+        assertEquals("frankfurter-audcny", item.path("snapshotSourceKey").asString(""));
+        assertEquals("sha-1", item.path("snapshotSha256").asString(""), "没有版本号的证据等于没有证据");
+        assertEquals(1, root.path("snapshotCount").asInt());
+        assertEquals("sha-1", root.path("snapshots").get(0).path("dataSha256").asString(""));
+    }
 }

@@ -9,6 +9,7 @@ import org.dromara.heron.domain.HeronResearchTask;
 import org.dromara.heron.domain.vo.ResearchTaskVo;
 import org.dromara.heron.mapper.HeronResearchTaskMapper;
 import org.dromara.heron.service.IResearchAgent;
+import org.dromara.heron.service.IResearchTaskService;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -354,6 +355,39 @@ class ResearchTaskServiceImplTest {
     }
 
     @Test
+    @DisplayName("并发建单撞唯一键：回读先到者建的那条，不抛给调用方")
+    void toleratesConcurrentCreate() {
+        HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
+        when(mapper.selectOne(any())).thenReturn(null);
+        HeronResearchTask raced = new HeronResearchTask();
+        raced.setResearchId(777L);
+        // 第一次查去重键为空；insert 撞键；回读拿到先到者建的那行
+        when(mapper.selectOne(any())).thenReturn(null);
+        doThrow(new org.springframework.dao.DuplicateKeyException("dup"))
+            .when(mapper).insert(any(HeronResearchTask.class));
+        when(mapper.selectOne(any())).thenReturn(null, raced);
+
+        long id = service(mapper).createFor(7L, "目标");
+
+        assertEquals(777L, id, "并发重复点击不该把异常抛给用户");
+    }
+
+    /** 发起研究只建或返回，不该顺手重跑已完成的旧任务——那等于重复烧额度。 */
+    @Test
+    @DisplayName("controller 的 create 走 trigger，不走 requeue")
+    void createEndpointDoesNotRequeue() {
+        IResearchTaskService tasks = mock(IResearchTaskService.class);
+        when(tasks.createFor(anyLong(), any())).thenReturn(9L);
+        var body = new org.dromara.heron.domain.bo.ResearchTaskCreateBo();
+        body.setOpportunityId(7L);
+
+        new org.dromara.heron.controller.ResearchTaskController(tasks).create(body);
+
+        verify(tasks).trigger(9L);
+        verify(tasks, never()).requeue(anyLong());
+    }
+
+    @Test
     @DisplayName("重跑只把终态打回排队，执行中的不动")
     void requeueOnlyRevertsTerminalStatus() {
         HeronResearchTask finished = new HeronResearchTask();
@@ -384,14 +418,139 @@ class ResearchTaskServiceImplTest {
             && values.contains(HeronResearchTask.STATUS_PARTIAL), "终态清单不全：" + values);
     }
 
+    /**
+     * P0 回归：结果写回必须带 attempt + 令牌。少了栅栏，旧执行会按 research_id
+     * 覆盖掉新执行的结果——这正是「取消后立刻重跑」会踩的那条路。
+     */
     @Test
-    @DisplayName("取消只把状态写成 cancelled，不动结论与用量")
-    void cancelWritesTerminalStatus() {
+    @DisplayName("结果写回带 attempt 与令牌栅栏")
+    void writeBackIsFenced() {
+        Harness harness = claimed();
+
+        runWith(harness, new IResearchAgent.Outcome("结论", 3, 2, 100, 50, false, false, null));
+
+        var chain = harness.chains().get(harness.chains().size() - 1);
+        String where = chain.getCustomSqlSegment();
+        assertTrue(where.contains("attempt_no"), "写回没认 attempt：" + where);
+        assertTrue(where.contains("run_token"), "写回没认令牌：" + where);
+    }
+
+    /**
+     * 写回被别的新 attempt 抢先：本次结论作废，既不覆盖状态，也不落决策。
+     */
+    @Test
+    @DisplayName("写回被拒：不落决策，返回库里的真实状态")
+    void rejectedWriteBackSkipsDecision() {
+        HeronResearchTask queued = new HeronResearchTask();
+        queued.setResearchId(9L);
+        queued.setStatus(HeronResearchTask.STATUS_QUEUED);
+        queued.setAttemptNo(0);
+        queued.setSessionId("research-9");
+        queued.setGoal("机会 9 在候选里。");
+        HeronResearchTask taken = new HeronResearchTask();
+        taken.setResearchId(9L);
+        taken.setStatus(HeronResearchTask.STATUS_RUNNING);
+        taken.setAttemptNo(2);
+
+        HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
+        when(mapper.selectById(9L)).thenReturn(queued, taken);
+        // 领取成功(1)，结果写回被拒(0)
+        when(mapper.update(any(Wrapper.class))).thenReturn(1, 0);
+        when(mapper.lambda()).thenAnswer(invocation ->
+            new LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>(mapper));
+
+        IResearchAgent agent = mock(IResearchAgent.class);
+        when(agent.research(any())).thenReturn(
+            new IResearchAgent.Outcome("结论", 3, 2, 100, 50, false, false, null));
+        @SuppressWarnings("unchecked")
+        ObjectProvider<org.dromara.heron.service.IContentDecisionService> decisions = mock(ObjectProvider.class);
+        var decisionService = mock(org.dromara.heron.service.IContentDecisionService.class);
+        when(decisions.getIfAvailable()).thenReturn(decisionService);
+        ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
+        when(clocks.getIfAvailable()).thenReturn(null);
+
+        String status = new ResearchTaskServiceImpl(mapper,
+            mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class), agent, clocks, decisions).run(9L);
+
+        assertEquals(HeronResearchTask.STATUS_RUNNING, status, "该报库里的真实状态，不是本次尝试的成功");
+        verify(decisionService, never()).recordFromResearch(anyLong(), anyInt());
+    }
+
+    /**
+     * 取消后工具调用被判停，执行方抛错收场。用户点的是取消，不该显示成失败。
+     */
+    @Test
+    @DisplayName("取消中抛错：落 cancelled，不落 failed")
+    void failureDuringCancelStaysCancelled() {
+        HeronResearchTask queued = new HeronResearchTask();
+        queued.setResearchId(9L);
+        queued.setStatus(HeronResearchTask.STATUS_QUEUED);
+        queued.setAttemptNo(0);
+        queued.setSessionId("research-9");
+        queued.setGoal("机会 9 在候选里。");
+        HeronResearchTask cancelling = new HeronResearchTask();
+        cancelling.setResearchId(9L);
+        cancelling.setStatus(HeronResearchTask.STATUS_CANCELLING);
+
+        HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
+        when(mapper.selectById(9L)).thenReturn(queued, cancelling);
+        when(mapper.update(any(Wrapper.class))).thenReturn(1);
+        List<LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>> chains = new ArrayList<>();
+        when(mapper.lambda()).thenAnswer(invocation -> {
+            var chain = new LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>(mapper);
+            chains.add(chain);
+            return chain;
+        });
+
+        IResearchAgent agent = mock(IResearchAgent.class);
+        when(agent.research(any())).thenThrow(new IllegalStateException("tool rejected"));
+        ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
+        when(clocks.getIfAvailable()).thenReturn(null);
+
+        String status = new ResearchTaskServiceImpl(mapper,
+            mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class), agent, clocks, noDecisions()).run(9L);
+
+        assertEquals(HeronResearchTask.STATUS_CANCELLED, status);
+        assertTrue(chains.get(chains.size() - 1).getParamNameValuePairs().values()
+            .contains(HeronResearchTask.STATUS_CANCELLED), "取消中抛错不该写成 failed");
+    }
+
+    /**
+     * 执行中的 Agent 要等续命下一拍才会停，这期间它还可能写回结果。
+     * 此刻直接写 cancelled 是在撒谎：任务还在跑，却已经显示成终态、还能被立刻重跑。
+     */
+    @Test
+    @DisplayName("执行中取消落 cancelling，不直接落终态")
+    void cancelWhileRunningMarksCancelling() {
         HeronResearchTask running = new HeronResearchTask();
         running.setResearchId(9L);
         running.setStatus(HeronResearchTask.STATUS_RUNNING);
         HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
         when(mapper.selectById(9L)).thenReturn(running);
+        // 第一条 QUEUED→cancelled 打不中（这一行是 running），第二条 RUNNING→cancelling 打中
+        when(mapper.update(any(Wrapper.class))).thenReturn(0, 1);
+        List<LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>> chains = new ArrayList<>();
+        when(mapper.lambda()).thenAnswer(invocation -> {
+            var chain = new LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>(mapper);
+            chains.add(chain);
+            return chain;
+        });
+
+        service(mapper).cancel(9L);
+
+        assertEquals(2, chains.size(), "排队中与执行中各要试一次");
+        assertTrue(chains.get(1).getParamNameValuePairs().values()
+            .contains(HeronResearchTask.STATUS_CANCELLING), "执行中没落 cancelling");
+    }
+
+    @Test
+    @DisplayName("排队中取消直接落 cancelled：没有执行方要等")
+    void cancelWhileQueuedIsImmediate() {
+        HeronResearchTask queued = new HeronResearchTask();
+        queued.setResearchId(9L);
+        queued.setStatus(HeronResearchTask.STATUS_QUEUED);
+        HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
+        when(mapper.selectById(9L)).thenReturn(queued);
         when(mapper.update(any(Wrapper.class))).thenReturn(1);
         List<LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>> chains = new ArrayList<>();
         when(mapper.lambda()).thenAnswer(invocation -> {
@@ -402,8 +561,60 @@ class ResearchTaskServiceImplTest {
 
         service(mapper).cancel(9L);
 
+        assertEquals(1, chains.size(), "排队中的没有执行方，不该再等一次");
+        assertTrue(chains.get(0).getParamNameValuePairs().values()
+            .contains(HeronResearchTask.STATUS_CANCELLED));
+    }
+
+    /**
+     * 调度器靠这条查询把重启后遗留的任务捞回来：只认排队中，或租约已过期的执行中。
+     * 少了后半句，执行方崩掉的行永远卡在 running，库里有状态却再也不会被执行。
+     */
+    @Test
+    @DisplayName("可领取查询：排队中 + 租约过期的执行中")
+    void claimableQueryCoversQueuedAndStaleRunning() {
+        HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
+        List<LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>> chains = new ArrayList<>();
+        when(mapper.lambda()).thenAnswer(invocation -> {
+            var chain = new LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>(mapper);
+            chains.add(chain);
+            return chain;
+        });
+        HeronResearchTask queued = new HeronResearchTask();
+        queued.setResearchId(7L);
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(queued));
+
+        List<Long> ids = service(mapper).claimableIds(5);
+
+        assertEquals(List.of(7L), ids);
+        String where = chains.get(0).getCustomSqlSegment();
+        assertTrue(where.contains("status"), where);
+        assertTrue(where.contains("lease_until"),
+            "要认租约过期的执行中，否则挂掉的任务永远卡在 running：" + where);
+    }
+
+    /** 执行方在取消途中挂掉：等不到它自己确认退出，调度器必须替它收尾。 */
+    @Test
+    @DisplayName("失联的取消由调度器收尾成 cancelled")
+    void resolvesAbandonedCancel() {
+        HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
+        List<LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>> chains = new ArrayList<>();
+        when(mapper.lambda()).thenAnswer(invocation -> {
+            var chain = new LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>(mapper);
+            chains.add(chain);
+            return chain;
+        });
+        when(mapper.update(any(Wrapper.class))).thenReturn(1);
+
+        assertEquals(1, service(mapper).resolveAbandonedCancels());
+
         var chain = chains.get(0);
-        assertTrue(chain.getParamNameValuePairs().values().contains(HeronResearchTask.STATUS_CANCELLED),
-            "状态没写成 cancelled");
+        var values = chain.getParamNameValuePairs().values();
+        assertTrue(values.contains(HeronResearchTask.STATUS_CANCELLED), "没落终态：" + values);
+        assertTrue(where(chain).contains("lease_until"), "要按租约判定执行方是否还在：" + where(chain));
+    }
+
+    private static String where(LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo> chain) {
+        return chain.getCustomSqlSegment();
     }
 }

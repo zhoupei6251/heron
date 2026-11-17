@@ -20,8 +20,9 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class NewsMetricServiceImpl implements INewsMetricService {
-    /** 白名单：这三个值会进 XML 的 choose 分支，不能放任意输入过去。 */
-    private static final java.util.Set<String> GROUP_BY_KEYS = java.util.Set.of("template", "line", "angle");
+    /** 白名单：这些值会进 XML 的 choose 分支，不能放任意输入过去。 */
+    private static final java.util.Set<String> GROUP_BY_KEYS =
+        java.util.Set.of("template", "line", "angle", "source");
 
     private final HeronNewsMetricMapper metrics;
     private final HeronVideoVersionMapper versions;
@@ -82,7 +83,7 @@ public class NewsMetricServiceImpl implements INewsMetricService {
         String groupBy = dimension == null ? "" : dimension.strip().toLowerCase();
         if (!GROUP_BY_KEYS.contains(groupBy)) {
             throw new HeronBusinessException(400, "metric_dimension_invalid",
-                "只支持按 template / line / angle 汇总，收到：" + dimension);
+                "只支持按 template / line / angle / source 汇总，收到：" + dimension);
         }
         return metrics.performanceBreakdown(groupBy);
     }

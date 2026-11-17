@@ -30,7 +30,15 @@ public class HeronResearchTask extends BaseEntity {
     public static final String STATUS_PARTIAL = "partial";
     /** 失败。 */
     public static final String STATUS_FAILED = "failed";
-    /** 取消。 */
+    /**
+     * 取消中：已收到取消请求，但执行方还没真的退出。
+     *
+     * <p>中间态不是装饰：执行中的 Agent 最长要等续命线程下一拍（15 秒）才会停，
+     * 这期间库里直接写 {@code cancelled} 是在撒谎——任务还在烧钱，却已经显示成终态、
+     * 还能被立刻重跑。所以它必须先停在这里。
+     */
+    public static final String STATUS_CANCELLING = "cancelling";
+    /** 取消：执行方已确认退出。 */
     public static final String STATUS_CANCELLED = "cancelled";
 
     @TableId private Long researchId;
@@ -57,6 +65,11 @@ public class HeronResearchTask extends BaseEntity {
     private String sessionId;
     private String promptVersion;
     private Integer attemptNo;
+    /**
+     * 本次执行的令牌：领取时生成，之后心跳与所有写回都必须对上它。
+     * 旧执行者拿不到匹配，就只能原地退出，不能再改这一行。
+     */
+    private String runToken;
     private LocalDateTime leaseUntil;
     private LocalDateTime heartbeatAt;
     /** 模型的完整结论文本。 */

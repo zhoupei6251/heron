@@ -68,6 +68,7 @@ class NewsAutoTickTest extends NewsMysqlTestSupport {
     private NewsAutoService newAuto(HeronNewsProperties properties) {
         return new NewsAutoService(properties, sourceMapper, candidateMapper, workMapper, versionMapper, slotMapper,
             org.mockito.Mockito.mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class),
+            org.mockito.Mockito.mock(org.dromara.heron.mapper.HeronDataSourceMapper.class),
             maintenance, memoryPause(), noModelScreener(),
             org.mockito.Mockito.mock(org.dromara.heron.service.impl.EditorialDecisionService.class),
             org.mockito.Mockito.mock(org.dromara.heron.service.impl.NewsProductionDomain.class),

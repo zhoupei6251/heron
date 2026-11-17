@@ -32,10 +32,25 @@ public interface IContentDecisionService {
     /**
      * 人工作出裁决。
      *
+     * <p>只接受待处理状态：决策一旦裁决就是历史事实，后来的点击不该改写它。
+     *
      * @param accepted true 采纳，false 否决
      * @param note     理由；否决时必填——说不出为什么否决的否决，等于没记
      */
     ContentDecisionVo decide(long decisionId, boolean accepted, String note);
+
+    /**
+     * 采纳并提升为候选：两步在同一个事务里。
+     *
+     * <p>分开调会出现半截状态——采纳写进去了、候选没建出来，用户看到报错，
+     * 再点一次却被告知「已经裁决过」，两边都不对。
+     *
+     * @param note                 采纳意见，可以为空
+     * @param verificationOverride 核验判 DISAGREE 时人工放行的理由；其余情况可为空
+     * @param evidenceOverride     证据链不完整时人工放行的理由；其余情况可为空
+     * @return 候选 id
+     */
+    long acceptAndPromote(long decisionId, String note, String verificationOverride, String evidenceOverride);
 
     /**
      * 把核验员的判定挂到决策上。

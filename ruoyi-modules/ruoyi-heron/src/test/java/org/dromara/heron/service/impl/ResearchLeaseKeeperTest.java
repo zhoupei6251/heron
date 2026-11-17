@@ -25,13 +25,18 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
- * 续命一拍就三件事：还在跑就续租约、看到取消就置位、已结束就不动。
- * 这三件事各自对应一种真实事故：长任务被误回收、取消不生效、给结束的任务续命。
+ * 续命一拍就四件事：还在跑且令牌是自己的就续租约、看到取消就置位、已结束就不动、
+ * 令牌不是自己的就丢权。
+ *
+ * <p>丢权这一条是后补的：没有它，被回收的旧执行会继续给新 attempt 续租约，
+ * 新执行真挂了也永不过期，任务卡死在 running。
  */
-@DisplayName("租约续命：续租、取消探测与终止态")
+@DisplayName("租约续命：续租、取消探测、丢权与终止态")
 class ResearchLeaseKeeperTest {
 
     private static final long RESEARCH_ID = 9L;
+    private static final int ATTEMPT = 3;
+    private static final String TOKEN = "token-3";
     private static final Duration LEASE = Duration.ofMinutes(5);
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-11-13T10:00:00Z"), ZoneId.of("UTC"));
 
@@ -46,7 +51,13 @@ class ResearchLeaseKeeperTest {
         HeronResearchTask task = new HeronResearchTask();
         task.setResearchId(RESEARCH_ID);
         task.setStatus(status);
+        task.setAttemptNo(ATTEMPT);
+        task.setRunToken(TOKEN);
         return task;
+    }
+
+    private static ResearchLeaseKeeper keeper(HeronResearchTaskMapper mapper) {
+        return new ResearchLeaseKeeper(mapper, RESEARCH_ID, ATTEMPT, TOKEN, CLOCK, LEASE);
     }
 
     /** 不该写库的用例：一调 lambda 就炸，省得靠 verify 才发现在续命。 */
@@ -58,7 +69,7 @@ class ResearchLeaseKeeperTest {
     }
 
     @Test
-    @DisplayName("执行中：心跳与租约都推到「现在 + 租约长度」")
+    @DisplayName("执行中：心跳与租约都推到「现在 + 租约长度」，且条件带令牌")
     void renewsWhileRunning() {
         HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
         when(mapper.selectById(RESEARCH_ID)).thenReturn(row(HeronResearchTask.STATUS_RUNNING));
@@ -70,37 +81,89 @@ class ResearchLeaseKeeperTest {
             return chain;
         });
 
-        new ResearchLeaseKeeper(mapper, RESEARCH_ID, CLOCK, LEASE).tick();
+        keeper(mapper).tick();
 
         assertEquals(1, chains.size(), "执行中的任务每拍都要续命");
         var values = chains.get(0).getParamNameValuePairs().values();
         LocalDateTime now = LocalDateTime.now(CLOCK);
         assertTrue(values.contains(now.plus(LEASE)), "租约没续到 现在+5 分钟：" + values);
         assertTrue(values.contains(now), "心跳时间没更新：" + values);
+        String where = chains.get(0).getCustomSqlSegment();
+        assertTrue(where.contains("run_token"), "续命必须认令牌，否则旧执行会给新 attempt 续命：" + where);
+        assertTrue(values.contains(TOKEN), "where 里没带本次令牌：" + values);
     }
 
     @Test
     @DisplayName("库里已取消：置位取消信号，不再续命")
     void detectsCancellation() {
         ResearchLeaseKeeper keeper =
-            new ResearchLeaseKeeper(readOnlyMapper(row(HeronResearchTask.STATUS_CANCELLED)),
-                RESEARCH_ID, CLOCK, LEASE);
+            keeper(readOnlyMapper(row(HeronResearchTask.STATUS_CANCELLED)));
 
         keeper.tick();
 
         assertTrue(keeper.cancelled(), "取消没被探测到，研究就会继续烧钱");
+        assertTrue(keeper.shouldStop(), "取消必须同时停掉工具调用");
+    }
+
+    /** 执行中收到取消：执行方还没退出，这一拍要停工具，但状态得留到它自己收尾。 */
+    @Test
+    @DisplayName("取消中：置位取消信号，不再续命")
+    void detectsCancelling() {
+        ResearchLeaseKeeper keeper =
+            keeper(readOnlyMapper(row(HeronResearchTask.STATUS_CANCELLING)));
+
+        keeper.tick();
+
+        assertTrue(keeper.cancelled(), "cancelling 也要停，否则取消要等到执行结束才生效");
+        assertFalse(keeper.lost(), "取消是用户要的，不是丢权");
+    }
+
+    /**
+     * 这一行已经不是本次 attempt 了：重跑或回收都意味着执行权没了。
+     * 此时唯一正确的动作是停止一切写操作——包括续命。
+     */
+    @Test
+    @DisplayName("attempt 已被接管：判丢权，一次都不写")
+    void losesWhenAttemptMovedOn() {
+        HeronResearchTask stolen = row(HeronResearchTask.STATUS_RUNNING);
+        stolen.setAttemptNo(ATTEMPT + 1);
+        stolen.setRunToken("someone-else");
+
+        ResearchLeaseKeeper keeper = keeper(readOnlyMapper(stolen));
+
+        keeper.tick();
+
+        assertTrue(keeper.lost(), "被接管了还当自己持权，就会继续给别人续命");
+        assertFalse(keeper.cancelled());
+        assertTrue(keeper.shouldStop(), "丢权后必须停掉工具调用");
+    }
+
+    /** 续命时条件更新拿 0 行：读到的行还像自己的，其实已经被改过。 */
+    @Test
+    @DisplayName("续命拿到 0 行：判丢权")
+    void losesWhenRenewMatchesNothing() {
+        HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
+        when(mapper.selectById(RESEARCH_ID)).thenReturn(row(HeronResearchTask.STATUS_RUNNING));
+        when(mapper.update(any(Wrapper.class))).thenReturn(0);
+        when(mapper.lambda()).thenAnswer(invocation ->
+            new LambdaCrudChainWrapper<HeronResearchTask, ResearchTaskVo>(mapper));
+
+        ResearchLeaseKeeper keeper = keeper(mapper);
+        keeper.tick();
+
+        assertTrue(keeper.lost(), "更新 0 行还当自己持权，结果就会覆盖别人");
     }
 
     @Test
     @DisplayName("已结束：既不续命也不置位")
     void ignoresFinishedRows() {
         ResearchLeaseKeeper keeper =
-            new ResearchLeaseKeeper(readOnlyMapper(row(HeronResearchTask.STATUS_SUCCEEDED)),
-                RESEARCH_ID, CLOCK, LEASE);
+            keeper(readOnlyMapper(row(HeronResearchTask.STATUS_SUCCEEDED)));
 
         keeper.tick();
 
         assertFalse(keeper.cancelled());
+        assertFalse(keeper.lost());
     }
 
     @Test
@@ -108,9 +171,10 @@ class ResearchLeaseKeeperTest {
     void toleratesMissingRow() {
         HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
         when(mapper.selectById(RESEARCH_ID)).thenReturn(null);
-        ResearchLeaseKeeper keeper = new ResearchLeaseKeeper(mapper, RESEARCH_ID, CLOCK, LEASE);
+        ResearchLeaseKeeper keeper = keeper(mapper);
 
         assertDoesNotThrow(keeper::tick);
         assertFalse(keeper.cancelled());
+        assertFalse(keeper.lost());
     }
 }

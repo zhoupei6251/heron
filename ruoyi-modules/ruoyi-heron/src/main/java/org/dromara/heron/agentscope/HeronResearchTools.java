@@ -61,6 +61,8 @@ public class HeronResearchTools {
     private final ResearchFindings findings;
     /** 历史发布表现；可选——没有它时该工具如实说不可用，而不是返回空数组冒充「没表现」。 */
     private final HeronNewsMetricMapper metrics;
+    /** 本次 attempt 的数据快照；为 null 表示不落库（单测与冒烟用）。 */
+    private final ResearchSnapshots snapshots;
 
     public HeronResearchTools(DatasetFetchService datasets, HeronDataOpportunityMapper opportunities,
                               HeronDataSourceMapper sources, HeronVideoVersionMapper videos) {
@@ -77,6 +79,13 @@ public class HeronResearchTools {
                               HeronDataSourceMapper sources, HeronVideoVersionMapper videos,
                               ResearchBudget budget, ResearchFindings findings,
                               HeronNewsMetricMapper metrics) {
+        this(datasets, opportunities, sources, videos, budget, findings, metrics, null);
+    }
+
+    public HeronResearchTools(DatasetFetchService datasets, HeronDataOpportunityMapper opportunities,
+                              HeronDataSourceMapper sources, HeronVideoVersionMapper videos,
+                              ResearchBudget budget, ResearchFindings findings,
+                              HeronNewsMetricMapper metrics, ResearchSnapshots snapshots) {
         this.datasets = datasets;
         this.opportunities = opportunities;
         this.sources = sources;
@@ -84,21 +93,40 @@ public class HeronResearchTools {
         this.budget = budget;
         this.findings = findings;
         this.metrics = metrics;
+        this.snapshots = snapshots;
     }
 
     /** 同协作者、换一份预算的副本：每次研究一个预算，不共享。 */
     public HeronResearchTools withBudget(ResearchBudget budget) {
-        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings, metrics);
+        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings, metrics, snapshots);
     }
 
     /** 同协作者、换一份结论容器的副本：每次研究一份，不共享。 */
     public HeronResearchTools withFindings(ResearchFindings findings) {
-        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings, metrics);
+        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings, metrics, snapshots);
     }
 
     /** 接上历史表现数据源；没有它时 query_published_performance 会如实说不可用。 */
     public HeronResearchTools withMetrics(HeronNewsMetricMapper metrics) {
-        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings, metrics);
+        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings, metrics, snapshots);
+    }
+
+    /** 接上本次 attempt 的快照冻结：不加这一层，研究期取到的数据在事后无法复核。 */
+    public HeronResearchTools withSnapshots(ResearchSnapshots snapshots) {
+        return new HeronResearchTools(datasets, opportunities, sources, videos, budget, findings, metrics, snapshots);
+    }
+
+    /**
+     * 取数并冻结：研究期所有取数都走这里，否则「Agent 查过哪些数据」只剩日志。
+     *
+     * <p>冻结失败不影响本次取数——拿不到证据链，比拿不到数据轻。
+     */
+    private JsonNode snapshotOf(String sourceKey, int points) {
+        JsonNode snapshot = datasets.snapshot(sourceKey, points);
+        if (snapshots != null) {
+            snapshots.record(sourceKey, snapshot);
+        }
+        return snapshot;
     }
 
     // ==================== 预算与参数闸 ====================
@@ -254,7 +282,7 @@ public class HeronResearchTools {
         acquireBudget();
         String key = requireText(sourceKey, "sourceKey");
         int bounded = boundedPoints(points);
-        JsonNode snapshot = datasets.snapshot(key, bounded);
+        JsonNode snapshot = snapshotOf(key, bounded);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("sourceKey", key);
@@ -282,7 +310,7 @@ public class HeronResearchTools {
 
         acquireBudget();
         String key = requireText(sourceKey, "sourceKey");
-        JsonNode snapshot = datasets.snapshot(key, DEFAULT_POINTS);
+        JsonNode snapshot = snapshotOf(key, DEFAULT_POINTS);
         JsonNode rows = snapshot.path("rows");
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -345,7 +373,7 @@ public class HeronResearchTools {
         item.put("sourceKey", sourceKey);
         JsonNode snapshot;
         try {
-            snapshot = datasets.snapshot(sourceKey, Math.max(window, COMPARE_BASELINE_POINTS));
+            snapshot = snapshotOf(sourceKey, Math.max(window, COMPARE_BASELINE_POINTS));
         } catch (RuntimeException e) {
             item.put("status", "unavailable");
             item.put("reason", truncate(e.getMessage(), 200));

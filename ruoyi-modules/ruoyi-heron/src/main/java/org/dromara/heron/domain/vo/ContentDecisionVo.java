@@ -40,6 +40,10 @@ public class ContentDecisionVo implements Serializable {
     private String verificationReason;
     /** 核验员指出的具体冲突，JSON 数组文本。 */
     private String verificationConflicts;
+    /** 核验判 DISAGREE 时人工放行的理由；为空表示没有覆盖。 */
+    private String verificationOverrideReason;
+    /** 证据链不完整时人工放行的理由；为空表示没有覆盖。 */
+    private String evidenceOverrideReason;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

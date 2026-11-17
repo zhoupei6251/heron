@@ -25,6 +25,7 @@ import org.dromara.heron.service.IResearchTaskService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -32,9 +33,12 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.function.BooleanSupplier;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 /**
  * 研究任务：建任务（同机会同日只建一次）与跑一次会话。
@@ -94,12 +98,19 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
     @Value("${heron.agent.verify-enabled:true}")
     private boolean verifyEnabled;
 
-    /** 研究是长任务，触发接口不能同步等它跑完。 */
-    private final ExecutorService runner = Executors.newFixedThreadPool(2, runnable -> {
-        Thread thread = new Thread(runnable, "heron-research-runner");
-        thread.setDaemon(true);
-        return thread;
-    });
+    /**
+     * 研究是长任务，触发接口不能同步等它跑完。
+     *
+     * <p>队列必须有界：无界队列会让「短时间涌入几百条研究」全部排进来，
+     * 每一条都要烧模型额度。满了就拒绝——任务本身还在库里是 queued，
+     * 由调度器下一拍再领，不会丢。
+     */
+    private final ExecutorService runner = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS,
+        new ArrayBlockingQueue<>(4), runnable -> {
+            Thread thread = new Thread(runnable, "heron-research-runner");
+            thread.setDaemon(true);
+            return thread;
+        }, new ThreadPoolExecutor.AbortPolicy());
 
     @Override
     public long createFor(long opportunityId, String goal) {
@@ -149,7 +160,20 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
         row.setDedupKey(dedup);
         row.setCreateTime(now);
         row.setUpdateTime(now);
-        researchTaskMapper.insert(row);
+        try {
+            researchTaskMapper.insert(row);
+        } catch (DuplicateKeyException e) {
+            // 并发点两次：唯一键挡住后到者，回读先到者建的那一行，别把异常抛给用户
+            HeronResearchTask raced = researchTaskMapper.selectOne(QueryBuilder
+                .lambda(HeronResearchTask.class)
+                .eq(HeronResearchTask::getDedupKey, dedup)
+                .last("LIMIT 1")
+                .build());
+            if (raced == null) {
+                throw e;
+            }
+            return raced.getResearchId();
+        }
         return researchId;
     }
 
@@ -161,10 +185,13 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
         }
         LocalDateTime now = now();
         int attempt = (task.getAttemptNo() == null ? 0 : task.getAttemptNo()) + 1;
+        // 本次执行的令牌：心跳与所有写回都要对上它，失去它的执行者只能退场
+        String runToken = IdUtil.fastSimpleUUID();
         // 领取得认「租约已过期的 running」：执行方挂掉后，这一行不能永远卡在 running
         int claimed = researchTaskMapper.lambda()
             .set(HeronResearchTask::getStatus, HeronResearchTask.STATUS_RUNNING)
             .set(HeronResearchTask::getAttemptNo, attempt)
+            .set(HeronResearchTask::getRunToken, runToken)
             .set(HeronResearchTask::getLeaseUntil, now.plus(LEASE))
             .set(HeronResearchTask::getHeartbeatAt, now)
             .set(HeronResearchTask::getUpdateTime, now)
@@ -181,23 +208,30 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             return current == null ? task.getStatus() : current.getStatus();
         }
 
-        try (ResearchLeaseKeeper keeper =
-                 new ResearchLeaseKeeper(researchTaskMapper, researchId, clock(), LEASE)) {
+        try (ResearchLeaseKeeper keeper = new ResearchLeaseKeeper(
+                 researchTaskMapper, researchId, attempt, runToken, clock(), LEASE)) {
             keeper.start();
             // opportunity_id 在库里可空；空的时候不绑定快照，但研究照跑
             long opportunityId = task.getOpportunityId() == null ? 0L : task.getOpportunityId();
             ResearchGrade grade = ResearchGrade.parse(task.getGrade());
             IResearchAgent.Outcome outcome = researchAgent.research(new IResearchAgent.Request(
                 task.getSessionId(), researchId, opportunityId, attempt,
-                task.getGoal(), grade, keeper::cancelled));
+                task.getGoal(), grade, keeper::shouldStop));
 
             var findings = outcome.findings() == null
                 ? new IResearchAgent.Findings(null, null, false, null, null)
                 : outcome.findings();
+            // 丢权意味着这一行已经归别人：连结论一起丢掉，不写回也不落决策
+            if (keeper.lost()) {
+                log.info("研究 {} 第 {} 次执行已失去执行权，丢弃本次结果", researchId, attempt);
+                return currentStatus(researchId, HeronResearchTask.STATUS_RUNNING);
+            }
+            boolean stopping = keeper.cancelled() || rowStopping(researchId);
             String status;
-            if (keeper.cancelled() || rowCancelledSince(researchId)) {
+            if (stopping) {
                 // 取消优先于完成：短任务可能在续命线程下一拍之前就跑完了，
-                // 这时库里已经是 cancelled，用户要的是「别用这个结果」，不是「其实做完了」
+                // 这时库里已经是 cancelling，用户要的是「别用这个结果」，不是「其实做完了」。
+                // 这一写也是 cancelling → cancelled 的收尾：只有执行方确认退出，才轮到终态
                 status = HeronResearchTask.STATUS_CANCELLED;
             } else if (outcome.budgetExceeded() || (outcome.maxItersReached() && !findings.stoppedEarly())) {
                 // 预算到点或轮数跑满：结论可用但不完整。
@@ -206,7 +240,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             } else {
                 status = HeronResearchTask.STATUS_SUCCEEDED;
             }
-            researchTaskMapper.lambda()
+            int written = researchTaskMapper.lambda()
                 .set(HeronResearchTask::getStatus, status)
                 .set(HeronResearchTask::getResultText, outcome.text())
                 .set(HeronResearchTask::getRounds, outcome.rounds())
@@ -222,23 +256,25 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
                 .set(HeronResearchTask::getLeaseUntil, null)
                 .set(HeronResearchTask::getUpdateTime, now())
                 .eq(HeronResearchTask::getResearchId, researchId)
-                .update();
+                .eq(HeronResearchTask::getAttemptNo, attempt)
+                .eq(HeronResearchTask::getRunToken, runToken)
+                .updateCount();
+            if (written == 0) {
+                // 写回被拒：这一行已被回收或已被新 attempt 接管，覆盖它等于毁掉别人的结果
+                log.info("研究 {} 第 {} 次执行的写回被拒，结果作废", researchId, attempt);
+                return currentStatus(researchId, status);
+            }
+            if (stopping) {
+                // 取消优先：被取消的研究不落决策，也不进核验
+                return status;
+            }
             // 落决策要放在状态写回之后：它读的是刚落库的 report_json。
             // 决策落不下来不该把已经跑完的研究判成失败——研究是研究，决策是它下游的一步。
             Long decisionId = recordDecision(researchId, attempt);
-            verifyIfNeeded(task, researchId, attempt, decisionId, grade, keeper::cancelled);
+            verifyIfNeeded(task, researchId, attempt, decisionId, grade, keeper::shouldStop);
             return status;
         } catch (RuntimeException e) {
-            log.warn("研究任务失败 researchId={} cause={}", researchId, e.getMessage());
-            researchTaskMapper.lambda()
-                .set(HeronResearchTask::getStatus, HeronResearchTask.STATUS_FAILED)
-                .set(HeronResearchTask::getErrorCode, "research_failed")
-                .set(HeronResearchTask::getErrorReason, truncate(e.getMessage()))
-                .set(HeronResearchTask::getLeaseUntil, null)
-                .set(HeronResearchTask::getUpdateTime, now())
-                .eq(HeronResearchTask::getResearchId, researchId)
-                .update();
-            return HeronResearchTask.STATUS_FAILED;
+            return finalizeFailure(researchId, attempt, runToken, e);
         }
     }
 
@@ -253,13 +289,18 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
         if (task == null) {
             throw new HeronBusinessException(404, "research_not_found", "研究任务不存在：" + researchId);
         }
-        runner.submit(() -> {
-            try {
-                run(researchId);
-            } catch (RuntimeException e) {
-                log.warn("研究任务异步执行异常 researchId={} cause={}", researchId, e.getMessage());
-            }
-        });
+        try {
+            runner.submit(() -> {
+                try {
+                    run(researchId);
+                } catch (RuntimeException e) {
+                    log.warn("研究任务异步执行异常 researchId={} cause={}", researchId, e.getMessage());
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            // 队列满：不抛给调用方，任务仍是排队中，调度器下一拍会再领
+            log.info("研究线程池已满，任务 {} 留在库里等调度", researchId);
+        }
         return task;
     }
 
@@ -268,18 +309,25 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
         if (find(researchId) == null) {
             throw new HeronBusinessException(404, "research_not_found", "研究任务不存在：" + researchId);
         }
-        // 只回退终态：执行中或排队中的重复点击不该把它打回队列
+        // 只回退终态：执行中或排队中的重复点击不该把它打回队列。
+        // cancelling 也认，但只认租约已过期的——那种情况下执行方已经没了，再等也等不到收尾。
+        LocalDateTime now = now();
         researchTaskMapper.lambda()
             .set(HeronResearchTask::getStatus, HeronResearchTask.STATUS_QUEUED)
             .set(HeronResearchTask::getErrorCode, null)
             .set(HeronResearchTask::getErrorReason, null)
-            .set(HeronResearchTask::getUpdateTime, now())
+            .set(HeronResearchTask::getRunToken, null)
+            .set(HeronResearchTask::getUpdateTime, now)
             .eq(HeronResearchTask::getResearchId, researchId)
-            .in(HeronResearchTask::getStatus, List.of(
-                HeronResearchTask.STATUS_SUCCEEDED,
-                HeronResearchTask.STATUS_PARTIAL,
-                HeronResearchTask.STATUS_FAILED,
-                HeronResearchTask.STATUS_CANCELLED))
+            .and(where -> where
+                .in(HeronResearchTask::getStatus, List.of(
+                    HeronResearchTask.STATUS_SUCCEEDED,
+                    HeronResearchTask.STATUS_PARTIAL,
+                    HeronResearchTask.STATUS_FAILED,
+                    HeronResearchTask.STATUS_CANCELLED))
+                .or(abandoned -> abandoned
+                    .eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_CANCELLING)
+                    .lt(HeronResearchTask::getLeaseUntil, now)))
             .updateCount();
         return trigger(researchId);
     }
@@ -290,15 +338,59 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
         if (task == null) {
             throw new HeronBusinessException(404, "research_not_found", "研究任务不存在：" + researchId);
         }
-        researchTaskMapper.lambda()
+        LocalDateTime now = now();
+        // 先处理排队中：它没有执行方，直接落终态。
+        // 顺序不能反——先查 running 会在「刚被领走」的瞬间漏掉，取消就丢了。
+        int cancelled = researchTaskMapper.lambda()
             .set(HeronResearchTask::getStatus, HeronResearchTask.STATUS_CANCELLED)
-            .set(HeronResearchTask::getUpdateTime, now())
+            .set(HeronResearchTask::getUpdateTime, now)
             .eq(HeronResearchTask::getResearchId, researchId)
-            .and(where -> where
-                .eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_QUEUED)
-                .or(running -> running.eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_RUNNING)))
+            .eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_QUEUED)
             .updateCount();
+        if (cancelled == 0) {
+            // 执行中的落 cancelling：Agent 要等续命下一拍才停，这期间它还可能写回结果，
+            // 所以现在写 cancelled 是撒谎，得由执行方自己确认退出
+            researchTaskMapper.lambda()
+                .set(HeronResearchTask::getStatus, HeronResearchTask.STATUS_CANCELLING)
+                .set(HeronResearchTask::getUpdateTime, now)
+                .eq(HeronResearchTask::getResearchId, researchId)
+                .eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_RUNNING)
+                .updateCount();
+        }
         return find(researchId);
+    }
+
+    @Override
+    public List<Long> claimableIds(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        LocalDateTime now = now();
+        return researchTaskMapper.lambda()
+            .eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_QUEUED)
+            .or(stale -> stale
+                .eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_RUNNING)
+                .lt(HeronResearchTask::getLeaseUntil, now))
+            .orderByAsc(HeronResearchTask::getCreateTime)
+            .last("LIMIT " + limit)
+            .list()
+            .stream()
+            .map(HeronResearchTask::getResearchId)
+            .toList();
+    }
+
+    @Override
+    public int resolveAbandonedCancels() {
+        LocalDateTime now = now();
+        // 领取时一定会写 lease_until，而 cancelling 只在执行中被取消时出现，
+        // 所以「租约已过期」就足够判定执行方已经不在了
+        return researchTaskMapper.lambda()
+            .set(HeronResearchTask::getStatus, HeronResearchTask.STATUS_CANCELLED)
+            .set(HeronResearchTask::getLeaseUntil, null)
+            .set(HeronResearchTask::getUpdateTime, now)
+            .eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_CANCELLING)
+            .lt(HeronResearchTask::getLeaseUntil, now)
+            .updateCount();
     }
 
     @Override
@@ -319,10 +411,43 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
         runner.shutdownNow();
     }
 
-    /** 执行期间是否被取消过：续命线程来不及看到时，靠这一次回读兜住。 */
-    private boolean rowCancelledSince(long researchId) {
+    /** 库里是否已经在取消中：续命线程来不及看到时，靠这一次回读兜住。 */
+    private boolean rowStopping(long researchId) {
         HeronResearchTask current = researchTaskMapper.selectById(researchId);
-        return current != null && HeronResearchTask.STATUS_CANCELLED.equals(current.getStatus());
+        String status = current == null ? null : current.getStatus();
+        return HeronResearchTask.STATUS_CANCELLING.equals(status)
+            || HeronResearchTask.STATUS_CANCELLED.equals(status);
+    }
+
+    /** 写回被拒时返回库里的真实状态，不把本次尝试的结论当成事实报出去。 */
+    private String currentStatus(long researchId, String fallback) {
+        HeronResearchTask current = researchTaskMapper.selectById(researchId);
+        return current == null ? fallback : current.getStatus();
+    }
+
+    /**
+     * 失败收尾：已在取消的落 cancelled 而不是 failed——用户点的取消不该显示成失败。
+     *
+     * <p>写回仍然带令牌：这一行已经被别人接走时，连失败也不该由旧执行者来写。
+     */
+    private String finalizeFailure(long researchId, int attempt, String runToken, RuntimeException e) {
+        log.warn("研究任务失败 researchId={} attempt={} cause={}", researchId, attempt, e.getMessage());
+        HeronResearchTask row = researchTaskMapper.selectById(researchId);
+        String current = row == null ? null : row.getStatus();
+        boolean stopping = HeronResearchTask.STATUS_CANCELLING.equals(current)
+            || HeronResearchTask.STATUS_CANCELLED.equals(current);
+        String target = stopping ? HeronResearchTask.STATUS_CANCELLED : HeronResearchTask.STATUS_FAILED;
+        int updated = researchTaskMapper.lambda()
+            .set(HeronResearchTask::getStatus, target)
+            .set(HeronResearchTask::getErrorCode, stopping ? null : "research_failed")
+            .set(HeronResearchTask::getErrorReason, stopping ? null : truncate(e.getMessage()))
+            .set(HeronResearchTask::getLeaseUntil, null)
+            .set(HeronResearchTask::getUpdateTime, now())
+            .eq(HeronResearchTask::getResearchId, researchId)
+            .eq(HeronResearchTask::getAttemptNo, attempt)
+            .eq(HeronResearchTask::getRunToken, runToken)
+            .updateCount();
+        return updated == 0 ? currentStatus(researchId, target) : target;
     }
 
     /** 决策落库失败只记日志：研究已经跑完且有结论，不能因为下游没接住就连结论一起丢。 */
@@ -374,7 +499,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             if (result.submitted()) {
                 decisions.attachVerification(decisionId, result.verdict(), result.reason(),
                     result.conflictsJson());
-                if ("DISAGREE".equals(result.verdict())) {
+                if (HeronContentDecision.VERDICT_DISAGREE.equals(result.verdict())) {
                     // 冲突是最需要人看的状态：日志留痕，页面上也会以红色标出
                     log.warn("核验与研究员结论冲突 researchId={} decisionId={} reason={}",
                         researchId, decisionId, result.reason());

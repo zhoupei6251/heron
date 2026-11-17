@@ -15,9 +15,11 @@ import org.dromara.heron.domain.vo.ContentDecisionVo;
 import org.dromara.heron.mapper.HeronContentDecisionMapper;
 import org.dromara.heron.mapper.HeronResearchTaskMapper;
 import org.dromara.heron.service.IContentDecisionService;
+import org.dromara.heron.service.IResearchPromotionService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -44,6 +46,7 @@ public class ContentDecisionServiceImpl implements IContentDecisionService {
 
     private final HeronContentDecisionMapper decisionMapper;
     private final HeronResearchTaskMapper researchTaskMapper;
+    private final IResearchPromotionService promotions;
     private final ObjectProvider<Clock> clocks;
 
     @Override
@@ -133,7 +136,8 @@ public class ContentDecisionServiceImpl implements IContentDecisionService {
         }
         long actor = currentUserId();
         LocalDateTime now = now();
-        decisionMapper.lambda()
+        // 只认待处理：已裁决的那条不能被后一次点击改写，决策是历史事实
+        int updated = decisionMapper.lambda()
             .set(HeronContentDecision::getStatus,
                 accepted ? HeronContentDecision.STATUS_ACCEPTED : HeronContentDecision.STATUS_REJECTED)
             .set(HeronContentDecision::getDecidedBy, actor)
@@ -141,8 +145,23 @@ public class ContentDecisionServiceImpl implements IContentDecisionService {
             .set(HeronContentDecision::getDecisionNote, truncate(reason, MAX_NOTE))
             .set(HeronContentDecision::getUpdateTime, now)
             .eq(HeronContentDecision::getDecisionId, decisionId)
-            .update();
+            .eq(HeronContentDecision::getStatus, HeronContentDecision.STATUS_PROPOSED)
+            .updateCount();
+        if (updated == 0) {
+            HeronContentDecision current = decisionMapper.selectById(decisionId);
+            throw new HeronBusinessException(409, "decision_already_decided",
+                "这条决策已经裁决过，不能改写；当前状态：" + (current == null ? "未知" : current.getStatus()));
+        }
         return queryById(decisionId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public long acceptAndPromote(long decisionId, String note, String verificationOverride,
+                                 String evidenceOverride) {
+        // 同一个事务：任一环节被拒，采纳也一起回滚，不留「已采纳但没候选」的半截状态
+        decide(decisionId, true, note);
+        return promotions.promote(decisionId, verificationOverride, evidenceOverride);
     }
 
     @Override

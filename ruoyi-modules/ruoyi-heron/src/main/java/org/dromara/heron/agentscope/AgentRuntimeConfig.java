@@ -9,6 +9,7 @@ import org.dromara.heron.mapper.HeronAgentToolCallMapper;
 import org.dromara.heron.mapper.HeronDataOpportunityMapper;
 import org.dromara.heron.mapper.HeronDataSourceMapper;
 import org.dromara.heron.mapper.HeronNewsMetricMapper;
+import org.dromara.heron.mapper.HeronResearchSnapshotMapper;
 import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.dromara.heron.service.IResearchAgent;
 import org.dromara.heron.service.impl.OpenAiModelClient;
@@ -96,11 +97,12 @@ public class AgentRuntimeConfig {
     public IResearchAgent heronResearchAgent(ResearchAgentFactory heronResearchAgentFactory,
                                              HeronAgentToolCallMapper toolCallMapper,
                                              HeronDataOpportunityMapper opportunityMapper,
+                                             HeronResearchSnapshotMapper snapshotMapper,
                                              OpenAiModelClient modelClient,
                                              Environment environment,
                                              ObjectProvider<Clock> clocks) {
         return new AgentscopeResearchAgent(heronResearchAgentFactory, toolCallMapper, opportunityMapper,
-            modelClient,
+            snapshotMapper, modelClient,
             clocks.getIfAvailable(Clock::systemDefaultZone),
             environment.getProperty("heron.agent.max-tool-calls", Integer.class, 12),
             environment.getProperty("heron.agent.max-tokens", Long.class, 300_000L),

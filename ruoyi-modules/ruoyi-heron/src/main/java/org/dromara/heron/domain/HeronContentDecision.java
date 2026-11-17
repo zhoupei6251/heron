@@ -28,8 +28,10 @@ public class HeronContentDecision extends BaseEntity {
     /** 人工否决：人不同意。这是 plan.md §7.1 里「最终是否允许生产仍由业务规则校验」的落点。 */
     public static final String STATUS_REJECTED = "rejected";
 
-    /** 建议生产：唯一值得再花一次核验的判断。 */
+    /** 建议生产：唯一值得再花一次核验的判断，也是唯一能提升为候选的判断。 */
     public static final String DECISION_PRODUCE = "PRODUCE";
+    /** 核验员与研究员结论冲突：默认阻断提升，人要推翻必须留理由。 */
+    public static final String VERDICT_DISAGREE = "DISAGREE";
 
     @TableId private Long decisionId;
     private Long researchId;
@@ -52,4 +54,18 @@ public class HeronContentDecision extends BaseEntity {
     private String verificationReason;
     /** 核验员指出的具体冲突，JSON 数组文本。 */
     private String verificationConflicts;
+    /**
+     * 人工覆盖核验冲突的理由。
+     *
+     * <p>核验判 DISAGREE 时提升默认被阻断；人可以用理由把这道闸推开，但推开本身必须留痕——
+     * 操作者与时间由同一次裁决的 {@code decidedBy} / {@code decidedAt} 承担。
+     */
+    private String verificationOverrideReason;
+    /**
+     * 人工放行「证据链不完整」的理由。
+     *
+     * <p>研究报告会自评证据链是否完整；不完整时提升默认被阻断，人能写理由放行。
+     * 操作者与时间同样由 {@code decidedBy} / {@code decidedAt} 承担。
+     */
+    private String evidenceOverrideReason;
 }

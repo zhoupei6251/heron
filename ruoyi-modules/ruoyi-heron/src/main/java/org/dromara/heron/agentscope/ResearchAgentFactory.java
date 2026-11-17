@@ -94,10 +94,17 @@ public class ResearchAgentFactory {
      */
     public HarnessAgent create(String sessionId, ResearchBudget budget, Hook hook,
                                ResearchFindings findings) {
+        return create(sessionId, budget, hook, findings, null);
+    }
+
+    /**
+     * @param snapshots 本次 attempt 的数据快照冻结；为 null 表示不落库
+     */
+    public HarnessAgent create(String sessionId, ResearchBudget budget, Hook hook,
+                               ResearchFindings findings, ResearchSnapshots snapshots) {
         checkSession(sessionId);
         return build(sessionId, AGENT_NAME, SYSTEM_PROMPT,
-            budget == null ? tools.withFindings(findings) : tools.withBudget(budget).withFindings(findings),
-            hook);
+            scoped(budget, findings, snapshots), hook);
     }
 
     /**
@@ -123,6 +130,11 @@ public class ResearchAgentFactory {
      */
     public ReActAgent createReAct(String sessionId, ResearchBudget budget, Hook hook,
                                   ResearchFindings findings) {
+        return createReAct(sessionId, budget, hook, findings, null);
+    }
+
+    public ReActAgent createReAct(String sessionId, ResearchBudget budget, Hook hook,
+                                  ResearchFindings findings, ResearchSnapshots snapshots) {
         checkSession(sessionId);
         Toolkit toolkit = new Toolkit(ToolkitConfig.builder()
             .executionConfig(ExecutionConfig.builder()
@@ -130,8 +142,7 @@ public class ResearchAgentFactory {
                 .maxAttempts(1)
                 .build())
             .build());
-        toolkit.registerTool(budget == null ? tools.withFindings(findings)
-            : tools.withBudget(budget).withFindings(findings));
+        toolkit.registerTool(scoped(budget, findings, snapshots));
 
         ReActAgent.Builder builder = ReActAgent.builder()
             .name(AGENT_NAME + "-react")
@@ -144,6 +155,19 @@ public class ResearchAgentFactory {
             builder.hook(hook);
         }
         return builder.build();
+    }
+
+    /** 预算、结论容器、快照冻结都是 per-attempt 的，一律走副本，不共享。 */
+    private HeronResearchTools scoped(ResearchBudget budget, ResearchFindings findings,
+                                      ResearchSnapshots snapshots) {
+        HeronResearchTools copy = budget == null ? tools : tools.withBudget(budget);
+        if (findings != null) {
+            copy = copy.withFindings(findings);
+        }
+        if (snapshots != null) {
+            copy = copy.withSnapshots(snapshots);
+        }
+        return copy;
     }
 
     private static void checkSession(String sessionId) {

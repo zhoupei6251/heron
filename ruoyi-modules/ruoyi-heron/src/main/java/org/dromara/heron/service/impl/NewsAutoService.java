@@ -16,6 +16,7 @@ import org.dromara.heron.domain.HeronVideoVersion;
 import org.dromara.heron.domain.vo.NewsWorkVo;
 import org.dromara.heron.mapper.HeronAutoSlotMapper;
 import org.dromara.heron.mapper.HeronDataOpportunityMapper;
+import org.dromara.heron.mapper.HeronDataSourceMapper;
 import org.dromara.heron.mapper.HeronNewsCandidateMapper;
 import org.dromara.heron.mapper.HeronNewsSourceMapper;
 import org.dromara.heron.mapper.HeronNewsWorkMapper;
@@ -47,6 +48,11 @@ public class NewsAutoService {
     private static final int POOL_LIMIT = 50;
     private static final int SWEEP_LIMIT = 10;
     private static final int DATASET_POOL_LIMIT = 20;
+    /** 研究候选单独取：它们的 heat_score 恒为 1，混进按热度排序的 LIMIT 里几乎永不上榜。 */
+    private static final int RESEARCH_POOL_LIMIT = 10;
+    /** RuoYi 的开关约定：'0' 是允许。 */
+    private static final String AUTO_ALLOWED = "0";
+    private static final String PROBE_OK = "ok";
     private static final int RECENT_LIMIT = 10;
     /** 数据机会:只认 24 小时内算出来的，进池取前 10 条。 */
     private static final int OPPORTUNITY_HOURS = 24;
@@ -62,6 +68,7 @@ public class NewsAutoService {
     private final HeronVideoVersionMapper versionMapper;
     private final HeronAutoSlotMapper slotMapper;
     private final HeronDataOpportunityMapper opportunityMapper;
+    private final HeronDataSourceMapper dataSourceMapper;
     private final NewsWorkServiceImpl newsWork;
     private final AutoPauseStore pauseStore;
     private final NewsCandidateScreener screener;
@@ -76,10 +83,12 @@ public class NewsAutoService {
                            HeronNewsCandidateMapper candidateMapper, HeronNewsWorkMapper workMapper,
                            HeronVideoVersionMapper versionMapper, HeronAutoSlotMapper slotMapper,
                            HeronDataOpportunityMapper opportunityMapper,
+                           HeronDataSourceMapper dataSourceMapper,
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
                            EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
                            DatasetRouter datasetRouter) {
-        this(news, sourceMapper, candidateMapper, workMapper, versionMapper, slotMapper, opportunityMapper, newsWork,
+        this(news, sourceMapper, candidateMapper, workMapper, versionMapper, slotMapper, opportunityMapper,
+            dataSourceMapper, newsWork,
             pauseStore, screener, editorial, domain, lineEditor, datasetRouter, Clock.systemUTC());
     }
 
@@ -87,6 +96,7 @@ public class NewsAutoService {
                            HeronNewsCandidateMapper candidateMapper, HeronNewsWorkMapper workMapper,
                            HeronVideoVersionMapper versionMapper, HeronAutoSlotMapper slotMapper,
                            HeronDataOpportunityMapper opportunityMapper,
+                           HeronDataSourceMapper dataSourceMapper,
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
                            EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
                            DatasetRouter datasetRouter, Clock clock) {
@@ -97,6 +107,7 @@ public class NewsAutoService {
         this.versionMapper = versionMapper;
         this.slotMapper = slotMapper;
         this.opportunityMapper = opportunityMapper;
+        this.dataSourceMapper = dataSourceMapper;
         this.newsWork = newsWork;
         this.pauseStore = pauseStore;
         this.screener = screener;
@@ -257,6 +268,12 @@ public class NewsAutoService {
                 .orderByAsc(HeronNewsCandidate::getBestRank)
                 .last("LIMIT " + POOL_LIMIT).build());
             for (HeronNewsCandidate candidate : candidates) {
+                // 研究来源不进自动池：它没有「源」可以逐源灰度与下架，
+                // 放进来等于给 Agent 衍生的选题开一条无准入的直发通道。
+                // 研究候选仍在人工选题列表里，走总编辑那条路。
+                if (HeronNewsCandidate.SOURCE_RESEARCH.equals(candidate.getSourceKind())) {
+                    continue;
+                }
                 String host = firstHost(candidate.getEvidence());
                 // 没开自动的来源不进池：这是「可下架」的边界，不是权重
                 if (host != null && autoHosts.contains(host)) {
@@ -265,6 +282,8 @@ public class NewsAutoService {
             }
         }
         List<HeronDataOpportunity> opportunities = opportunities(now);
+        // 研究来源单独取并合并：它走数据集源的逐源准入，和新闻源的 host 白名单是两套闸
+        allowed.addAll(researchCandidates(now));
         if (allowed.isEmpty() && opportunities.isEmpty()) {
             // 新闻和数据机会都空才是真的没得做；只有数据机会时，数据看板照样能出
             String reason = sources.isEmpty()
@@ -274,6 +293,59 @@ public class NewsAutoService {
         }
         return new BuiltPool(EditorialCandidatePool.of(allowed, EditorialLineEditor::hasBody,
             datasets(now), sources, recentWorks(), opportunities), null);
+    }
+
+    /**
+     * 研究候选进自动池：只认「来源数据源被显式开启自动且探测 ok」的那些。
+     *
+     * <p>热度排序对研究候选没意义（它恒为 1），所以单独取，不与热榜抢同一个 LIMIT。
+     * 24 小时窗口照旧：研究候选也是当天要做的选题，隔天再自动发布已经不新鲜了；
+     * 人工选题列表没有这个限制，没跑掉的选题仍在那边。
+     */
+    private List<HeronNewsCandidate> researchCandidates(LocalDateTime now) {
+        Set<String> autoKeys = autoResearchSources();
+        if (autoKeys.isEmpty()) {
+            return List.of();
+        }
+        try {
+            return candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
+                .eq(HeronNewsCandidate::getSourceKind, HeronNewsCandidate.SOURCE_RESEARCH)
+                .isNull(HeronNewsCandidate::getPublishedAt)
+                .isNull(HeronNewsCandidate::getClaimedBy)
+                .isNull(HeronNewsCandidate::getActiveTaskId)
+                .ge(HeronNewsCandidate::getLastSeenAt, now.minusHours(24))
+                .in(HeronNewsCandidate::getSourceKey, autoKeys)
+                .orderByDesc(HeronNewsCandidate::getLastSeenAt)
+                .last("LIMIT " + RESEARCH_POOL_LIMIT).build());
+        } catch (RuntimeException e) {
+            log.warn("研究候选不可用，本期自动池不含研究来源: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 哪些数据源此刻允许自动发布研究候选。
+     *
+     * <p>三个条件缺一不可，就是「逐源开启 + 灰度准入 + 可下架」的落点：
+     * 源本身启用、显式打开了自动开关（默认是关的）、探测为 ok。
+     */
+    static Set<String> autoResearchSources(List<HeronDataSource> enabled) {
+        Set<String> keys = new HashSet<>();
+        for (HeronDataSource source : enabled) {
+            if (AUTO_ALLOWED.equals(source.getAutoEnabled()) && PROBE_OK.equals(source.getProbeStatus())) {
+                keys.add(source.getSourceKey());
+            }
+        }
+        return keys;
+    }
+
+    private Set<String> autoResearchSources() {
+        try {
+            return autoResearchSources(dataSourceMapper.enabledSources());
+        } catch (RuntimeException e) {
+            log.warn("数据源自动准入不可用，本期不含研究来源: {}", e.getMessage());
+            return Set.of();
+        }
     }
 
     /**

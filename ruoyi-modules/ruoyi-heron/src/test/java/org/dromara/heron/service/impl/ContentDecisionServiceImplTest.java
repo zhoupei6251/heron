@@ -44,7 +44,8 @@ class ContentDecisionServiceImplTest {
                                                       HeronResearchTaskMapper research) {
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
         when(clocks.getIfAvailable()).thenReturn(null);
-        return new ContentDecisionServiceImpl(decisions, research, clocks);
+        return new ContentDecisionServiceImpl(decisions, research,
+            mock(org.dromara.heron.service.IResearchPromotionService.class), clocks);
     }
 
     private static HeronResearchTask withReport(String reportJson) {
@@ -160,5 +161,60 @@ class ContentDecisionServiceImplTest {
 
         assertEquals(HeronContentDecision.STATUS_ACCEPTED, result.getStatus());
         verify(chain, atLeastOnce()).set(any(), any());
+    }
+
+    /**
+     * 决策一旦裁决就是历史事实。放开改写的话，那条「当时人看过什么、怎么定的」记录
+     * 会被后来的点击抹掉，复盘和反馈模型都失去依据。
+     */
+    @Test
+    @DisplayName("已裁决的决策不能重复改写")
+    void cannotReworkDecided() {
+        HeronContentDecisionMapper decisions = mock(HeronContentDecisionMapper.class);
+        HeronContentDecision existing = new HeronContentDecision();
+        existing.setDecisionId(1L);
+        existing.setStatus(HeronContentDecision.STATUS_ACCEPTED);
+        when(decisions.selectById(1L)).thenReturn(existing);
+        var chain = mock(org.dromara.common.mybatis.core.mapper.LambdaCrudChainWrapper.class);
+        when(chain.set(any(), any())).thenReturn(chain);
+        when(chain.eq(any(), any())).thenReturn(chain);
+        when(chain.updateCount()).thenReturn(0);
+        when(decisions.lambda()).thenReturn(chain);
+
+        var ex = assertThrows(HeronBusinessException.class,
+            () -> service(decisions, mock(HeronResearchTaskMapper.class)).decide(1L, true, null));
+        assertEquals("decision_already_decided", ex.getCode());
+    }
+
+    /**
+     * 采纳与提升必须一起成功或一起失败：只采纳成功会留下「已采纳但没有候选」的半截状态，
+     * 用户看到报错，再点一次又被告知已经裁决过。
+     */
+    @Test
+    @DisplayName("采纳并提升：候选 id 原样返回，提升被拒则整体抛出")
+    void acceptAndPromoteDelegates() {
+        HeronContentDecisionMapper decisions = mock(HeronContentDecisionMapper.class);
+        HeronContentDecision existing = new HeronContentDecision();
+        existing.setDecisionId(1L);
+        when(decisions.selectById(1L)).thenReturn(existing);
+        var chain = mock(org.dromara.common.mybatis.core.mapper.LambdaCrudChainWrapper.class);
+        when(chain.set(any(), any())).thenReturn(chain);
+        when(chain.eq(any(), any())).thenReturn(chain);
+        when(chain.updateCount()).thenReturn(1);
+        when(decisions.lambda()).thenReturn(chain);
+        ContentDecisionVo vo = new ContentDecisionVo();
+        vo.setDecisionId(1L);
+        when(decisions.selectVoById(1L)).thenReturn(vo);
+        var promotions = mock(org.dromara.heron.service.IResearchPromotionService.class);
+        when(promotions.promote(1L, "源站已人工核实", null)).thenReturn(7L);
+        ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
+        when(clocks.getIfAvailable()).thenReturn(null);
+
+        long candidateId = new ContentDecisionServiceImpl(decisions,
+            mock(HeronResearchTaskMapper.class), promotions, clocks)
+            .acceptAndPromote(1L, null, "源站已人工核实", null);
+
+        assertEquals(7L, candidateId);
+        verify(promotions).promote(1L, "源站已人工核实", null);
     }
 }

@@ -16,8 +16,15 @@ public interface IResearchPromotionService {
      *
      * <p>幂等：同一决策重复提升返回同一个候选，不重复建。
      *
-     * @param decisionId 内容决策 id
+     * <p>只接受该研究<strong>最新一次执行</strong>的判断：旧 attempt 的判断也能提升的话，
+     * 同一条选题会因为重跑在池子里出现两次，自动模式下各产一条视频。
+     *
+     * <p>两道闸默认拦住，人都可以写理由放行并留痕：核验判 DISAGREE、证据链自评不完整。
+     *
+     * @param decisionId          内容决策 id
+     * @param verificationOverride 核验判 DISAGREE 时人工放行的理由；其余情况可为 null
+     * @param evidenceOverride     证据链不完整时人工放行的理由；其余情况可为 null
      * @return 候选 id
      */
-    long promote(long decisionId);
+    long promote(long decisionId, String verificationOverride, String evidenceOverride);
 }

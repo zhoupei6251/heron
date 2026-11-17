@@ -6,6 +6,8 @@ import org.dromara.heron.domain.HeronResearchTask;
 import org.dromara.heron.domain.bo.ResearchTaskQueryBo;
 import org.dromara.heron.domain.vo.ResearchTaskVo;
 
+import java.util.List;
+
 /**
  * 研究任务的创建与执行。一次任务对应一次 Agent 会话。
  */
@@ -52,4 +54,20 @@ public interface IResearchTaskService {
 
     /** 分页查询。 */
     PageResult<ResearchTaskVo> queryPageList(ResearchTaskQueryBo bo, PageQuery pageQuery);
+
+    /**
+     * 可领取的任务 id：排队中的，以及租约已过期的执行中。
+     *
+     * <p>调度器靠它把「服务重启后没人再触发的排队任务」和「执行方已经挂掉的执行中任务」捞回来。
+     * 库里存了状态却不扫描，等于把持久化队列当装饰。
+     */
+    List<Long> claimableIds(int limit);
+
+    /**
+     * 收尾失联的取消：状态停在 cancelling 且租约已过期，说明执行方已经不在了，
+     * 等不到它自己来确认退出。
+     *
+     * @return 本次收尾的条数
+     */
+    int resolveAbandonedCancels();
 }

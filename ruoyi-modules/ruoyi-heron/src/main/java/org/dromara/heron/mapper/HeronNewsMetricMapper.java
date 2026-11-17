@@ -13,8 +13,8 @@ public interface HeronNewsMetricMapper extends BaseMapperPlus<HeronNewsMetric, H
     List<Performance> recentPerformance(@Param("limit") int limit);
 
     /**
-     * 按维度汇总表现。groupBy 取 template / line / angle——三个维度共用一条 SQL，
-     * 加维度改 XML 里的一行比复制三份语句更不容易漂移。
+     * 按维度汇总表现。groupBy 取 template / line / angle / source——四个维度共用一条 SQL，
+     * 加维度改 XML 里的一行比复制四份语句更不容易漂移。
      */
     List<Breakdown> performanceBreakdown(@Param("groupBy") String groupBy);
 

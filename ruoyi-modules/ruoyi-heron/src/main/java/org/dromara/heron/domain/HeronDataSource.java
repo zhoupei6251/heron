@@ -29,6 +29,12 @@ public class HeronDataSource extends BaseEntity {
     private String termsUrl;
     private String shapes;
     private String enabled;
+    /**
+     * 是否允许自动发布：'0' 允许，'1' 不允许（默认）。
+     *
+     * <p>研究候选的自动准入按这一列判：关掉它，这个源的研究候选立刻不再自动发布。
+     */
+    private String autoEnabled;
     private String probeStatus;
     private String probeNote;
     private LocalDateTime lastUpdated;

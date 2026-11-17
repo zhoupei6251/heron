@@ -12,11 +12,24 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 @TableName("heron_news_candidate")
 public class HeronNewsCandidate extends BaseEntity {
+
+    /** 研究决策提升来的候选；为空表示热榜来源。 */
+    public static final String SOURCE_RESEARCH = "research";
+
     @TableId private Long candidateId;
     private String title;
     private String summary;
     /** 有界证据 JSON：items 与 evidenceTruncated。 */
     private String evidence;
+    /**
+     * 来源：research 表示由内容决策提升而来，空表示热榜抓取。
+     *
+     * <p>为什么要独立成列而不是从证据 JSON 里现解析：自动模式要按来源做准入判定，
+     * 靠证据结构推出来的结论会随证据形状变化而静默失效。
+     */
+    private String sourceKind;
+    /** 研究候选的数据源 key；热榜来源为空。自动准入按它查源。 */
+    private String sourceKey;
     private String dedupKey;
     private String normalizedTitle;
     private Long hitCount;

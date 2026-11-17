@@ -43,6 +43,14 @@ public final class EvidenceCollector {
      * @return 证据链 JSON；查不到账本时返回 null，不编一个空壳
      */
     public String collect(long researchId, int attemptNo, List<String> cited, boolean submitted) {
+        return collect(researchId, attemptNo, cited, submitted, Map.of());
+    }
+
+    /**
+     * @param snapshots 本次 attempt 冻结的数据快照，按源索引；空表示没有接线
+     */
+    public String collect(long researchId, int attemptNo, List<String> cited, boolean submitted,
+                          Map<String, ResearchSnapshots.Ref> snapshots) {
         List<HeronAgentToolCall> calls;
         try {
             calls = mapper.lambda()
@@ -72,11 +80,20 @@ public final class EvidenceCollector {
             item.put("request", snippet(call.getRequestSummary()));
             item.put("response", snippet(call.getResponseSummary()));
 
+            String haystack = haystack(call);
             // 模型说引用过这个来源，就在账本里认领；认领不到的最后单独列出来
-            String matched = matchCiting(call, unmatched);
+            String matched = matchCiting(haystack, unmatched);
             if (matched != null) {
                 item.put("cited", matched);
                 unmatched.remove(matched);
+            }
+            // 这次调用碰过哪个已冻结的源：把结论指回具体的数据版本，而不只是「某个 key 出现过」
+            String source = matchSource(haystack, snapshots);
+            if (source != null) {
+                ResearchSnapshots.Ref ref = snapshots.get(source);
+                item.put("snapshotSourceKey", source);
+                item.put("snapshotSha256", ref.dataSha256());
+                item.put("snapshotRetrievedAt", ref.retrievedAt());
             }
             evidence.add(item);
         }
@@ -92,21 +109,53 @@ public final class EvidenceCollector {
         // 模型声称查过、但账本里找不到的：这是最值得看的一项
         ArrayNode ghosts = root.putArray("unverifiedCitations");
         unmatched.forEach(ghosts::add);
+        root.set("snapshots", snapshotArray(snapshots));
+        root.put("snapshotCount", snapshots == null ? 0 : snapshots.size());
         // 没交结论时证据只能算「过程记录」，不能算「支撑某个判断的证据」
         root.put("complete", submitted && unmatched.isEmpty());
         return root.toString();
     }
 
-    /** 账本里哪次调用碰过这个来源；入参摘要里出现即算。 */
-    private static String matchCiting(HeronAgentToolCall call, List<String> candidates) {
-        String haystack = (call.getRequestSummary() == null ? "" : call.getRequestSummary())
+    private static String haystack(HeronAgentToolCall call) {
+        return (call.getRequestSummary() == null ? "" : call.getRequestSummary())
             + (call.getResponseSummary() == null ? "" : call.getResponseSummary());
+    }
+
+    /** 账本里哪次调用碰过这个来源；入参或出参摘要里出现即算。 */
+    private static String matchCiting(String haystack, List<String> candidates) {
         for (String candidate : candidates) {
             if (!candidate.isEmpty() && haystack.contains(candidate)) {
                 return candidate;
             }
         }
         return null;
+    }
+
+    /** 这次调用碰过哪个已冻结的源。 */
+    private static String matchSource(String haystack, Map<String, ResearchSnapshots.Ref> snapshots) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            return null;
+        }
+        for (String sourceKey : snapshots.keySet()) {
+            if (!sourceKey.isEmpty() && haystack.contains(sourceKey)) {
+                return sourceKey;
+            }
+        }
+        return null;
+    }
+
+    private static ArrayNode snapshotArray(Map<String, ResearchSnapshots.Ref> snapshots) {
+        ArrayNode array = JSON.createArrayNode();
+        if (snapshots == null) {
+            return array;
+        }
+        snapshots.forEach((key, ref) -> {
+            ObjectNode item = array.addObject();
+            item.put("sourceKey", key);
+            item.put("dataSha256", ref.dataSha256());
+            item.put("retrievedAt", ref.retrievedAt());
+        });
+        return array;
     }
 
     private static String snippet(String text) {

@@ -58,7 +58,13 @@ public class ResearchTaskController extends BaseController {
         return R.ok(toVo(researchTasks.find(researchId)));
     }
 
-    /** 为一条机会建研究任务并立刻排上执行；同一机会同一天复用已有任务。 */
+    /**
+     * 为一条机会建研究任务并立刻排上执行；同一机会同一天复用已有任务。
+     *
+     * <p>这里走 {@code trigger} 而不是 {@code requeue}：发起研究只该「建或返回」，
+     * 不该顺手把已跑完的旧任务重跑一遍——那既违背「同机会同日只研究一次」，
+     * 也让重复点按钮等于重复烧额度。显式重跑有自己的入口。
+     */
     @SaCheckPermission("heron:research:run")
     @RepeatSubmit
     @Log(title = "数据机会研究", businessType = BusinessType.INSERT, isSaveRequestData = false)
@@ -67,9 +73,7 @@ public class ResearchTaskController extends BaseController {
         String goal = body.getGoal() == null || body.getGoal().isBlank()
             ? DEFAULT_GOAL : body.getGoal().trim();
         long researchId = researchTasks.createFor(body.getOpportunityId(), goal);
-        // 走 requeue 而不是 trigger：同一天再点一次时拿到的是已结束的旧任务，
-        // 而 trigger 只领得到的排队中或租约过期的行——直接调它按钮就变成静默无反应
-        return R.ok(toVo(researchTasks.requeue(researchId)));
+        return R.ok(toVo(researchTasks.trigger(researchId)));
     }
 
     /** 重跑：只有排队中或租约已过期的任务会被重新领走。 */
