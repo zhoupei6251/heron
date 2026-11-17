@@ -213,7 +213,12 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private long placeholderCandidate(EditorialSelection selection, long actor) {
         HeronNewsCandidate placeholder = new HeronNewsCandidate();
         placeholder.setCandidateId(IdUtil.getSnowflakeNextId());
-        placeholder.setTitle("数据看板 · " + selection.dataSourceKey());
+        String title = "数据看板 · " + selection.dataSourceKey();
+        placeholder.setTitle(title);
+        // 占位候选同样要满足候选表的 NOT NULL 契约：dedup_key 唯一、normalized_title 非空。
+        // dedup_key 由候选 ID 派生，保证每次占位互不覆盖——占位候选不进热榜池，不参与去重。
+        placeholder.setDedupKey(DigestUtil.sha256Hex("data-board:" + placeholder.getCandidateId()));
+        placeholder.setNormalizedTitle(NewsDedup.normalizedTitle(title));
         placeholder.setSummary("数据看板线由数据集驱动，非新闻候选");
         placeholder.setEvidence(JsonUtils.toJsonString(java.util.Map.of("items", java.util.List.of())));
         placeholder.setHitCount(1L);
