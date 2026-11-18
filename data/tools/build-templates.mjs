@@ -35,6 +35,13 @@ const STAGE = value('--stage');
 const STAGE_OUT = value('--out');
 
 const CAPABILITIES = new Set(['chart', 'image']);
+// 版式自带的静态装饰节点。迁移前它们写在各模板的 HTML 里，迁移后由配置声明，
+// 否则 layouts/article 里的 #plate / #rail / #tick 规则会指向不存在的元素。
+const DECOR = {
+  plate: '<div id="plate"></div>',
+  rail: '<div id="rail"></div>',
+  tick: '<div id="tick"></div>',
+};
 
 class BuildError extends Error {}
 
@@ -129,14 +136,19 @@ function variables(cfg) {
   return cfg.sceneTypes.length ? out : out.filter((v) => !v.id.endsWith('_type'));
 }
 
+/** 片尾留给结尾口播的时间窗。和最后一屏共用窗口会让两块文字互相遮挡。 */
+const closingTail = (slot) => Math.min(6, Math.max(3, Math.round(slot * 0.5)));
+
 function sceneBlocks(cfg) {
   const slot = cfg.duration / cfg.activeScenes;
+  const tail = closingTail(slot);
   const defaults = cfg.defaults.scenes ?? [];
   const blocks = [];
   for (let i = 1; i <= cfg.scenes; i++) {
     const active = i <= cfg.activeScenes;
     const start = active ? (i - 1) * slot : cfg.duration;
-    const dur = active ? slot : 0.01;
+    // 最后一屏让出尾段给口播，两段窗口不重叠
+    const dur = active ? (i === cfg.activeScenes ? slot - tail : slot) : 0.01;
     const [lead = '', body = ''] = defaults[i - 1] ?? [];
     const figure = cfg.capabilities.includes('image')
       ? `\n        <figure class="scene-figure" data-image-slot="scene${i}_image"></figure>`
@@ -162,6 +174,17 @@ function ambientBlock(cfg) {
         <div class="ambient-grain" data-ambient="flicker"></div>
       </div>
 `;
+}
+
+/** 版式自带的装饰元素，按 template.config.json 的 decor 声明顺序展开。 */
+function decorBlock(cfg) {
+  const list = cfg.decor ?? [];
+  if (!list.length) return '';
+  const nodes = list.map((name) => {
+    if (!(name in DECOR)) fail(`${cfg.key}: 未知装饰「${name}」，合法值：${Object.keys(DECOR).join('、')}`);
+    return `      ${DECOR[name]}`;
+  });
+  return '\n' + nodes.join('\n') + '\n';
 }
 
 function chartSlot(cfg) {  if (!cfg.capabilities.includes('chart')) return '';
@@ -217,13 +240,20 @@ function script(cfg) {
 
 function render(cfg) {
   const skeleton = read(path.join(GEN, 'skeleton.html'));
+  // 结尾口播与最后一屏共用时间窗：正文在这一屏里退场、口播接上。
+  // 之前把它钉在 DURATION 上，等于永远落在成片之外，15 套模板都从没播出过这句。
+  const slot = cfg.duration / cfg.activeScenes;
+  const closingStart = cfg.duration - closingTail(slot);
   const slots = {
+    CLOSING_START: num(closingStart),
+    CLOSING_DURATION: num(cfg.duration - closingStart),
     VARIABLES_JSON: escapeAttr(JSON.stringify(variables(cfg))),
     WIDTH: cfg.width,
     HEIGHT: cfg.height,
     DURATION: num(cfg.duration),
     STYLE: cfg.style,
     AMBIENT_BLOCK: ambientBlock(cfg),
+    DECOR_BLOCK: decorBlock(cfg),
     PAGE_TITLE: escapeHtml(cfg.pageTitle ?? cfg.name),
     STYLES: styles(cfg),
     KPI_BLOCK: kpiBlock(cfg),
@@ -335,6 +365,34 @@ function writeManifest(dir) {
   fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
 }
 
+/**
+ * 时间窗不变量。这类错误在画面上表现为"某段内容根本没出现"，截图靠抽样很难发现：
+ * 结尾口播就曾长期落在成片之外，15 套模板一次都没播过。生成时就断言。
+ */
+function checkWindows(cfg, html) {
+  const windows = [...html.matchAll(/data-start="([\d.]+)" data-duration="([\d.]+)"/g)]
+    .map((m) => ({ start: Number(m[1]), dur: Number(m[2]) }))
+    .filter((w) => w.dur > 0.01);
+  for (const w of windows) {
+    if (w.start + w.dur > cfg.duration + 0.001) {
+      fail(`${cfg.key}: 有片段 ${w.start}s + ${w.dur}s 超出成片时长 ${cfg.duration}s`);
+    }
+  }
+  const closing = html.match(/id="closing-slot"[^>]*data-start="([\d.]+)" data-duration="([\d.]+)"/);
+  if (!closing) fail(`${cfg.key}: 找不到结尾口播的时间窗`);
+  const closingStart = Number(closing[1]);
+  const closingEnd = closingStart + Number(closing[2]);
+  if (closingEnd > cfg.duration + 0.001) fail(`${cfg.key}: 结尾口播落在成片之外（${closingStart}s 起）`);
+  const lastScene = [...html.matchAll(/class="clip scene"[^>]*data-start="([\d.]+)"[^>]*data-duration="([\d.]+)"/g)]
+    .map((m) => Number(m[1]) + Number(m[2]))
+    .filter((end) => end < cfg.duration - 0.01);
+  const lastSceneEnd = Math.max(...lastScene, 0);
+  // 口播与最后一屏共用版面，时间上必须错开，否则闸门会判文字被遮挡
+  if (closingStart + 0.001 < lastSceneEnd) {
+    fail(`${cfg.key}: 结尾口播(${closingStart}s) 早于最后一屏结束(${lastSceneEnd}s)，两段会互相遮挡`);
+  }
+}
+
 function build(dir) {
   const cfg = loadConfig(dir);
   // 三个产物都从配置派生，--check 就三个都要比：
@@ -344,6 +402,7 @@ function build(dir) {
     'template.json': templateJson(cfg),
     'index.motion.json': motionJson(cfg),
   };
+  checkWindows(cfg, generated['index.html']);
   const indexPath = path.join(dir, 'index.html');
 
   if (CHECK_ONLY) {
@@ -395,7 +454,8 @@ function verify(dir) {
     // 用仓库里装好的 CLI，不走 npx：离线环境里 npx --yes 会尝试联网安装
     const cli = path.resolve(import.meta.dirname, 'node_modules', 'hyperframes', 'bin', 'hyperframes.mjs');
     const out = execFileSync(process.execPath, [cli, 'check', staged, '--json'], {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 300000,
+      // 长模板要抽 300+ 帧，5 分钟会超时——超时会被误报成 check 失败
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 900000,
     });
     const parsed = JSON.parse(out);
     const errors = parsed.errors ?? parsed.errorCount ?? 0;

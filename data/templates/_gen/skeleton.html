@@ -10,7 +10,7 @@
   </head>
   <body>
     <div id="root" data-composition-id="main" data-style="{{STYLE}}" data-start="0" data-width="{{WIDTH}}" data-height="{{HEIGHT}}" data-duration="{{DURATION}}">
-{{AMBIENT_BLOCK}}
+{{AMBIENT_BLOCK}}{{DECOR_BLOCK}}
       <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="{{DURATION}}" data-track-index="9"></audio>
 
       <header id="title-card" class="clip" data-start="0" data-duration="{{DURATION}}" data-track-index="0">
@@ -25,7 +25,7 @@
 {{CHART_SLOT}}
 {{SCENES_BLOCK}}
 
-      <section id="closing-slot" class="clip" data-start="{{DURATION}}" data-duration="0.01" data-track-index="2">
+      <section id="closing-slot" class="clip" data-start="{{CLOSING_START}}" data-duration="{{CLOSING_DURATION}}" data-track-index="2">
         <p id="closing" data-var-text="closing">{{DEFAULT_CLOSING}}</p>
       </section>
 

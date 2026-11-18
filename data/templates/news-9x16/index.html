@@ -81,7 +81,7 @@ body {
   --rule-soft: rgba(243, 240, 232, 0.16);
   --rule-strong: rgba(243, 240, 232, 0.30);
   --panel: rgba(243, 240, 232, 0.06);
-  --glow-color: rgba(111, 188, 204, 0.18);
+  --glow-color: color-mix(in srgb, var(--accent) 32%, transparent);
   --accent-glow: rgba(111, 188, 204, 0.35);
 
   --font-body: "Noto Sans SC", sans-serif;
@@ -116,7 +116,18 @@ body {
   --ease-out: power3.out;
   --ease-in: power2.in;
 }
-:root { --fs-title: 104px; --fs-title-lg: 94px; --fs-title-sm: 83px; }
+:root {
+  --fs-title: 104px; --fs-title-lg: 94px; --fs-title-sm: 83px;
+  /* 环境层按本套底色单独调：亮底用深墨、暗底用浅墨，网格尺度与光晕方位逐套不同 */
+  --rule-faint: rgba(242,246,249,0.10);
+  --grid-size: 96px;
+  --grid-opacity: 0.3;
+  --glow-x: 22%;
+  --glow-y: 12%;
+  --glow-spread: 58%;
+  --glow-opacity: 0.75;
+  --grain-opacity: 0.12;
+}
 * { box-sizing: border-box; }
 .lead, .body { clip-path: inset(0); }
 /* 正文数字高亮：让数据自己跳出来，而不是混在句子里的普通文字 */
@@ -128,8 +139,6 @@ body {
 }
 body { margin: 0; background: #131a2a; color: #f2f6f9; font-family: "Noto Sans SC", sans-serif; }
 #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #131a2a; }
-#glow { position: absolute; left: -220px; top: -260px; width: 820px; height: 820px; border-radius: 50%;
-        background: radial-gradient(circle, var(--accent) 0%, rgba(19,26,42,0) 66%); opacity: 0.34; }
 #title-card { padding: 132px 84px 0 84px; }
 #kicker { margin: 0 0 22px; font-size: 28px; font-weight: 500; letter-spacing: 7px; color: #8fb6c6; }
 #title { margin: 0; font-size: var(--fs-title); font-weight: 700; line-height: 1.18; letter-spacing: -0.01em; color: #ffffff; }
@@ -198,6 +207,12 @@ body { margin: 0; background: #131a2a; color: #f2f6f9; font-family: "Noto Sans S
   <body>
     <div id="root" data-composition-id="main" data-style="article" data-start="0" data-width="1080" data-height="1920" data-duration="45">
 
+      <div class="ambient" aria-hidden="true">
+        <div class="ambient-grid" data-ambient="drift"></div>
+        <div class="ambient-glow" data-ambient="pulse"></div>
+        <div class="ambient-grain" data-ambient="flicker"></div>
+      </div>
+
       <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="45" data-track-index="9"></audio>
 
       <header id="title-card" class="clip" data-start="0" data-duration="45" data-track-index="0">
@@ -240,14 +255,14 @@ body { margin: 0; background: #131a2a; color: #f2f6f9; font-family: "Noto Sans S
         <p class="lead" data-var-text="scene5_lead">竞品同期密集上新</p>
         <p class="body" data-var-text="scene5_body">过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。</p>
       </section>
-      <section id="scene-6" class="clip scene" data-start="37.5" data-duration="7.5" data-track-index="2" data-scene-index="6">
+      <section id="scene-6" class="clip scene" data-start="37.5" data-duration="3.5" data-track-index="2" data-scene-index="6">
         <span class="scene-no">06</span>
         <figure class="scene-figure" data-image-slot="scene6_image"></figure>
         <p class="lead" data-var-text="scene6_lead">售后政策同步调整</p>
         <p class="body" data-var-text="scene6_body">厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。</p>
       </section>
 
-      <section id="closing-slot" class="clip" data-start="45" data-duration="0.01" data-track-index="2">
+      <section id="closing-slot" class="clip" data-start="41" data-duration="4" data-track-index="2">
         <p id="closing" data-var-text="closing">更多机型对比与实测，我们会在后续持续跟进。</p>
       </section>
 
@@ -344,12 +359,12 @@ function ambient(scope = document) {
   });
 }
 
-function swap(slot, start, end) {
+function swap(slot, start, outAt) {
   const parts = slot.querySelectorAll(".scene-no, .lead, .body");
   if (!parts.length) return;
   tl.from(parts, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, start);
-  const outAt = Math.max(start + DUR.entrance, end - DUR.swap);
-  tl.to(parts, { y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, outAt);
+  // 短屏时退场不能排在入场之前
+  tl.to(parts, { y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, Math.max(start + DUR.entrance, outAt));
 }
 
 ambient();
@@ -363,6 +378,38 @@ enter("#aigc-badge", { dir: "none", at: 0.2 });
 // 只淡出标题区，栏目标签留作画面锚点
 tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
 
+// 版式自带的静态装饰（#plate / #rail / #tick）。它们不来自数据，
+// 但各自有动画：没有动画的装饰层等于死图层。
+if (has("#plate")) {
+  tl.fromTo("#plate", { scaleY: 0 }, { scaleY: 1, duration: 0.8, ease: "power3.inOut" }, 0.05);
+}
+if (has("#rail")) {
+  tl.fromTo("#rail", { scaleY: 0 }, { scaleY: 1, duration: total, ease: "none" }, 0);
+}
+const tick = document.getElementById("tick");
+if (tick) {
+  // 不能用 tl.call 逐屏写：按帧 seek 时回调会一次跑完，tick 停在最后一屏。
+  // 从时间线时间反推屏次，seek 到哪一帧都对。
+  const pad = (n) => String(n).padStart(2, "0");
+  const starts = [...document.querySelectorAll(".scene")]
+    .filter((slot) => Number(slot.dataset.sceneIndex) <= sceneCount)
+    .map((slot) => parseFloat(slot.dataset.start));
+  tl.to(tick, {
+    duration: total,
+    ease: "none",
+    onUpdate: () => {
+      const t = tl.time();
+      const hit = starts.filter((start) => start <= t).length;
+      tick.textContent = pad(Math.max(hit, 1)) + " / " + pad(sceneCount);
+    },
+  }, 0);
+}
+
+// 结尾口播独占片尾一段窗口（生成器已把最后一屏的窗口切短），这里只需按窗口起点进场
+const closingSlot = document.getElementById("closing-slot");
+const closingAt = closingSlot ? parseFloat(closingSlot.dataset.start) : NaN;
+const hasClosing = Number.isFinite(closingAt) && closingAt < total - 0.1;
+
 document.querySelectorAll(".scene").forEach((slot) => {
   if (Number(slot.dataset.sceneIndex) > sceneCount) {
     slot.hidden = true;
@@ -371,16 +418,11 @@ document.querySelectorAll(".scene").forEach((slot) => {
   }
   const start = parseFloat(slot.dataset.start);
   const end = start + parseFloat(slot.dataset.duration);
-  swap(slot, start, end);
+  swap(slot, start, end - DUR.swap);
 });
 
-// 结尾口播占最后一屏让出的时间窗；模板默认值下它就落在片尾，不另外排动画
-const closingSlot = document.getElementById("closing-slot");
-if (closingSlot) {
-  const at = parseFloat(closingSlot.dataset.start);
-  if (Number.isFinite(at) && at < total - 0.1) {
-    enter(closingSlot.querySelector("#closing"), { dir: "up", at });
-  }
+if (hasClosing) {
+  enter(closingSlot.querySelector("#closing"), { dir: "up", at: closingAt });
 }
 
 window.__timelines["main"] = tl;

@@ -13,7 +13,7 @@
   "capabilities": [
     "image"
   ],
-  "ambient": false,
+  "ambient": true,
   "sceneTypes": [
     "headline",
     "text",

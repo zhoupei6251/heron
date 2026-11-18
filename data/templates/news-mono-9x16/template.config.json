@@ -11,7 +11,10 @@
   "scenes": 6,
   "activeScenes": 6,
   "capabilities": [],
-  "ambient": false,
+  "ambient": true,
+  "decor": [
+    "tick"
+  ],
   "sceneTypes": [
     "headline",
     "text"

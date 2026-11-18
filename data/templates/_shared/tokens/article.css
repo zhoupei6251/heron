@@ -15,7 +15,7 @@
   --rule-soft: rgba(243, 240, 232, 0.16);
   --rule-strong: rgba(243, 240, 232, 0.30);
   --panel: rgba(243, 240, 232, 0.06);
-  --glow-color: rgba(111, 188, 204, 0.18);
+  --glow-color: color-mix(in srgb, var(--accent) 32%, transparent);
   --accent-glow: rgba(111, 188, 204, 0.35);
 
   --font-body: "Noto Sans SC", sans-serif;

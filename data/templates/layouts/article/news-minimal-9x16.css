@@ -1,4 +1,15 @@
-:root { --fs-title: 82px; --fs-title-lg: 74px; --fs-title-sm: 66px; }
+:root {
+  --fs-title: 82px; --fs-title-lg: 74px; --fs-title-sm: 66px;
+  /* 环境层按本套底色单独调：亮底用深墨、暗底用浅墨，网格尺度与光晕方位逐套不同 */
+  --rule-faint: rgba(26,37,41,0.07);
+  --grid-size: 144px;
+  --grid-opacity: 0.12;
+  --glow-x: 50%;
+  --glow-y: 50%;
+  --glow-spread: 65%;
+  --glow-opacity: 0.35;
+  --grain-opacity: 0.07;
+}
 * { box-sizing: border-box; }
 .lead, .body { clip-path: inset(0); }
 /* 正文数字高亮：让数据自己跳出来，而不是混在句子里的普通文字 */

@@ -3,6 +3,11 @@
   "assertions": [
     {
       "kind": "appearsBy",
+      "selector": ".ambient",
+      "bySec": 2
+    },
+    {
+      "kind": "appearsBy",
       "selector": "#aigc-badge",
       "bySec": 0.5
     },

@@ -239,7 +239,7 @@ body {
         <p class="lead" data-var-text="scene2_lead">较两周前走高</p>
         <p class="body" data-var-text="scene2_body">较区间起点上涨 125.14 美元，涨幅 3.14%。</p>
       </section>
-      <section id="scene-3" class="clip scene" data-start="30" data-duration="15" data-track-index="2" data-scene-index="3">
+      <section id="scene-3" class="clip scene" data-start="30" data-duration="9" data-track-index="2" data-scene-index="3">
         <span class="scene-no">03</span>
         <p class="lead" data-var-text="scene3_lead">区间高点确认</p>
         <p class="body" data-var-text="scene3_body">近两周区间最高 4113.34 美元，最低 3988.20 美元。</p>
@@ -260,7 +260,7 @@ body {
         <p class="body" data-var-text="scene6_body"></p>
       </section>
 
-      <section id="closing-slot" class="clip" data-start="45" data-duration="0.01" data-track-index="2">
+      <section id="closing-slot" class="clip" data-start="39" data-duration="6" data-track-index="2">
         <p id="closing" data-var-text="closing">关注接下来的走势。</p>
       </section>
 
@@ -878,12 +878,12 @@ function ambient(scope = document) {
   });
 }
 
-function swap(slot, start, end) {
+function swap(slot, start, outAt) {
   const parts = slot.querySelectorAll(".scene-no, .lead, .body");
   if (!parts.length) return;
   tl.from(parts, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, start);
-  const outAt = Math.max(start + DUR.entrance, end - DUR.swap);
-  tl.to(parts, { y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, outAt);
+  // 短屏时退场不能排在入场之前
+  tl.to(parts, { y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, Math.max(start + DUR.entrance, outAt));
 }
 
 ambient();
@@ -897,6 +897,38 @@ enter("#aigc-badge", { dir: "none", at: 0.2 });
 // 只淡出标题区，栏目标签留作画面锚点
 tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
 
+// 版式自带的静态装饰（#plate / #rail / #tick）。它们不来自数据，
+// 但各自有动画：没有动画的装饰层等于死图层。
+if (has("#plate")) {
+  tl.fromTo("#plate", { scaleY: 0 }, { scaleY: 1, duration: 0.8, ease: "power3.inOut" }, 0.05);
+}
+if (has("#rail")) {
+  tl.fromTo("#rail", { scaleY: 0 }, { scaleY: 1, duration: total, ease: "none" }, 0);
+}
+const tick = document.getElementById("tick");
+if (tick) {
+  // 不能用 tl.call 逐屏写：按帧 seek 时回调会一次跑完，tick 停在最后一屏。
+  // 从时间线时间反推屏次，seek 到哪一帧都对。
+  const pad = (n) => String(n).padStart(2, "0");
+  const starts = [...document.querySelectorAll(".scene")]
+    .filter((slot) => Number(slot.dataset.sceneIndex) <= sceneCount)
+    .map((slot) => parseFloat(slot.dataset.start));
+  tl.to(tick, {
+    duration: total,
+    ease: "none",
+    onUpdate: () => {
+      const t = tl.time();
+      const hit = starts.filter((start) => start <= t).length;
+      tick.textContent = pad(Math.max(hit, 1)) + " / " + pad(sceneCount);
+    },
+  }, 0);
+}
+
+// 结尾口播独占片尾一段窗口（生成器已把最后一屏的窗口切短），这里只需按窗口起点进场
+const closingSlot = document.getElementById("closing-slot");
+const closingAt = closingSlot ? parseFloat(closingSlot.dataset.start) : NaN;
+const hasClosing = Number.isFinite(closingAt) && closingAt < total - 0.1;
+
 document.querySelectorAll(".scene").forEach((slot) => {
   if (Number(slot.dataset.sceneIndex) > sceneCount) {
     slot.hidden = true;
@@ -905,16 +937,11 @@ document.querySelectorAll(".scene").forEach((slot) => {
   }
   const start = parseFloat(slot.dataset.start);
   const end = start + parseFloat(slot.dataset.duration);
-  swap(slot, start, end);
+  swap(slot, start, end - DUR.swap);
 });
 
-// 结尾口播占最后一屏让出的时间窗；模板默认值下它就落在片尾，不另外排动画
-const closingSlot = document.getElementById("closing-slot");
-if (closingSlot) {
-  const at = parseFloat(closingSlot.dataset.start);
-  if (Number.isFinite(at) && at < total - 0.1) {
-    enter(closingSlot.querySelector("#closing"), { dir: "up", at });
-  }
+if (hasClosing) {
+  enter(closingSlot.querySelector("#closing"), { dir: "up", at: closingAt });
 }
 
 window.__timelines["main"] = tl;
