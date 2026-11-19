@@ -124,6 +124,9 @@ function variables(cfg) {
       id: 'dataset_json', type: 'string', label: '数据快照',
       default: JSON.stringify(d.dataset ?? {}),
     });
+    for (let i = 1; i <= cfg.scenes; i++) {
+      out.push({ id: `scene${i}_focus`, type: 'string', label: `第${i}屏画面依据`, default: '{}' });
+    }
   }
   for (let i = 1; i <= cfg.scenes; i++) {
     out.push({ id: `scene${i}_type`, type: 'string', label: '场景类型', default: '' });
@@ -200,8 +203,9 @@ function kpiBlock(cfg) {
   return `        <div id="kpi">
           <span id="kpi-value"></span>
           <span id="kpi-unit"></span>
-          <span id="kpi-change"></span>
-        </div>`;
+           <span id="kpi-change"></span>
+         </div>
+         <p id="focus-caption"></p>`;
 }
 
 function styles(cfg) {
@@ -230,7 +234,9 @@ function styles(cfg) {
 
 function script(cfg) {
   const files = [path.join(GEN, 'behaviors', 'fill.js')];
-  if (cfg.capabilities.includes('chart')) files.push(path.join(GEN, 'behaviors', 'chart.js'));
+  if (cfg.capabilities.includes('chart')) {
+    files.push(path.join(GEN, 'behaviors', 'chart.js'), path.join(GEN, 'behaviors', 'focus.js'));
+  }
   files.push(path.join(GEN, 'motion.js'));
   for (const file of files) {
     if (!fs.existsSync(file)) fail(`${cfg.key}: 缺少脚本片段 ${path.relative(TEMPLATES, file)}`);

@@ -100,6 +100,14 @@ public class NewsWorkController extends BaseController {
         try (NewsFileVo file = news.preview(id, versionId, artifactId)) { stream(file, response, false, request); }
     }
 
+    @SaCheckPermission("heron:newsWork:publish")
+    @Log(title = "核对发布尝试", businessType = BusinessType.UPDATE, isSaveRequestData = false, isSaveResponseData = false)
+    @PostMapping("/{id}/versions/{versionId}/publish-attempts/{attemptId}/resolve")
+    public R<NewsVideoVersionVo> resolvePublishAttempt(@PathVariable long id, @PathVariable long versionId,
+                                                     @PathVariable long attemptId, @RequestBody NewsPublishResolveBo bo) {
+        return R.ok(news.resolvePublishAttempt(id, versionId, attemptId, bo));
+    }
+
     @Log(title = "新闻正式下载", businessType = BusinessType.EXPORT, isSaveRequestData = false, isSaveResponseData = false)
     @PostMapping("/{id}/versions/{versionId}/download")
     public void download(@PathVariable long id, @PathVariable long versionId, @RequestParam String artifactId,

@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
@@ -60,6 +61,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private final IPublishAdapter publishAdapter;
     private final NewsTemplatePicker templatePicker;
     private final HeronNewsProperties news;
+    private final NewsPublishAttempts publishAttempts;
 
     @Override
     public PageResult<NewsCandidateVo> candidates(NewsCandidateQuery query) {
@@ -358,12 +360,13 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         Page<NewsVideoVersionVo> page = versionMapper.selectVoPage(pageQuery.build(), QueryBuilder.lambda(HeronVideoVersion.class)
             .eq(HeronVideoVersion::getWorkId, workId).eq(HeronVideoVersion::getOwnerId, work.getOwnerId())
             .orderByDesc(HeronVideoVersion::getVersionNo).build());
-        return PageResult.build(page.getRecords().stream().map(vo -> versionView(versionMapper.selectById(vo.getVersionId()))).toList(), page.getTotal());
+        return PageResult.build(withPublishAttempts(page.getRecords().stream()
+            .map(vo -> versionView(versionMapper.selectById(vo.getVersionId()))).toList()), page.getTotal());
     }
 
     @Override
     public NewsVideoVersionVo version(long workId, long versionId) {
-        return versionView(requireVersion(requireWork(workId, "query"), versionId));
+        return withPublishAttempt(versionView(requireVersion(requireWork(workId, "query"), versionId)));
     }
 
     /**
@@ -385,17 +388,19 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             vo.setWorkTitle(titles.get(version.getWorkId()));
             return vo;
         }).toList();
-        return PageResult.build(rows, page.getTotal());
+        return PageResult.build(withPublishAttempts(rows), page.getTotal());
     }
 
-    /** 发布记录：只要落过发布事实就列出，沙箱与命令行提交也算——「发过没发过」要能一眼分清。 */
+    /** 发布记录包含未决尝试；上传中、结果未知与平台已发布不能混作同一事实。 */
     @Override
     public PageResult<NewsVideoVersionVo> published(PageQuery pageQuery) {
         access.requirePermission("heron:newsWork:list");
-        Page<HeronVideoVersion> page = versionMapper.selectPage(pageQuery.build(), QueryBuilder.lambda(HeronVideoVersion.class)
-            .isNotNull(HeronVideoVersion::getPublishAt)
+        var query = QueryBuilder.lambda(HeronVideoVersion.class)
             .eq(!access.hasAllScope(TYPE), HeronVideoVersion::getOwnerId, access.requireActor())
-            .orderByDesc(HeronVideoVersion::getPublishAt).build());
+            .orderByDesc(HeronVideoVersion::getUpdateTime).build();
+        query.and(q -> q.isNotNull(HeronVideoVersion::getPublishAt).or().inSql(HeronVideoVersion::getVersionId,
+            "SELECT version_id FROM heron_news_publish_attempt WHERE status IN ('started','unknown','submitted')"));
+        Page<HeronVideoVersion> page = versionMapper.selectPage(pageQuery.build(), query);
         List<Long> workIds = page.getRecords().stream().map(HeronVideoVersion::getWorkId).distinct().toList();
         Map<Long, String> titles = workIds.isEmpty() ? Map.of() : workMapper.selectByIds(workIds).stream()
             .collect(java.util.stream.Collectors.toMap(HeronNewsWork::getWorkId, HeronNewsWork::getTitle));
@@ -404,7 +409,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             vo.setWorkTitle(titles.get(version.getWorkId()));
             return vo;
         }).toList();
-        return PageResult.build(rows, page.getTotal());
+        return PageResult.build(withPublishAttempts(rows), page.getTotal());
     }
 
     /**
@@ -458,11 +463,15 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     @Override
     @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
     public NewsVideoVersionVo publish(long workId, long versionId, NewsPublishBo bo) {
-        if (bo == null || bo.publishedAt() == null || !sha(bo.videoSha256()) || !douyinUrl(bo.workUrl())) {
-            throw invalid("作品链接、发布时间或成片指纹不合法");
+        validateManualReceipt(bo);
+        HeronVideoVersion version = lockVersion(workId, versionId, "publish");
+        HeronNewsWork work = workMapper.selectById(workId);
+        HeronNewsPublishAttempt active = publishAttempts.active(work.getCandidateId());
+        if (active != null && !"published".equals(active.getStatus())) {
+            throw conflict("publish_resolve_required", "请先核对当前发布尝试，不能另写回执绕过保护");
         }
-        return applyReceipt(workId, versionId, bo.workUrl(), bo.account(), bo.publishedAt(), bo.videoSha256(),
-            "manual", access.requireActor(), false);
+        return withPublishAttempt(applyReceipt(workId, versionId, bo.workUrl(), bo.account(), bo.publishedAt(),
+            bo.videoSha256(), "manual", access.requireActor(), false));
     }
 
     @Override
@@ -485,7 +494,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     }
 
     @Override
-    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public NewsVideoVersionVo confirm(long workId, long versionId, NewsReviewBo bo) {
         return confirmAs(workId, versionId, bo, access.requireActor(), false);
     }
@@ -494,15 +503,9 @@ public class NewsWorkServiceImpl implements INewsWorkService {
      * 自动模式：后台线程没有会话，用系统账号写确认与回执。
      * 走的仍是同一套校验与幂等规则，变的只有操作人来源。
      */
-    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public NewsVideoVersionVo confirmForAuto(long workId, long versionId, long actor) {
-        HeronVideoVersion version = versionMapper.selectById(versionId);
-        if (version == null) throw new HeronAccessException();
-        requireEditorialPass(version);
-        List<ProductionArtifactVo> files = readyFiles(version);
-        NewsReviewBo bo = new NewsReviewBo("approved", byKind(files, "contact_sheet").sha256(),
-            byKind(files, "mp4").sha256(), null);
-        return confirmAs(workId, versionId, bo, actor, true);
+        return confirmAs(workId, versionId, null, actor, true);
     }
 
     /**
@@ -575,23 +578,152 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         }
     }
 
-    private NewsVideoVersionVo confirmAs(long workId, long versionId, NewsReviewBo bo, long actor, boolean system) {        NewsVideoVersionVo reviewed = reviewAs(workId, versionId, bo, actor, system);
+    record PreparedPublish(NewsVideoVersionVo reviewed, PublishRequest request, Long attemptId) { }
+
+    private NewsVideoVersionVo confirmAs(long workId, long versionId, NewsReviewBo bo, long actor, boolean system) {
+        PreparedPublish prepared = shortTransaction().execute(status -> prepareConfirm(workId, versionId, bo, actor, system));
+        if (prepared == null) throw conflict("publish_attempt_conflict", "发布准备事务没有返回结果");
+        if (prepared.request() == null) return withPublishAttempt(prepared.reviewed());
+        try {
+            PublishReceipt receipt = publishAdapter.publish(prepared.request());
+            NewsVideoVersionVo result = shortTransaction().execute(status ->
+                finishConfirm(workId, versionId, prepared.attemptId(), receipt, actor, system));
+            if (result == null) throw conflict("publish_attempt_conflict", "发布回执事务没有返回结果");
+            return withPublishAttempt(result);
+        } catch (RuntimeException failure) {
+            String code = failure instanceof HeronBusinessException business ? business.getCode() : "publish_result_failed";
+            try {
+                shortTransaction().executeWithoutResult(status -> publishAttempts.unknown(prepared.attemptId(), code, now()));
+            } catch (RuntimeException unavailable) {
+                // 最初的started已提交：即使故障标记也写不进去，下一次仍会被它阻止。
+                log.warn("发布结果未落盘，保留原始尝试保护 attemptId={}", prepared.attemptId());
+            }
+            throw new HeronBusinessException(503, "news_publish_unknown",
+                "发布结果尚未确认，请先核对尝试 " + prepared.attemptId() + "，系统不会重复上传");
+        }
+    }
+
+    PreparedPublish prepareConfirm(long workId, long versionId, NewsReviewBo bo, long actor, boolean system) {
+        if (system) {
+            HeronVideoVersion version = lockVersionAny(workId, versionId);
+            requireEditorialPass(version);
+            List<ProductionArtifactVo> files = readyFiles(version);
+            bo = new NewsReviewBo("approved", byKind(files, "contact_sheet").sha256(), byKind(files, "mp4").sha256(), null);
+        }
+        NewsVideoVersionVo reviewed = reviewAs(workId, versionId, bo, actor, system);
         if (bo == null || !"approved".equals(bo.decision())) {
-            return reviewed;
+            return new PreparedPublish(reviewed, null, null);
         }
         HeronVideoVersion version = system ? lockVersionAny(workId, versionId) : lockVersion(workId, versionId, "publish");
         // 已发布就回放既有事实：重复点击不能因为沙箱回执时间变了而报冲突
         if (version.getPublishAt() != null) {
-            return versionView(version);
+            return new PreparedPublish(versionView(version), null, null);
         }
         HeronNewsWork work = workMapper.selectById(version.getWorkId());
-        PublishReceipt receipt = publishAdapter.publish(new PublishRequest(version.getTaskId(), versionId,
-            work == null ? null : work.getTitle(), version.getReviewVideoSha(), now(),
-            artifacts.localPath(byKind(readyFiles(version), "mp4"))));
-        return applyReceipt(workId, versionId, receipt.workUrl(), receipt.account(), receipt.publishedAt(),
-            version.getReviewVideoSha(), receipt.source(), actor, system);
+        HeronNewsCandidate candidate = candidateMapper.selectById(work.getCandidateId());
+        if (candidate == null) throw new HeronAccessException();
+        if (candidate.getPublishedAt() != null) throw conflict("publish_conflict", "该候选已有发布记录，不能再次上传");
+        HeronNewsPublishAttempt active = publishAttempts.active(work.getCandidateId());
+        if (active != null) {
+            if (Objects.equals(active.getVersionId(), versionId)) return new PreparedPublish(reviewed, null, active.getAttemptId());
+            throw conflict("publish_unknown", "该选题的另一版本已有发布尝试，请先核对结果");
+        }
+        Path file = artifacts.localPath(byKind(readyFiles(version), "mp4"));
+        String account = publishAdapter.account();
+        if (DouyinCliPublishAdapter.SOURCE.equals(publishAdapter.source()) && (account == null || account.isBlank())) {
+            throw new HeronBusinessException(503, "publish_account_missing", "未配置目标发布账号");
+        }
+        HeronNewsPublishAttempt attempt = publishAttempts.begin(work.getCandidateId(), workId, versionId,
+            version.getReviewVideoSha(), publishAdapter.source(), account, actor, now());
+        String publishTitle = JsonUtils.getJsonMapper().readTree(version.getScript()).path("title").asString("");
+        text(publishTitle, 200, "成片标题");
+        PublishRequest request = new PublishRequest(version.getTaskId(), versionId,
+            publishTitle, version.getReviewVideoSha(), now(),
+            file, account);
+        return new PreparedPublish(reviewed, request, attempt.getAttemptId());
     }
 
+    NewsVideoVersionVo finishConfirm(long workId, long versionId, long attemptId, PublishReceipt receipt,
+                                     long actor, boolean system) {
+        HeronVideoVersion version = system ? lockVersionAny(workId, versionId) : lockVersion(workId, versionId, "publish");
+        HeronNewsPublishAttempt attempt = publishAttempts.lock(attemptId);
+        requireAttempt(version, attempt);
+        if ("published".equals(attempt.getStatus()) && version.getPublishAt() != null) return versionView(version);
+        if (!"started".equals(attempt.getStatus()) || receipt == null || !attempt.getSource().equals(receipt.source())) {
+            throw conflict("publish_attempt_conflict", "发布尝试已处置或回执来源不匹配");
+        }
+        if (attempt.getAccount() != null && !attempt.getAccount().equals(receipt.account())) {
+            throw conflict("publish_attempt_conflict", "回执账号与冻结的目标账号不一致");
+        }
+        if (DouyinCliPublishAdapter.SOURCE.equals(receipt.source())
+            && (receipt.workUrl() == null || receipt.workUrl().isBlank())) {
+            publishAttempts.finish(attempt, "submitted", receipt.account(), now());
+            return versionView(version);
+        }
+        NewsVideoVersionVo result = applyReceipt(workId, versionId, receipt.workUrl(), receipt.account(), receipt.publishedAt(),
+            version.getReviewVideoSha(), receipt.source(), actor, system);
+        publishAttempts.finish(attempt, "published", receipt.account(), now());
+        return result;
+    }
+
+    private TransactionTemplate shortTransaction() {
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        tx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+        tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        return tx;
+    }
+
+    @Override
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    public NewsVideoVersionVo resolvePublishAttempt(long workId, long versionId, long attemptId, NewsPublishResolveBo bo) {
+        HeronVideoVersion version = lockVersion(workId, versionId, "publish");
+        HeronNewsPublishAttempt attempt = publishAttempts.lock(attemptId);
+        requireAttempt(version, attempt);
+        if (bo == null || !Objects.equals(bo.videoSha256(), attempt.getVideoSha())
+            || !Set.of("published", "not_published").contains(Objects.toString(bo.decision(), ""))) {
+            throw invalid("核对结论必须匹配本次尝试的成片指纹");
+        }
+        long actor = access.requireActor();
+        if ("published".equals(bo.decision())) {
+            validateManualReceipt(bo.receipt());
+            if (!attempt.getVideoSha().equals(bo.receipt().videoSha256())) throw conflict("publish_hash", "核对回执与尝试指纹不一致");
+            if (attempt.getAccount() != null && !attempt.getAccount().equals(bo.receipt().account().strip())) {
+                throw conflict("publish_account", "核对账号与本次尝试的目标账号不一致");
+            }
+            if (!"published".equals(attempt.getStatus())) {
+                NewsPublishAttempts.requireResolvable(attempt, "published", bo.reason(), bo.uploadStopped(),
+                    news.getPublishTimeoutSeconds(), now());
+            }
+            NewsPublishBo receipt = bo.receipt();
+            NewsVideoVersionVo result = applyReceipt(workId, versionId, receipt.workUrl(), receipt.account(), receipt.publishedAt(),
+                receipt.videoSha256(), "manual", actor, false);
+            if (!"published".equals(attempt.getStatus())) publishAttempts.resolve(attempt, "published", receipt.account(),
+                actor, bo.reason(), bo.uploadStopped(), news.getPublishTimeoutSeconds(), now());
+            return withPublishAttempt(result);
+        }
+        if ("not_published".equals(attempt.getStatus())) return withPublishAttempt(versionView(version));
+        if (version.getPublishAt() != null) throw conflict("publish_conflict", "已有发布事实，不能解除保护");
+        HeronNewsWork work = workMapper.selectById(workId);
+        HeronNewsCandidate candidate = candidateMapper.selectById(work.getCandidateId());
+        if (candidate == null || candidate.getPublishedAt() != null) throw conflict("publish_conflict", "选题已有发布事实，不能解除保护");
+        publishAttempts.resolve(attempt, "not_published", null, actor, bo.reason(), bo.uploadStopped(),
+            news.getPublishTimeoutSeconds(), now());
+        return withPublishAttempt(versionView(version));
+    }
+
+    private void requireAttempt(HeronVideoVersion version, HeronNewsPublishAttempt attempt) {
+        HeronNewsWork work = workMapper.selectById(version.getWorkId());
+        if (!Objects.equals(attempt.getVersionId(), version.getVersionId()) || !Objects.equals(attempt.getWorkId(), version.getWorkId())
+            || work == null || !Objects.equals(attempt.getCandidateId(), work.getCandidateId())
+            || !Objects.equals(attempt.getVideoSha(), version.getReviewVideoSha())) throw new HeronAccessException();
+    }
+
+    private void validateManualReceipt(NewsPublishBo bo) {
+        if (bo == null || bo.publishedAt() == null || !sha(bo.videoSha256()) || !douyinUrl(bo.workUrl())) {
+            throw invalid("作品链接、发布时间或成片指纹不合法");
+        }
+        text(bo.account(), 120, "账号标识");
+    }
     /** 写发布事实。人工与沙箱只认各自的前缀，命令行出口如实留空链接——两边都不许冒充对方。 */
     private NewsVideoVersionVo applyReceipt(long workId, long versionId, String workUrl, String account,
                                             LocalDateTime publishedAt, String videoSha256, String source,
@@ -648,7 +780,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     public NewsFileVo preview(long workId, long versionId, String artifactId) {
         HeronVideoVersion version = lockVersion(workId, versionId, "reviewPreview");
         ProductionArtifactVo selected = byId(parseManifest(version), artifactId);
-        if (!Set.of("mp4", "contact_sheet").contains(selected.kind())) throw new HeronAccessException();
+        NewsProductionDomain.requirePreviewKind(selected.kind());
         readyFiles(version);
         return domain.openFile(version, selected);
     }
@@ -719,6 +851,8 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         HeronNewsWork work = workMapper.selectById(version.getWorkId());
         HeronNewsCandidate candidate = candidateMapper.selectById(work.getCandidateId());
         if (work.getActiveTaskId() != null || candidate.getActiveTaskId() != null) return false;
+        HeronNewsPublishAttempt publishing = publishAttempts.active(work.getCandidateId());
+        if (publishing != null && !"published".equals(publishing.getStatus())) return false;
         if (taskMapper.selectCount(QueryBuilder.lambda(HeronProductionTask.class).eq(HeronProductionTask::getBizType, TYPE.name())
             .eq(HeronProductionTask::getBizId, work.getWorkId()).in(HeronProductionTask::getStatus, List.of("queued", "running", "cancelling")).build()) > 0) return false;
         HeronProductionTask task = taskMapper.selectById(version.getTaskId());
@@ -830,6 +964,17 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private List<ProductionArtifactVo> parseManifest(HeronVideoVersion version) {
         try { return JsonUtils.parseArray(version.getArtifactManifest(), ProductionArtifactVo.class); }
         catch (RuntimeException e) { throw conflict("manifest_invalid", "产物清单不合法"); }
+    }
+
+    private NewsVideoVersionVo withPublishAttempt(NewsVideoVersionVo view) {
+        withPublishAttempts(List.of(view));
+        return view;
+    }
+
+    private List<NewsVideoVersionVo> withPublishAttempts(List<NewsVideoVersionVo> views) {
+        Map<Long, NewsPublishAttemptVo> attempts = publishAttempts.latest(views.stream().map(NewsVideoVersionVo::getVersionId).toList());
+        views.forEach(view -> view.setPublishAttempt(attempts.get(view.getVersionId())));
+        return views;
     }
     private ProductionArtifactVo byKind(List<ProductionArtifactVo> files, String kind) {
         return files.stream().filter(a -> a != null && kind.equals(a.kind())).findFirst().orElseThrow(() -> conflict("manifest_incomplete", "产物清单不完整"));

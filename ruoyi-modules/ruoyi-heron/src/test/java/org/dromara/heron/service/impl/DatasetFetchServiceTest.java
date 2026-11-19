@@ -2,10 +2,16 @@ package org.dromara.heron.service.impl;
 
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.HeronDataSource;
+import org.dromara.heron.mapper.HeronDataSourceMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
+
+import java.time.Instant;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /** 抓取前的准入判定：只测分支，不碰库也不碰网络。 */
 @DisplayName("数据看板：源准入与适配器选择")
@@ -55,6 +61,50 @@ class DatasetFetchServiceTest {
     @DisplayName("启用且探测为 ok 时放行")
     void requireReadyPasses() {
         assertDoesNotThrow(() -> DatasetFetchService.requireReady(source("0", "ok"), "sina-gold-xau"));
+    }
+
+    @Test
+    @DisplayName("生产公开入口拒绝 blocked 源，不能绕过健康闸进入适配器")
+    void productionRejectsBlockedSourceBeforeFetching() {
+        HeronDataSourceMapper mapper = mock(HeronDataSourceMapper.class);
+        when(mapper.selectByKey("sina-gold-xau")).thenReturn(source("0", "blocked"));
+        DatasetAdapter adapter = mock(DatasetAdapter.class);
+        DatasetFetchService service = new DatasetFetchService(mapper, null) {
+            @Override
+            DatasetAdapter adapterFor(String sourceKey) {
+                return adapter;
+            }
+        };
+
+        HeronBusinessException error = assertThrows(HeronBusinessException.class,
+            () -> service.fetch(null, "sina-gold-xau", 30));
+
+        assertEquals("dataset_source_blocked", error.getCode());
+        verifyNoInteractions(adapter);
+    }
+
+    @Test
+    @DisplayName("分析公开入口允许探测 blocked 源，合格快照令源恢复健康")
+    void analysisCanRecoverBlockedSource() {
+        HeronDataSourceMapper mapper = mock(HeronDataSourceMapper.class);
+        when(mapper.selectByKey("sina-gold-xau")).thenReturn(source("0", "blocked"));
+        when(mapper.enabledKeys()).thenReturn(List.of("sina-gold-xau"));
+        DatasetAdapter adapter = mock(DatasetAdapter.class);
+        when(adapter.shape()).thenReturn("wide");
+        when(adapter.fetch(30)).thenReturn(SinaFuturesDatasetAdapter.build(SinaFuturesDatasetAdapter.GOLD,
+            "var _hf_XAU=([{\"date\":\"2026-11-09\",\"close\":\"4110.04\"},"
+                + "{\"date\":\"2026-11-10\",\"close\":\"4113.34\"}]);", Instant.now(), 30));
+        DatasetFetchService service = new DatasetFetchService(mapper, null) {
+            @Override
+            DatasetAdapter adapterFor(String sourceKey) {
+                return adapter;
+            }
+        };
+
+        JsonNode snapshot = service.snapshot("sina-gold-xau", 30);
+
+        assertEquals(2, snapshot.path("rows").size());
+        verify(mapper).markHealthy(eq("sina-gold-xau"), any());
     }
 
     @Test

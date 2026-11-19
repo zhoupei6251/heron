@@ -1,6 +1,7 @@
 package org.dromara.heron.service.impl;
 
 import cn.hutool.crypto.digest.DigestUtil;
+import cn.hutool.core.util.EscapeUtil;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.bo.ProductionProcessBo;
@@ -68,7 +69,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private static final int SHEET_TILES = 6;
     private static final int MIN_AUDIO_SECONDS = 30;
     private static final Pattern CUE = Pattern.compile(
-        "(\\d+):(\\d+):(\\d+)[.,](\\d+) --> (\\d+):(\\d+):(\\d+)[.,](\\d+)\\r?\\n([^\\r\\n]+)");
+        "(?m)^(\\d+):(\\d+):(\\d+)[.,](\\d+) --> (\\d+):(\\d+):(\\d+)[.,](\\d+)[^\\r\\n]*\\r?\\n"
+            + "([\\s\\S]*?)(?=\\r?\\n\\s*\\r?\\n|\\z)");
     private static final Pattern STAMP = Pattern.compile(
         "(\\d+):(\\d+):(\\d+)[.,](\\d+) --> (\\d+):(\\d+):(\\d+)[.,](\\d+)");
 
@@ -156,28 +158,33 @@ public class NewsProductionPipeline implements IProductionPipeline {
         Map<String, String> images = dataBoard ? Map.of() : materializeImages(composition, renderScript, input);
         // 只给模板自己声明过的变量：--strict-variables 会把「多给的变量」判成未声明并直接中止渲染
         java.util.Set<String> declared = declaredVariables(templateDir);
-        write(work.resolve(VARS_FILE), dataBoard
-            ? dataTemplateVariables(renderScript, dataset, declared)
-            : templateVariables(renderScript, images, declared));
+        String variables = dataBoard
+            ? dataTemplateVariables(script, dataset, declared)
+            : templateVariables(renderScript, images, declared);
+        write(work.resolve(VARS_FILE), variables);
         gates.add(assetsGate(composition, input.path("assets"), templateDir));
         gates.add(sceneTypeGate(script, templateDir));
+        write(composition.resolve("index.html"), bindVariablesString(read(composition.resolve("index.html")), variables));
 
         Path voice = composition.resolve(VOICE_FILE);
         stages.beginStage(run, "voice", 25);
         speak(run, work, renderScript, input.path("assets").path("voiceKey").asString(""));
         double audioSeconds = probeDuration(run, voice);
         gates.add(voiceGate(voice, audioSeconds));
-        gates.add(subtitleGate(composition.resolve(SUBTITLES_FILE), audioSeconds));
+        String subtitles = subtitleJson(read(composition.resolve(SUBTITLES_FILE)));
+        List<NewsNarrationTiming.Span> timeline = NewsNarrationTiming.align(renderScript, JSON.readTree(subtitles),
+            Math.round(audioSeconds * 1000));
+        gates.add(subtitleGate(composition.resolve(SUBTITLES_FILE), audioSeconds, timeline));
 
         stages.beginStage(run, "render", 45);
-        timeComposition(composition, renderScript, audioSeconds);
+        timeComposition(composition, timeline, audioSeconds);
         JsonNode check = checkComposition(run, work);
         render(run, work);
         gates.add(renderGate(work.resolve(RAW_FILE)));
         gates.add(decodeGate(decode(run, work.resolve(RAW_FILE)), audioSeconds));
 
         stages.beginStage(run, "finalize", 85);
-        Path finalFile = tagAigc(run, work, script);
+        Path finalFile = tagAigc(run, work, timeline.get(timeline.size() - 1));
         gates.add(aigcMetadataGate(run, finalFile));
         Path sheet = contactSheet(run, work, finalFile);
         gates.add(visualGate(check, sheet));
@@ -185,7 +192,6 @@ public class NewsProductionPipeline implements IProductionPipeline {
         gates.sort((left, right) -> left.gate().compareTo(right.gate()));
 
         String checks = gateJson(gates);
-        String subtitles = subtitleJson(read(composition.resolve(SUBTITLES_FILE)));
         List<ProductionArtifactVo> files = new ArrayList<>(List.of(
             artifacts.finalizeFile(run, "mp4", finalFile, "video/mp4"),
             artifacts.finalizeFile(run, "contact_sheet", sheet, "image/png"),
@@ -440,7 +446,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return new Gate("audio", VOICE_FILE, "edge-tts 退出 0、实测时长为正且不低于 30 秒", measured);
     }
 
-    private static Gate subtitleGate(Path vtt, double audioSeconds) {
+    private static Gate subtitleGate(Path vtt, double audioSeconds, List<NewsNarrationTiming.Span> timeline) {
         String text = read(vtt);
         int cues = 0;
         long covered = 0;
@@ -460,7 +466,14 @@ public class NewsProductionPipeline implements IProductionPipeline {
         measured.put("audioMs", audioMs);
         measured.put("coveredMs", covered);
         measured.put("cues", cues);
-        return new Gate("subtitles", SUBTITLES_FILE, "cue 级时间戳非空且覆盖音频九成以上（CLI 给不出词级）", measured);
+        measured.put("alignedScenes", timeline.size() - 1);
+        measured.put("interpolatedBoundaries", timeline.stream().filter(NewsNarrationTiming.Span::cueInterpolated).count());
+        for (NewsNarrationTiming.Span span : timeline) {
+            String key = "closing-slot".equals(span.id()) ? "closing" : span.id().replace("-", "");
+            measured.put(key + "StartMs", span.startMs());
+            measured.put(key + "EndMs", span.endMs());
+        }
+        return new Gate("subtitles", SUBTITLES_FILE, "字幕覆盖音频九成以上，口播文本与各分镜及结尾对应", measured);
     }
 
     private Gate renderGate(Path raw) {
@@ -601,12 +614,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         if (voiceKey.isBlank()) {
             throw new HeronBusinessException(503, "news_assets_unconfigured", "没有锁定配音音色");
         }
-        List<String> speech = new ArrayList<>();
-        for (JsonNode scene : script.path("scenes")) {
-            speech.add(scene.path("lead").asString("") + "。" + scene.path("body").asString(""));
-        }
-        speech.add(script.path("closing").asString(""));
-        write(work.resolve("narration.txt"), String.join("\n", speech));
+        write(work.resolve("narration.txt"), String.join("\n", NewsNarrationTiming.spoken(script)));
         List<String> args = new ArrayList<>(List.of("-m", "edge_tts", "-f", "narration.txt", "-v", voiceKey,
             "--no-progress",
             "--write-media", COMPOSITION_DIR + "/" + VOICE_FILE,
@@ -654,21 +662,18 @@ public class NewsProductionPipeline implements IProductionPipeline {
     /**
      * 成片定稿：混入背景音乐并写 AIGC 元数据，一条命令完成。
      *
-     * <p>BGM 不是随便混一条了事：口播期间要压到 12%，只留垫底氛围；
-     * 口播结束到片尾（closing 段）拉回 34%，给结尾一点情绪。这条曲线由 ffmpeg 的
-     * sidechaincompress 做不合适（它依赖音轨包络，口播停顿会忽大忽小），所以用固定时间点淡入淡出，
-     * 时间点来自已冻结的脚本时长——和字幕、时间轴用的是同一份时长来源。
+     * <p>配乐包络复用字幕对齐后的真实结尾窗口；不以脚本声明时长猜测释放和片尾位置。
      *
      * <p>找不到背景音乐就退化成原样封装，不影响出片：音乐是加分项，不是闸。
      */
-    private Path tagAigc(ProductionRunVo run, Path work, JsonNode script) {
+    private Path tagAigc(ProductionRunVo run, Path work, NewsNarrationTiming.Span closing) {
         Path bgm = pickBgm();
         List<String> command = new ArrayList<>();
         command.addAll(List.of("-y", "-loglevel", "error", "-i", RAW_FILE));
         boolean withBgm = bgm != null;
         if (withBgm) {
             command.addAll(List.of("-stream_loop", "-1", "-i", bgm.toAbsolutePath().toString()));
-            command.addAll(List.of("-filter_complex", bgmFilter(script)));
+            command.addAll(List.of("-filter_complex", bgmFilter(closing)));
             command.addAll(List.of("-map", "0:v:0", "-map", "[mix]"));
             command.addAll(List.of("-c:v", "copy", "-c:a", "aac", "-b:a", "160k"));
         } else {
@@ -686,29 +691,27 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     /**
-     * 口播期间压低 BGM，结尾拉回来。
-     *
-     * <p>用两条 volume 叠加而不是 volume + enable：enable 作用在整条链上，
-     * 前一段静音后一段突然跳档会有明显台阶。这里靠 afade 做平滑过渡。
-     * 口播期 0.22、结尾 0.40——实测 0.12 在 -19dB 的口播下只抬 0.5dB，等于没有。
+     * 正文配乐增益0.22，实际结尾内平滑升至0.40，完整片尾淡出；短结尾缩短两段过渡。
      */
-    private static String bgmFilter(JsonNode script) {
-        double total = 0;
-        for (JsonNode scene : script.path("scenes")) {
-            total += scene.path("duration_s").asDouble(0);
+    static String bgmFilter(NewsNarrationTiming.Span closing) {
+        if (closing == null || !"closing-slot".equals(closing.id()) || closing.startMs() < 0
+            || closing.endMs() <= closing.startMs()) {
+            throw new HeronBusinessException(409, "news_audio_alignment", "配乐缺少有效的实际结尾时间");
         }
-        if (total <= 0) {
-            total = 45;
-        }
-        double releaseAt = Math.max(1.0, total - 1.2);
-        return "[1:a]volume=0.22,afade=t=in:st=0:d=0.8,"
-            + "afade=t=out:st=" + fmt(releaseAt) + ":d=1.2,"
-            + "volume=1.8:enable='gte(t," + fmt(releaseAt) + ")'[bg];"
+        double start = closing.startMs() / 1000.0;
+        double total = closing.endMs() / 1000.0;
+        double halfClosing = (closing.endMs() - closing.startMs()) / 2000.0;
+        double rise = Math.min(0.8, halfClosing);
+        double fade = Math.min(1.2, halfClosing);
+        return "[1:a]atrim=duration=" + fmt(total) + ",asetpts=PTS-STARTPTS,"
+            + "volume='if(isnan(t),0.22,0.22+0.18*min(1,max(0,(t-" + fmt(start) + ")/" + fmt(rise)
+            + ")))':eval=frame,afade=t=in:st=0:d=" + fmt(Math.min(0.8, total / 2)) + ","
+            + "afade=t=out:st=" + fmt(total - fade) + ":d=" + fmt(fade) + "[bg];"
             + "[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mix]";
     }
 
     private static String fmt(double seconds) {
-        return String.format(java.util.Locale.ROOT, "%.2f", seconds);
+        return String.format(java.util.Locale.ROOT, "%.3f", seconds);
     }
 
     /**
@@ -887,9 +890,14 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     static String dataTemplateVariables(JsonNode script, JsonNode dataset, java.util.Set<String> declared) {
-        ObjectNode vars = (ObjectNode) JSON.readTree(templateVariables(script, Map.of(), declared));
+        ObjectNode vars = (ObjectNode) JSON.readTree(templateVariables(DatasetPlaceholders.resolve(script, dataset),
+            Map.of(), declared));
         vars.put("chart", DatasetScriptContract.chartFor(dataset.path("shape").asString("")));
         vars.put("dataset_json", dataset.toString());
+        for (int index = 0; index < script.path("scenes").size(); index++) {
+            vars.put("scene" + (index + 1) + "_focus", JSON.writeValueAsString(
+                DatasetVisualFocus.forScene(script.path("scenes").get(index), dataset)));
+        }
         if (!declared.isEmpty()) {
             java.util.List<String> extra = new ArrayList<>();
             for (String key : vars.propertyNames()) {
@@ -936,44 +944,60 @@ public class NewsProductionPipeline implements IProductionPipeline {
         }
     }
 
-    /**
-     * 按实测音频时长缩放各段声明时长，并把根、音轨与每个槽位的 data-start / data-duration 直接写进复制出来的 HTML。
-     * 末段吃掉舍入余量，保证总长与音频一致。
-     */
-    static String timeCompositionString(String html, JsonNode script, double totalSeconds) {
-        List<Double> declared = new ArrayList<>();
-        double sum = 0;
-        for (JsonNode scene : script.path("scenes")) {
-            double seconds = scene.path("duration_s").asDouble(0);
-            declared.add(seconds);
-            sum += seconds;
+    /** 把真实输入写入工作副本的默认声明，让不支持 variables-file 的 check 也验证同一份内容。 */
+    static String bindVariablesString(String html, String variablesJson) {
+        Matcher attribute = Pattern.compile("\\bdata-composition-variables\\s*=\\s*(['\"])(.*?)\\1", Pattern.DOTALL)
+            .matcher(html);
+        if (!attribute.find()) {
+            throw new HeronBusinessException(409, "news_variables_invalid", "模板没有变量声明，无法检查真实稿件");
         }
-        if (declared.isEmpty() || sum <= 0 || totalSeconds <= 0) {
-            throw new HeronBusinessException(409, "news_script_contract", "稿件段落时长不可用");
+        JsonNode declarations;
+        JsonNode values;
+        try {
+            declarations = JSON.readTree(EscapeUtil.unescapeHtml4(attribute.group(2)));
+            values = JSON.readTree(variablesJson);
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(409, "news_variables_invalid", "模板声明或真实变量不是有效 JSON");
         }
-        double scale = totalSeconds / sum;
+        if (declarations == null || values == null || !declarations.isArray() || !values.isObject()) {
+            throw new HeronBusinessException(409, "news_variables_invalid", "模板声明必须为数组，真实变量必须为对象");
+        }
+        Set<String> remaining = new HashSet<>(values.propertyNames());
+        for (JsonNode declaration : declarations) {
+            if (!declaration.isObject()) {
+                throw new HeronBusinessException(409, "news_variables_invalid", "模板变量声明不是对象");
+            }
+            String id = declaration.path("id").asString("");
+            if (values.has(id)) {
+                ((ObjectNode) declaration).set("default", values.get(id));
+                remaining.remove(id);
+            }
+        }
+        if (!remaining.isEmpty()) {
+            throw new HeronBusinessException(409, "news_variables_invalid", "模板未声明真实变量：" + String.join("、", remaining));
+        }
+        String encoded = EscapeUtil.escapeHtml4(JSON.writeValueAsString(declarations)).replace("'", "&#39;");
+        return html.substring(0, attribute.start(2)) + encoded + html.substring(attribute.end(2));
+    }
+
+    /** 使用配音字幕的真实句界写入时间轴，声明时长只作写稿预算。 */
+    static String timeCompositionString(String html, JsonNode script, double totalSeconds, String vtt) {
+        return applyTimeline(html, NewsNarrationTiming.align(script, JSON.readTree(subtitleJson(vtt)),
+            Math.round(totalSeconds * 1000)), totalSeconds);
+    }
+
+    private static String applyTimeline(String html, List<NewsNarrationTiming.Span> timeline, double totalSeconds) {
         String patched = replaceTiming(html, "root", 0, totalSeconds);
         patched = replaceTiming(patched, "narration", 0, totalSeconds);
         // 常驻层也要跟成片走：模板默认 45 秒，长片超过 45 秒会整层消失。
         patched = replaceTimingIfPresent(patched, "title-card", 0, totalSeconds);
         patched = replaceTimingIfPresent(patched, "chart-slot", 0, totalSeconds);
-        double cursor = 0;
-        for (int index = 0; index < declared.size(); index++) {
-            boolean last = index == declared.size() - 1;
-            double span = last ? round2(totalSeconds - cursor) : round2(declared.get(index) * scale);
-            if (last) {
-                // 结尾口播排在最后一段旁白之后：切出独立尾窗，避免和最后一屏字幕同屏重叠。
-                double closing = round2(Math.min(4.0, span * 0.5));
-                double sceneSpan = round2(span - closing);
-                patched = replaceTiming(patched, "scene-" + (index + 1), cursor, sceneSpan);
-                patched = replaceTiming(patched, "closing-slot", round2(cursor + sceneSpan), closing);
-            } else {
-                patched = replaceTiming(patched, "scene-" + (index + 1), cursor, span);
-            }
-            cursor = round2(cursor + span);
+        for (NewsNarrationTiming.Span span : timeline) {
+            patched = replaceTiming(patched, span.id(), span.startMs() / 1000.0,
+                (span.endMs() - span.startMs()) / 1000.0);
         }
-        // 未用槽位必须同时摘出时间轴：check 不带变量、按模板默认 scene_count=6 跑，留着旧时点会被判文本重叠。
-        for (int index = declared.size(); index < MAX_SCENE_SLOTS; index++) {
+        // 没有口播的槽位不占用成片窗口，scene_count 也已绑定为真实段数。
+        for (int index = timeline.size() - 1; index < MAX_SCENE_SLOTS; index++) {
             patched = replaceTiming(patched, "scene-" + (index + 1), totalSeconds, 0.01);
         }
         return patched;
@@ -1003,12 +1027,12 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     private static String number(double value) {
-        return String.format(Locale.ROOT, "%.2f", value);
+        return String.format(Locale.ROOT, "%.3f", value);
     }
 
-    private void timeComposition(Path composition, JsonNode script, double totalSeconds) {
+    private void timeComposition(Path composition, List<NewsNarrationTiming.Span> timeline, double totalSeconds) {
         write(composition.resolve("index.html"),
-            timeCompositionString(read(composition.resolve("index.html")), script, totalSeconds));
+            applyTimeline(read(composition.resolve("index.html")), timeline, totalSeconds));
     }
 
     /** 模板根目录下的单个模板；key 只允许锁定的字符集，避免拼出目录穿越。 */
@@ -1109,7 +1133,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     private static long millis(String hours, String minutes, String seconds, String fraction) {
         return (Long.parseLong(hours) * 3600 + Long.parseLong(minutes) * 60 + Long.parseLong(seconds)) * 1000
-            + Long.parseLong(fraction);
+            + Long.parseLong((fraction + "000").substring(0, 3));
     }
 
     // ---------- 小工具 ----------

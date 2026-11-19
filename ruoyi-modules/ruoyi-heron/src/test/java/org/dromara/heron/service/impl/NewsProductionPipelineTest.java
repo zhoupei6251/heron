@@ -1,5 +1,6 @@
 package org.dromara.heron.service.impl;
 
+import cn.hutool.core.util.EscapeUtil;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,30 @@ class NewsProductionPipelineTest {
         <section id="scene-5" data-start="35" data-duration="5">
         <section id="scene-6" data-start="40" data-duration="5">
         <aside id="closing-slot" data-start="20" data-duration="10">
+        """;
+    private static final String VTT = """
+        WEBVTT
+
+        00:00:00.100 --> 00:00:02.000
+        电池容量提升两成。
+
+        00:00:02.000 --> 00:00:06.000
+        正文一。
+
+        00:00:06.000 --> 00:00:08.500
+        影像算法重写。
+
+        00:00:08.500 --> 00:00:20.000
+        正文二。
+
+        00:00:20.000 --> 00:00:22.000
+        起售价不变。
+
+        00:00:22.000 --> 00:00:28.000
+        正文三。
+
+        00:00:28.000 --> 00:00:41.400
+        我们会持续跟进。
         """;
 
     @Test
@@ -99,27 +124,89 @@ class NewsProductionPipelineTest {
     }
 
     @Test
-    @DisplayName("时间轴按实测音频缩放，末段吃掉舍入余量")
-    void scalesTimelineOntoDisk() {
-        String patched = NewsProductionPipeline.timeCompositionString(SLOTS, JSON.readTree(SCRIPT), 41.5);
+    @DisplayName("检查工作副本绑定真实标题、段数与数据，保留未覆盖的风格值")
+    void bindsRealContentBeforeChecking() {
+        String html = """
+            <html data-composition-variables='[
+              {"id":"title","type":"string","default":"占位标题"},
+              {"id":"scene_count","type":"number","default":6},
+              {"id":"dataset_json","type":"string","default":"{}"},
+              {"id":"accent","type":"color","default":"#18b7c9"}]'>
+            <body><h1 data-var-text="title">占位标题</h1></body></html>
+            """;
+        String title = "真实 O'Reilly <数据> & \"中文\"";
+        String values = JSON.writeValueAsString(java.util.Map.of(
+            "title", title, "scene_count", 3, "dataset_json", "{\"label\":\"中国\"}"));
+
+        String bound = NewsProductionPipeline.bindVariablesString(html, values);
+        Matcher declaration = Pattern.compile("data-composition-variables='([^']*)'").matcher(bound);
+        assertTrue(declaration.find(), "引号必须转义，不能截断HTML属性");
+        JsonNode defaults = JSON.readTree(EscapeUtil.unescapeHtml4(declaration.group(1)));
+        assertEquals(title, defaults.get(0).path("default").asString());
+        assertEquals(3, defaults.get(1).path("default").asInt());
+        assertEquals("中国", JSON.readTree(defaults.get(2).path("default").asString()).path("label").asString());
+        assertEquals("#18b7c9", defaults.get(3).path("default").asString());
+        assertFalse(bound.contains("<数据>"), "数据文本不能变成HTML节点");
+        assertTrue(bound.contains("<h1 data-var-text=\"title\">"), "保留模板的声明式绑定");
+    }
+
+    @Test
+    @DisplayName("没有变量声明或收到未声明变量时拒绝检查，不能默默验占位稿")
+    void rejectsUnboundVariables() {
+        assertEquals("news_variables_invalid", assertThrows(HeronBusinessException.class,
+            () -> NewsProductionPipeline.bindVariablesString("<html></html>", "{\"title\":\"真实\"}")).getCode());
+        assertEquals("news_variables_invalid", assertThrows(HeronBusinessException.class,
+            () -> NewsProductionPipeline.bindVariablesString(
+                "<html data-composition-variables='[]'></html>", "{\"title\":\"真实\"}")).getCode());
+    }
+
+    @Test
+    @DisplayName("时间轴使用实际句界，声明等长的三段也可以有不同口播长度")
+    void alignsTimelineOntoDisk() {
+        String patched = NewsProductionPipeline.timeCompositionString(SLOTS, JSON.readTree(SCRIPT), 41.5, VTT);
         assertEquals(41.5, attribute(patched, "root", "duration"), 0.001);
         assertEquals(41.5, attribute(patched, "narration", "duration"), 0.001);
         // 常驻层必须跟成片走，否则超过模板默认 45 秒后整层消失。
         assertEquals(41.5, attribute(patched, "title-card", "duration"), 0.001);
         assertEquals(41.5, attribute(patched, "chart-slot", "duration"), 0.001);
         assertEquals(0.0, attribute(patched, "scene-1", "start"), 0.001);
-        assertEquals(13.83, attribute(patched, "scene-1", "duration"), 0.001);
-        assertEquals(13.83, attribute(patched, "scene-2", "start"), 0.001);
-        assertEquals(27.66, attribute(patched, "scene-3", "start"), 0.001);
-        assertEquals(9.84, attribute(patched, "scene-3", "duration"), 0.001);
+        assertEquals(6.0, attribute(patched, "scene-1", "duration"), 0.001);
+        assertEquals(6.0, attribute(patched, "scene-2", "start"), 0.001);
+        assertEquals(20.0, attribute(patched, "scene-3", "start"), 0.001);
+        assertEquals(8.0, attribute(patched, "scene-3", "duration"), 0.001);
         double sum = attribute(patched, "scene-1", "duration") + attribute(patched, "scene-2", "duration")
             + attribute(patched, "scene-3", "duration") + attribute(patched, "closing-slot", "duration");
         assertEquals(41.5, sum, 0.001);
         // 结尾口播排在最后一屏之后，独立尾窗，不与最后一屏同屏。
-        assertEquals(37.5, attribute(patched, "closing-slot", "start"), 0.001);
-        assertEquals(4.0, attribute(patched, "closing-slot", "duration"), 0.001);
+        assertEquals(28.0, attribute(patched, "closing-slot", "start"), 0.001);
+        assertEquals(13.5, attribute(patched, "closing-slot", "duration"), 0.001);
         assertEquals(attribute(patched, "scene-3", "start") + attribute(patched, "scene-3", "duration"),
             attribute(patched, "closing-slot", "start"), 0.001);
+    }
+
+    @Test
+    @DisplayName("配乐释放与淡出使用实测结尾，不使用三段各十秒的声明")
+    void mixesBgmOnMeasuredClosing() {
+        var timeline = NewsNarrationTiming.align(JSON.readTree(SCRIPT),
+            JSON.readTree(NewsProductionPipeline.subtitleJson(VTT)), 41500);
+        String filter = NewsProductionPipeline.bgmFilter(timeline.get(timeline.size() - 1));
+        assertTrue(filter.contains("(t-28.000)/0.800"), "第28秒才进入实际结尾");
+        assertTrue(filter.contains("afade=t=out:st=40.300:d=1.200"), "完整音频末尾才淡出");
+        assertTrue(filter.contains("atrim=duration=41.500"));
+        assertTrue(filter.contains("eval=frame"), "音量应连续变化");
+        assertFalse(filter.contains("enable="), "不能在结尾瞬间跳档");
+    }
+
+    @Test
+    @DisplayName("短结尾内完成释放和淡出，非法时间不退回猜测时长")
+    void handlesShortClosingWithoutInventingTiming() {
+        String filter = NewsProductionPipeline.bgmFilter(new NewsNarrationTiming.Span("closing-slot", 41000, 41500, false));
+        assertTrue(filter.contains("(t-41.000)/0.250"));
+        assertTrue(filter.contains("afade=t=out:st=41.250:d=0.250"));
+        assertThrows(HeronBusinessException.class, () -> NewsProductionPipeline.bgmFilter(
+            new NewsNarrationTiming.Span("scene-1", 0, 41000, false)));
+        assertThrows(HeronBusinessException.class, () -> NewsProductionPipeline.bgmFilter(
+            new NewsNarrationTiming.Span("closing-slot", 41000, 40000, false)));
     }
 
     @Test
@@ -127,7 +214,7 @@ class NewsProductionPipelineTest {
     void rejectsMissingSlot() {
         HeronBusinessException error = assertThrows(HeronBusinessException.class, () ->
             NewsProductionPipeline.timeCompositionString("<div id=\"root\" data-duration=\"45\">",
-                JSON.readTree(SCRIPT), 40));
+                JSON.readTree(SCRIPT), 41.5, VTT));
         assertEquals("news_template_broken", error.getCode());
     }
 
@@ -143,9 +230,20 @@ class NewsProductionPipelineTest {
     }
 
     @Test
+    @DisplayName("多行字幕与不同小数位时间戳都保留，不能只对齐第一行")
+    void parsesMultilineCueAndFractionalTimestamps() {
+        JsonNode cues = JSON.readTree(NewsProductionPipeline.subtitleJson(
+            "WEBVTT\n\n00:00:00.1 --> 00:00:02.50\n第一行\n第二行\n\n"));
+        assertEquals(1, cues.size());
+        assertEquals(100, cues.get(0).path("startMs").asLong());
+        assertEquals(2500, cues.get(0).path("endMs").asLong());
+        assertEquals("第一行\n第二行", cues.get(0).path("text").asString());
+    }
+
+    @Test
     @DisplayName("未用槽位被摘到时间轴末尾，不留重叠文本")
     void retiresUnusedSlots() {
-        String patched = NewsProductionPipeline.timeCompositionString(SLOTS, JSON.readTree(SCRIPT), 41.5);
+        String patched = NewsProductionPipeline.timeCompositionString(SLOTS, JSON.readTree(SCRIPT), 41.5, VTT);
         for (int slot = 4; slot <= 6; slot++) {
             assertEquals(41.5, attribute(patched, "scene-" + slot, "start"), 0.001);
             assertEquals(0.01, attribute(patched, "scene-" + slot, "duration"), 0.001);

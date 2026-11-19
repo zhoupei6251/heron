@@ -18,7 +18,6 @@ import tools.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -46,23 +45,20 @@ class DataBoardPipelineRenderTest {
         + "{\"date\":\"2026-11-09\",\"close\":\"4110.04\"},"
         + "{\"date\":\"2026-11-10\",\"close\":\"4113.34\"}]);";
     private static final String TITLES = "{\"candidates\":["
-        + "{\"kind\":\"数字反差\",\"title\":\"金价创阶段新高，还能追吗\"},"
-        + "{\"kind\":\"疑问悬念\",\"title\":\"这波还能涨多久\"},"
-        + "{\"kind\":\"利益相关\",\"title\":\"手里有黄金的看过来\"},"
-        + "{\"kind\":\"时间紧迫\",\"title\":\"这周只看一个位置\"},"
-        + "{\"kind\":\"反常识\",\"title\":\"涨得动吗\"}]}";
+        + "{\"kind\":\"数字反差\",\"title\":\"四期金价区间变化\"},"
+        + "{\"kind\":\"疑问悬念\",\"title\":\"四期价格怎么变化\"},"
+        + "{\"kind\":\"利益相关\",\"title\":\"看懂这份行情快照\"},"
+        + "{\"kind\":\"时间紧迫\",\"title\":\"先看清统计区间\"},"
+        + "{\"kind\":\"反常识\",\"title\":\"区间涨跌不是单日涨跌\"}]}";
 
-    private static final String SCRIPT = """
-        {"title":"金价创阶段新高，还能追吗",
+    static final String SCRIPT = """
+        {"title":"四期金价区间变化",
          "scenes":[
-           {"lead":"金价站上关键位","body":"最新收于 {{facts.last.value}} 美元。","duration_s":12},
-           {"lead":"较前一日走高","body":"较前一日上涨 {{facts.change}} 美元。","duration_s":12},
-           {"lead":"区间高点确认","body":"区间最高 {{facts.max.value}} 美元。","duration_s":12},
-           {"lead":"后续关注两点","body":"接下来关注美元走势与下一批经济数据。","duration_s":12},
-           {"lead":"市场情绪回暖","body":"资金面显示避险需求仍在，交易量较上周放大。","duration_s":12},
-           {"lead":"数据口径说明","body":"以上为收盘价，区间取最近两周交易日。","duration_s":12}],
-         "closing":"以上数据来自公开行情，仅供参考，不构成任何投资建议。",
-         "source_name":"模型自述"}
+           {"lead":"先看最新一期","body":"演示快照最新收于 {{facts.last.value}} 美元，对应 {{facts.last.date}}。","duration_s":12},
+           {"lead":"涨幅先别看错","body":"区间增加 {{facts.change}} 美元，涨幅 {{facts.change_pct}}%。这描述首末差异。","duration_s":16},
+           {"lead":"高低点在哪里","body":"区间最高 {{facts.max.value}} 美元，最低 {{facts.min.value}} 美元。","duration_s":12}],
+         "closing":"这份固定快照只有四期收盘价，区间变化不代表单日涨跌，也不能预测下一期；本片用于验收配音、分镜与图表同步。",
+         "source_name":"示例快照"}
         """;
 
     @Test
@@ -77,6 +73,7 @@ class DataBoardPipelineRenderTest {
         assertTrue(Files.isRegularFile(cli), "缺少 hyperframes 入口：" + cli);
 
         Path dataRoot = repository.resolve("data").resolve("it-render").resolve(UUID.randomUUID().toString());
+        System.out.println("DATA_ROOT=" + dataRoot.toAbsolutePath());
         HeronProductionProperties properties = new HeronProductionProperties();
         properties.setDataRoot(dataRoot);
         properties.setNewsTemplate(templateRoot);
@@ -84,11 +81,12 @@ class DataBoardPipelineRenderTest {
         properties.setGuardEnabled(false);
         properties.setNode(System.getenv().getOrDefault("HERON_TEST_NODE", "node"));
 
-        String datasetJson = SinaFuturesDatasetAdapter.build(SinaFuturesDatasetAdapter.GOLD,
-            DATASET_BODY, Instant.now(), 30);
-        ProductionArtifactVo datasetArtifact = new ProductionArtifactVo(UUID.randomUUID().toString(), "dataset",
-            "dataset.json", datasetJson.getBytes(StandardCharsets.UTF_8).length,
-            DigestUtil.sha256Hex(datasetJson), "application/json");
+        ObjectNode dataset = (ObjectNode) JSON.readTree(SinaFuturesDatasetAdapter.build(SinaFuturesDatasetAdapter.GOLD,
+            DATASET_BODY, Instant.now(), 30));
+        dataset.put("source_name", "示例快照 · 功能验收");
+        String datasetJson = JSON.writeValueAsString(dataset);
+        Files.createDirectories(dataRoot);
+        ProductionArtifactService artifactService = new ProductionArtifactService(properties);
 
         DatasetRouter router = new DatasetRouter(null, null, null) {
             @Override
@@ -99,7 +97,15 @@ class DataBoardPipelineRenderTest {
         DatasetFetchService fetch = new DatasetFetchService(null, null) {
             @Override
             public Result fetch(ProductionRunVo run, String sourceKey, int limit) {
-                return new Result(datasetJson, DigestUtil.sha256Hex(datasetJson), datasetArtifact);
+                // 生产链路把数据集写进本次尝试目录再定稿；测试夹具必须走同一路径，否则定稿会拒绝外部文件
+                Path datasetFile = artifactService.prepareWorkDirectory(run).resolve("dataset.json");
+                try {
+                    Files.writeString(datasetFile, datasetJson, StandardCharsets.UTF_8);
+                } catch (java.io.IOException e) {
+                    throw new IllegalStateException(e);
+                }
+                return new Result(datasetJson, DigestUtil.sha256Hex(datasetJson),
+                    artifactService.finalizeFile(run, "dataset", datasetFile, "application/json"));
             }
         };
         DatasetScriptAuthor author = new DatasetScriptAuthor(new OpenAiModelClient(null, null, null) {
@@ -126,15 +132,15 @@ class DataBoardPipelineRenderTest {
                     return scriptJson;
                 }
             },
-            new ProductionProcessService(properties, new ProductionArtifactService(properties)),
-            new ProductionArtifactService(properties), properties, (run, stage, progress) -> true,
+            new ProductionProcessService(properties, artifactService),
+            artifactService, properties, (run, stage, progress) -> true,
             router, fetch, author, passingReview(), new NewsSourceFetcher(null, null, new HeronNewsProperties()),
             org.mockito.Mockito.mock(FrozenContextService.class));
 
         ObjectNode input = (ObjectNode) JSON.readTree(lockedAssets(template));
         input.put("kind", "data_board");
-        input.put("title", "金价创阶段新高");
-        input.put("draft", "金价连续走高，创下阶段新高。");
+        input.put("title", "四期金价区间变化");
+        input.put("draft", "固定示例快照的区间比较与统计口径。");
         ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_video, 10L, 5L, 1,
             UUID.randomUUID().toString(), JSON.writeValueAsString(input), null);
         ProductionResultVo result = pipeline.execute(run);
@@ -145,6 +151,9 @@ class DataBoardPipelineRenderTest {
         for (ProductionArtifactVo artifact : result.artifacts()) {
             kinds.add(artifact.kind());
             assertTrue(artifact.bytes() > 0, artifact.kind() + " 是空产物");
+            Path file = dataRoot.resolve(artifact.storageKey());
+            assertTrue(Files.isRegularFile(file), artifact.kind() + " 未实际落盘");
+            assertEquals(artifact.sha256(), DigestUtil.sha256Hex(file.toFile()), artifact.kind() + " 指纹不匹配");
         }
         assertEquals(List.of("asset_manifest", "checks", "contact_sheet", "dataset", "mp4", "script", "subtitles"),
             kinds.stream().sorted().toList());
@@ -160,11 +169,12 @@ class DataBoardPipelineRenderTest {
 
         Path mp4 = dataRoot.resolve(byKind(result, "mp4").storageKey());
         Path sheet = dataRoot.resolve(byKind(result, "contact_sheet").storageKey());
-        Path preview = repository.resolve("data").resolve("it-render").resolve("data-board-preview.mp4");
-        Path previewSheet = repository.resolve("data").resolve("it-render").resolve("data-board-preview.png");
+        Path preview = dataRoot.resolve("data-board-preview.mp4");
+        Path previewSheet = dataRoot.resolve("data-board-preview.png");
         Files.createDirectories(preview.getParent());
-        Files.copy(mp4, preview, StandardCopyOption.REPLACE_EXISTING);
-        Files.copy(sheet, previewSheet, StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(mp4, preview);
+        Files.copy(sheet, previewSheet);
+        Files.writeString(dataRoot.resolve("result.json"), result.resultJson(), StandardCharsets.UTF_8);
         System.out.println("MP4=" + preview.toAbsolutePath());
         System.out.println("SHEET=" + previewSheet.toAbsolutePath());
         System.out.println("DURATION_MS=" + content.path("durationMs").asLong());

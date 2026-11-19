@@ -363,8 +363,18 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     public NewsFileVo openFile(HeronVideoVersion version, ProductionArtifactVo file) {
         safePath(file);
         String name = "news-" + version.getWorkId() + "-v" + version.getVersionNo()
-            + ("mp4".equals(file.kind()) ? ".mp4" : "-contact.png");
+            + requirePreviewKind(file.kind());
         return new NewsFileVo(name, file.mediaType(), file.bytes(), file.sha256(), artifacts.openVerified(file));
+    }
+
+    /** 预览只开放画面与实际字幕；内部脚本、检查和快照不扩大读取范围。 */
+    static String requirePreviewKind(String kind) {
+        return switch (Objects.toString(kind, "")) {
+            case "mp4" -> ".mp4";
+            case "contact_sheet" -> "-contact.png";
+            case "subtitles" -> "-subtitles.json";
+            default -> throw new HeronAccessException();
+        };
     }
 
     /** 任一人工保留标记或失败证据都阻止新闻保留期清理。 */

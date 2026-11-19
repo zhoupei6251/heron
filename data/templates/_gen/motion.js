@@ -29,12 +29,15 @@ function ambient(scope = document) {
     const base = parseFloat(getComputedStyle(el).opacity);
     const dim = Number.isFinite(base) ? base : 1;
     const kind = el.dataset.ambient;
+    const nominal = DUR.ambient * (kind === "pulse" ? 0.8 : kind === "flicker" ? 0.35 : 1);
+    const cycles = Math.max(1, Math.ceil(total / nominal));
+    const duration = total / cycles;
     if (kind === "drift") {
-      tl.to(el, { x: 18, y: -14, duration: DUR.ambient, ease: "sine.inOut", repeat: -1, yoyo: true }, 0);
+      tl.to(el, { x: 18, y: -14, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
     } else if (kind === "pulse") {
-      tl.to(el, { opacity: dim * 0.55, scale: 1.06, duration: DUR.ambient * 0.8, ease: "sine.inOut", repeat: -1, yoyo: true }, 0);
+      tl.to(el, { opacity: dim * 0.55, scale: 1.06, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
     } else if (kind === "flicker") {
-      tl.to(el, { opacity: dim * 0.7, duration: DUR.ambient * 0.35, ease: "sine.inOut", repeat: -1, yoyo: true }, 0);
+      tl.to(el, { opacity: dim * 0.7, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
     }
   });
 }
@@ -55,8 +58,8 @@ enter("#title", { dir: "up", at: 0.2 });
 tl.from("#rule", { scaleX: 0, duration: DUR.entrance, ease: EASE_OUT, immediateRender: true }, 0.45);
 if (has("#kpi")) enter("#kpi", { dir: "up", at: 0.35 });
 enter("#aigc-badge", { dir: "none", at: 0.2 });
-// 只淡出标题区，栏目标签留作画面锚点
-tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
+// 数据图表常驻时保留选题标题，避免后半片只剩孤立数字；文稿线沿用原退场。
+if (!has("#chart")) tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
 
 // 版式自带的静态装饰（#plate / #rail / #tick）。它们不来自数据，
 // 但各自有动画：没有动画的装饰层等于死图层。

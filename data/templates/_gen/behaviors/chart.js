@@ -1,5 +1,8 @@
       const dataset = JSON.parse(declared.dataset_json);
       const chart = declared.chart || "line";
+      if (!["line", "bars", "race", "stacked", "multiline", "radar"].includes(chart)) {
+        throw new Error("尚未实现的图表模块：" + chart);
+      }
       const precision = Number(dataset.metric && dataset.metric.precision);
       const unit = dataset.metric && dataset.metric.unit ? dataset.metric.unit : "";
       const rows = dataset.rows.map((row) => ({ label: String(row[0]), value: Number(row[1]) }));
@@ -12,9 +15,7 @@
       };
       const fmt = (value) => Number(value).toFixed(Number.isFinite(precision) ? precision : 2);
       const facts = dataset.facts || {};
-      let kpiTarget = NaN;
       if (facts.last && typeof facts.last.value === "number") {
-        kpiTarget = facts.last.value;
         document.getElementById("kpi-value").textContent = fmt(facts.last.value);
         document.getElementById("kpi-unit").textContent = unit;
         if (typeof facts.change === "number") {
@@ -25,23 +26,24 @@
           changeEl.style.color = facts.change >= 0 ? "var(--accent)" : "var(--down)";
         }
       } else if (facts.leader) {
-        kpiTarget = facts.leader.value;
         document.getElementById("kpi-value").textContent = fmt(facts.leader.value);
         document.getElementById("kpi-unit").textContent = unit;
         document.getElementById("kpi-change").textContent = facts.leader.label || facts.leader.location
           || facts.leader.name || "";
       }
       const W = 912;
-      const H = 760;
+      // 初始化时按实际图位确定坐标系，避免760高的图被缩进460高的版式后字也一起变小。
+      const H = Math.round(W * (svg.clientHeight || 760) / (svg.clientWidth || W));
+      svg.setAttribute("viewBox", "0 0 " + W + " " + H);
       const pad = { left: 132, right: 36, top: 56, bottom: 72 };
+      const chartEvidence = { points: new Map(), rows: new Map(), series: new Map(), race: null };
+      const openingScene = document.querySelector('.scene[data-scene-index="1"]');
+      const openingEnd = openingScene
+        ? Number(openingScene.dataset.start) + Number(openingScene.dataset.duration) : 8;
+      const introDrawStart = 0.35;
+      const introDrawDuration = Math.max(0.7, Math.min(8, openingEnd - 0.8));
+      const introDrawEnd = introDrawStart + introDrawDuration;
       tl.fromTo("#chart", { scale: 1 }, { scale: 1.04, duration: total, ease: "none", transformOrigin: "center center" }, 0);
-      if (Number.isFinite(kpiTarget) && chart !== "race") {
-        const counter = { v: 0 };
-        const kpiValue = document.getElementById("kpi-value");
-        kpiValue.textContent = fmt(0);
-        tl.to(counter, { v: kpiTarget, duration: 1.2, ease: "power2.out",
-          onUpdate: () => { kpiValue.textContent = fmt(counter.v); } }, 0.35);
-      }
       const clip = (text) => {
         const list = Array.from(text);
         const max = /[一-鿿]/.test(text) ? 10 : 22;
@@ -143,6 +145,7 @@
           value.textContent = fmt(row.value) + " " + unit;
           svg.append(label, bar, value);
           bars.push(bar);
+          chartEvidence.rows.set(row.label, { label, bar, value });
         });
         tl.from(bars, { scaleX: 0, duration: 1.1, stagger: Math.min(0.1, 1.2 / bars.length), ease: "power3.out" }, 0.8);
       } else if (chart === "race") {
@@ -166,9 +169,11 @@
             class: "bar-value", style: fontStyle });
           svg.append(label, bar, value);
           nodes.set(name, { label, bar, value });
+          chartEvidence.rows.set(name, { label, bar, value });
         });
-        const start = 1.5;
-        const step = Math.max(0.12, (total - start - 3.5) / Math.max(timeline.length - 1, 1));
+        const start = introDrawStart;
+        const step = Math.max(0.04, (introDrawEnd - start - 0.5) / Math.max(timeline.length - 1, 1));
+        chartEvidence.race = { start, step, frames: [] };
         const move = (node, y, at, duration) => {
           tl.to(node.bar, { attr: { y }, duration, ease: "power2.out" }, at);
           tl.to(node.label, { attr: { y: y + barH * 0.72 }, duration, ease: "power2.out" }, at);
@@ -182,18 +187,7 @@
           const max = ranked.length ? ranked[0].value : 1;
           const at = start + index * step;
           const duration = index === 0 ? 0.5 : step * 0.85;
-          // KPI 跟着当前帧的榜首走：否则开头的 KPI 是终局冠军，和柱子上的当年数字互相打脸
-          const top = ranked[0];
-          if (top) {
-            if (index === 0) {
-              document.getElementById("kpi-value").textContent = fmt(top.value);
-              document.getElementById("kpi-change").textContent = top.name;
-            }
-            tl.call(() => {
-              document.getElementById("kpi-value").textContent = fmt(top.value);
-              document.getElementById("kpi-change").textContent = top.name;
-            }, null, at);
-          }
+          chartEvidence.race.frames.push({ date, ranked });
           ranked.forEach((item, rank) => {
             const node = nodes.get(item.name);
             const hidden = rank >= visibleMax;
@@ -201,8 +195,7 @@
             move(node, y, at, duration);
             tl.to(node.bar, { attr: { width: Math.max(6, (item.value / max) * (x1 - x0)) },
               duration, ease: "power2.out" }, at);
-            // 数值只能用 call 写：文本没法 tween，且同一帧重放写的是同一个值，可 seek
-            tl.call(() => { node.value.textContent = fmt(item.value) + " " + unit; }, null, at);
+            // 文本由focus.js按当前帧重算，避免seek回调一次执行完而提前显示终局数值。
           });
         });
       } else if (chart === "stacked") {
@@ -271,14 +264,16 @@
           const forward = tops.map((value, i) => (i ? "L" : "M") + xOf(i).toFixed(1) + "," + yOf(value).toFixed(1));
           const backward = dates.map((_, i) =>
             "L" + xOf(dates.length - 1 - i).toFixed(1) + "," + yOf(bottoms[dates.length - 1 - i]).toFixed(1));
-          bandGroup.appendChild(make("path", { d: forward.concat(backward).join(" ") + " Z", class: "band", fill: color }));
+          const shape = make("path", { d: forward.concat(backward).join(" ") + " Z", class: "band", fill: color });
+          bandGroup.appendChild(shape);
           const row = legendItem(legendX, legendRight, padT + index * rowH + rowH / 2, rowH, color,
             band.name, shareOf(band, dates.length - 1).toFixed(1) + "%");
           svg.appendChild(row);
           legendRows.push(row);
+          chartEvidence.series.set(band.name, { shape, legend: row });
         });
-        const drawStart = 0.8;
-        const drawDur = Math.max(1.2, total - drawStart - 2.2);
+        const drawStart = introDrawStart;
+        const drawDur = introDrawDuration;
         tl.to(revealRect, { attr: { width: plotW + 4 }, duration: drawDur, ease: "none" }, drawStart);
         tl.from(axisLabels, { opacity: 0, duration: 0.5, ease: "sine.out" }, drawStart);
         tl.from(legendRows, { opacity: 0, x: 18, duration: 0.5, stagger: Math.min(0.08, 0.8 / Math.max(bands.length, 1)), ease: "power2.out" }, drawStart + 0.2);
@@ -341,8 +336,8 @@
         const axisLabels = make("g", {});
         axisLabels.append(first, last);
         svg.append(note, axisLabels);
-        const drawStart = 0.9;
-        const drawDur = Math.max(1.2, total - drawStart - 2.2);
+        const drawStart = introDrawStart;
+        const drawDur = introDrawDuration;
         const stagger = Math.min(0.06, (drawDur * 0.35) / Math.max(series.length, 1));
         const legendX = padL + plotW + 24;
         const legendRight = W - 36;
@@ -366,6 +361,7 @@
             seriesColor(index, series.length), item.name, Number.isFinite(item.final) ? item.final.toFixed(0) : "—");
           svg.appendChild(row);
           legendRows.push(row);
+          chartEvidence.series.set(item.name, { shape: path, legend: row });
         });
         tl.from(axisLabels, { opacity: 0, duration: 0.5, ease: "sine.out" }, drawStart);
         tl.from(legendRows, { opacity: 0, x: 18, duration: 0.5, stagger: Math.min(0.06, 0.8 / Math.max(series.length, 1)), ease: "power2.out" }, drawStart + 0.2);
@@ -420,6 +416,7 @@
           const dot = make("circle", { cx: dx.toFixed(1), cy: dy.toFixed(1), r: 8, class: "radar-dot" });
           svg.appendChild(dot);
           dots.push(dot);
+          chartEvidence.series.set(item.name, { shape: dot, legend: label });
         });
         const polyPoints = axes.map((item, index) =>
           pointOf(index, ratioOf(item)).map((v) => v.toFixed(1)).join(",")).join(" ");
@@ -478,15 +475,15 @@
         svg.append(first, last);
         const length = path.getTotalLength();
         gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
-        tl.to(path, { strokeDashoffset: 0, duration: 16, ease: "none" }, 1);
-        tl.to(revealRect, { attr: { width: W }, duration: 16, ease: "none" }, 1);
-        tl.from(dot, { scale: 0, transformOrigin: "center", duration: 0.6, ease: "back.out(2)" }, 16.6);
-        tl.from(dotLabel, { opacity: 0, y: 12, duration: 0.6, ease: "power2.out" }, 16.8);
+        tl.to(path, { strokeDashoffset: 0, duration: introDrawDuration, ease: "none" }, introDrawStart);
+        tl.to(revealRect, { attr: { width: W }, duration: introDrawDuration, ease: "none" }, introDrawStart);
+        tl.from(dot, { scale: 0, transformOrigin: "center", duration: 0.5, ease: "back.out(2)" }, introDrawEnd - 0.2);
+        tl.from(dotLabel, { opacity: 0, y: 12, duration: 0.5, ease: "power2.out" }, introDrawEnd);
         // 有限次呼吸，保持后段画面有动感；不用 repeat:-1，保证可 seek。
-        const pulseRepeats = Math.max(0, Math.floor((parseFloat(document.getElementById("root").dataset.duration) - 18) / 2) - 1);
+        const pulseRepeats = Math.max(0, Math.floor((total - introDrawEnd - 1) / 2) - 1);
         if (pulseRepeats > 0) {
           tl.to(dot, { scale: 1.3, transformOrigin: "center", duration: 0.9, yoyo: true,
-            repeat: pulseRepeats, ease: "sine.inOut" }, 17.5);
+            repeat: pulseRepeats, ease: "sine.inOut" }, introDrawEnd + 0.7);
         }
         const annotate = (index, text, color) => {
           if (index < 0 || index >= rows.length) return;
@@ -502,10 +499,13 @@
           group.append(point, label);
           svg.appendChild(group);
           tl.from(group, { opacity: 0, duration: 0.4, ease: "sine.out" },
-            1 + 16 * (index / Math.max(rows.length - 1, 1)));
+            introDrawStart + introDrawDuration * (index / Math.max(rows.length - 1, 1)));
         };
         const maxIndex = rows.findIndex((row) => row.label === (facts.max && facts.max.date));
         const minIndex = rows.findIndex((row) => row.label === (facts.min && facts.min.date));
+        [["first", 0], ["last", rows.length - 1], ["min", minIndex], ["max", maxIndex]].forEach(([key, index]) => {
+          if (index >= 0) chartEvidence.points.set(key, { x: x(index), y: y(rows[index].value) });
+        });
         // 极值点离末点太近就不标注：末点自己的数值标签已经在那个位置了，
         // 两个标签叠在一起谁都看不清（最低点落在最后两期时最常见）。
         const lastX = x(rows.length - 1);

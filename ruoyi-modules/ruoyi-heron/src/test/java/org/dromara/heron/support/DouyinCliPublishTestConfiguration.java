@@ -25,6 +25,7 @@ public class DouyinCliPublishTestConfiguration {
     }
 
     public static class DouyinReceiptStub implements IPublishAdapter {
+        @Override public String account() { return "heron"; }
         @Override
         public String source() {
             return DouyinCliPublishAdapter.SOURCE;

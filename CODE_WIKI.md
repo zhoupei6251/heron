@@ -626,7 +626,7 @@ compose 拓扑：
 
 nginx 配置：`upstream server { ip_hash; 127.0.0.1:8080; 127.0.0.1:8081; }`；`/prod-api/ → server/`，`/admin/ → monitor-admin`，`/snail-job/`、`/snail-ai/` 分别反代。
 
-Redis 私密配置：`script/docker/redis/conf/redis-local.conf` 写 `requirepass`，与 `HERON_PASSWORD` 一致；缺文件 Redis 拒绝启动。
+Redis 私密配置：`script/docker/dev/redis/conf/redis-local.conf` 写 `requirepass`，与 `HERON_PASSWORD` 一致；缺文件 Redis 拒绝启动。
 
 ### 9.3 数据库脚本
 

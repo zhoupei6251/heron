@@ -28,7 +28,7 @@
     "title": "金价创阶段新高",
     "kicker": "数据观察",
     "closing": "关注接下来的走势。",
-    "sourceName": "来源：新浪财经",
+    "sourceName": "来源：示例数据集",
     "accent": "#18b7c9",
     "chart": "line",
     "scenes": [
@@ -37,18 +37,18 @@
         "最新收于 4113.34 美元，接近区间高点。"
       ],
       [
-        "较两周前走高",
+        "较区间起点走高",
         "较区间起点上涨 125.14 美元，涨幅 3.14%。"
       ],
       [
         "区间高点确认",
-        "近两周区间最高 4113.34 美元，最低 3988.20 美元。"
+        "这段区间最高 4113.34 美元，最低 3988.20 美元。"
       ]
     ],
     "dataset": {
       "contract": "dataset/1",
-      "source_key": "sina-gold-xau",
-      "source_name": "新浪财经",
+      "source_key": "sample-gold-price",
+      "source_name": "示例数据集",
       "cadence": "daily",
       "shape": "wide",
       "columns": [

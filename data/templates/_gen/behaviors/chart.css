@@ -3,6 +3,10 @@
 #kpi-value { font-size: var(--fs-data); font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
 #kpi-unit { font-size: var(--fs-label); color: var(--muted); }
 #kpi-change { font-size: 32px; font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+#focus-caption { margin: 12px 0 0; font-size: 28px; font-weight: 600; line-height: 1.4; color: var(--muted-2); }
+.focus-ring { fill: var(--bg); stroke: var(--accent); stroke-width: 6; }
+.focus-halo { fill: none; stroke: var(--accent); stroke-width: 18; opacity: 0.22; }
+.focus-link { fill: none; stroke: var(--accent); stroke-width: 4; stroke-dasharray: 10 8; }
 #chart-slot { top: 430px; left: var(--pad-frame); right: var(--pad-frame); height: 760px; overflow: hidden; }
 #chart { width: 100%; height: 100%; display: block; }
 .axis { stroke: var(--rule-soft); stroke-width: 2; }

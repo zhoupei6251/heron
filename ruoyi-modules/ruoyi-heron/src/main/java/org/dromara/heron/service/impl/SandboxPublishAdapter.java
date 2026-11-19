@@ -26,6 +26,8 @@ public class SandboxPublishAdapter implements IPublishAdapter {
         return SOURCE;
     }
 
+    @Override public String account() { return ACCOUNT; }
+
     @Override
     public PublishReceipt publish(PublishRequest request) {
         return new PublishReceipt(URL_PREFIX + request.versionId(), ACCOUNT,

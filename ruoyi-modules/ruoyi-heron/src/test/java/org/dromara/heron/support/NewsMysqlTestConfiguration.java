@@ -10,6 +10,7 @@ import org.dromara.heron.service.impl.NewsWorkServiceImpl;
 import org.dromara.heron.service.impl.SandboxPublishAdapter;
 import org.dromara.heron.service.impl.NewsTemplatePicker;
 import org.dromara.heron.service.impl.NewsMetricServiceImpl;
+import org.dromara.heron.service.impl.NewsPublishAttempts;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.support.AbstractBeanDefinition;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
@@ -27,7 +28,7 @@ import java.util.List;
 @org.springframework.transaction.annotation.EnableTransactionManagement(proxyTargetClass = true)
 @Import({HeronMysqlTestConfiguration.class, NewsWorkServiceImpl.class, NewsSourceServiceImpl.class,
     NewsSourceFetcher.class, NewsCandidateCollector.class, SandboxPublishAdapter.class,
-    NewsTemplatePicker.class, NewsMetricServiceImpl.class, SpringUtils.class,
+    NewsTemplatePicker.class, NewsMetricServiceImpl.class, NewsPublishAttempts.class, SpringUtils.class,
     org.dromara.heron.service.impl.FrozenContextService.class,
     org.dromara.heron.service.impl.FrozenArticleService.class,
     io.github.linpeilie.mapstruct.MapstructAutoConfiguration.class})

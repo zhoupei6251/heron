@@ -1,0 +1,406 @@
+Heron
+Application Version: 6.1.0
+Spring Boot Version: 4.1.2
+
+[36m2026-11-18 14:54:54[0;39m [32m[background-preinit][0;39m [34mINFO [0;39m [1;35mo.h.validator.internal.util.Version
+[0;39m - HV000001: Hibernate Validator 9.1.5.Final
+[36m2026-11-18 14:54:54[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35morg.dromara.DromaraApplication
+[0;39m - Starting DromaraApplication using Java 21.0.8 with PID 4964 (D:\zhoupei\heron\ruoyi-admin\target\heron.jar started by zhoupei in D:\zhoupei\heron)
+[36m2026-11-18 14:54:54[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35morg.dromara.DromaraApplication
+[0;39m - The following 1 profile is active: "dev"
+[36m2026-11-18 14:54:58[0;39m [32m[main][0;39m [31mWARN [0;39m [1;35mo.s.c.a.ConfigurationClassPostProcessor
+[0;39m - Cannot enhance @Configuration bean definition 'com.yomahub.liteflow.springboot.config.LiteflowMainAutoConfiguration' since its singleton instance has been created too early. The typical cause is a non-static @Bean method with a BeanDefinitionRegistryPostProcessor return type: Consider declaring such methods as 'static' and/or marking the containing configuration class as 'proxyBeanMethods=false'.
+[36m2026-11-18 14:54:58[0;39m [32m[main][0;39m [31mWARN [0;39m [1;35mo.s.core.annotation.MergedAnnotation
+[0;39m - Failed to introspect meta-annotation @AutoConfigureAfter on class com.yomahub.liteflow.springboot.metrics.LiteflowMetricsAutoConfiguration: java.lang.TypeNotPresentException: Type org.springframework.boot.actuate.autoconfigure.metrics.MetricsAutoConfiguration not present
+[36m2026-11-18 14:54:58[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mc.g.y.a.MybatisPlusJoinAutoConfiguration
+[0;39m - MPJ SqlSessionFactory bean definition: sqlSessionFactory factoryBeanName: com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration factoryMethodName: sqlSessionFactory source: public org.apache.ibatis.session.SqlSessionFactory com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration.sqlSessionFactory(javax.sql.DataSource)
+[36m2026-11-18 14:55:00[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35morg.eclipse.jetty.server.Server
+[0;39m - jetty-12.1.14; built: 2026-10-02T05:48:05.032Z; git: 15cecbd757a2f6b0fdc6a8944f4c6d0020b17da0; jvm 21.0.8+12-LTS
+[36m2026-11-18 14:55:00[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.d.common.json.config.JacksonConfig
+[0;39m - 初始化 jackson 配置
+[36m2026-11-18 14:55:01[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mc.g.y.a.MybatisPlusJoinAutoConfiguration
+[0;39m - mybatis plus join properties config complete
+[36m2026-11-18 14:55:01[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mcom.zaxxer.hikari.HikariDataSource
+[0;39m - master - Starting...
+[36m2026-11-18 14:55:02[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mcom.zaxxer.hikari.pool.HikariPool
+[0;39m - master - Added connection com.mysql.cj.jdbc.ConnectionImpl@302e3484
+[36m2026-11-18 14:55:02[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mcom.zaxxer.hikari.HikariDataSource
+[0;39m - master - Start completed.
+[36m2026-11-18 14:55:02[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mc.b.d.d.DynamicRoutingDataSource
+[0;39m - dynamic-datasource - add a datasource named [master] success
+[36m2026-11-18 14:55:02[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mc.b.d.d.DynamicRoutingDataSource
+[0;39m - dynamic-datasource initial loaded [1] datasource,primary datasource named [master]
+[36m2026-11-18 14:55:02[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mc.g.y.a.MybatisPlusJoinAutoConfiguration
+[0;39m - mybatis plus join SqlInjector init
+ _ _   |_  _ _|_. ___ _ |    _ 
+| | |\/|_)(_| | |_\  |_)||_|_\ 
+     /               |         
+                        null 
+[36m2026-11-18 14:55:04[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.e.j.s.DefaultSessionIdManager
+[0;39m - Session workerName=node0
+[36m2026-11-18 14:55:04[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.e.j.server.handler.ContextHandler
+[0;39m - Started osbjs.JettyEmbeddedWebAppContext@1940cb2b{application,/,b=[file:///C:/Users/zhoupei/AppData/Local/Temp/jetty-docbase.8085.2045951338612028686/, (URL) jar:nested:///D:/zhoupei/heron/ruoyi-admin/target/heron.jar/!BOOT-INF/lib/warm-flow-plugin-vue3-ui-2.1.1.jar!/META-INF/resources/],a=AVAILABLE,h=oeje11s.SessionHandler@53f785df{STARTED}}
+[36m2026-11-18 14:55:04[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.e.j.e.s.ServletContextHandler
+[0;39m - Started osbjs.JettyEmbeddedWebAppContext@1940cb2b{application,/,b=[file:///C:/Users/zhoupei/AppData/Local/Temp/jetty-docbase.8085.2045951338612028686/, (URL) jar:nested:///D:/zhoupei/heron/ruoyi-admin/target/heron.jar/!BOOT-INF/lib/warm-flow-plugin-vue3-ui-2.1.1.jar!/META-INF/resources/],a=AVAILABLE,h=oeje11s.SessionHandler@53f785df{STARTED}}
+[36m2026-11-18 14:55:04[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35morg.eclipse.jetty.server.Server
+[0;39m - Started oejs.Server@63c9017b{STARTING}[12.1.14,sto=0] @3932ms
+[36m2026-11-18 14:55:06[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.d.h.service.impl.ResearchScheduler
+[0;39m - Heron 研究调度器已启用
+[36m2026-11-18 14:55:06[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.d.common.redis.config.RedisConfig
+[0;39m - 初始化 redis 配置
+[36m2026-11-18 14:55:06[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35morg.redisson.Version
+[0;39m - Redisson 4.8.0
+[36m2026-11-18 14:55:06[0;39m [32m[redisson-netty-1-6][0;39m [34mINFO [0;39m [1;35mo.r.connection.ConnectionsHolder
+[0;39m - 1 connections initialized for localhost/127.0.0.1:6380
+[36m2026-11-18 14:55:06[0;39m [32m[redisson-netty-1-4][0;39m [34mINFO [0;39m [1;35mo.r.connection.ConnectionsHolder
+[0;39m - 8 connections initialized for localhost/127.0.0.1:6380
+
+********************************************************************************
+*                        AnyLine Core [17.7.6-20261020]                        *
+*                              Apache License 2.0                              *
+*                           https://doc.anyline.org                            *
+*                                                                              *
+*            Copyright © 2026 DeepBit Co.,Ltd. All rights reserved.            *
+*                               MinVersion [000]                               *
+*                                                                              *
+********************************************************************************
+【开源社区版】授权期限:长期
+
+
+[36m2026-11-18 14:55:07[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35morg.flywaydb.core.FlywayExecutor
+[0;39m - Database: jdbc:mysql://localhost:3307/heron?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8&autoReconnect=true&rewriteBatchedStatements=true&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true (MySQL 8.0)
+[36m2026-11-18 14:55:07[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.f.core.internal.command.DbValidate
+[0;39m - Successfully validated 2 migrations (execution time 00:00.039s)
+[36m2026-11-18 14:55:07[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.f.core.internal.command.DbMigrate
+[0;39m - Current version of schema `heron`: 46
+[36m2026-11-18 14:55:07[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.f.core.internal.command.DbMigrate
+[0;39m - Schema `heron` is up to date. No migration necessary.
+[36m2026-11-18 14:55:07[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.d.h.service.impl.NewsSourceRunner
+[0;39m - Heron 新闻来源采集调度已启用
+[36m2026-11-18 14:55:07[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.d.h.service.impl.ProductionRunner
+[0;39m - Heron 生产 worker 已启用
+____ ____    ___ ____ _  _ ____ _  _ 
+[__  |__| __  |  |  | |_/  |___ |\ | 
+___] |  |     |  |__| | \_ |___ | \| 
+https://sa-token.com (v1.46.0)
+[36m2026-11-18 14:55:08[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mc.b.m.s.MybatisPlusApplicationContextAware
+[0;39m - Register ApplicationContext instances org.springframework.boot.web.server.servlet.context.AnnotationConfigServletWebServerApplicationContext@4ba89729
+ _ _   |_  _ _|_. ___ _ |    _  .  _  .  _  
+| | |\/|_)(_| | |_\  |_)||_|_\  | (_) | | | 
+     /               |          /
+                                    1.5.9
+
+   ▄     ▄                             ▄▄▄▄▄▄   ▄                     
+   █  █  █  ▄▄▄    ▄ ▄▄  ▄▄▄▄▄         █        █     ▄▄▄  ▄     ▄    
+   ▀ █▀█ █ ▀   █   █▀  ▀ █ █ █  ▄▄▄▄▄  █▄▄▄▄▄   █    █▀ ▀█ ▀▄ ▄ ▄▀    
+    ██ ██▀ ▄▀▀▀█   █     █ █ █         █        █    █   █  █▄█▄█     
+    █   █  ▀▄▄▀█   █     █ █ █         █        █▄▄  ▀█▄█▀   █ █      
+
+[32m   :: Warm-Flow ::     (v2.1.1)[0m
+
+[36m2026-11-18 14:55:10[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.d.warm.flow.core.timer.TimerEngine
+[0;39m - Warm-Flow 内置定时器已启动，扫描间隔 5000ms，工作节点 timer-4964@admin-a5116245
+[36m2026-11-18 14:55:10[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.d.w.p.modes.sb.config.BeanConfig
+[0;39m - 【warm-flow】，加载完成
+[36m2026-11-18 14:55:12[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.e.j.s.h.ContextHandler.application
+[0;39m - Initializing Spring DispatcherServlet 'dispatcherServlet'
+[36m2026-11-18 14:55:12[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.e.jetty.server.AbstractConnector
+[0;39m - Started oejs.ServerConnector@237bb183{HTTP/1.1, (http/1.1)}{0.0.0.0:8085}
+ ________  _____ ______   ________  ___   ___        ___     
+|\   ____\|\   _ \  _   \|\   ____\|\  \ |\  \      |\  \    
+\ \  \___|\ \  \\\__\ \  \ \  \___|\ \  \\_\  \     \ \  \   
+ \ \_____  \ \  \\|__| \  \ \_____  \ \______  \  __ \ \  \  
+  \|____|\  \ \  \    \ \  \|____|\  \|_____|\  \|\  \\_\  \ 
+    ____\_\  \ \__\    \ \__\____\_\  \     \ \__\ \________\
+   |\_________\|__|     \|__|\_________\     \|__|\|________|
+   \|_________|             \|_________|                     
+V 3.3.5
+[36m2026-11-18 14:55:12[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35morg.dromara.DromaraApplication
+[0;39m - Started DromaraApplication in 18.803 seconds (process running for 19.786)
+[36m2026-11-18 14:55:12[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.d.c.p.l.MessageTopicListener
+[0;39m - 初始化消息主题订阅监听器成功
+[36m2026-11-18 14:55:12[0;39m [32m[main][0;39m [34mINFO [0;39m [1;35mo.d.s.s.impl.SysOssConfigServiceImpl
+[0;39m - 初始化OSS配置成功
+Heron 启动成功
+[36m2026-11-18 14:56:40[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 14:56:40[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 14:57:53[0;39m [32m[qtp101264705-107][0;39m [34mINFO [0;39m [1;35mo.d.c.w.i.PlusWebInvokeTimeInterceptor
+[0;39m - [PLUS]开始请求 => URL[GET /],无参数
+[36m2026-11-18 14:57:53[0;39m [32m[qtp101264705-107][0;39m [34mINFO [0;39m [1;35mo.d.c.w.i.PlusWebInvokeTimeInterceptor
+[0;39m - [PLUS]结束请求 => URL[GET /],耗时:[65]毫秒
+[36m2026-11-18 14:58:08[0;39m [32m[qtp101264705-107][0;39m [34mINFO [0;39m [1;35mo.d.c.w.i.PlusWebInvokeTimeInterceptor
+[0;39m - [PLUS]开始请求 => URL[GET /],无参数
+[36m2026-11-18 14:58:08[0;39m [32m[qtp101264705-107][0;39m [34mINFO [0;39m [1;35mo.d.c.w.i.PlusWebInvokeTimeInterceptor
+[0;39m - [PLUS]结束请求 => URL[GET /],耗时:[0]毫秒
+[36m2026-11-18 14:58:09[0;39m [32m[qtp101264705-107][0;39m [1;31mERROR[0;39m [1;35mo.d.c.w.h.GlobalExceptionHandler
+[0;39m - 没有访问权限，请联系管理员授权
+[36m2026-11-18 14:58:09[0;39m [32m[qtp101264705-56][0;39m [31mWARN [0;39m [1;35mo.d.c.s.h.SaTokenExceptionHandler
+[0;39m - 请求地址'/heron/production/capabilities',认证失败,类型'-1'
+[36m2026-11-18 14:58:30[0;39m [32m[qtp101264705-58][0;39m [1;31mERROR[0;39m [1;35mo.d.c.w.h.GlobalExceptionHandler
+[0;39m - 没有访问权限，请联系管理员授权
+[36m2026-11-18 15:06:42[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 15:06:42[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 15:16:43[0;39m [32m[schedule-pool-2][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 15:16:43[0;39m [32m[schedule-pool-2][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 15:26:46[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 15:26:46[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 15:36:47[0;39m [32m[schedule-pool-14][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 15:36:47[0;39m [32m[schedule-pool-14][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 15:46:52[0;39m [32m[schedule-pool-3][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 15:46:52[0;39m [32m[schedule-pool-3][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 15:56:54[0;39m [32m[schedule-pool-5][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 15:56:54[0;39m [32m[schedule-pool-5][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 16:06:56[0;39m [32m[schedule-pool-10][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 16:06:56[0;39m [32m[schedule-pool-10][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 16:16:58[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 16:16:58[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 16:27:01[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 16:27:01[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 16:37:02[0;39m [32m[schedule-pool-8][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 16:37:02[0;39m [32m[schedule-pool-8][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 16:47:05[0;39m [32m[schedule-pool-11][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 16:47:05[0;39m [32m[schedule-pool-11][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 16:57:07[0;39m [32m[schedule-pool-7][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 16:57:07[0;39m [32m[schedule-pool-7][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 17:07:09[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 17:07:09[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 17:17:10[0;39m [32m[schedule-pool-16][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 17:17:10[0;39m [32m[schedule-pool-16][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 17:27:12[0;39m [32m[schedule-pool-5][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 17:27:12[0;39m [32m[schedule-pool-5][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 17:37:14[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 17:37:14[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 17:47:16[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 17:47:16[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 17:57:20[0;39m [32m[schedule-pool-5][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 17:57:20[0;39m [32m[schedule-pool-5][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 18:07:22[0;39m [32m[schedule-pool-4][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 18:07:22[0;39m [32m[schedule-pool-4][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 18:17:23[0;39m [32m[schedule-pool-1][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 18:17:23[0;39m [32m[schedule-pool-1][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 18:27:25[0;39m [32m[schedule-pool-10][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 18:27:25[0;39m [32m[schedule-pool-10][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 18:37:27[0;39m [32m[schedule-pool-4][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 18:37:27[0;39m [32m[schedule-pool-4][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 18:47:28[0;39m [32m[schedule-pool-4][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 18:47:28[0;39m [32m[schedule-pool-4][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 18:57:30[0;39m [32m[schedule-pool-14][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 18:57:30[0;39m [32m[schedule-pool-14][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 19:07:33[0;39m [32m[schedule-pool-11][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 19:07:33[0;39m [32m[schedule-pool-11][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 19:17:34[0;39m [32m[schedule-pool-8][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 19:17:34[0;39m [32m[schedule-pool-8][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 19:27:36[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 19:27:36[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 19:37:37[0;39m [32m[schedule-pool-15][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 19:37:37[0;39m [32m[schedule-pool-15][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 19:47:39[0;39m [32m[schedule-pool-9][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 19:47:39[0;39m [32m[schedule-pool-9][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 19:57:41[0;39m [32m[schedule-pool-13][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 19:57:41[0;39m [32m[schedule-pool-13][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 20:07:43[0;39m [32m[schedule-pool-12][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 20:07:43[0;39m [32m[schedule-pool-12][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 20:17:44[0;39m [32m[schedule-pool-16][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 20:17:44[0;39m [32m[schedule-pool-16][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 20:27:46[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 20:27:46[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 20:37:47[0;39m [32m[schedule-pool-13][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 20:37:47[0;39m [32m[schedule-pool-13][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 20:47:49[0;39m [32m[schedule-pool-7][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 20:47:49[0;39m [32m[schedule-pool-7][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 20:57:51[0;39m [32m[schedule-pool-16][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 20:57:51[0;39m [32m[schedule-pool-16][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 21:07:52[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 21:07:52[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 21:17:54[0;39m [32m[schedule-pool-9][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 21:17:54[0;39m [32m[schedule-pool-9][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 21:27:56[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 21:27:56[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 21:37:57[0;39m [32m[schedule-pool-5][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 21:37:57[0;39m [32m[schedule-pool-5][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 21:47:59[0;39m [32m[schedule-pool-7][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 21:47:59[0;39m [32m[schedule-pool-7][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 21:58:01[0;39m [32m[schedule-pool-3][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 21:58:01[0;39m [32m[schedule-pool-3][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 22:08:04[0;39m [32m[schedule-pool-13][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 22:08:04[0;39m [32m[schedule-pool-13][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 22:18:05[0;39m [32m[schedule-pool-11][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 22:18:05[0;39m [32m[schedule-pool-11][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 22:28:08[0;39m [32m[schedule-pool-10][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 22:28:08[0;39m [32m[schedule-pool-10][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 22:38:09[0;39m [32m[schedule-pool-1][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 22:38:09[0;39m [32m[schedule-pool-1][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 22:48:11[0;39m [32m[schedule-pool-16][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 22:48:11[0;39m [32m[schedule-pool-16][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 22:58:12[0;39m [32m[schedule-pool-10][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 22:58:12[0;39m [32m[schedule-pool-10][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 23:08:14[0;39m [32m[schedule-pool-3][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 23:08:14[0;39m [32m[schedule-pool-3][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 23:18:15[0;39m [32m[schedule-pool-4][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 23:18:15[0;39m [32m[schedule-pool-4][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 23:28:18[0;39m [32m[schedule-pool-7][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 23:28:18[0;39m [32m[schedule-pool-7][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 23:38:19[0;39m [32m[schedule-pool-3][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 23:38:19[0;39m [32m[schedule-pool-3][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 23:48:20[0;39m [32m[schedule-pool-12][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 23:48:20[0;39m [32m[schedule-pool-12][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-18 23:58:22[0;39m [32m[schedule-pool-8][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-18 23:58:22[0;39m [32m[schedule-pool-8][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-19 00:08:24[0;39m [32m[schedule-pool-4][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-19 00:08:24[0;39m [32m[schedule-pool-4][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-19 00:18:25[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-19 00:18:25[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-19 00:28:27[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-19 00:28:27[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-19 00:38:28[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-19 00:38:28[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-19 00:48:30[0;39m [32m[schedule-pool-15][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-19 00:48:30[0;39m [32m[schedule-pool-15][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-19 03:20:21[0;39m [32m[master:housekeeper][0;39m [31mWARN [0;39m [1;35mcom.zaxxer.hikari.pool.HikariPool
+[0;39m - master - Thread starvation or clock leap detected (housekeeper delta=2h30m36s465ms235µs100ns).
+[36m2026-11-19 06:52:13[0;39m [32m[schedule-pool-15][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-19 06:52:32[0;39m [32m[master:housekeeper][0;39m [31mWARN [0;39m [1;35mcom.zaxxer.hikari.pool.HikariPool
+[0;39m - master - Thread starvation or clock leap detected (housekeeper delta=3h32m10s192ms673µs600ns).
+[36m2026-11-19 06:52:43[0;39m [32m[schedule-pool-13][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-19 07:54:06[0;39m [32m[master:housekeeper][0;39m [31mWARN [0;39m [1;35mcom.zaxxer.hikari.pool.HikariPool
+[0;39m - master - Thread starvation or clock leap detected (housekeeper delta=1h34s344ms446µs400ns).
+[36m2026-11-19 07:54:11[0;39m [32m[schedule-pool-6][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-19 07:54:41[0;39m [32m[schedule-pool-11][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-19 09:20:38[0;39m [32m[schedule-pool-1][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-19 09:20:39[0;39m [32m[master:housekeeper][0;39m [31mWARN [0;39m [1;35mcom.zaxxer.hikari.pool.HikariPool
+[0;39m - master - Thread starvation or clock leap detected (housekeeper delta=1h25m2s617ms824µs).
+[36m2026-11-19 09:21:08[0;39m [32m[schedule-pool-17][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-19 09:30:42[0;39m [32m[schedule-pool-5][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-19 09:31:12[0;39m [32m[schedule-pool-8][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host
+[36m2026-11-19 09:40:43[0;39m [32m[schedule-pool-11][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910001 code=news_source_host
+[36m2026-11-19 09:41:13[0;39m [32m[schedule-pool-1][0;39m [31mWARN [0;39m [1;35mo.d.h.s.impl.NewsSourceServiceImpl
+[0;39m - 定时采集失败: sourceId=910002 code=news_source_host

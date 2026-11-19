@@ -8,5 +8,8 @@ public interface IPublishAdapter {
     /** 回执来源标识，落 heron_video_version.publish_source。 */
     String source();
 
+    /** 上传前冻结目标账号；未使用账号的适配器可留空。 */
+    default String account() { return null; }
+
     PublishReceipt publish(PublishRequest request);
 }

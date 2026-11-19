@@ -125,6 +125,7 @@
 口径补充（实现与闸共用 `DatasetFacts`，以下为唯一解释）：
 
 - `wide` 的 `first/last/min/max` 是 `{date,value}` 对象；`long` 的 `first/last/min/max` 是数值。
+- `change/change_pct` 表示各序列区间首值到末值的变化；`wide` 起止日期见 `first.date/last.date`。它们不是单日或上一交易日涨跌，不得用作「较前一日」的变化值。
 - `leader` 一律取**最大值**：`long` 比 `last`，`rows`/`geo` 比 `value`；并列取先出现者。
 - `min/max` 按数值比较，并列取先出现者。
 - `long` 的 `series` 按首次出现顺序输出，不重新排序。
@@ -137,7 +138,7 @@
 写稿模型只输出带占位符的旁白：
 
 ```
-金价收于 {{facts.last.value}} 美元，较前一日 {{facts.change}} 美元。
+金价收于 {{facts.last.value}} 美元，较区间起点变化 {{facts.change}} 美元。
 ```
 
 规则：

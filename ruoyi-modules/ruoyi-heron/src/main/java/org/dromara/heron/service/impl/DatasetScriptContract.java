@@ -5,6 +5,7 @@ import tools.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * 数据看板脚本契约：形状归这里判，数字与占位符归 DatasetContract 判。
@@ -20,6 +21,9 @@ public final class DatasetScriptContract {
     private static final int MAX_SCENES = 6;
     private static final int MIN_TOTAL_SECONDS = 30;
     private static final int MAX_TOTAL_SECONDS = 75;
+    private static final Pattern PERIOD_CHANGE = Pattern.compile("\\{\\{facts\\.change(?:_pct)?}}");
+    private static final Pattern DAILY_CHANGE = Pattern.compile(
+        "(?:较|比)(?:前一日|上一日|昨日|昨天|上一交易日|前一交易日)|单日(?:上涨|下跌|涨幅|跌幅|变化|涨跌)");
 
     private DatasetScriptContract() { }
 
@@ -61,6 +65,7 @@ public final class DatasetScriptContract {
         text(items, script, "source_name", 80);
         scenes(items, script);
         narration(items, script, snapshot);
+        periodMeaning(items, script, snapshot);
         return List.copyOf(new java.util.LinkedHashSet<>(items));
     }
 
@@ -111,6 +116,25 @@ public final class DatasetScriptContract {
         text.append(script.path("closing").asString(""));
         for (String violation : DatasetContract.narrationViolations(snapshot, text.toString())) {
             items.add("旁白：" + violation);
+        }
+    }
+
+    /** 多点序列的 change 是首末区间变化，不能借它声称单日涨跌。 */
+    private static void periodMeaning(List<String> items, JsonNode script, JsonNode snapshot) {
+        if (!"wide".equals(snapshot.path("shape").asString("")) || snapshot.path("rows").size() <= 2) {
+            return;
+        }
+        List<String> passages = new ArrayList<>();
+        for (JsonNode scene : script.path("scenes")) {
+            passages.add(scene.path("lead").asString("") + "。" + scene.path("body").asString(""));
+        }
+        passages.add(script.path("closing").asString(""));
+        for (int index = 0; index < passages.size(); index++) {
+            String text = passages.get(index);
+            if (PERIOD_CHANGE.matcher(text).find() && DAILY_CHANGE.matcher(text).find()) {
+                String locator = index == passages.size() - 1 ? "结尾" : "第 " + (index + 1) + " 段";
+                items.add("旁白：" + locator + "把区间变化描述为单日变化，请使用区间起止口径");
+            }
         }
     }
 

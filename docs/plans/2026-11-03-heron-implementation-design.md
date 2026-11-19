@@ -451,7 +451,7 @@ mvn -pl ruoyi-modules/ruoyi-heron -am test -Dheron.test.excludedGroups=exclude \
 **本机可用入口（2026-11-03 起改为隔离栈）**：
 
 - **不要动用户正在跑的 `mysql` / `redis` 容器。** 那台 `mysql` 里同时有 `heron`、`ry_vue`、`xy_wh` 等无关库，`root@'%'` 是他多套工具共用的凭据；我曾按授权把它改成 yml 里的 `heron!2026`，随即发现打断了用户的其它连接并已回滚原值。**纪律：不改任何现有账号口令，不在别人的实例上建库。**
-- 替代做法：另起一套隔离开发栈 `script/docker/docker-compose.dev-isolated.yml`（容器 `heron-dev-mysql` / `heron-dev-redis`，端口 **3307 / 6380**，独立卷，口令沿用仓库里已明文的 `heron!2026`，不引入新密钥）。起法：`docker compose -f script/docker/docker-compose.dev-isolated.yml up -d`。
+- 替代做法：另起一套隔离开发栈 `../../script/docker/dev/docker-compose.dev-isolated.yml`（容器 `heron-dev-mysql` / `heron-dev-redis`，端口 **3307 / 6380**，独立卷，口令沿用仓库里已明文的 `heron!2026`，不引入新密钥）。起法：`docker compose -f script/docker/docker-compose.dev-isolated.yml up -d`。
 - 该实例已灌入 `script/sql/ry_vue.sql` + `ry_ai.sql` + `heron/001–005`（57 张表、143 条菜单、6 条 `sys_config`），并另建空库 `heron_it_local` 供集成测试自举。
 - `application-dev.yml` 的 datasource 端口改 3307、redis 端口改 6380（DB 口令那行不动，仍是仓库里已有的明文）；跑后端只需 `REDIS_PASSWORD=heron!2026`。用户自己那套 3306/6379 与其中 `heron` 库**保持原样**（我曾往里应用过 001–004/005，新增 10 表 + 34 菜单 + 3 配置行，未删改任何既有对象）。
 - 集成测试 URL 必须匹配 `jdbc:mysql://<host>/<heron_it_[a-z0-9_]+>(\?.*)?`（`HeronMysqlTestSupport:41-45,178-180`），实测可用参数：`useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=GMT%2B8&zeroDateTimeBehavior=convertToNull&nullCatalogMeansCurrent=true`。harness 每类 `@BeforeEach` 自己 `DROP` 再按 001/002/003 重建，空库即可。

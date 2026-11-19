@@ -30,7 +30,7 @@ class DatasetScriptContractTest {
         return "{\"dataset_sha256\":\"" + sha + "\",\"source_key\":\"sina-gold-xau\",\"chart\":\"" + chart + "\","
             + "\"title\":\"金价再创新高\",\"scenes\":["
             + "{\"lead\":\"金价站上关键位\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":15},"
-            + "{\"lead\":\"较前一日走高\",\"body\":\"" + secondBody + "\",\"duration_s\":15},"
+            + "{\"lead\":\"较区间起点走高\",\"body\":\"" + secondBody + "\",\"duration_s\":15},"
             + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":15}],"
             + "\"closing\":\"关注接下来的走势。\",\"source_name\":\"来源：新浪财经\"}";
     }
@@ -47,11 +47,34 @@ class DatasetScriptContractTest {
     }
 
     @Test
+    @DisplayName("真渲染验收稿先过事实与长度契约，避免昂贵配音后才发现样稿违规")
+    void renderFixtureMeetsTheRealContract() {
+        var dataset = snapshot();
+        var script = (tools.jackson.databind.node.ObjectNode) JSON.readTree(DataBoardPipelineRenderTest.SCRIPT);
+        script.put("dataset_sha256", dataset.path("data_sha256").asString());
+        script.put("source_key", dataset.path("source_key").asString());
+        script.put("chart", "line");
+        assertEquals(List.of(), DatasetScriptContract.violations(script, dataset));
+    }
+
+    @Test
     @DisplayName("旁白出现裸数字直接退回")
     void bareDigitsRejected() {
         List<String> items = DatasetScriptContract.violations(
             JSON.readTree(script(snapshot().path("data_sha256").asString(), "line", "上涨 3%。")), snapshot());
         assertTrue(items.stream().anyMatch(item -> item.contains("旁白") && item.contains("裸数字")), items.toString());
+    }
+
+    @Test
+    @DisplayName("区间首末涨跌不能写成上一日或单日涨跌")
+    void rejectsDailyClaimsAboutPeriodChange() {
+        for (String body : List.of("较前一日上涨 {{facts.change}} 美元。",
+            "较上一交易日涨幅 {{facts.change_pct}}%。")) {
+            List<String> items = DatasetScriptContract.violations(JSON.readTree(
+                script(snapshot().path("data_sha256").asString(), "line", body)), snapshot());
+            assertTrue(items.stream().anyMatch(item -> item.contains("区间变化") && item.contains("单日")),
+                items.toString());
+        }
     }
 
     @Test

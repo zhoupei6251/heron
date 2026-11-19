@@ -5,6 +5,9 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.time.LocalDateTime;
+import org.dromara.heron.config.HeronNewsProperties;
+import org.dromara.heron.domain.PublishRequest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -19,5 +22,16 @@ class DouyinCliPublishAdapterTest {
         assertEquals(List.of("sau", "douyin", "upload-video", "--account", "heron",
                 "--file", file.toString(), "--title", "标题 带空格"),
             DouyinCliPublishAdapter.command("sau", "heron", file, "标题 带空格"));
+    }
+
+    @Test
+    void uploadUsesTheAccountFrozenWithTheAttempt() {
+        var properties = new HeronNewsProperties();
+        properties.setPublishAccount("changed-config");
+        var adapter = new DouyinCliPublishAdapter(properties);
+        var request = new PublishRequest(1, 2, "标题", "a".repeat(64), LocalDateTime.now(), null, "approved-account");
+        assertEquals("approved-account", adapter.targetAccount(request));
+        properties.setPublishAccount("another-config");
+        assertEquals("approved-account", adapter.targetAccount(request));
     }
 }

@@ -79,7 +79,7 @@ public class DatasetFetchService {
      */
     private Fetched fetched(String sourceKey, int limit, boolean requireHealthy) {
         HeronDataSource source = dataSourceMapper.selectByKey(sourceKey);
-        requireReady(source, sourceKey, requireHealthy);
+        requireReady(source, sourceKey, !requireHealthy);
         DatasetAdapter adapter = adapterFor(sourceKey);
         String json;
         try {

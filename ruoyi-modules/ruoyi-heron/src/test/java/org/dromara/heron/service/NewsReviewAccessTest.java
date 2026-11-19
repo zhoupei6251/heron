@@ -59,6 +59,20 @@ class NewsReviewAccessTest extends NewsMysqlTestSupport {
     }
 
     @Test
+    void actualSubtitlesUseTheSameProtectedPreviewBoundary() throws Exception {
+        var f = completed();
+        String path = "/heron/newsWork/" + f.workId() + "/versions/" + f.versionId() + "/preview/";
+        var subtitle = f.file("subtitles");
+        var response = mvc.perform(get(path + subtitle.artifactId())).andExpect(status().isOk())
+            .andExpect(header().string("X-Content-SHA256", subtitle.sha256()))
+            .andExpect(header().string("Cache-Control", "no-store")).andReturn().getResponse();
+        assertArrayEquals(Files.readAllBytes(properties.getDataRoot().resolve(subtitle.storageKey())), response.getContentAsByteArray());
+        mvc.perform(get(path + f.file("script").artifactId())).andExpect(status().isNotFound());
+        loginAs(OTHER);
+        mvc.perform(get(path + subtitle.artifactId())).andExpect(status().isNotFound());
+    }
+
+    @Test
     void symlinkAndMissingFilesCannotBePreviewed() throws Exception {
         var f = completed();
         var video = properties.getDataRoot().resolve(f.file("mp4").storageKey());

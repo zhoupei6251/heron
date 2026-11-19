@@ -9,5 +9,9 @@ import java.time.LocalDateTime;
  * requestedAt 用调用方的时钟，避免适配器与业务层各用一套时间导致回执被判成「未来时间」。
  */
 public record PublishRequest(long taskId, long versionId, String title, String videoSha256, LocalDateTime requestedAt,
-                             Path videoFile) {
+                             Path videoFile, String account) {
+    public PublishRequest(long taskId, long versionId, String title, String videoSha256, LocalDateTime requestedAt,
+                          Path videoFile) {
+        this(taskId, versionId, title, videoSha256, requestedAt, videoFile, null);
+    }
 }

@@ -39,6 +39,8 @@ public class DouyinCliPublishAdapter implements IPublishAdapter {
         return SOURCE;
     }
 
+    @Override public String account() { return properties.getPublishAccount(); }
+
     @Override
     public PublishReceipt publish(PublishRequest request) {
         Path file = request.videoFile();
@@ -49,12 +51,18 @@ public class DouyinCliPublishAdapter implements IPublishAdapter {
         if (title.isEmpty()) {
             throw new HeronBusinessException(409, "publish_title_missing", "稿件没有标题，不能发布");
         }
-        String account = properties.getPublishAccount() == null ? "" : properties.getPublishAccount().strip();
+        String account = targetAccount(request);
+        run(command(properties.getPublishCommand(), account, file, title));
+        return new PublishReceipt(null, account, request.requestedAt().truncatedTo(ChronoUnit.MILLIS), SOURCE);
+    }
+
+    String targetAccount(PublishRequest request) {
+        String selected = request.account() == null ? properties.getPublishAccount() : request.account();
+        String account = selected == null ? "" : selected.strip();
         if (account.isEmpty()) {
             throw new HeronBusinessException(503, "publish_account_missing", "未配置抖音账号名");
         }
-        run(command(properties.getPublishCommand(), account, file, title));
-        return new PublishReceipt(null, account, request.requestedAt().truncatedTo(ChronoUnit.MILLIS), SOURCE);
+        return account;
     }
 
     /** 与 skills/douyin-upload/references/cli-contract.md 的入参一一对应；参数走列表，不拼 shell。 */
@@ -66,12 +74,12 @@ public class DouyinCliPublishAdapter implements IPublishAdapter {
     /** 输出直接落临时文件：边跑边读会阻塞管道，跑完再读又可能撑爆缓冲区。 */
     private void run(List<String> command) {
         Path logFile = null;
+        Process process = null;
         try {
             logFile = Files.createTempFile("heron-sau-", ".log");
-            Process process = new ProcessBuilder(command)
+            process = new ProcessBuilder(command)
                 .redirectErrorStream(true).redirectOutput(logFile.toFile()).start();
             if (!process.waitFor(properties.getPublishTimeoutSeconds(), TimeUnit.SECONDS)) {
-                process.destroyForcibly();
                 throw new HeronBusinessException(504, "publish_timeout",
                     "发布命令超时，请先到抖音后台确认是否已发出，不要重复提交：" + tail(logFile));
             }
@@ -85,6 +93,11 @@ public class DouyinCliPublishAdapter implements IPublishAdapter {
             Thread.currentThread().interrupt();
             throw new HeronBusinessException(503, "publish_interrupted", "发布命令被中断");
         } finally {
+            if (process != null && process.isAlive()) {
+                // 只终止本次上传派生的进程；中断/超时不能让子上传继续在后台跑。
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
+                process.destroyForcibly();
+            }
             if (logFile != null) {
                 try {
                     Files.deleteIfExists(logFile);

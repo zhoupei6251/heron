@@ -36,7 +36,7 @@ class DatasetScriptAuthorTest {
     private static String reply(String secondBody) {
         return "{\"title\":\"金价再创新高\",\"scenes\":["
             + "{\"lead\":\"金价站上关键位\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":15},"
-            + "{\"lead\":\"较前一日走高\",\"body\":\"" + secondBody + "\",\"duration_s\":15},"
+            + "{\"lead\":\"较区间起点走高\",\"body\":\"" + secondBody + "\",\"duration_s\":15},"
             + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":15}],"
             + "\"closing\":\"关注接下来的走势。\",\"source_name\":\"模型自述\"}";
     }
@@ -100,5 +100,8 @@ class DatasetScriptAuthorTest {
             JSON.readTree(vars.path("dataset_json").asString()).path("data_sha256").asString());
         assertEquals("金价再创新高", vars.path("title").asString());
         assertEquals(3, vars.path("scene_count").asInt());
+        assertEquals("最新收于 4113.34 美元。", vars.path("scene1_body").asString());
+        assertEquals("latest", JSON.readTree(vars.path("scene1_focus").asString()).path("mode").asString());
+        assertEquals("change", JSON.readTree(vars.path("scene2_focus").asString()).path("mode").asString());
     }
 }

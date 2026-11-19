@@ -45,12 +45,20 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         resetSchema();
         clearProductionData();
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
-            for (String table : List.of("heron_auto_slot", "heron_video_version", "heron_news_work", "heron_news_candidate", "heron_news_source", "heron_production_context")) {
+            for (String table : List.of("heron_news_publish_attempt", "heron_auto_slot", "heron_video_version", "heron_news_work", "heron_news_candidate", "heron_news_source", "heron_production_context")) {
                 statement.execute("DROP TABLE IF EXISTS " + table);
             }
             Path ddl = Path.of("../../script/sql/heron/002-news.sql");
             if (!Files.isRegularFile(ddl)) ddl = Path.of("script/sql/heron/002-news.sql");
             ScriptUtils.executeSqlScript(connection, new FileSystemResource(ddl));
+            Path candidateSourceDdl = Path.of("../../script/sql/heron/043-candidate-source.sql");
+            if (!Files.isRegularFile(candidateSourceDdl)) candidateSourceDdl = Path.of("script/sql/heron/043-candidate-source.sql");
+            ScriptUtils.executeSqlScript(connection, new FileSystemResource(candidateSourceDdl));
+            // 044还修改独立的数据源注册表；新闻事务夹具只镜像其候选列，不创建无关的注册表。
+            statement.execute("ALTER TABLE heron_news_candidate ADD COLUMN source_key varchar(128) NULL AFTER source_kind");
+            Path researchLinkDdl = Path.of("../../script/sql/heron/047-candidate-research-link.sql");
+            if (!Files.isRegularFile(researchLinkDdl)) researchLinkDdl = Path.of("script/sql/heron/047-candidate-research-link.sql");
+            ScriptUtils.executeSqlScript(connection, new FileSystemResource(researchLinkDdl));
             // 002 之后的分批迁移（自动模式字段与槽位表）同样要在这个隔离库里建起来
             Path autoDdl = Path.of("../../script/sql/heron/006-news-auto.sql");
             if (!Files.isRegularFile(autoDdl)) autoDdl = Path.of("script/sql/heron/006-news-auto.sql");
@@ -64,6 +72,9 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
             if (!Files.isRegularFile(contextDdl)) contextDdl = Path.of("script/sql/heron/028-production-context.sql");
             ScriptUtils.executeSqlScript(connection, new FileSystemResource(contextDdl));
             ScriptUtils.executeSqlScript(connection, metricDdl());
+            Path publishDdl = Path.of("../../script/sql/heron/046-news-publish-attempt.sql");
+            if (!Files.isRegularFile(publishDdl)) publishDdl = Path.of("script/sql/heron/046-news-publish-attempt.sql");
+            ScriptUtils.executeSqlScript(connection, new FileSystemResource(publishDdl));
         }
         var factory = (DefaultListableBeanFactory) context.getBeanFactory();
         factory.destroySingleton("newsProductionPipeline");

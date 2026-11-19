@@ -29,6 +29,7 @@ public interface INewsWorkService {
 
     /** 命令行发布只在提交时留痕，作品链接事后人工补一次。 */
     NewsVideoVersionVo backfillPublishUrl(long workId, long versionId, NewsPublishUrlBo bo);
+    NewsVideoVersionVo resolvePublishAttempt(long workId, long versionId, long attemptId, NewsPublishResolveBo bo);
     /** 审片专用文件入口，不赋予正式下载权。 */
     NewsFileVo preview(long workId, long versionId, String artifactId);
     /** 仅返回已审且双指纹仍匹配的 MP4。调用方负责关闭返回句柄。 */
