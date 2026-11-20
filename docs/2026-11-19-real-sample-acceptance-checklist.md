@@ -13,9 +13,15 @@
 | --- | --- |
 | 后端工程师的改动窗口 | **未结束不跑真实渲染。**渲染结果要和他的改动对账，他改着闸的时候跑出来的片子说明不了任何事 |
 | 工作区状态 | 每条片子渲染时记录 `git rev-parse HEAD` + `git status --porcelain` 的完整输出 + `git diff --stat`。片子必须能对上"这是哪份代码出的" |
-| 数据库 | 只用隔离库 `heron_it_render`（`localhost:3307`），**不碰 `heron_prod`** |
-| 产物落点 | 全部落 `D:\zhoupei\heron\docs\acceptance-2026-11-19\<film-id>\`，不进 git，不 commit、不 push |
+| 数据库 | 只用开发库 `heron`（`localhost:3307`），**不碰 `heron_prod`** |
+| 产物落点 | 全部落 `D:\zhoupei\heron\docs\acceptance-<日期>\<film-id>\`，不进 git，不 commit、不 push |
 | 禁止 | 为了让片子好看去改生产代码的闸门、放宽事实校验、用关键词猜画面强调哪个数字、编造因果关系 |
+
+> **只有「开发库 `heron`」这一条改了**：`@Tag("mysql")` 的集成测试仍然要自己的库
+> （`heron_it_*`），因为它们每个用例都会 `DROP TABLE` 再按 `script/sql/heron/*.sql` 重建
+> `heron_news_work` / `heron_video_version` / `heron_production_context` 等表——
+> 指到开发库上跑等于把开发数据连表结构一起抹掉。
+> `HeronMysqlTestSupport` 保留「库名必须是 `heron_it_` 前缀」这道闸，别为了省事拆掉。
 
 ### 0.2 工具链（已在本机验证可用）
 
@@ -23,7 +29,7 @@
 | --- | --- | --- |
 | JDK | `D:\java\jdk21` | 21 |
 | Maven | `D:\maven\apache-maven-3.9.11\bin\mvn` | 3.9.11 |
-| Node | `D:\nvm\nodejs\node.exe` | ≥ 22（渲染前提） |
+| Node | `D:\Users\zhoupei\AppData\Local\Programs\DeepSeek Harness\resources\runtime\primary-runtime\dependencies\node\bin\node.exe` | 24.21.0（**别用 `D:\nvm\nodejs\node.exe`：那是机器级符号链接，会被别的会话切回 20.9.0，hyperframes 要求 ≥22，会直接报「requires Node.js >= 22」**） |
 | ffmpeg / ffprobe | `D:\ffmpeg\ffmpeg-master-latest-win64-gpl-shared\bin\` | N-122527-g4561fc5e48 |
 | Python | `D:\python\python.exe` | 带 pymysql |
 
@@ -39,7 +45,7 @@ cd D:/zhoupei/heron/data/tools && npm ci
 
 ```bash
 # Git Bash（本轮实际用的写法）
-export HERON_NODE="D:/nvm/nodejs/node.exe"
+export HERON_NODE="D:/Users/zhoupei/AppData/Local/Programs/DeepSeek Harness/resources/runtime/primary-runtime/dependencies/node/bin/node.exe"
 export HERON_HYPERFRAMES="./data/tools/node_modules/hyperframes/bin/hyperframes.mjs"
 export HERON_NEWS_TEMPLATE="./data/templates"
 export HERON_PASSWORD="heron!2026"          # 本机 redis（localhost:6380）
@@ -57,6 +63,12 @@ cd D:/zhoupei/heron
   --captura.enable=false \
   --heron.agent.enabled=true
 ```
+
+> 登录与接口加密：dev 的 `api-decrypt.enabled` 与 `captcha.enable` 默认开着，
+> 手工调接口时用 `--api-decrypt.enabled=false --captcha.enable=false` 关掉，
+> 并且**每个请求都要带 `clientid` 头**（前端 `axios.defaults.headers['clientid']` 就是这么发的，
+> JWT 模式会校验它，缺了就是 401）。账号 `admin` / `heron!2026`。
+> 登录拿到的令牌只能用一个：**再登录一次会让上一个令牌失效**（JWT 简单模式在 Redis 里覆盖了映射）。
 
 > `SA_TOKEN_JWT_SECRET` 见 `docs/2026-11-19-acceptance-report.md`（本轮安全改动已改配置，缺密钥起不来）。
 
@@ -124,7 +136,7 @@ curl -s -X POST "http://localhost:8086/heron/dataOpportunity/analyze" \
 # 2) 看有哪些机会可用（挑一个 enabled 且 probe_status=ok 的源）
 python - <<'PY'
 import pymysql, json
-c = pymysql.connect(host='127.0.0.1', port=3307, user='root', password='heron!2026', database='heron_it_render')
+c = pymysql.connect(host='127.0.0.1', port=3307, user='root', password='heron!2026', database='heron')
 cur = c.cursor()
 cur.execute("SELECT opportunity_id, source_key, headline, shape, window_points FROM heron_data_opportunity ORDER BY create_time DESC LIMIT 20")
 for r in cur.fetchall(): print(r)
@@ -161,7 +173,7 @@ D:/zhoupei/heron/data/work/news_video/<taskId>/<runId>/
 ```bash
 python - <<'PY'
 import pymysql, json, sys
-c = pymysql.connect(host='127.0.0.1', port=3307, user='root', password='heron!2026', database='heron_it_render')
+c = pymysql.connect(host='127.0.0.1', port=3307, user='root', password='heron!2026', database='heron')
 cur = c.cursor()
 cur.execute("SELECT context_id, content_hash, content_json FROM heron_production_context ORDER BY create_time DESC LIMIT 1")
 cid, chash, cjson = cur.fetchone()
