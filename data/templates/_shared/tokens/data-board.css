@@ -50,4 +50,17 @@
   --dur-ambient: 7s;
   --ease-out: power3.out;
   --ease-in: power2.in;
+
+  /* 图表语义（C · 解释）：图表是主角，占主视区。
+     面积保留 0.16（解释要让人看见「一段区间」的体量），折线 6px 居中。
+     极值双标注各用自己的语义色：最高随强调色，最低用 down 色系。
+     焦点压暗最轻（0.62）：解释要把整条曲线都留在可读范围，观众读的是关系不是某一点。 */
+  --chart-line-width: 6px;
+  --chart-area-alpha: 0.16;
+  --chart-max-annot: #18b7c9;
+  --chart-min-annot: #e06c5a;
+  --chart-min-size: 24px;
+  --focus-dim: 0.62;
+  --focus-ring-width: 6px;
+  --focus-ring-dash: none;
 }

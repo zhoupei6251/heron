@@ -399,8 +399,95 @@ function checkWindows(cfg, html) {
   }
 }
 
+// 三套风格的骨架不变量：写进版式 CSS 的注释里，也在构建期断言一次。
+// 为什么要在构建期查：三套风格最容易的退化方式不是换配色，而是「悄悄变成同一套骨架」——
+// 改一处 #chart-slot 高度、把 .scene 从通栏改成缩进，画面看起来仍然「正常」，风格却没了。
+// 断言只查结构性声明，不查具体数值，避免把版式微调也锁死。
+const SKELETON_INVARIANTS = {
+  'news-broadcast': [
+    ['../layouts/news-broadcast/news-data-broadcast-9x16.css', '.scene', 'border-left'],
+    ['../layouts/news-broadcast/news-data-broadcast-9x16.css', '.scene', 'background'],
+    ['../layouts/news-broadcast/news-data-broadcast-9x16.css', '.scene', 'grid-template-columns'],
+  ],
+  'data-investigation': [
+    ['../layouts/data-investigation/news-data-investigate-9x16.css', '.scene', 'border-left'],
+    ['../layouts/data-investigation/news-data-investigate-9x16.css', '.body', 'font-weight'],
+    ['../layouts/data-investigation/news-data-investigate-9x16.css', '#closing', 'border-top'],
+  ],
+  'data-board': [
+    ['../layouts/data-board/news-data-9x16.css', '.scene', 'left'],
+    ['../layouts/data-board/news-data-9x16.css', '.scene', 'right'],
+    ['../layouts/data-board/news-data-9x16.css', '#closing', 'border-left'],
+  ],
+};
+
+// 图表语义令牌：三套各自必须定义，缺一个就会回落到 chart.css 的默认值，
+// 三套的图表手法因此又变成同一套（这正是本轮要修的问题）。
+const CHART_TOKENS = [
+  '--chart-line-width', '--chart-area-alpha', '--chart-max-annot', '--chart-min-annot',
+  '--chart-min-size', '--focus-dim', '--focus-ring-width', '--focus-ring-dash',
+];
+
+/**
+ * 从一份 CSS 文本里取某个选择器块的内容；找不到返回 null。
+ *
+ * <p>选择器必须精确匹配到 `{` 为止：`.scene` 不能匹配到 `.scene-no` / `.scene-figure`，
+ * `#closing` 不能匹配到 `#closing-slot`。否则断言会查到隔壁规则上去，白查一场。
+ */
+function ruleBlock(css, selector) {
+  const escaped = selector.replace(/[\\.#*]/g, (ch) => '\\' + ch);
+  const pattern = new RegExp('(^|\\})\\s*' + escaped + '\\s*\\{([^}]*)\\}', 'g');
+  let last = null;
+  for (const match of css.matchAll(pattern)) last = match[2];
+  return last;
+}
+
+function checkStyleContract(cfg) {
+  // 骨架不变量只对「数据看板三套」这只角：这三套是同一套生成器产出的三条风格，
+  // 最容易的退化就是彼此长成同一套。article 系列是文稿线，骨架本来就不同，不在此列。
+  if (!cfg.capabilities.includes('chart')) return;
+  // 1) 骨架不变量
+  const invariants = SKELETON_INVARIANTS[cfg.style];
+  if (!invariants) {
+    fail(`${cfg.key}: 风格 ${cfg.style} 没有登记骨架不变量，新风格必须先在 SKELETON_INVARIANTS 里写清它凭什么与别的不一样`);
+  }
+  for (const [file, selector, property] of invariants) {
+    const css = read(path.resolve(GEN, file));
+    const block = ruleBlock(css, selector);
+    if (block == null) {
+      fail(`${cfg.key}: 版式里找不到 ${selector}，骨架不变量「${selector} 必须有 ${property}」无从检查`);
+    }
+    if (!new RegExp(`(^|;|\\s)${property.replace(/[-]/g, '\\-')}\\s*:`).test(block)) {
+      fail(`${cfg.key}: ${selector} 少了 ${property}——这是 ${cfg.style} 的骨架签名，丢掉它三套风格就长成同一套`);
+    }
+  }
+  // 2) 图表语义令牌齐全
+  const tokens = read(path.join(SHARED, 'tokens', `${cfg.style}.css`));
+  const missing = CHART_TOKENS.filter((name) => !new RegExp(`${name}\\s*:`).test(tokens));
+  if (missing.length) {
+    fail(`${cfg.key}: 令牌缺少 ${missing.join('、')}，图表会回落到共享默认值，三套的图表手法会退化成同一套`);
+  }
+  // 3) 图表内字号下限：令牌不得低于 24px（1080×1920 上低于这个值读不出来）
+  const minSize = tokens.match(/--chart-min-size\s*:\s*(\d+)px/);
+  if (!minSize || Number(minSize[1]) < 24) {
+    fail(`${cfg.key}: --chart-min-size 必须 ≥ 24px（当前 ${minSize ? minSize[1] + 'px' : '未定义'}）`);
+  }
+  // 4) 字号下限必须由令牌驱动，不许在脚本里写死数字。
+  // 过去的写法是 Math.max(16, …)：图表内字号由 JS 反推、构建期扫不到，
+  // 三套风格一起掉到 16px 也没人发现。改成读令牌之后，这里守住「别再写回去」。
+  const script = [path.join(GEN, 'behaviors', 'chart.js'), path.join(GEN, 'behaviors', 'focus.js')]
+    .map((file) => read(file)).join('\n');
+  if (/\bMath\.max\(\s*1[0-9]\s*,/.test(script)) {
+    fail(`${cfg.key}: 脚本里又出现了写死的字号下限（Math.max(1x, …)），图表字号必须读 --chart-min-size`);
+  }
+  if (!/minSize\(\)/.test(script)) {
+    fail(`${cfg.key}: chart.js 没有使用 minSize()，图表字号下限又脱离了令牌`);
+  }
+}
+
 function build(dir) {
   const cfg = loadConfig(dir);
+  checkStyleContract(cfg);
   // 三个产物都从配置派生，--check 就三个都要比：
   // 只比 index.html 的话，手改 index.motion.json 能悄悄放宽断言而检查不出来。
   const generated = {

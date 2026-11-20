@@ -1,10 +1,14 @@
-/* chart 能力专用样式。仅在 capabilities 含 chart 时注入。 */
+/* chart 能力专用样式。仅在 capabilities 含 chart 时注入。
+   与风格相关的取值一律读令牌（--chart-* / --focus-*），不在这里写死：
+   写死会让三套风格里出现不属于自己的颜色与粗细（过去极值标注就是三套都用青色）。
+   令牌默认值与改动前一致，所以没写这些令牌的老模板行为不变。 */
 #kpi { display: flex; align-items: baseline; gap: 14px; margin-top: 24px; }
 #kpi-value { font-size: var(--fs-data); font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
 #kpi-unit { font-size: var(--fs-label); color: var(--muted); }
 #kpi-change { font-size: 32px; font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
 #focus-caption { margin: 12px 0 0; font-size: 28px; font-weight: 600; line-height: 1.4; color: var(--muted-2); }
-.focus-ring { fill: var(--bg); stroke: var(--accent); stroke-width: 6; }
+.focus-ring { fill: var(--bg); stroke: var(--accent); stroke-width: var(--focus-ring-width, 6px);
+              stroke-dasharray: var(--focus-ring-dash, none); }
 .focus-halo { fill: none; stroke: var(--accent); stroke-width: 18; opacity: 0.22; }
 .focus-link { fill: none; stroke: var(--accent); stroke-width: 4; stroke-dasharray: 10 8; }
 #chart-slot { top: 430px; left: var(--pad-frame); right: var(--pad-frame); height: 760px; overflow: hidden; }
@@ -12,9 +16,10 @@
 .axis { stroke: var(--rule-soft); stroke-width: 2; }
 .axis-label { fill: var(--muted); font-size: var(--fs-label); font-variant-numeric: tabular-nums; }
 .annotation { fill: var(--fg); font-size: var(--fs-label); font-weight: 600; font-variant-numeric: tabular-nums; }
-.series-line { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round;
+.series-line { fill: none; stroke: var(--accent); stroke-width: var(--chart-line-width, 8px);
+               stroke-linecap: round; stroke-linejoin: round;
                filter: drop-shadow(0 0 8px var(--accent-glow)); }
-.series-area { fill: var(--accent); opacity: 0.16; }
+.series-area { fill: var(--accent); opacity: var(--chart-area-alpha, 0.16); }
 .dot { fill: var(--accent); filter: drop-shadow(0 0 10px var(--accent-glow)); }
 .dot-label { fill: var(--fg); font-size: var(--fs-data-sm); font-weight: 700; font-variant-numeric: tabular-nums; }
 .bar { fill: var(--accent); transform-box: fill-box; transform-origin: left center; }

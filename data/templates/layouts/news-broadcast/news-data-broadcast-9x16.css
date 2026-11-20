@@ -1,6 +1,11 @@
 /* news-data-broadcast-9x16 的版式差异（风格 A · 专业新闻）。
    视觉签名是下三分之一信息条：整幅色带 + 左侧红色立标 + 屏次编号。
-   纵向预算（1080×1920）：标题区 0–530 / 图表 550–1070 / 播报条 1100–1540 / 底栏 1610–1700。 */
+   纵向预算（1080×1920）：标题区 0–530 / 图表 550–1070 / 播报条 1100–1540 / 底栏 1610–1700。
+
+   本套骨架不变量（改版式必须保住，否则 A 就不再像播报）：
+   1. .scene 是通栏色带：left:0 / right:0 / background:var(--band) / border-left:10px solid var(--accent)
+   2. .scene 用两栏网格，屏次占左栏 120px（这是 A 与其他两套最明显的结构差异）
+   3. .scene 贴底 420px，向上由内容撑开——播报条不许被图表挤掉 */
 #title-card { padding: 130px var(--pad-frame) 0 var(--pad-frame); }
 #kicker { display: flex; align-items: center; gap: 18px; margin-bottom: 28px; }
 #kicker-flag { width: 10px; height: 34px; background: var(--accent); }
@@ -14,6 +19,11 @@
   color: var(--fg);
 }
 #rule { margin-top: 28px; width: 100%; height: var(--rule-width); background: var(--accent); transform-origin: left center; }
+
+/* 图表外观覆盖（L1）：图表是佐证，给播报条让位。
+   删掉口径注记——播报每屏只讲 1 个数 + 1 句话，口径留着是噪声；
+   折线保持粗（令牌 8px）与淡面积（令牌 0.10），让「有没有到过高点」一眼可见。 */
+.chart-note { display: none; }
 
 /* 图表压扁一点给播报条让位：播报条是这套风格的签名，不能被图表挤掉。 */
 #chart-slot { top: 540px; height: 520px; }

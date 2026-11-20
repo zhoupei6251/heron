@@ -101,15 +101,18 @@ function paintEvidence(focus, index) {
     selected.add(names[0]);
     selected.add(names[names.length - 1]);
   }
+  // 压暗强度读令牌：A 播报只要压住、B 调查要接近退场、C 解释要保持可读，
+  // 同一个常量不可能同时满足三套。回退 0.55 与改动前一致。
+  const dim = Number.parseFloat(cssVar("--focus-dim")) || 0.55;
   chartEvidence.rows.forEach((node, name) => {
     const active = selected.size === 0 || selected.has(name);
-    node.bar.style.opacity = active ? "1" : "0.55";
+    node.bar.style.opacity = active ? "1" : String(dim);
     node.label.style.fontWeight = selected.has(name) ? "800" : "600";
     node.value.style.fill = active ? "var(--fg)" : "var(--muted-2)";
   });
   chartEvidence.series.forEach((node, name) => {
     const active = selected.size === 0 || selected.has(name);
-    node.shape.style.filter = active ? "" : "brightness(0.55)";
+    node.shape.style.filter = active ? "" : "brightness(" + dim + ")";
     node.legend.style.fontWeight = selected.has(name) ? "800" : "600";
   });
 }

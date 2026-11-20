@@ -35,6 +35,15 @@
       // 初始化时按实际图位确定坐标系，避免760高的图被缩进460高的版式后字也一起变小。
       const H = Math.round(W * (svg.clientHeight || 760) / (svg.clientWidth || W));
       svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+      // 图表内元素的颜色与字号一律读令牌：写死会让三套风格里出现不属于自己的取值。
+      // 回退值等于改动前的常量，所以没写这些令牌的老模板行为不变。
+      const token = (name, fallback) => cssVar(name) || fallback;
+      // 字号下限：低于 24px 在 1080×1920 上读不出来。过去这里写死 16，
+      // 图表内字号由 JS 反推、构建期扫不到，三套风格一起违规。
+      const minSize = () => {
+        const value = Number.parseFloat(token("--chart-min-size", "24px"));
+        return Number.isFinite(value) && value > 0 ? Math.max(24, value) : 24;
+      };
       const pad = { left: 132, right: 36, top: 56, bottom: 72 };
       const chartEvidence = { points: new Map(), rows: new Map(), series: new Map(), race: null };
       const openingScene = document.querySelector('.scene[data-scene-index="1"]');
@@ -110,14 +119,14 @@
       // 图例行：行高够就名字一行、数值一行，不够就单行。字号按行高反推，下限 16。
       const legendItem = (x, right, y, rowH, color, name, value) => {
         const twoLine = rowH >= 56;
-        const size = Math.max(16, Math.min(24, Math.round(rowH * (twoLine ? 0.26 : 0.42))));
+        const size = Math.max(minSize(), Math.min(28, Math.round(rowH * (twoLine ? 0.26 : 0.42))));
         const row = make("g", {});
         row.appendChild(make("rect", { x, y: y - 10, width: 20, height: 20, rx: 3, fill: color }));
         const nameText = make("text", { x: x + 30, y: twoLine ? y + 2 : y + size * 0.36,
           class: "legend-name", style: "font-size:" + size + "px" });
         nameText.textContent = clipTo(name, right - x - 30, size);
         const valueText = make("text", { x: right, y: twoLine ? y + size * 1.15 : y + size * 0.36,
-          "text-anchor": "end", class: "legend-value", style: "font-size:" + Math.max(16, Math.round(size * 0.8)) + "px" });
+          "text-anchor": "end", class: "legend-value", style: "font-size:" + Math.max(minSize(), Math.round(size * 0.8)) + "px" });
         valueText.textContent = value;
         row.append(nameText, valueText);
         return row;
@@ -128,7 +137,7 @@
         const top = rows.slice().sort((a, b) => b.value - a.value);
         const max = Math.max(...top.map((row) => row.value)) || 1;
         const rowH = (H - pad.top - pad.bottom) / Math.max(top.length, 1);
-        const typeSize = Math.max(16, Math.min(28, Math.round(rowH * 0.44)));
+        const typeSize = Math.max(minSize(), Math.min(28, Math.round(rowH * 0.44)));
         const fontStyle = "font-size:" + typeSize + "px";
         const x0 = 430;
         // 右侧留 210：最长那条的数值要落在柱子外面，不压柱身。
@@ -154,7 +163,7 @@
         const names = Array.from(byName.keys());
         const visibleMax = Math.max(1, Math.min(names.length, 14));
         const rowH = (H - pad.top - pad.bottom) / visibleMax;
-        const typeSize = Math.max(16, Math.min(28, Math.round(rowH * 0.44)));
+        const typeSize = Math.max(minSize(), Math.min(28, Math.round(rowH * 0.44)));
         const fontStyle = "font-size:" + typeSize + "px";
         const barH = Math.max(6, rowH * 0.56);
         const x0 = 430;
@@ -390,10 +399,10 @@
         });
         const arc = (2 * Math.PI * (R + 24)) / Math.max(n, 1);
         const allowed = arc * 0.92;
-        // 字号按最长系列名反推：英文约 0.56em、中文 1em，下限 16。
+        // 字号按最长系列名反推：英文约 0.56em、中文 1em，下限读令牌。
         const nameUnits = Math.max(...axes.map((item) =>
           Array.from(item.name).reduce((sum, ch) => sum + charEm(ch), 0)), 1);
-        const typeSize = Math.max(16, Math.min(24, Math.floor(allowed / nameUnits)));
+        const typeSize = Math.max(minSize(), Math.min(28, Math.floor(allowed / nameUnits)));
         const labels = [];
         const dots = [];
         axes.forEach((item, index) => {
@@ -407,7 +416,7 @@
             class: "radar-label", style: "font-size:" + typeSize + "px", "dominant-baseline": "middle" });
           label.textContent = clipTo(item.name, allowed, typeSize);
           const value = make("tspan", { x: lx.toFixed(1), dy: typeSize * 0.9, class: "radar-value",
-            style: "font-size:" + Math.max(16, Math.round(typeSize * 0.78)) + "px" });
+            style: "font-size:" + Math.max(minSize(), Math.round(typeSize * 0.78)) + "px" });
           value.textContent = clipTo(fmt(item.last), allowed, typeSize * 0.78);
           label.appendChild(value);
           svg.appendChild(label);
@@ -512,9 +521,9 @@
         const lastY = y(rows[rows.length - 1].value);
         const crowded = (index) => Math.abs(x(index) - lastX) < 90 && Math.abs(y(rows[index].value) - lastY) < 48;
         if (maxIndex >= 0 && !crowded(maxIndex)) {
-          annotate(maxIndex, "最高 " + fmt(facts.max.value), "#18b7c9");
+          annotate(maxIndex, "最高 " + fmt(facts.max.value), token("--chart-max-annot", "#18b7c9"));
         }
         if (minIndex >= 0 && !crowded(minIndex)) {
-          annotate(minIndex, "最低 " + fmt(facts.min.value), "#e06c5a");
+          annotate(minIndex, "最低 " + fmt(facts.min.value), token("--chart-min-annot", "#e06c5a"));
         }
       }

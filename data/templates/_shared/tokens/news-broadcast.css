@@ -49,4 +49,16 @@
   --dur-ambient: 8s;
   --ease-out: power4.out;
   --ease-in: power2.in;
+
+  /* 图表语义（A · 播报）：图表是佐证，给播报条让位。
+     折线粗、面积淡、极值标注用强调色——播报只关心「有没有到过高点」。
+     焦点压暗取 0.55：观众该看的是播报条上的那个数字，不是图上的其他点。 */
+  --chart-line-width: 8px;
+  --chart-area-alpha: 0.10;
+  --chart-max-annot: #e23b2e;
+  --chart-min-annot: #ef7a6a;
+  --chart-min-size: 24px;
+  --focus-dim: 0.55;
+  --focus-ring-width: 6px;
+  --focus-ring-dash: none;
 }

@@ -48,4 +48,17 @@
   --dur-ambient: 11s;
   --ease-out: power2.out;
   --ease-in: sine.in;
+
+  /* 图表语义（B · 调查）：图表是物证，是屏幕上唯一的硬证据。
+     只有线、没有面积（0）——面积会把「一段走势」说成「一块规模」，调查线不这么说。
+     折线细到 4px：它是一条证据线，不是一条强调线。
+     其余条目压暗到 0.28 接近退场：调查只让观众盯住那个圈点。 */
+  --chart-line-width: 4px;
+  --chart-area-alpha: 0;
+  --chart-max-annot: #d9a05b;
+  --chart-min-annot: #c9705f;
+  --chart-min-size: 24px;
+  --focus-dim: 0.28;
+  --focus-ring-width: 4px;
+  --focus-ring-dash: 4 4;
 }

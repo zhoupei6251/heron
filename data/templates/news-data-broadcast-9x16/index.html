@@ -115,14 +115,30 @@ body {
   --dur-ambient: 8s;
   --ease-out: power4.out;
   --ease-in: power2.in;
+
+  /* 图表语义（A · 播报）：图表是佐证，给播报条让位。
+     折线粗、面积淡、极值标注用强调色——播报只关心「有没有到过高点」。
+     焦点压暗取 0.55：观众该看的是播报条上的那个数字，不是图上的其他点。 */
+  --chart-line-width: 8px;
+  --chart-area-alpha: 0.10;
+  --chart-max-annot: #e23b2e;
+  --chart-min-annot: #ef7a6a;
+  --chart-min-size: 24px;
+  --focus-dim: 0.55;
+  --focus-ring-width: 6px;
+  --focus-ring-dash: none;
 }
-/* chart 能力专用样式。仅在 capabilities 含 chart 时注入。 */
+/* chart 能力专用样式。仅在 capabilities 含 chart 时注入。
+   与风格相关的取值一律读令牌（--chart-* / --focus-*），不在这里写死：
+   写死会让三套风格里出现不属于自己的颜色与粗细（过去极值标注就是三套都用青色）。
+   令牌默认值与改动前一致，所以没写这些令牌的老模板行为不变。 */
 #kpi { display: flex; align-items: baseline; gap: 14px; margin-top: 24px; }
 #kpi-value { font-size: var(--fs-data); font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
 #kpi-unit { font-size: var(--fs-label); color: var(--muted); }
 #kpi-change { font-size: 32px; font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
 #focus-caption { margin: 12px 0 0; font-size: 28px; font-weight: 600; line-height: 1.4; color: var(--muted-2); }
-.focus-ring { fill: var(--bg); stroke: var(--accent); stroke-width: 6; }
+.focus-ring { fill: var(--bg); stroke: var(--accent); stroke-width: var(--focus-ring-width, 6px);
+              stroke-dasharray: var(--focus-ring-dash, none); }
 .focus-halo { fill: none; stroke: var(--accent); stroke-width: 18; opacity: 0.22; }
 .focus-link { fill: none; stroke: var(--accent); stroke-width: 4; stroke-dasharray: 10 8; }
 #chart-slot { top: 430px; left: var(--pad-frame); right: var(--pad-frame); height: 760px; overflow: hidden; }
@@ -130,9 +146,10 @@ body {
 .axis { stroke: var(--rule-soft); stroke-width: 2; }
 .axis-label { fill: var(--muted); font-size: var(--fs-label); font-variant-numeric: tabular-nums; }
 .annotation { fill: var(--fg); font-size: var(--fs-label); font-weight: 600; font-variant-numeric: tabular-nums; }
-.series-line { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round;
+.series-line { fill: none; stroke: var(--accent); stroke-width: var(--chart-line-width, 8px);
+               stroke-linecap: round; stroke-linejoin: round;
                filter: drop-shadow(0 0 8px var(--accent-glow)); }
-.series-area { fill: var(--accent); opacity: 0.16; }
+.series-area { fill: var(--accent); opacity: var(--chart-area-alpha, 0.16); }
 .dot { fill: var(--accent); filter: drop-shadow(0 0 10px var(--accent-glow)); }
 .dot-label { fill: var(--fg); font-size: var(--fs-data-sm); font-weight: 700; font-variant-numeric: tabular-nums; }
 .bar { fill: var(--accent); transform-box: fill-box; transform-origin: left center; }
@@ -153,7 +170,12 @@ body {
 .chart-note { fill: var(--muted); font-size: var(--fs-note); }
 /* news-data-broadcast-9x16 的版式差异（风格 A · 专业新闻）。
    视觉签名是下三分之一信息条：整幅色带 + 左侧红色立标 + 屏次编号。
-   纵向预算（1080×1920）：标题区 0–530 / 图表 550–1070 / 播报条 1100–1540 / 底栏 1610–1700。 */
+   纵向预算（1080×1920）：标题区 0–530 / 图表 550–1070 / 播报条 1100–1540 / 底栏 1610–1700。
+
+   本套骨架不变量（改版式必须保住，否则 A 就不再像播报）：
+   1. .scene 是通栏色带：left:0 / right:0 / background:var(--band) / border-left:10px solid var(--accent)
+   2. .scene 用两栏网格，屏次占左栏 120px（这是 A 与其他两套最明显的结构差异）
+   3. .scene 贴底 420px，向上由内容撑开——播报条不许被图表挤掉 */
 #title-card { padding: 130px var(--pad-frame) 0 var(--pad-frame); }
 #kicker { display: flex; align-items: center; gap: 18px; margin-bottom: 28px; }
 #kicker-flag { width: 10px; height: 34px; background: var(--accent); }
@@ -167,6 +189,11 @@ body {
   color: var(--fg);
 }
 #rule { margin-top: 28px; width: 100%; height: var(--rule-width); background: var(--accent); transform-origin: left center; }
+
+/* 图表外观覆盖（L1）：图表是佐证，给播报条让位。
+   删掉口径注记——播报每屏只讲 1 个数 + 1 句话，口径留着是噪声；
+   折线保持粗（令牌 8px）与淡面积（令牌 0.10），让「有没有到过高点」一眼可见。 */
+.chart-note { display: none; }
 
 /* 图表压扁一点给播报条让位：播报条是这套风格的签名，不能被图表挤掉。 */
 #chart-slot { top: 540px; height: 520px; }
@@ -360,6 +387,15 @@ document.querySelectorAll(".scene").forEach((slot) => {
       // 初始化时按实际图位确定坐标系，避免760高的图被缩进460高的版式后字也一起变小。
       const H = Math.round(W * (svg.clientHeight || 760) / (svg.clientWidth || W));
       svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+      // 图表内元素的颜色与字号一律读令牌：写死会让三套风格里出现不属于自己的取值。
+      // 回退值等于改动前的常量，所以没写这些令牌的老模板行为不变。
+      const token = (name, fallback) => cssVar(name) || fallback;
+      // 字号下限：低于 24px 在 1080×1920 上读不出来。过去这里写死 16，
+      // 图表内字号由 JS 反推、构建期扫不到，三套风格一起违规。
+      const minSize = () => {
+        const value = Number.parseFloat(token("--chart-min-size", "24px"));
+        return Number.isFinite(value) && value > 0 ? Math.max(24, value) : 24;
+      };
       const pad = { left: 132, right: 36, top: 56, bottom: 72 };
       const chartEvidence = { points: new Map(), rows: new Map(), series: new Map(), race: null };
       const openingScene = document.querySelector('.scene[data-scene-index="1"]');
@@ -435,14 +471,14 @@ document.querySelectorAll(".scene").forEach((slot) => {
       // 图例行：行高够就名字一行、数值一行，不够就单行。字号按行高反推，下限 16。
       const legendItem = (x, right, y, rowH, color, name, value) => {
         const twoLine = rowH >= 56;
-        const size = Math.max(16, Math.min(24, Math.round(rowH * (twoLine ? 0.26 : 0.42))));
+        const size = Math.max(minSize(), Math.min(28, Math.round(rowH * (twoLine ? 0.26 : 0.42))));
         const row = make("g", {});
         row.appendChild(make("rect", { x, y: y - 10, width: 20, height: 20, rx: 3, fill: color }));
         const nameText = make("text", { x: x + 30, y: twoLine ? y + 2 : y + size * 0.36,
           class: "legend-name", style: "font-size:" + size + "px" });
         nameText.textContent = clipTo(name, right - x - 30, size);
         const valueText = make("text", { x: right, y: twoLine ? y + size * 1.15 : y + size * 0.36,
-          "text-anchor": "end", class: "legend-value", style: "font-size:" + Math.max(16, Math.round(size * 0.8)) + "px" });
+          "text-anchor": "end", class: "legend-value", style: "font-size:" + Math.max(minSize(), Math.round(size * 0.8)) + "px" });
         valueText.textContent = value;
         row.append(nameText, valueText);
         return row;
@@ -453,7 +489,7 @@ document.querySelectorAll(".scene").forEach((slot) => {
         const top = rows.slice().sort((a, b) => b.value - a.value);
         const max = Math.max(...top.map((row) => row.value)) || 1;
         const rowH = (H - pad.top - pad.bottom) / Math.max(top.length, 1);
-        const typeSize = Math.max(16, Math.min(28, Math.round(rowH * 0.44)));
+        const typeSize = Math.max(minSize(), Math.min(28, Math.round(rowH * 0.44)));
         const fontStyle = "font-size:" + typeSize + "px";
         const x0 = 430;
         // 右侧留 210：最长那条的数值要落在柱子外面，不压柱身。
@@ -479,7 +515,7 @@ document.querySelectorAll(".scene").forEach((slot) => {
         const names = Array.from(byName.keys());
         const visibleMax = Math.max(1, Math.min(names.length, 14));
         const rowH = (H - pad.top - pad.bottom) / visibleMax;
-        const typeSize = Math.max(16, Math.min(28, Math.round(rowH * 0.44)));
+        const typeSize = Math.max(minSize(), Math.min(28, Math.round(rowH * 0.44)));
         const fontStyle = "font-size:" + typeSize + "px";
         const barH = Math.max(6, rowH * 0.56);
         const x0 = 430;
@@ -715,10 +751,10 @@ document.querySelectorAll(".scene").forEach((slot) => {
         });
         const arc = (2 * Math.PI * (R + 24)) / Math.max(n, 1);
         const allowed = arc * 0.92;
-        // 字号按最长系列名反推：英文约 0.56em、中文 1em，下限 16。
+        // 字号按最长系列名反推：英文约 0.56em、中文 1em，下限读令牌。
         const nameUnits = Math.max(...axes.map((item) =>
           Array.from(item.name).reduce((sum, ch) => sum + charEm(ch), 0)), 1);
-        const typeSize = Math.max(16, Math.min(24, Math.floor(allowed / nameUnits)));
+        const typeSize = Math.max(minSize(), Math.min(28, Math.floor(allowed / nameUnits)));
         const labels = [];
         const dots = [];
         axes.forEach((item, index) => {
@@ -732,7 +768,7 @@ document.querySelectorAll(".scene").forEach((slot) => {
             class: "radar-label", style: "font-size:" + typeSize + "px", "dominant-baseline": "middle" });
           label.textContent = clipTo(item.name, allowed, typeSize);
           const value = make("tspan", { x: lx.toFixed(1), dy: typeSize * 0.9, class: "radar-value",
-            style: "font-size:" + Math.max(16, Math.round(typeSize * 0.78)) + "px" });
+            style: "font-size:" + Math.max(minSize(), Math.round(typeSize * 0.78)) + "px" });
           value.textContent = clipTo(fmt(item.last), allowed, typeSize * 0.78);
           label.appendChild(value);
           svg.appendChild(label);
@@ -837,10 +873,10 @@ document.querySelectorAll(".scene").forEach((slot) => {
         const lastY = y(rows[rows.length - 1].value);
         const crowded = (index) => Math.abs(x(index) - lastX) < 90 && Math.abs(y(rows[index].value) - lastY) < 48;
         if (maxIndex >= 0 && !crowded(maxIndex)) {
-          annotate(maxIndex, "最高 " + fmt(facts.max.value), "#18b7c9");
+          annotate(maxIndex, "最高 " + fmt(facts.max.value), token("--chart-max-annot", "#18b7c9"));
         }
         if (minIndex >= 0 && !crowded(minIndex)) {
-          annotate(minIndex, "最低 " + fmt(facts.min.value), "#e06c5a");
+          annotate(minIndex, "最低 " + fmt(facts.min.value), token("--chart-min-annot", "#e06c5a"));
         }
       }
 
@@ -947,15 +983,18 @@ function paintEvidence(focus, index) {
     selected.add(names[0]);
     selected.add(names[names.length - 1]);
   }
+  // 压暗强度读令牌：A 播报只要压住、B 调查要接近退场、C 解释要保持可读，
+  // 同一个常量不可能同时满足三套。回退 0.55 与改动前一致。
+  const dim = Number.parseFloat(cssVar("--focus-dim")) || 0.55;
   chartEvidence.rows.forEach((node, name) => {
     const active = selected.size === 0 || selected.has(name);
-    node.bar.style.opacity = active ? "1" : "0.55";
+    node.bar.style.opacity = active ? "1" : String(dim);
     node.label.style.fontWeight = selected.has(name) ? "800" : "600";
     node.value.style.fill = active ? "var(--fg)" : "var(--muted-2)";
   });
   chartEvidence.series.forEach((node, name) => {
     const active = selected.size === 0 || selected.has(name);
-    node.shape.style.filter = active ? "" : "brightness(0.55)";
+    node.shape.style.filter = active ? "" : "brightness(" + dim + ")";
     node.legend.style.fontWeight = selected.has(name) ? "800" : "600";
   });
 }

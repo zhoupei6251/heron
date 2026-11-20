@@ -1,6 +1,11 @@
 /* news-data-9x16 的版式差异（风格 C · 动态数据解释）。令牌见 _shared/tokens/data-board.css。
    纵向预算（1080×1920）：标题区 0–500 / 图表 520–1120 / 场景 1130–1550 / 底栏 1600–1690。
-   改任何一段高度都要重算这条线，否则文字会被自己的盒子裁掉。 */
+   改任何一段高度都要重算这条线，否则文字会被自己的盒子裁掉。
+
+   本套骨架不变量（改版式必须保住，否则 C 就不再像解释）：
+   1. 图表最高最宽（550px，比 A 的 520 与 B 的 460 都高），信息密度最高
+   2. .scene 通栏（left:0 / right:0），屏次序号本身染强调色，当节奏锚点
+   3. #closing 是三套里唯一用面板盒子的（--panel + 左侧 10px 强调条） */
 #title-card { padding: 104px var(--pad-frame) 0 var(--pad-frame); }
 #kicker { display: flex; align-items: center; gap: 16px; margin-bottom: 26px; }
 #kicker-flag { width: 56px; height: 8px; background: var(--accent); }
@@ -14,6 +19,11 @@
   color: var(--fg);
 }
 #rule { margin-top: 26px; width: 100%; height: var(--rule-width); background: var(--accent); transform-origin: left center; }
+/* 图表外观覆盖（L1）：C 把图当主角。
+   面积保留（令牌 0.16）让「一段区间」的体量看得见；口径注记留在图上并加重一档——
+   解释线要让观众知道这个数是怎么来的，而不是只看到一个数。 */
+.chart-note { fill: var(--muted-2); font-weight: 600; }
+
 #chart-slot { top: 500px; height: 550px; }
 
 .scene {

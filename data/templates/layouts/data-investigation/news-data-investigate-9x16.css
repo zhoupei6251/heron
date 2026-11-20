@@ -1,6 +1,11 @@
 /* news-data-investigate-9x16 的版式差异（风格 B · 数据调查）。
    比风格 C 慢一拍：更大的标题、更长的留白、场景文字挂在一条细引线上。
-   纵向预算（1080×1920）：标题区 0–590 / 图表 610–1150 / 场景 1170–1600 / 底栏 1640–1730。 */
+   纵向预算（1080×1920）：标题区 0–590 / 图表 610–1150 / 场景 1170–1600 / 底栏 1640–1730。
+
+   本套骨架不变量（改版式必须保住，否则 B 就不再像调查）：
+   1. .scene 两侧缩进到 --pad-frame 并带 2px 竖引线，文字从引线右侧起排
+   2. .body 是本套唯一的 300 字重（全场最轻的正文），靠 300↔900 的字重差造编辑气质
+   3. #closing 用 border-top 而不是面板盒子——B 不用卡片 */
 #title-card { padding: 150px var(--pad-frame) 0 var(--pad-frame); }
 #kicker { display: flex; align-items: center; gap: 18px; margin-bottom: 30px; }
 #kicker-flag { width: 3px; height: 34px; background: var(--accent); }
@@ -14,6 +19,13 @@
   color: var(--fg);
 }
 #rule { margin-top: 30px; width: 140px; height: var(--rule-width); background: var(--accent); transform-origin: left center; }
+
+/* 图表外观覆盖（L1）：版式 CSS 排在 chart.css 之后，覆盖是合法的，不必改共享 chart.css。
+   B 的图表是物证，不是发光的强调元素：去掉辉光、坐标轴降到最弱、面积归零，
+   让那条线成为一条纯粹的墨线——这是 B 与其他两套在「图表手法」上最直接的差别。 */
+.series-line { filter: none; }
+.axis { stroke: var(--rule-faint); }
+.chart-note { fill: var(--muted-2); }
 
 /* 图表整体下移：风格 B 让标题与数字吃掉上半屏，图表是证据不是主角。 */
 #chart-slot { top: 600px; height: 460px; }
