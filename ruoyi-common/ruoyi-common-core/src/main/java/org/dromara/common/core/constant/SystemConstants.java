@@ -84,8 +84,17 @@ public interface SystemConstants {
 
     /**
      * 排除敏感属性字段
+     *
+     * <p>令牌类必须在名单里：SSE 推送用 EventSource 发请求，带不了请求头，
+     * 前端只能把令牌放进 URL 查询参数。名单里原来只有口令类，
+     * 于是每次 SSE 连接都会把一份可直接使用的会话令牌写进应用日志，
+     * 操作日志还会把同一份存进 sys_oper_log。
+     *
+     * <p>字段名按原样匹配，大小写各写一份（框架里的匹配是大小写敏感的）。
      */
-    String[] EXCLUDE_PROPERTIES = {"password", "oldPassword", "newPassword", "confirmPassword"};
+    String[] EXCLUDE_PROPERTIES = {"password", "oldPassword", "newPassword", "confirmPassword",
+        "Authorization", "authorization", "satoken", "token", "accessToken", "access_token",
+        "secret", "secretKey", "secret_key", "apiKey", "api_key"};
 
 
 }

@@ -74,10 +74,10 @@ services:
     environment:
       # 时区上海
       TZ: Asia/Shanghai
-      # 管理后台用户名
-      MINIO_ROOT_USER: ruoyi
-      # 管理后台密码，最小8个字符
-      MINIO_ROOT_PASSWORD: ruoyi123
+      # 管理后台用户名，必填：仓库不留固定账号
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?请通过环境变量或 --env-file 指定 MINIO_ROOT_USER}
+      # 管理后台密码，必填：最小8个字符
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?请通过环境变量或 --env-file 指定 MINIO_ROOT_PASSWORD}
       # https需要指定域名
       #MINIO_SERVER_URL: "https://xxx.com:9000"
       #MINIO_BROWSER_REDIRECT_URL: "https://xxx.com:9001"
@@ -103,13 +103,16 @@ services:
       # 时区上海
       TZ: Asia/Shanghai
       HERON_PASSWORD: ${HERON_PASSWORD:?请通过环境变量或 --env-file 指定 HERON_PASSWORD}
-      SERVER_PORT: 8080
+      SERVER_PORT: 8085
       SNAIL_JOB_PORT: 28080
       SNAIL_AI_PORT: 38080
       # 显式钉住生产 profile，避免用了 dev 构建出来的镜像
       SPRING_PROFILES_ACTIVE: prod
       # dev 占 Redis db 0，生产用 db 1，避免缓存 key 指向不同库却互相命中
       SPRING_DATA_REDIS_DATABASE: 1
+      # JWT 签名密钥，必填：泄露了就能伪造任意用户的登录令牌。
+      # 多实例必须用同一个值，否则跨实例的令牌互相不认。
+      SA_TOKEN_JWT_SECRET: ${SA_TOKEN_JWT_SECRET:?请通过环境变量或 --env-file 指定 SA_TOKEN_JWT_SECRET}
     volumes:
       # 配置文件
       - /docker/server1/logs/:/heron/server/logs/
@@ -125,9 +128,16 @@ services:
       # 时区上海
       TZ: Asia/Shanghai
       HERON_PASSWORD: ${HERON_PASSWORD:?请通过环境变量或 --env-file 指定 HERON_PASSWORD}
-      SERVER_PORT: 8081
+      SERVER_PORT: 8086
       SNAIL_JOB_PORT: 28081
       SNAIL_AI_PORT: 38081
+      # 与 server1 同一个密钥，否则跨实例的令牌互相不认
+      SA_TOKEN_JWT_SECRET: ${SA_TOKEN_JWT_SECRET:?请通过环境变量或 --env-file 指定 SA_TOKEN_JWT_SECRET}
+      # 显式钉住生产 profile：不钉的话 server2 会读 application-dev.yml 的开发兜底密钥，
+      # 那份值写在仓库里，等于对外环境用着公开的签名密钥。
+      SPRING_PROFILES_ACTIVE: prod
+      # 与 server1 同一个 Redis 库，否则两个实例各写各的缓存
+      SPRING_DATA_REDIS_DATABASE: 1
     volumes:
       # 配置文件
       - /docker/server2/logs/:/heron/server/logs/

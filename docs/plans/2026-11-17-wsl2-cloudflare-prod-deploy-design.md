@@ -143,7 +143,14 @@ docker exec heron-dev-mysql sh -c \
 
 # 4. 起容器
 cd /docker/prod
-HERON_PASSWORD='heron!2026' docker compose up -d heron-server1 nginx-web
+# compose 的变量插值对整个文件生效：minio 不启动也必须给出 MINIO_ROOT_USER/PASSWORD，
+# 否则整份 compose 解析失败（不是只有 minio 服务报错）。
+HERON_PASSWORD='heron!2026' \
+MINIO_ROOT_USER='<minio账号>' \
+MINIO_ROOT_PASSWORD='<minio密码，至少8位>' \
+  docker compose up -d heron-server1 nginx-web
+# 或者写成 /docker/prod/.env（不入版本库，模板见 script/docker/prod/.env.example）
+# 后用 docker compose --env-file .env up -d heron-server1 nginx-web
 
 # 5. 起前端静态服务
 docker compose -f /docker/docker-compose.yml up -d nginx-web

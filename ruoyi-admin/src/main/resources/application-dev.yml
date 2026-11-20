@@ -373,3 +373,9 @@ heron:
     publish-command: ${HERON_PUBLISH_COMMAND:./data/tools/social-auto-upload/.venv/Scripts/sau.exe}
     publish-account: heron
     publish-timeout-seconds: 240
+
+--- # Sa-Token：本地开发的兜底签名密钥
+# 生产（application-prod.yml）没有这一条，密钥必须由 SA_TOKEN_JWT_SECRET 显式给出，
+# 没给就启动失败。这里的兜底值只对本机开发有效，任何暴露到公网的环境都不许用它。
+sa-token:
+  jwt-secret-key: ${SA_TOKEN_JWT_SECRET:heron-local-dev-jwt-secret-not-for-production}

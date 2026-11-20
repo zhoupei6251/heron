@@ -38,6 +38,9 @@ class LogFunctionTest {
 
     private static final AtomicReference<OperLogEvent> LAST_EVENT = new AtomicReference<>();
 
+    /** 一段形状与真实令牌一致的样例，只用于验证它不会被记录下来。 */
+    private static final String FAKE_TOKEN = "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature";
+
     /**
      * 初始化日志切面依赖的 JSON 映射器和事件容器，避免启动完整 Spring 应用。
      */
@@ -139,6 +142,36 @@ class LogFunctionTest {
         assertTrue(event.getOperParam().contains("alice"));
         assertFalse(event.getOperParam().contains("secret"));
         assertTrue(event.getJsonResult().contains("\"id\":1"));
+    }
+
+    /**
+     * 验证查询参数里的会话令牌不进操作日志。
+     *
+     * <p>SSE 推送用 EventSource 发请求，带不了请求头，前端只能把令牌放进 URL 查询参数。
+     * 这一份原样存进 sys_oper_log，就等于把一份能直接登录的令牌交出去了。
+     *
+     * @throws Throwable 切面调用失败
+     */
+    @Test
+    @DisplayName("查询参数里的会话令牌不进操作日志")
+    void shouldNotPersistTokenFromQueryParams() throws Throwable {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/resource/message");
+        request.setParameter("Authorization", FAKE_TOKEN);
+        request.setParameter("clientid", "e5cd7e4891bf95d1d19206ce24a7b32e");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        Log annotation = TestController.class.getDeclaredMethod("create", CreateRequest.class).getAnnotation(Log.class);
+        ProceedingJoinPoint joinPoint = joinPoint(new CreateRequest("alice", "secret"), Map.of("id", 1L));
+
+        try (var login = mockStatic(LoginHelper.class)) {
+            login.when(LoginHelper::getLoginUser).thenReturn(null);
+            new LogAspect().doAround(joinPoint, annotation);
+        }
+
+        OperLogEvent event = LAST_EVENT.get();
+        assertNotNull(event);
+        assertFalse(event.getOperParam().contains("eyJhbGciOiJIUzI1NiJ9"), "会话令牌不许进操作日志");
+        assertTrue(event.getOperParam().contains("clientid"), "非敏感参数仍然要留在操作日志里");
     }
 
     /**

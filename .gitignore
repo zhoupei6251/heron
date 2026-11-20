@@ -42,6 +42,8 @@ nbdist/
 # Others
 *.log
 *.log.gz
+# 本地 run 脚本的落盘输出（logs-dev.err/.out 等），文件名不带 .log 后缀
+logs-dev.*
 *.xml.versionsBackup
 *.swp
 
@@ -83,6 +85,7 @@ application-ga.yml
 
 # AI 工具本机挂载（junction 指向 harness-factory 与前端仓库，不提交）
 .agents/
+.dsh/
 .qoder/
 .codebuddy/
 .workbuddy/
