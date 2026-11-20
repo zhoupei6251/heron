@@ -62,8 +62,18 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         return work.getOwnerId();
     }
 
+    /**
+     * 这条视频属于哪条子线：数据看板线还是文稿解说线。
+     *
+     * <p>由线内编辑的选择直接给出，不由模板名前缀反推——反推等于让命名决定业务。
+     * 表现归因也按这一层分桶，所以取值和写入放在一处，免得两处各写一份判定。
+     */
+    static String kindOf(EditorialSelection selection) {
+        return selection != null && selection.dataBoard() ? "data_board" : "article";
+    }
+
     /** 总编辑判断：线、意图、理由，以及提示词版本，便于回溯「当时为什么这么选」。 */
-    private static Map<String, Object> editorialNode(HeronNewsWork work, ProductionSubmitBo command) {
+    static Map<String, Object> editorialNode(HeronNewsWork work, ProductionSubmitBo command) {
         Map<String, Object> editorial = new LinkedHashMap<>();
         editorial.put("runKey", work.getCreateTime() == null ? null : work.getCreateTime().toString());
         editorial.put("line", command.selection().line());
@@ -71,11 +81,36 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         editorial.put("reason", command.editorial().reason());
         editorial.put("storyAngle", command.selection().storyAngle());
         editorial.put("promptVersion", "daily-editor-v1");
+        // 选题当时的判断：机会的头线与信号。写稿必须接住它们——
+        // 不带进来，机会就只是「今天挑了它」，片子还是一条与选题无关的通用稿。
+        EditorialSelection.Opportunity opportunity = command.selection().opportunity();
+        if (opportunity != null) {
+            if (opportunity.headline() != null && !opportunity.headline().isBlank()) {
+                editorial.put("opportunityHeadline", opportunity.headline());
+            }
+            Map<String, Object> signals = parseSignals(opportunity.signals());
+            if (!signals.isEmpty()) {
+                editorial.put("opportunitySignals", signals);
+            }
+        }
         return editorial;
     }
 
+    /** 机会的信号 JSON：解析不了就不写，不让一段坏 JSON 进冻结输入。 */
+    private static Map<String, Object> parseSignals(String signals) {
+        if (signals == null || signals.isBlank()) {
+            return Map.of();
+        }
+        try {
+            Map<String, Object> parsed = JsonUtils.parseObject(signals, Map.class);
+            return parsed == null ? Map.of() : parsed;
+        } catch (RuntimeException e) {
+            return Map.of();
+        }
+    }
+
     /** 线内编辑结果：具体选了哪条候选、哪个数据集、哪套模板、引用了哪些证据。 */
-    private static Map<String, Object> selectionNode(EditorialSelection selection) {
+    static Map<String, Object> selectionNode(EditorialSelection selection) {
         Map<String, Object> node = new LinkedHashMap<>();
         node.put("candidateId", selection.candidateId());
         node.put("dataSourceKey", selection.dataSourceKey());
@@ -86,6 +121,33 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         // 只有从数据机会来的片子才带这一项：留空就不写，解说线的冻结快照与改动前逐字节一致
         if (selection.opportunityId() != null) {
             node.put("opportunityId", selection.opportunityId());
+        }
+        // 取数口径随冻结输入落盘：生产必须按同一条口径取数，两边归约出的 sha 才有的比。
+        Map<String, Object> window = datasetWindowNode(selection);
+        if (window != null) {
+            node.put("datasetWindow", window);
+        }
+        return node;
+    }
+
+    /**
+     * 机会当时的取数口径：源、点数、形态、节奏、指标，以及选题那次的快照哈希。
+     *
+     * <p>没有机会就没有口径：老快照与非机会驱动的速览走兼容分支，不写这一节点。
+     */
+    private static Map<String, Object> datasetWindowNode(EditorialSelection selection) {
+        EditorialSelection.Opportunity opportunity = selection.opportunity();
+        if (opportunity == null) {
+            return null;
+        }
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("sourceKey", opportunity.sourceKey());
+        node.put("points", opportunity.windowPoints());
+        node.put("shape", opportunity.shape());
+        node.put("cadence", opportunity.cadence());
+        node.put("metricKey", opportunity.metricKey());
+        if (opportunity.expectedDataSha256() != null && !opportunity.expectedDataSha256().isBlank()) {
+            node.put("expectedDataSha256", opportunity.expectedDataSha256());
         }
         return node;
     }
@@ -119,7 +181,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         // 生产线由线内编辑显式给定，不再从模板名前缀反推：
         // 反推等于让命名决定业务，改模板名就会改出片逻辑。
         EditorialSelection selection = command.selection();
-        snapshot.put("kind", selection != null && selection.dataBoard() ? "data_board" : "article");
+        snapshot.put("kind", kindOf(selection));
         if (command.editorial() != null && selection != null) {
             snapshot.put("editorial", editorialNode(work, command));
             snapshot.put("selection", selectionNode(selection));
@@ -185,6 +247,13 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         JsonNode reviewRecord = content.path("editorialReview");
         if (!reviewRecord.isObject()) throw conflict("result_invalid", "缺少 AI 审稿记录");
         String editorialReview = JsonUtils.toJsonString(reviewRecord);
+        // 质量报告与内容属性是辅助层：缺失只说明没做过，不阻塞版本完成，更不参与发布门禁。
+        JsonNode qualityRecord = content.path("qualityReport");
+        String qualityReport = qualityRecord.isObject() ? JsonUtils.toJsonString(qualityRecord) : null;
+        if (qualityReport != null) boundedJson(qualityReport);
+        JsonNode profileRecord = content.path("contentProfile");
+        String contentProfile = profileRecord.isObject() ? JsonUtils.toJsonString(profileRecord) : null;
+        if (contentProfile != null) boundedJson(contentProfile);
         validateManifest(version, task, result.artifacts(), true);
         String manifest = JsonUtils.toJsonString(result.artifacts());
         boundedJson(manifest);
@@ -193,6 +262,8 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             .set(HeronVideoVersion::getArtifactManifest, manifest).set(HeronVideoVersion::getChecks, checks)
             .set(HeronVideoVersion::getEditorialReview, editorialReview)
             .set(HeronVideoVersion::getDurationMs, content.path("durationMs").asLong())
+            .set(qualityReport != null, HeronVideoVersion::getQualityReport, qualityReport)
+            .set(contentProfile != null, HeronVideoVersion::getContentProfile, contentProfile)
             .set(HeronVideoVersion::getUpdateBy, task.getActorId()).set(HeronVideoVersion::getUpdateTime, now())
             .eq(HeronVideoVersion::getVersionId, version.getVersionId()).eq(HeronVideoVersion::getTaskId, task.getTaskId())
             .isNull(HeronVideoVersion::getArtifactManifest).isNull(HeronVideoVersion::getScript)

@@ -83,6 +83,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private final DatasetFetchService datasets;
     private final DatasetScriptAuthor datasetAuthor;
     private final EditorialReviewer reviewer;
+    private final QualityReviewer qualityReviewer;
     private final NewsSourceFetcher fetcher;
     private final FrozenContextService contexts;
 
@@ -90,8 +91,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
                                   ProductionArtifactService artifacts, HeronProductionProperties properties,
                                   ProductionStageReporter stages, DatasetRouter router,
                                   DatasetFetchService datasets, DatasetScriptAuthor datasetAuthor,
-                                  EditorialReviewer reviewer, NewsSourceFetcher fetcher,
-                                  FrozenContextService contexts) {
+                                  EditorialReviewer reviewer, QualityReviewer qualityReviewer,
+                                  NewsSourceFetcher fetcher, FrozenContextService contexts) {
         this.author = author;
         this.processes = processes;
         this.artifacts = artifacts;
@@ -101,6 +102,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         this.datasets = datasets;
         this.datasetAuthor = datasetAuthor;
         this.reviewer = reviewer;
+        this.qualityReviewer = qualityReviewer;
         this.fetcher = fetcher;
         this.contexts = contexts;
     }
@@ -127,22 +129,34 @@ public class NewsProductionPipeline implements IProductionPipeline {
         DatasetFetchService.Result fetched = null;
         JsonNode dataset = null;
         String scriptJson;
+        String hookType = null;
         ReviewOutcome review;
         if (dataBoard) {
             DatasetRouter.Route route = frozenRoute(run, input);
-            fetched = datasets.fetch(run, route.sourceKey(), input.path("limit").asInt(30));
+            // 取数口径随冻结输入走：选题当时用多少点，这里就用多少点。
+            // 过去固定取 30 点，与选题分析的窗口必然不同，两边归约出的 sha 也永远比不了。
+            DatasetWindowContract.Window window = DatasetWindowContract.windowOf(input);
+            List<String> incomplete = DatasetWindowContract.windowViolations(window);
+            if (!incomplete.isEmpty()) {
+                throw new HeronBusinessException(409, "dataset_window_mismatch",
+                    "冻结的取数口径不完整，不去取数：" + String.join("；", incomplete));
+            }
+            fetched = datasets.fetch(run, route.sourceKey(), DatasetWindowContract.pointsOf(input));
             dataset = JSON.readTree(fetched.json());
-            gates.add(dataGate(fetched, dataset));
+            gates.add(dataGate(dataset, window));
             gates.add(datasetEvidenceGate(dataset));
-            scriptJson = datasetAuthor.author(run, fetched.json(), route.digest());
-            review = reviewScript(run, scriptJson, dataset.path("facts").toString(), fetched, true);
+            DatasetScriptAuthor.Result draft = datasetAuthor.author(run, fetched.json(), route.digest());
+            scriptJson = draft.script();
+            hookType = draft.hookType();
+            review = reviewScript(run, scriptJson, dataset.path("facts").toString(), fetched, true, hookType);
         } else {
             // 正文由作者从冻结层取：首次抓取并落库，重试读同一份，写稿阶段不再二次出网
             scriptJson = author.author(run);
             // 解说线此前完全没有审稿，自动确认会把没审过的片子直接发出去
-            review = reviewScript(run, scriptJson, evidenceQuotes(input), null, false);
+            review = reviewScript(run, scriptJson, evidenceQuotes(input), null, false, null);
         }
         scriptJson = review.script;
+        hookType = review.hookType;
         JsonNode script = JSON.readTree(scriptJson);
         gates.add(contractGate(script, dataset, dataBoard));
         if (!dataBoard) {
@@ -215,7 +229,57 @@ public class NewsProductionPipeline implements IProductionPipeline {
         }
         result.put("durationMs", (long) Math.round(audioSeconds * 1000));
         result.put("checks", JSON.readTree(checks));
+        // 质量报告与内容属性都是「有就更好」：审稿失败不阻塞出片，属性取不到就不写。
+        String qualityReport = qualityReport(run, script, dataset, checks, subtitles);
+        if (qualityReport != null) {
+            result.put("qualityReport", JSON.readTree(qualityReport));
+        }
+        String contentProfile = ContentProfileWriter.writeJson(hookType, script);
+        if (contentProfile != null) {
+            result.put("contentProfile", JSON.readTree(contentProfile));
+        }
         return new ProductionResultVo(files, JSON.writeValueAsString(result));
+    }
+
+    /**
+     * 成片级质量审稿（L3）。
+     *
+     * <p>L3 不是闸：它失败时这条片子照常完成、照常可发布。审不出来就不写报告，
+     * 比写一份半成品更诚实。
+     */
+    private String qualityReport(ProductionRunVo run, JsonNode script, JsonNode dataset, String checks,
+                                 String subtitles) {
+        try {
+            QualityCriteria.Context ctx = new QualityCriteria.Context(run.versionId(), "final", script, dataset,
+                JSON.readTree(checks), subtitles == null ? null : JSON.readTree(subtitles), focusMap(script, dataset));
+            return qualityReviewer.review(run, ctx);
+        } catch (RuntimeException e) {
+            log.warn("质量审稿未完成，成片照常交付（versionId={}）：{}", run.versionId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 每段的画面焦点。
+     *
+     * <p>焦点由同一份稿子推出来，所以它只能证明「引用可解析」，不能证明「画面讲了另一件事」——
+     * 这层局限写在审稿报告的 reason 里，不假装能做画面比对。
+     */
+    private static java.util.Map<Integer, DatasetVisualFocus.Focus> focusMap(JsonNode script, JsonNode dataset) {
+        java.util.Map<Integer, DatasetVisualFocus.Focus> focus = new java.util.LinkedHashMap<>();
+        JsonNode scenes = script.path("scenes");
+        if (!scenes.isArray() || dataset == null) {
+            return focus;
+        }
+        for (int index = 0; index < scenes.size(); index++) {
+            try {
+                focus.put(index + 1, DatasetVisualFocus.forScene(scenes.get(index), dataset));
+            } catch (RuntimeException e) {
+                // 焦点算不出来就当这一段没有焦点证据，不让审稿整体失败。
+                log.warn("第 {} 段的画面焦点无法解析：{}", index + 1, e.getMessage());
+            }
+        }
+        return focus;
     }
 
     // ---------- 十道闸 ----------
@@ -288,12 +352,40 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return new Gate("schema", "script", "字段、时长合计与重复检查全过", Map.of("violations", 0));
     }
 
-    private static Gate dataGate(DatasetFetchService.Result fetched, JsonNode dataset) {
+    /**
+     * 数据闸：快照内部一致（facts、哈希、占位符已由取数链重算过），
+     * 并且取数口径与冻结输入对得上。
+     *
+     * <p>口径不一致直接拒：那是「按另一条口径取的数据」，静默出片等于骗人。
+     * 口径一致但上游数据变了（活的源每天都在变）不在这里拒——
+     * 拒了每日看板线就出不了片——但两个哈希都要留在报告里，不许悄悄换一批数据。
+     */
+    private static Gate dataGate(JsonNode dataset, DatasetWindowContract.Window window) {
+        List<String> problems = DatasetWindowContract.violations(window, dataset);
+        if (!problems.isEmpty()) {
+            throw new HeronBusinessException(409, "dataset_window_mismatch",
+                "取数口径与冻结输入不一致：" + String.join("；", problems));
+        }
         Map<String, Object> measured = new TreeMap<>();
         measured.put("dataSha", true);
         measured.put("rows", dataset.path("rows").size());
         measured.put("points", dataset.path("time_range").path("points").asInt(dataset.path("rows").size()));
-        return new Gate("data", "dataset.json", "快照与 facts、哈希、占位符全部重算通过", measured);
+        measured.put("windowFrozen", window != null);
+        String reason = "快照与 facts、哈希、占位符全部重算通过";
+        if (window != null) {
+            measured.put("windowPoints", window.points());
+            boolean same = DatasetWindowContract.sameBatch(window, dataset);
+            measured.put("shaMatched", same);
+            if (same) {
+                reason = "取数口径与冻结输入一致，快照与 facts、哈希、占位符全部重算通过";
+            } else if (window.expectedDataSha256().isBlank()) {
+                reason = "取数口径与冻结输入一致，但冻结输入没有期望哈希，只能核口径不能核批次";
+            } else {
+                reason = "取数口径与冻结输入一致，但上游数据在选题之后更新过：期望 sha "
+                    + window.expectedDataSha256() + "，实得 sha " + dataset.path("data_sha256").asString("");
+            }
+        }
+        return new Gate("data", "dataset.json", reason, measured);
     }
 
     /** 审稿发现表达与事实矛盾时定向改一次；改完还不合格就退出，不无限重试。 */
@@ -304,13 +396,16 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private final class ReviewOutcome {
         String script;
         String record;
+        /** 最终稿选中标题的钩子类型；审稿修复换题后必须跟着换，不能沿用旧值。 */
+        String hookType;
     }
 
     private ReviewOutcome reviewScript(ProductionRunVo run, String scriptJson, String basisJson,
-                                       DatasetFetchService.Result datasetFetched, boolean dataBoard) {
+                                       DatasetFetchService.Result datasetFetched, boolean dataBoard,
+                                       String hookType) {
         EditorialReviewer.Verdict verdict = review(run, scriptJson, basisJson, dataBoard);
         if (!verdict.blocked()) {
-            return reviewed(scriptJson, verdict, 0, dataBoard);
+            return reviewed(scriptJson, verdict, 0, dataBoard, hookType);
         }
         // 证据不够：改稿救不了。把核不住的断言删掉只会得到一条没有信息量的稿子，
         // 那不是自愈是降级凑数。这类失败交给槽位层换选题。
@@ -318,14 +413,21 @@ public class NewsProductionPipeline implements IProductionPipeline {
             throw reviewBlocked(verdict, "证据不足以支持核心断言");
         }
         // 文案跑在证据前面（夸大、因果、时态）：改一轮再说
-        String repaired = datasetFetched == null
-            ? author.repair(run, scriptJson, verdict.blockingNotes())
-            : datasetAuthor.repair(run, datasetFetched.json(), scriptJson, verdict.blockingNotes());
+        String repaired = scriptJson;
+        String repairedHook = hookType;
+        if (datasetFetched == null) {
+            repaired = author.repair(run, scriptJson, verdict.blockingNotes());
+        } else {
+            DatasetScriptAuthor.Result result =
+                datasetAuthor.repair(run, datasetFetched.json(), scriptJson, verdict.blockingNotes());
+            repaired = result.script();
+            repairedHook = result.hookType();
+        }
         EditorialReviewer.Verdict again = review(run, repaired, basisJson, dataBoard);
         if (again.blocked()) {
             throw reviewBlocked(again, "改稿后仍未通过");
         }
-        return reviewed(repaired, again, 1, dataBoard);
+        return reviewed(repaired, again, 1, dataBoard, repairedHook);
     }
 
     private EditorialReviewer.Verdict review(ProductionRunVo run, String scriptJson, String basisJson,
@@ -336,9 +438,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     private ReviewOutcome reviewed(String script, EditorialReviewer.Verdict verdict,
-                                   int attempts, boolean dataBoard) {
+                                   int attempts, boolean dataBoard, String hookType) {
         ReviewOutcome outcome = new ReviewOutcome();
         outcome.script = script;
+        outcome.hookType = hookType;
         outcome.record = verdict.toRecord(attempts, dataBoard ? "editorial-review" : "evidence-review",
             LocalDateTime.now(ZoneOffset.UTC));
         return outcome;

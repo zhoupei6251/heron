@@ -1,5 +1,16 @@
--- 发布尝试独立于发布事实：上传前提交；未知结果保留锁，人工核对后才能释放。
--- 迁移仅生成，应用代码启用前须由部署流程执行。回滚前必须先停用新发布入口并处置未决尝试。
+-- 发布尝试账本：上传前先提交一条 started，结果未知就保留锁，人工核对后才能释放。
+--
+-- 为什么现在补：Java 侧 HeronNewsPublishAttempt / HeronNewsPublishAttemptMapper
+-- 已经在读写这张表（含 active_candidate_id 生成列与 FOR UPDATE 查询），但建表语句
+-- 只存在于手工迁移时代的 script/sql/heron/046，Flyway locations 下没有它，
+-- 部署库启动后这张表根本不存在。
+--
+-- active_candidate_id 必须是 STORED 生成列 + 唯一键：候选级「只能有一条活动尝试」
+-- 这条不变量由数据库兜底，不能靠应用层先查后写。
+--
+-- 回滚：先停用新发布入口并处置未决尝试，再
+--   DROP TABLE heron_news_publish_attempt;
+
 CREATE TABLE heron_news_publish_attempt (
   attempt_id bigint NOT NULL,
   candidate_id bigint NOT NULL,

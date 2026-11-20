@@ -78,6 +78,88 @@ class DatasetScriptContractTest {
     }
 
     @Test
+    @DisplayName("geo 没有渲染模块：映射为空、不可渲染、契约直接拒绝")
+    void geoFailsClosed() {
+        assertTrue(DatasetScriptContract.chartFor("geo").isEmpty(), "geo 不该再映射到没有实现的 map");
+        assertFalse(DatasetScriptContract.renderable("geo"));
+        assertTrue(DatasetScriptContract.renderable("wide"));
+        assertTrue(DatasetScriptContract.renderable("long"));
+        assertTrue(DatasetScriptContract.renderable("rows"));
+        tools.jackson.databind.node.ObjectNode geo = JSON.createObjectNode();
+        geo.put("shape", "geo");
+        List<String> items = DatasetScriptContract.violations(
+            JSON.readTree(script(snapshot().path("data_sha256").asString(), "", "上涨 {{facts.change}} 美元。")), geo);
+        assertTrue(items.stream().anyMatch(item -> item.contains("geo") && item.contains("没有可渲染")), items.toString());
+    }
+
+    @Test
+    @DisplayName("未知形态一律不可渲染，不会静默放行")
+    void unknownShapeNotRenderable() {
+        assertFalse(DatasetScriptContract.renderable(""));
+        assertFalse(DatasetScriptContract.renderable(null));
+        assertFalse(DatasetScriptContract.renderable("hectare"));
+    }
+
+    @Test
+    @DisplayName("开场先讲来源口径直接退回")
+    void metaOpeningRejected() {
+        List<String> items = DatasetScriptContract.violations(JSON.readTree(scriptWithOpening(
+            "数据源显示金价在动", "最新收于 {{facts.last.value}} 美元。")), snapshot());
+        assertTrue(items.stream().anyMatch(item -> item.contains("来源或口径")), items.toString());
+    }
+
+    @Test
+    @DisplayName("前两屏没有任何数据事实直接退回")
+    void earlyScenesWithoutFactsRejected() {
+        List<String> items = DatasetScriptContract.violations(JSON.readTree(
+            "{\"dataset_sha256\":\"" + snapshot().path("data_sha256").asString()
+                + "\",\"source_key\":\"sina-gold-xau\",\"chart\":\"line\","
+                + "\"title\":\"金价再创新高\",\"scenes\":["
+                + "{\"lead\":\"金价最近很热闹\",\"body\":\"各方都在讨论。\",\"duration_s\":15},"
+                + "{\"lead\":\"市场情绪高涨\",\"body\":\"讨论的人越来越多。\",\"duration_s\":15},"
+                + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":15}],"
+                + "\"closing\":\"关注接下来的走势。\",\"source_name\":\"来源：新浪财经\"}"), snapshot());
+        assertTrue(items.stream().anyMatch(item -> item.contains("前两屏")), items.toString());
+    }
+
+    @Test
+    @DisplayName("开场逐字复读标题直接退回")
+    void openingRepeatingTitleRejected() {
+        List<String> items = DatasetScriptContract.violations(JSON.readTree(scriptWithOpening(
+            "金价再创新高", "实际是区间累计涨幅 {{facts.change_pct}}%。")), snapshot());
+        assertTrue(items.stream().anyMatch(item -> item.contains("复读") || item.contains("逐字重复")),
+            items.toString());
+    }
+
+    @Test
+    @DisplayName("结尾空关注引导直接退回")
+    void emptyClosingRejected() {
+        String withEmpty = valid().replace("关注接下来的走势。", "记得点个关注，我们下期再见。");
+        List<String> items = DatasetScriptContract.violations(JSON.readTree(withEmpty), snapshot());
+        assertTrue(items.stream().anyMatch(item -> item.contains("空泛的关注引导")), items.toString());
+    }
+
+    @Test
+    @DisplayName("只有一段引用事实直接退回")
+    void tooFewFactScenesRejected() {
+        String thin = valid().replace("上涨 {{facts.change}} 美元，涨幅 {{facts.change_pct}}%。", "这就是重点。")
+            .replace("区间最高 {{facts.max.value}} 美元。", "高点也很关键。");
+        List<String> items = DatasetScriptContract.violations(JSON.readTree(thin), snapshot());
+        assertTrue(items.stream().anyMatch(item -> item.contains("引用数据事实")), items.toString());
+    }
+
+    /** 第一段换成给定 lead/body，其余段沿用合规样稿。 */
+    private static String scriptWithOpening(String lead, String body) {
+        return "{\"dataset_sha256\":\"" + snapshot().path("data_sha256").asString()
+            + "\",\"source_key\":\"sina-gold-xau\",\"chart\":\"line\","
+            + "\"title\":\"金价再创新高\",\"scenes\":["
+            + "{\"lead\":\"" + lead + "\",\"body\":\"" + body + "\",\"duration_s\":15},"
+            + "{\"lead\":\"较区间起点走高\",\"body\":\"上涨 {{facts.change}} 美元。\",\"duration_s\":15},"
+            + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":15}],"
+            + "\"closing\":\"关注接下来的走势。\",\"source_name\":\"来源：新浪财经\"}";
+    }
+
+    @Test
     @DisplayName("哈希、图表类型、未知字段与段落数都拒绝")
     void rejectsShapeDrift() {
         String sha = snapshot().path("data_sha256").asString();

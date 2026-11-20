@@ -1,16 +1,21 @@
 package org.dromara.heron.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.R;
 import org.dromara.common.log.annotation.Log;
 import org.dromara.common.log.enums.BusinessType;
+import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.heron.config.HeronNewsProperties;
+import org.dromara.heron.domain.bo.StrategyOverrideBo;
 import org.dromara.heron.service.impl.NewsAutoService;
+import org.dromara.heron.service.impl.StrategyReferenceService;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -22,6 +27,7 @@ import java.util.Map;
 public class HeronAutoController extends BaseController {
     private final NewsAutoService auto;
     private final HeronNewsProperties news;
+    private final StrategyReferenceService references;
 
     @SaCheckPermission("heron:production:query")
     @GetMapping("/status")
@@ -62,6 +68,22 @@ public class HeronAutoController extends BaseController {
     @PostMapping("/resume")
     public R<Void> resume() {
         auto.pause(false);
+        return R.ok();
+    }
+
+    /**
+     * 记一条人工策略覆盖。
+     *
+     * <p>覆盖只追加不改写原决策：解除要再写一条 unlock。锁必须带到期时间——
+     * 没有期限的锁会永久改变生产策略，以后没人说得清它是什么时候开始的。
+     */
+    @SaCheckPermission("heron:newsWork:review")
+    @Log(title = "策略覆盖", businessType = BusinessType.INSERT)
+    @PostMapping("/override")
+    public R<Void> override(@RequestBody @Valid StrategyOverrideBo bo) {
+        references.appendOverride(bo.getSlotDate(), bo.getSlotTime(), new StrategyReferenceService.Override(
+            bo.getAction(), bo.getScope(), bo.getValue(), bo.getReason(),
+            LoginHelper.getUserId(), LocalDateTime.now(ZoneOffset.UTC), bo.getScopeUntil(), "manual"));
         return R.ok();
     }
 }

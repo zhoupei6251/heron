@@ -104,6 +104,14 @@ public class DatasetFetchService {
             health(() -> markFailed(source, error.getMessage()));
             throw error;
         }
+        // 形态合格不等于能出图：契约里登记过的形态（如 geo）可能没有对应图表模块。
+        // 在取数这一步就停住，别等写完稿、配完音才发现渲染端无处可画。
+        if (!DatasetScriptContract.renderable(actual)) {
+            HeronBusinessException error = new HeronBusinessException(409, "dataset_shape_unsupported",
+                "数据形态 " + actual + " 当前没有可渲染的图表模块，不能进生产：" + sourceKey);
+            health(() -> markFailed(source, error.getMessage()));
+            throw error;
+        }
         // 走到这里说明这个源真的产出了一份合格快照——这就是一次成功的探测
         health(() -> dataSourceMapper.markHealthy(sourceKey, LocalDateTime.now()));
         return new Fetched(json, snapshot);

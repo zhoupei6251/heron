@@ -8,6 +8,7 @@ import io.agentscope.harness.agent.HarnessAgent;
 import org.dromara.heron.mapper.HeronAgentToolCallMapper;
 import org.dromara.heron.mapper.HeronDataOpportunityMapper;
 import org.dromara.heron.mapper.HeronDataSourceMapper;
+import org.dromara.heron.mapper.HeronResearchSnapshotMapper;
 import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.dromara.heron.service.impl.DatasetFetchService;
 import org.dromara.heron.service.impl.OpenAiModelClient;
@@ -46,6 +47,7 @@ class AgentRuntimeConfigTest {
         .withBean(HeronDataSourceMapper.class, () -> mock(HeronDataSourceMapper.class))
         .withBean(HeronVideoVersionMapper.class, () -> mock(HeronVideoVersionMapper.class))
         .withBean(HeronAgentToolCallMapper.class, () -> mock(HeronAgentToolCallMapper.class))
+        .withBean(HeronResearchSnapshotMapper.class, () -> mock(HeronResearchSnapshotMapper.class))
         // L1 档走轻量模型客户端，装配时需要有这个 Bean
         .withBean(OpenAiModelClient.class,
             () -> mock(OpenAiModelClient.class, org.mockito.Mockito.withSettings().lenient()))

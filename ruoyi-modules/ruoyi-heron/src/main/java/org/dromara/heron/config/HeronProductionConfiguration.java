@@ -20,6 +20,7 @@ import org.dromara.heron.service.impl.ProductionProcessService;
 import org.dromara.heron.service.impl.ProductionRecoveryService;
 import org.dromara.heron.service.impl.ProductionRunner;
 import org.dromara.heron.service.impl.ProductionUsageService;
+import org.dromara.heron.service.impl.QualityReviewer;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -87,10 +88,12 @@ public class HeronProductionConfiguration {
                                                          DatasetFetchService datasetFetch,
                                                          DatasetScriptAuthor datasetAuthor,
                                                          EditorialReviewer reviewer,
+                                                         QualityReviewer qualityReviewer,
                                                          NewsSourceFetcher newsSourceFetcher,
                                                          FrozenContextService frozenContexts) {
         return new NewsProductionPipeline(author, processes, artifacts, properties, execution::beginStage,
-            datasetRouter, datasetFetch, datasetAuthor, reviewer, newsSourceFetcher, frozenContexts);
+            datasetRouter, datasetFetch, datasetAuthor, reviewer, qualityReviewer, newsSourceFetcher,
+            frozenContexts);
     }
 
     /**

@@ -18,6 +18,6 @@ Qoder 可直接读取以上指导材料；只有会话已列出的 Skill 和 Age
 - 新增工具类或通用辅助方法前，必须检索同模块、`ruoyi-common` 和已有依赖中的同类能力；满足业务语义且当前模块可用时直接复用，不添加无业务语义的包装。
 - 检索流程、后端语义核对与交付自检见 `.codex/skills/ruoyi-plus-ai-coding/SKILL.md` 及其适用 reference。
 
-## Harness 覆盖层（Codex / Qoder / WorkBuddy）
+## Harness 覆盖层（Codex / Qoder / WorkBuddy / DeepSeek Harness）
 
 模型指令：若 `harness-factory/AGENTS.harness.md` 存在，请读取并按其规则工作；若不存在，按本文件的项目规则 + 通用 AI 行为工作。

@@ -30,6 +30,8 @@ public class HeronAutoSlot implements Serializable {
     private Long candidateId;
     /** 决策当时两条线的候选概况快照，用于回放「它看到了什么」。 */
     private String poolJson;
+    /** 人工策略覆盖记录（JSON）：只追加不改写原决策。没有期限的锁不允许存在。 */
+    private String strategyOverride;
     private Long workId;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

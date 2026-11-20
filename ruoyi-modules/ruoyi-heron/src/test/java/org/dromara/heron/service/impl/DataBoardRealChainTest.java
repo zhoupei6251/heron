@@ -156,7 +156,7 @@ class DataBoardRealChainTest {
             },
             new ProductionProcessService(properties, new ProductionArtifactService(properties)),
             new ProductionArtifactService(properties), properties, (run, stage, progress) -> true,
-            router, fetch, author, passingReview(), new NewsSourceFetcher(null, null, new HeronNewsProperties()),
+            router, fetch, author, passingReview(), null, new NewsSourceFetcher(null, null, new HeronNewsProperties()),
             org.mockito.Mockito.mock(FrozenContextService.class));
 
         ObjectNode input = (ObjectNode) JSON.readTree(lockedAssets(template));

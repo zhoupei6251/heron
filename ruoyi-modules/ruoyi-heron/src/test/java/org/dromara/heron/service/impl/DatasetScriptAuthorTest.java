@@ -43,6 +43,7 @@ class DatasetScriptAuthorTest {
 
     static class StubModel extends OpenAiModelClient {
         private final String reply;
+        private final java.util.List<String> prompts = new java.util.ArrayList<>();
 
         StubModel(String reply) {
             super(null, null, null);
@@ -51,6 +52,7 @@ class DatasetScriptAuthorTest {
 
         @Override
         public String chat(ProductionRunVo run, String stage, String systemPrompt, String userPrompt) {
+            prompts.add(stage + "\n" + userPrompt);
             return "dataset-title".equals(stage) ? TITLES : reply;
         }
     }
@@ -59,11 +61,56 @@ class DatasetScriptAuthorTest {
         return new DatasetScriptAuthor(model, new DatasetTitleAuthor(model));
     }
 
+    private static ProductionRunVo runWithEditorial() {
+        String input = "{\"schemaVersion\":\"frozen/1\",\"kind\":\"data_board\","
+            + "\"editorial\":{\"runKey\":\"2026-11-19T00:00\",\"line\":\"data_board\","
+            + "\"editorialIntent\":\"金价冲高后回落的真实幅度被标题夸大\","
+            + "\"reason\":\"昨日热搜在讲暴跌，数据不支持\","
+            + "\"storyAngle\":\"先破再立：用区间数据纠正单日暴跌的说法\"},"
+            + "\"selection\":{\"candidateId\":1,\"dataSourceKey\":\"sina-gold-xau\",\"digest\":false,"
+            + "\"templateId\":\"news-data-9x16\",\"storyAngle\":\"先破再立\",\"sourceEvidenceIds\":[]}}";
+        return new ProductionRunVo(1L, org.dromara.heron.domain.ProductionBizType.news_video, 1L, 1L, 1,
+            "token", input, null);
+    }
+
+    @Test
+    @DisplayName("冻结输入里的编辑意图与故事角度必须进入写稿提示")
+    void editorialReachesWriterPrompt() {
+        StubModel model = new StubModel(reply("上涨 {{facts.change}} 美元。"));
+        author(model).author(runWithEditorial(), dataset(), false);
+        String writerPrompt = model.prompts.stream()
+            .filter(item -> item.startsWith("dataset-script\n"))
+            .findFirst().orElseThrow();
+        assertTrue(writerPrompt.contains("金价冲高后回落的真实幅度被标题夸大"), writerPrompt);
+        assertTrue(writerPrompt.contains("昨日热搜在讲暴跌，数据不支持"), writerPrompt);
+        assertTrue(writerPrompt.contains("先破再立"), writerPrompt);
+    }
+
+    @Test
+    @DisplayName("审稿后定向修复仍带同一份编辑意图，不因改稿退回通用稿")
+    void repairKeepsEditorial() {
+        StubModel model = new StubModel(reply("上涨 {{facts.change}} 美元。"));
+        String script = author(model).author(runWithEditorial(), dataset(), false).script();
+        author(model).repair(runWithEditorial(), dataset(), script, java.util.List.of("结尾把区间说成单日"));
+        String repairPrompt = model.prompts.stream()
+            .filter(item -> item.startsWith("dataset-script-repair\n"))
+            .findFirst().orElseThrow();
+        assertTrue(repairPrompt.contains("金价冲高后回落的真实幅度被标题夸大"), repairPrompt);
+        assertTrue(repairPrompt.contains("先破再立"), repairPrompt);
+    }
+
+    @Test
+    @DisplayName("老快照没有 editorial 节点时照常写稿，不抛错")
+    void legacySnapshotWithoutEditorialStillWrites() {
+        String script = author(new StubModel(reply("上涨 {{facts.change}} 美元。"))).author(null, dataset(), false).script();
+        assertEquals("金价再创新高", JSON.readTree(script).path("title").asString());
+    }
+
     @Test
     @DisplayName("模型只交旁白，哈希/源/图表/来源由快照覆盖")
     void overridesEvidence() {
         String script = author(new StubModel(reply("上涨 {{facts.change}} 美元。")))
-            .author(null, dataset(), false);
+            .author(null, dataset(), false).script();
         JsonNode node = JSON.readTree(script);
         assertEquals(JSON.readTree(dataset()).path("data_sha256").asString(), node.path("dataset_sha256").asString());
         assertEquals("sina-gold-xau", node.path("source_key").asString());
@@ -72,10 +119,18 @@ class DatasetScriptAuthorTest {
     }
 
     @Test
+    @DisplayName("选中标题的钩子类型必须带出来，丢了就再也归因不回来")
+    void keepsHookTypeOfSelectedTitle() {
+        DatasetScriptAuthor.Result result = author(new StubModel(reply("上涨 {{facts.change}} 美元。")))
+            .author(null, dataset(), false);
+        assertEquals("数字反差", result.hookType());
+    }
+
+    @Test
     @DisplayName("模型把 JSON 包进 markdown 围栏时先剥围栏再解析")
     void acceptsFencedJson() {
         String fenced = "```json\n" + reply("上涨 {{facts.change}} 美元。") + "\n```";
-        String script = author(new StubModel(fenced)).author(null, dataset(), false);
+        String script = author(new StubModel(fenced)).author(null, dataset(), false).script();
         assertEquals("金价再创新高", JSON.readTree(script).path("title").asString());
     }
 
@@ -92,7 +147,7 @@ class DatasetScriptAuthorTest {
     void pipelineVariablesCarryChartAndDataset() {
         String dataset = dataset();
         String script = author(new StubModel(reply("上涨 {{facts.change}} 美元。")))
-            .author(null, dataset, false);
+            .author(null, dataset, false).script();
         JsonNode vars = JSON.readTree(NewsProductionPipeline.dataTemplateVariables(JSON.readTree(script),
             JSON.readTree(dataset)));
         assertEquals("line", vars.path("chart").asString());

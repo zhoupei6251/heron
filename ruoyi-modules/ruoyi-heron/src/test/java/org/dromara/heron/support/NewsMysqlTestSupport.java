@@ -56,9 +56,11 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
             ScriptUtils.executeSqlScript(connection, new FileSystemResource(candidateSourceDdl));
             // 044还修改独立的数据源注册表；新闻事务夹具只镜像其候选列，不创建无关的注册表。
             statement.execute("ALTER TABLE heron_news_candidate ADD COLUMN source_key varchar(128) NULL AFTER source_kind");
-            Path researchLinkDdl = Path.of("../../script/sql/heron/047-candidate-research-link.sql");
-            if (!Files.isRegularFile(researchLinkDdl)) researchLinkDdl = Path.of("script/sql/heron/047-candidate-research-link.sql");
-            ScriptUtils.executeSqlScript(connection, new FileSystemResource(researchLinkDdl));
+            // 研究关联列与索引：直接用 Flyway 迁移目录里的 V46/V48，
+            // 不再走 script/sql/heron/047 —— 那份手工脚本与 V46/V48 重复，
+            // 两条活路径迟早漂移，schema 的唯一定义必须在 db/migration 下。
+            ScriptUtils.executeSqlScript(connection, migrationDdl("V46__candidate_research_id.sql"));
+            ScriptUtils.executeSqlScript(connection, migrationDdl("V48__news_candidate_research_index.sql"));
             // 002 之后的分批迁移（自动模式字段与槽位表）同样要在这个隔离库里建起来
             Path autoDdl = Path.of("../../script/sql/heron/006-news-auto.sql");
             if (!Files.isRegularFile(autoDdl)) autoDdl = Path.of("script/sql/heron/006-news-auto.sql");
@@ -72,9 +74,10 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
             if (!Files.isRegularFile(contextDdl)) contextDdl = Path.of("script/sql/heron/028-production-context.sql");
             ScriptUtils.executeSqlScript(connection, new FileSystemResource(contextDdl));
             ScriptUtils.executeSqlScript(connection, metricDdl());
-            Path publishDdl = Path.of("../../script/sql/heron/046-news-publish-attempt.sql");
-            if (!Files.isRegularFile(publishDdl)) publishDdl = Path.of("script/sql/heron/046-news-publish-attempt.sql");
-            ScriptUtils.executeSqlScript(connection, new FileSystemResource(publishDdl));
+            ScriptUtils.executeSqlScript(connection, migrationDdl("V47__news_publish_attempt.sql"));
+            // V49 给版本行加 quality_report / content_profile，给槽位表加 strategy_override；
+            // 实体字段已存在而夹具不跑迁移会让整批 SQL 报未知列。
+            ScriptUtils.executeSqlScript(connection, migrationDdl("V49__news_quality_and_content_profile.sql"));
         }
         var factory = (DefaultListableBeanFactory) context.getBeanFactory();
         factory.destroySingleton("newsProductionPipeline");
@@ -100,6 +103,22 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         Path ddl = Path.of("../../script/sql/heron/007-news-metric.sql");
         if (!Files.isRegularFile(ddl)) ddl = Path.of("script/sql/heron/007-news-metric.sql");
         return new FileSystemResource(ddl);
+    }
+
+    /**
+     * Flyway 迁移目录里的脚本。schema 的唯一定义在 db/migration 下，
+     * 手工迁移目录只保留 001~045 的历史，不再有第二份可执行的活路径。
+     */
+    private static FileSystemResource migrationDdl(String fileName) {
+        for (String candidate : List.of(
+            Path.of("..", "..", "ruoyi-admin", "src", "main", "resources", "db", "migration", fileName).toString(),
+            Path.of("ruoyi-admin", "src", "main", "resources", "db", "migration", fileName).toString())) {
+            Path path = Path.of(candidate);
+            if (Files.isRegularFile(path)) {
+                return new FileSystemResource(path);
+            }
+        }
+        throw new IllegalStateException("找不到 Flyway 迁移脚本: " + fileName);
     }
 
     protected void grantNews(long actor) {
@@ -153,10 +172,21 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
             "schemaVersion", "1.0", "result", "PASS",
             "issues", List.of(), "repairAttempts", 0,
             "promptVersion", "episode-review", "reviewedAt", "2026-11-12T00:00:00"));
+        // 质量报告与内容属性都是「有就更好」：fixture 给一份，让落库路径也被走到
+        String qualityReport = JsonUtils.toJsonString(Map.of(
+            "schemaVersion", "quality-review/1", "versionId", run.versionId(), "mode", "final",
+            "reviewedAt", "2026-11-19T00:00:00", "promptVersion", "quality-review-v1",
+            "modelId", "test-model", "criteria", List.of(), "summary", Map.of(), "notes", List.of()));
+        String contentProfile = JsonUtils.toJsonString(Map.of(
+            "schemaVersion", "content-profile/1", "hookType", "数字反差",
+            "opening", Map.of("shape", "data_first", "hasFact", true, "hasQuestion", false),
+            "writtenAt", "2026-11-19T00:00:00"));
         String result = JsonUtils.toJsonString(Map.of(
             "script", JsonUtils.parseObject(scriptJson(), Object.class),
             "checks", JsonUtils.parseObject(checks, Object.class),
             "editorialReview", JsonUtils.parseObject(review, Object.class),
+            "qualityReport", JsonUtils.parseObject(qualityReport, Object.class),
+            "contentProfile", JsonUtils.parseObject(contentProfile, Object.class),
             "durationMs", 1000));
         org.junit.jupiter.api.Assertions.assertTrue(execution.succeed(run, new ProductionResultVo(files, result)));
         return new Completed(work.getWorkId(), receipt.versionId(), files);

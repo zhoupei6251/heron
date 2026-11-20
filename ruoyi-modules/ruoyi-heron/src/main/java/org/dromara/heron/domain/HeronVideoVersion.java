@@ -23,6 +23,10 @@ public class HeronVideoVersion extends BaseEntity {
     private String checks;
     /** AI 审稿结论（JSON）。自动发布只认这里记录的 PASS，不认「曾经调过审稿」。 */
     private String editorialReview;
+    /** 成片级质量审稿报告（JSON）。只供人参考，不是闸，缺失不阻塞任何流程。 */
+    private String qualityReport;
+    /** 内容属性补充（JSON）：标题钩子类型与开头结构。取不到时为空，不猜。 */
+    private String contentProfile;
     private Long durationMs;
     private String reviewStatus;
     private Long reviewBy;

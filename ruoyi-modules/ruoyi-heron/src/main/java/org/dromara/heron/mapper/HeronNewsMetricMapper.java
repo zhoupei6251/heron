@@ -5,6 +5,7 @@ import org.dromara.common.mybatis.core.mapper.BaseMapperPlus;
 import org.dromara.heron.domain.HeronNewsMetric;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface HeronNewsMetricMapper extends BaseMapperPlus<HeronNewsMetric, HeronNewsMetric> {
@@ -13,16 +14,21 @@ public interface HeronNewsMetricMapper extends BaseMapperPlus<HeronNewsMetric, H
     List<Performance> recentPerformance(@Param("limit") int limit);
 
     /**
-     * 按维度汇总表现。groupBy 取 template / line / angle / source——四个维度共用一条 SQL，
-     * 加维度改 XML 里的一行比复制四份语句更不容易漂移。
+     * 每版最新一次采样的明细行，带上归因需要的创作属性。
+     *
+     * <p>明细取回 Java 侧算分位数：MySQL 8 没有 median()，在 SQL 里拼分位数只会把
+     * 一条语句写得既长又不可读，聚合口径还得在两处各维护一遍。
      */
-    List<Breakdown> performanceBreakdown(@Param("groupBy") String groupBy);
+    List<PerformanceSample> performanceSamples();
 
     record Performance(String title, Long plays, BigDecimal completionRate) {
     }
 
-    /** 一个分组的表现汇总。样本数一起给出：只有一条数据的平均值不该被当成规律。 */
-    record Breakdown(String bucket, Long samples, Double avgPlays,
-                     Double avgCompletionRate, Double avgLikes, Long maxPlays) {
+    /** 一条版本的一次采样，连同能直接读出来的创作属性。 */
+    record PerformanceSample(Long versionId, Long plays, Double completionRate, Long likes,
+                             Long comments, Long shares, LocalDateTime fetchedAt,
+                             LocalDateTime publishAt, Integer durationMs,
+                             String inputSnapshot, String script, String contentProfile,
+                             String sourceKind, Long candidateId) {
     }
 }

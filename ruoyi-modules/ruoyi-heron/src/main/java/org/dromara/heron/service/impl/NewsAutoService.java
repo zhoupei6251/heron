@@ -85,6 +85,7 @@ public class NewsAutoService {
     private final NewsProductionDomain domain;
     private final EditorialLineEditor lineEditor;
     private final DatasetRouter datasetRouter;
+    private final StrategyReferenceService references;
     private final Clock clock;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -95,10 +96,10 @@ public class NewsAutoService {
                            HeronDataSourceMapper dataSourceMapper,
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
                            EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
-                           DatasetRouter datasetRouter) {
+                           DatasetRouter datasetRouter, StrategyReferenceService references) {
         this(news, sourceMapper, candidateMapper, workMapper, versionMapper, slotMapper, opportunityMapper,
             dataSourceMapper, newsWork,
-            pauseStore, screener, editorial, domain, lineEditor, datasetRouter, Clock.systemUTC());
+            pauseStore, screener, editorial, domain, lineEditor, datasetRouter, references, Clock.systemUTC());
     }
 
     public NewsAutoService(HeronNewsProperties news, HeronNewsSourceMapper sourceMapper,
@@ -108,7 +109,7 @@ public class NewsAutoService {
                            HeronDataSourceMapper dataSourceMapper,
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
                            EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
-                           DatasetRouter datasetRouter, Clock clock) {
+                           DatasetRouter datasetRouter, StrategyReferenceService references, Clock clock) {
         this.news = news;
         this.sourceMapper = sourceMapper;
         this.candidateMapper = candidateMapper;
@@ -124,6 +125,7 @@ public class NewsAutoService {
         this.domain = domain;
         this.lineEditor = lineEditor;
         this.datasetRouter = datasetRouter;
+        this.references = references;
         this.clock = clock;
     }
 
@@ -186,7 +188,7 @@ public class NewsAutoService {
                 finish(slot, "skipped", built.emptyReason(), null);
                 return;
             }
-            pools = pools(pool);
+            pools = pools(pool, lockedScopes());
             decision = editorial.decide(pools);
         } catch (RuntimeException e) {
             // 决策失败不产出：宁可空槽，也不按默认线硬发
@@ -455,6 +457,16 @@ public class NewsAutoService {
      * 纯投影——方法体内不得出现任何 mapper 调用，查库都属于建池。
      */
     static EditorialDecisionService.Pools pools(EditorialCandidatePool pool) {
+        return pools(pool, List.of());
+    }
+
+    /**
+     * 带人工锁定的总编辑概况。
+     *
+     * <p>锁要在建池阶段查好再传进来：这个方法是纯投影，方法体内不得出现 mapper 调用。
+     */
+    static EditorialDecisionService.Pools pools(EditorialCandidatePool pool,
+                                                List<EditorialDecisionService.LockedScope> lockedScopes) {
         List<EditorialDecisionService.CandidateRef> hot = pool.hot().stream()
             .map(item -> new EditorialDecisionService.CandidateRef(item.getCandidateId(), item.getTitle())).toList();
         List<EditorialDecisionService.CandidateRef> articles = pool.articles().stream()
@@ -467,7 +479,24 @@ public class NewsAutoService {
         List<String> recent = pool.recent().stream().map(HeronNewsWork::getTitle)
             .filter(title -> title != null && !title.isBlank()).toList();
         return new EditorialDecisionService.Pools(pool.poolId(), pool.poolHash(), hot, articles, datasets,
-            opportunities, recent);
+            opportunities, recent, lockedScopes);
+    }
+
+    /**
+     * 当前生效的人工锁定。
+     *
+     * <p>读不到就当没有锁：锁是提示，不是闸，不该因为附属查询失败把整个槽位打挂。
+     */
+    private List<EditorialDecisionService.LockedScope> lockedScopes() {
+        try {
+            return references.activeLocks().stream()
+                .map(item -> new EditorialDecisionService.LockedScope(item.scope(), item.reason(),
+                    item.scopeUntil() == null ? null : item.scopeUntil().toString()))
+                .toList();
+        } catch (RuntimeException e) {
+            log.warn("读取人工锁定失败，本期按没有锁定处理: {}", e.getMessage());
+            return List.of();
+        }
     }
 
     static String opportunityLabel(HeronDataOpportunity item) {

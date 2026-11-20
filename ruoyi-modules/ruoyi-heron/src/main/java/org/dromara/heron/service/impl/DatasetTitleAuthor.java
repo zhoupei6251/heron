@@ -24,19 +24,25 @@ public class DatasetTitleAuthor {
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String SYSTEM = resource("/prompt/data-board/title-contract.md");
     private static final String STAGE = "dataset-title";
+    /** 标题契约的五类钩子；落 content_profile 前必须仍是这五类之一，未知一律不落。 */
+    static final java.util.Set<String> KINDS = java.util.Set.of(
+        "数字反差", "疑问悬念", "利益相关", "时间紧迫", "反常识");
     private static final List<String> BANNED = List.of(
         "必涨", "必跌", "稳赚", "抄底", "逃顶", "预测", "将涨", "将跌", "一定", "保证");
 
     private final OpenAiModelClient model;
 
-    public List<String> candidates(ProductionRunVo run, String datasetJson) {
+    /** 一个标题候选：文本与它属于哪类钩子。kind 写稿时被丢掉过一次，归因就再也取不回来。 */
+    record Candidate(String title, String kind) { }
+
+    public List<Candidate> candidates(ProductionRunVo run, String datasetJson) {
         JsonNode snapshot = JSON.readTree(datasetJson);
         String pack = ColumnPacks.text(snapshot.path("source_key").asString(""));
         String reply = model.chat(run, STAGE, SYSTEM + "\n\n---\n\n" + pack, prompt(snapshot));
         return parse(reply, snapshot);
     }
 
-    static List<String> parse(String reply, JsonNode snapshot) {
+    static List<Candidate> parse(String reply, JsonNode snapshot) {
         JsonNode node;
         try {
             node = JSON.readTree(ModelJson.unwrap(reply));
@@ -45,15 +51,16 @@ public class DatasetTitleAuthor {
         }
         JsonNode candidates = node.path("candidates");
         if (!candidates.isArray()) throw contract("缺少 candidates");
-        List<String> valid = new ArrayList<>();
+        List<Candidate> valid = new ArrayList<>();
         for (JsonNode candidate : candidates) {
             String title = candidate.path("title").asString("").strip();
-            if (!title.isEmpty() && valid(title, snapshot) && !valid.contains(title)) {
-                valid.add(title);
-            }
+            String kind = candidate.path("kind").asString("").strip();
+            if (title.isEmpty() || !valid(title, snapshot) || !KINDS.contains(kind)) continue;
+            if (valid.stream().anyMatch(item -> item.title().equals(title))) continue;
+            valid.add(new Candidate(title, kind));
         }
         if (valid.size() < 3) {
-            throw contract("有效标题不足 3 个：" + valid);
+            throw contract("有效标题不足 3 个：" + valid.stream().map(Candidate::title).toList());
         }
         return List.copyOf(valid.subList(0, Math.min(5, valid.size())));
     }

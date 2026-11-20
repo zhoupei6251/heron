@@ -15,16 +15,44 @@ public record EditorialSelection(
     String templateId,
     String storyAngle,
     java.util.List<String> sourceEvidenceIds,
-    Long opportunityId
+    Long opportunityId,
+    Opportunity opportunity
 ) {
 
     public static final String DATA_BOARD = "DATA_BOARD";
     public static final String NEWS_EXPLAINER = "NEWS_EXPLAINER";
 
+    /**
+     * 选题上下文：机会自己的头线与信号，以及当时的取数口径。
+     *
+     * <p>认领时一次定完，冻结后生产只读这一份：机会表会在下一次分析时被更新，
+     * 冻结之后再回查，拿到的就可能是另一轮分析的结论了。
+     *
+     * @param opportunityId 机会 id
+     * @param sourceKey 机会绑定的数据源
+     * @param headline 机会的头线（选题当时的判断）
+     * @param signals 机会的信号 JSON 原文
+     * @param windowPoints 选题当时的取数点数
+     * @param expectedDataSha256 选题当时的快照哈希
+     * @param shape 形态
+     * @param cadence 节奏
+     * @param metricKey 指标 key
+     */
+    public record Opportunity(Long opportunityId, String sourceKey, String headline, String signals,
+                              int windowPoints, String expectedDataSha256,
+                              String shape, String cadence, String metricKey) { }
+
     /** 老入口：不是从数据机会来的（解说线、以及数据看板的旧选源路径）。 */
     public EditorialSelection(String line, Long candidateId, String dataSourceKey, boolean digest,
                               String templateId, String storyAngle, java.util.List<String> sourceEvidenceIds) {
-        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, null);
+        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, null, null);
+    }
+
+    /** 从数据机会来的选择：还没有带取数口径的老调用。 */
+    public EditorialSelection(String line, Long candidateId, String dataSourceKey, boolean digest,
+                              String templateId, String storyAngle, java.util.List<String> sourceEvidenceIds,
+                              Long opportunityId) {
+        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, opportunityId, null);
     }
 
     public boolean dataBoard() {

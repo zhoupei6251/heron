@@ -21,6 +21,10 @@ public class NewsVideoVersionVo implements Serializable {
     private String checks;
     /** AI 审稿结论；自动发布只认这里的 PASS，null 表示没审过。 */
     private String editorialReview;
+    /** 质量审稿报告；null 表示没做过 L3 审稿，不阻塞发布。 */
+    private String qualityReport;
+    /** 内容属性补充；null 或字段缺失时归因按「未记录」处理。 */
+    private String contentProfile;
     private Long durationMs;
     private String reviewStatus;
     private Long reviewBy;

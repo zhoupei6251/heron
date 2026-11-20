@@ -45,17 +45,33 @@ public class EditorialDecisionService {
     /**
      * 两条线的候选概况。热榜侧只有标题，正文侧只有带正文的文章——这个差别由代码保证，
      * 模型不能凭标题去选需要正文的线。poolId/poolHash 让决策与选择可对齐到同一份快照。
+     *
+     * <p>lockedScopes 是人工锁定的维度：它进提示词，但只有锁本身（作用域与理由），
+     * 不带任何表现数据。总编辑若仍要走被锁的方向，必须在 reason 里说明——
+     * 人可以违反锁，但不能让违反看起来像是没有锁。
      */
     public record Pools(String poolId, String poolHash,
                         List<CandidateRef> hot, List<CandidateRef> articles,
                         List<DatasetRef> datasets, List<OpportunityRef> opportunities,
-                        List<String> recentPublications) {
+                        List<String> recentPublications,
+                        List<LockedScope> lockedScopes) {
 
         /** 老入口：没有数据机会时的摘要。 */
         public Pools(String poolId, String poolHash, List<CandidateRef> hot, List<CandidateRef> articles,
                      List<DatasetRef> datasets, List<String> recentPublications) {
-            this(poolId, poolHash, hot, articles, datasets, List.of(), recentPublications);
+            this(poolId, poolHash, hot, articles, datasets, List.of(), recentPublications, List.of());
         }
+
+        /** 没有锁定时的入口。 */
+        public Pools(String poolId, String poolHash, List<CandidateRef> hot, List<CandidateRef> articles,
+                     List<DatasetRef> datasets, List<OpportunityRef> opportunities,
+                     List<String> recentPublications) {
+            this(poolId, poolHash, hot, articles, datasets, opportunities, recentPublications, List.of());
+        }
+    }
+
+    /** 一个人工锁定的维度。 */
+    public record LockedScope(String scope, String reason, String scopeUntil) {
     }
 
     /**
@@ -155,6 +171,16 @@ public class EditorialDecisionService {
         appendDatasets(text, "可用数据集", pools.datasets());
         append(text, "数据机会（带分数与变化，分数越高越值得做）", pools.opportunities());
         append(text, "最近已发布", pools.recentPublications());
+        // 锁进提示词，但只有锁本身（作用域与理由），不带表现数据。
+        // 表现数据一旦进提示词，模型就有了策略倾向，那正是「用印象代替证据」。
+        if (!pools.lockedScopes().isEmpty()) {
+            text.append("\n以下维度已被人工锁定（只作提示，不阻止你选择）：\n");
+            for (LockedScope scope : pools.lockedScopes()) {
+                text.append("- ").append(scope.scope()).append("：").append(scope.reason())
+                    .append("（至 ").append(scope.scopeUntil()).append("）\n");
+            }
+            text.append("如果你仍要选被锁定的方向，必须在 reason 里说明为什么。\n");
+        }
         return text.append("按契约输出 JSON。").toString();
     }
 

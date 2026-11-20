@@ -57,7 +57,7 @@ public class EditorialLineEditor {
                                             Long focusCandidateId, Long focusOpportunityId) {
         boolean dataBoard = EditorialDecisionService.DATA_BOARD.equals(line);
         Optional<EditorialSelection> first = dataBoard
-            ? editDataBoard(intent, pool.datasets(), pool.opportunities(), focusOpportunityId)
+            ? editDataBoard(pool.datasets(), pool.opportunities(), focusOpportunityId)
             : editExplainer(pool.articles(), intent, focusCandidateId);
         if (first.isPresent()) {
             return Optional.of(new EditorialChoice(first.get(), line, false, null));
@@ -65,7 +65,7 @@ public class EditorialLineEditor {
         String reason = dataBoard ? "data_board_empty" : "explainer_empty";
         Optional<EditorialSelection> second = dataBoard
             ? editExplainer(pool.articles(), intent, focusCandidateId)
-            : editDataBoard(intent, pool.datasets(), pool.opportunities(), focusOpportunityId);
+            : editDataBoard(pool.datasets(), pool.opportunities(), focusOpportunityId);
         return second.map(selection -> new EditorialChoice(selection, line, true, reason));
     }
 
@@ -109,11 +109,7 @@ public class EditorialLineEditor {
      * <p>总编辑锁定了数据机会时直接用它绑定的源：那条机会本身就是「今天为什么做这个」，
      * 再让选源器重挑一次等于把决策推翻。
      */
-    public Optional<EditorialSelection> editDataBoard(String intent, List<HeronDataSource> datasets) {
-        return editDataBoard(intent, datasets, List.of(), null);
-    }
-
-    public Optional<EditorialSelection> editDataBoard(String intent, List<HeronDataSource> datasets,
+    public Optional<EditorialSelection> editDataBoard(List<HeronDataSource> datasets,
                                                       List<HeronDataOpportunity> opportunities,
                                                       Long focusOpportunityId) {
         HeronDataOpportunity focused = focusOpportunityId == null || opportunities == null ? null
@@ -134,9 +130,14 @@ public class EditorialLineEditor {
             if (template == null) {
                 return Optional.empty();
             }
+            // 故事角度由机会自己的信号决定。编辑意图已经在 editorialIntent 里，
+            // 角度再抄一遍就没有第二个视角，写稿只能拿到一条「今天要讲它」的通用稿。
+            DatasetStoryAngle.Angle angle = DatasetStoryAngle.pick(chosen.getShape(),
+                signalsOf(chosen.getSignals()), chosen.getPeriodStart(), chosen.getPeriodEnd());
             // digest=false：这是被机会明确选中的源，不是「没题材时的速览」
             return Optional.of(new EditorialSelection(EditorialDecisionService.DATA_BOARD,
-                null, chosen.getSourceKey(), false, template, intent, List.of(), chosen.getOpportunityId()));
+                null, chosen.getSourceKey(), false, template, angle.text(), List.of(),
+                chosen.getOpportunityId(), opportunityOf(chosen)));
         }
         if (datasets == null || datasets.isEmpty()) {
             return Optional.empty();
@@ -155,7 +156,50 @@ public class EditorialLineEditor {
             return Optional.empty();
         }
         return Optional.of(new EditorialSelection(EditorialDecisionService.DATA_BOARD,
-            null, route.sourceKey(), route.digest(), template, intent, List.of()));
+            null, route.sourceKey(), route.digest(), template, DatasetStoryAngle.DIGEST_ANGLE, List.of()));
+    }
+
+    /** 机会的信号 JSON：解析不了就当没有信号，角度退回兜底。 */
+    private static JsonNode signalsOf(String signals) {
+        if (signals == null || signals.isBlank()) {
+            return null;
+        }
+        try {
+            return JSON.readTree(signals);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 机会的取数口径与头线：认领时一次定完，冻结后生产只读这一份。
+     *
+     * <p>不在冻结时回查机会表：机会表会被下一次分析更新，回查拿到的可能是另一轮分析的结论，
+     * 「一次选择 = 一份冻结输入」就不成立了。
+     */
+    private static EditorialSelection.Opportunity opportunityOf(HeronDataOpportunity opportunity) {
+        return new EditorialSelection.Opportunity(
+            opportunity.getOpportunityId(),
+            opportunity.getSourceKey(),
+            opportunity.getHeadline(),
+            opportunity.getSignals(),
+            opportunity.getWindowPoints() == null ? 0 : opportunity.getWindowPoints(),
+            snapshotSha(opportunity.getSnapshotJson()),
+            opportunity.getShape(),
+            opportunity.getCadence(),
+            opportunity.getMetric());
+    }
+
+    /** 机会快照里记的哈希：选题当时看到的那份数据的指纹。 */
+    private static String snapshotSha(String snapshotJson) {
+        if (snapshotJson == null || snapshotJson.isBlank()) {
+            return "";
+        }
+        try {
+            return JSON.readTree(snapshotJson).path("data_sha256").asString("").strip();
+        } catch (RuntimeException e) {
+            return "";
+        }
     }
 
     /** 解说线的「有正文」判定：证据里有原文链接就算，与前端卡片口径一致。 */

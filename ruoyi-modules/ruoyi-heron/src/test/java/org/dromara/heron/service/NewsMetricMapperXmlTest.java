@@ -47,26 +47,31 @@ class NewsMetricMapperXmlTest extends NewsMysqlTestSupport {
     }
 
     /**
-     * 来源维度回答的是「研究得出的选题和热榜来的选题，表现差多少」。
-     * 这条同时验证新分支的 SQL 能真的绑定执行——编译通过不代表语句能跑。
+     * 归因明细的 SQL 必须真的执行一次：MyBatis 在启动时才解析 XML，
+     * 编译通过不代表语句能绑定，也代表不了它取回了归因要用的列。
      */
     @Test
-    @DisplayName("按来源归因：研究来源与热榜分开统计")
-    void breaksDownBySource() {
-        long research = insertCandidate("研究选题", "research");
-        long hot = insertCandidate("热榜选题", null);
-        insertMetric(insertVersion(insertWork(research)), 1000L, "0.5000", "2026-11-02 10:00:00");
-        insertMetric(insertVersion(insertWork(hot)), 200L, "0.2000", "2026-11-02 10:00:00");
+    @DisplayName("归因明细：每版只取最新一次采样，并带上创作属性")
+    void takesLatestSampleWithAttributionColumns() {
+        long candidateId = insertCandidate("研究选题", "research");
+        long workId = insertWork(candidateId);
+        long versionId = insertVersion(workId, """
+            {"kind":"data_board","selection":{"templateId":"news-data-chart-dark"},
+             "editorial":{"line":"DATA_BOARD","storyAngle":"rank_competition"}}""",
+            "{\"schemaVersion\":\"content-profile/1\",\"hookType\":\"数字反差\",\"opening\":{\"shape\":\"data_first\"}}");
+        insertMetric(versionId, 100L, "0.2000", "2026-11-01 10:00:00");
+        insertMetric(versionId, 900L, "0.8000", "2026-11-02 10:00:00");
 
-        java.util.Map<String, HeronNewsMetricMapper.Breakdown> byBucket =
-            metricMapper.performanceBreakdown("source").stream()
-                .collect(java.util.stream.Collectors.toMap(HeronNewsMetricMapper.Breakdown::bucket, row -> row));
+        List<HeronNewsMetricMapper.PerformanceSample> rows = metricMapper.performanceSamples();
 
-        assertTrue(byBucket.containsKey("research"), "研究来源没被单列：" + byBucket.keySet());
-        assertTrue(byBucket.containsKey("hotlist"), "热榜来源没被单列：" + byBucket.keySet());
-        assertEquals(1L, byBucket.get("research").samples());
-        assertEquals(1000.0, byBucket.get("research").avgPlays(), 0.001);
-        assertEquals(1L, byBucket.get("hotlist").samples());
+        assertEquals(1, rows.size(), "同一版本只出一条样本");
+        HeronNewsMetricMapper.PerformanceSample row = rows.get(0);
+        assertEquals(versionId, row.versionId());
+        assertEquals(900L, row.plays(), "必须取最新那次采样");
+        assertEquals("research", row.sourceKind(), "来源证据没取回来");
+        assertEquals(candidateId, row.candidateId());
+        assertTrue(row.inputSnapshot().contains("news-data-chart-dark"), "冻结输入没取回来，归因就无从谈起");
+        assertTrue(row.contentProfile().contains("数字反差"), "内容属性没取回来，钩子维度就无从谈起");
     }
 
     private long insertCandidate(String title) {
@@ -93,10 +98,20 @@ class NewsMetricMapperXmlTest extends NewsMysqlTestSupport {
     }
 
     private long insertVersion(long workId) {
+        return insertVersion(workId, "{}");
+    }
+
+    private long insertVersion(long workId, String snapshot) {
+        return insertVersion(workId, snapshot, null);
+    }
+
+    private long insertVersion(long workId, String snapshot, String contentProfile) {
         long id = java.util.concurrent.ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE / 4);
         jdbc.update("insert into heron_video_version(version_id, work_id, owner_id, version_no, task_id, "
-                + "input_snapshot, review_status, create_time, update_time) values(?,?,?,?,?,?,?,now(),now())",
-            id, workId, OWNER, 1, 1L, "{}", "approved");
+                + "input_snapshot, review_status, content_profile, create_time, update_time) "
+                + "values(?,?,?,?,?,?,?,?,now(),now())",
+            id, workId, OWNER, 1, java.util.concurrent.ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE / 4),
+            snapshot, "approved", contentProfile);
         return id;
     }
 

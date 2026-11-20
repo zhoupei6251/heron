@@ -16,6 +16,12 @@ public final class DatasetScriptContract {
     private static final Set<String> FIELDS = Set.of("dataset_sha256", "source_key", "title", "scenes", "closing",
         "source_name", "chart");
     private static final Set<String> SCENE_FIELDS = Set.of("lead", "body", "duration_s");
+    /**
+     * 渲染端真正实现了的图表模块，取值必须与 data/templates/_gen/behaviors/chart.js 的白名单一致。
+     * 契约只映射到这张表里的值：纸上写过但没实现的图表类型不允许放行。
+     */
+    private static final Set<String> RENDERABLE_CHARTS = Set.of("line", "bars", "race", "stacked", "multiline",
+        "radar");
     private static final int TITLE_CODE_POINTS = 15;
     private static final int MIN_SCENES = 3;
     private static final int MAX_SCENES = 6;
@@ -24,18 +30,52 @@ public final class DatasetScriptContract {
     private static final Pattern PERIOD_CHANGE = Pattern.compile("\\{\\{facts\\.change(?:_pct)?}}");
     private static final Pattern DAILY_CHANGE = Pattern.compile(
         "(?:较|比)(?:前一日|上一日|昨日|昨天|上一交易日|前一交易日)|单日(?:上涨|下跌|涨幅|跌幅|变化|涨跌)");
+    private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{facts\\.([^{}]+)}}");
+    /** 开场先念来源、口径、栏目属于把准备过程当内容，观众第一秒就该拿到结论或反差。 */
+    private static final List<String> META_OPENING = List.of(
+        "数据源", "数据快照", "数据来自", "来源于", "据统计", "统计口径", "根据数据", "本栏目", "本期节目",
+        "如图所示", "下面我们来看", "接下来我们看");
+    /** 空洞的关注引导，对观众没有信息价值，也不解释这条片子的结论。 */
+    private static final List<String> EMPTY_CLOSING = List.of(
+        "持续关注", "欢迎关注", "记得关注", "点个关注", "点点关注", "加个关注", "感谢观看", "感谢收看",
+        "下期再见", "我们下期", "敬请期待", "点赞收藏");
+    /** 至少两段要引用真实 facts，否则整条片子只剩空泛形容。 */
+    private static final int MIN_FACT_SCENES = 2;
+
+    /**
+     * 开场元话语词表。L3 审稿要判「开场有没有把准备过程当内容」，
+     * 词表只有一份，避免契约层与审稿层各写一份然后漂移。
+     */
+    static List<String> metaOpening() {
+        return META_OPENING;
+    }
+
+    /** 空泛关注引导词表。L3 的结尾判据复用同一份。 */
+    static List<String> emptyClosing() {
+        return EMPTY_CLOSING;
+    }
 
     private DatasetScriptContract() { }
 
-    /** 数据形态 → 图表模块；模板侧按这个值选绘图区。 */
+    /**
+     * 数据形态 → 图表模块；模板侧按这个值选绘图区。
+     *
+     * <p>只映射渲染端真有的模块。{@code geo} 曾经映射到 {@code map}，
+     * 但 chart.js 没有地图实现，渲到一半就抛错——空串表示「这个形态没有可用图表」，
+     * 由取数闸在调模型之前就拒绝，而不是写完整条稿子才发现出不了图。
+     */
     public static String chartFor(String shape) {
-        return switch (shape) {
+        return switch (shape == null ? "" : shape) {
             case "wide" -> "line";
             case "long" -> "race";
             case "rows" -> "bars";
-            case "geo" -> "map";
             default -> "";
         };
+    }
+
+    /** 该形态当前能否出图；不能出图的形态不许进生产。 */
+    public static boolean renderable(String shape) {
+        return RENDERABLE_CHARTS.contains(chartFor(shape));
     }
 
     public static List<String> violations(JsonNode script, JsonNode snapshot) {
@@ -56,8 +96,11 @@ public final class DatasetScriptContract {
         if (!expectedKey.equals(script.path("source_key").asString(""))) {
             items.add("source_key 与快照不一致");
         }
-        String expectedChart = chartFor(snapshot.path("shape").asString(""));
-        if (!expectedChart.equals(script.path("chart").asString(""))) {
+        String shape = snapshot.path("shape").asString("");
+        String expectedChart = chartFor(shape);
+        if (!RENDERABLE_CHARTS.contains(expectedChart)) {
+            items.add("数据形态 " + shape + " 没有可渲染的图表模块");
+        } else if (!expectedChart.equals(script.path("chart").asString(""))) {
             items.add("chart 与数据形态不一致，应为 " + expectedChart);
         }
         title(items, script, snapshot);
@@ -66,7 +109,60 @@ public final class DatasetScriptContract {
         scenes(items, script);
         narration(items, script, snapshot);
         periodMeaning(items, script, snapshot);
+        narrative(items, script, snapshot);
         return List.copyOf(new java.util.LinkedHashSet<>(items));
+    }
+
+    /**
+     * 叙事结构：只判「有没有故事」的硬性下限，不判故事好不好。
+     *
+     * <p>四个可机器判定的点，都是退稿级的：
+     * 开场别先讲来源口径、开场要有具体信息、别把标题原句搬进第一段、结尾不能是空关注引导。
+     * 更难的内容质量（角度是否成立、是否有真正信息增量）交给审稿模型，不在这里假装客观。
+     */
+    private static void narrative(List<String> items, JsonNode script, JsonNode snapshot) {
+        JsonNode scenes = script.path("scenes");
+        if (!scenes.isArray() || scenes.isEmpty()) return;
+        JsonNode first = scenes.get(0);
+        String opening = (first.path("lead").asString("") + " " + first.path("body").asString("")).strip();
+        for (String phrase : META_OPENING) {
+            if (opening.contains(phrase)) {
+                items.add("开场先从来源或口径讲起（含「" + phrase + "」），应从结论或反差切入");
+                break;
+            }
+        }
+        // 前两屏就要兑现具体信息：只用第一屏卡死会误杀「用问题开场」的好稿，
+        // 放到前两屏既守住兑现速度，又不替模型规定第一句必须带数字。
+        int early = Math.min(2, scenes.size());
+        boolean earlyFact = false;
+        for (int index = 0; index < early; index++) {
+            JsonNode scene = scenes.get(index);
+            String text = scene.path("lead").asString("") + scene.path("body").asString("");
+            if (PLACEHOLDER.matcher(text).find()) earlyFact = true;
+        }
+        if (!earlyFact) {
+            items.add("前两屏没有任何数据事实，观众拿不到可验证的具体信息");
+        }
+        String title = script.path("title").asString("");
+        String firstLead = first.path("lead").asString("");
+        if (!title.isBlank() && !firstLead.isBlank() && firstLead.contains(title)) {
+            items.add("开场口播与标题逐字重复，标题与开场应互相配合而不是复读");
+        }
+        String closing = script.path("closing").asString("");
+        for (String phrase : EMPTY_CLOSING) {
+            if (closing.contains(phrase)) {
+                items.add("结尾是空泛的关注引导（含「" + phrase + "」），应总结结论或提出有价值的问题");
+                break;
+            }
+        }
+        int factScenes = 0;
+        for (JsonNode scene : scenes) {
+            String text = scene.path("lead").asString("") + scene.path("body").asString("");
+            if (PLACEHOLDER.matcher(text).find()) factScenes++;
+        }
+        if (factScenes < MIN_FACT_SCENES) {
+            items.add("全文只有 " + factScenes + " 段引用数据事实，至少 " + MIN_FACT_SCENES + " 段要有");
+        }
     }
 
     private static void scenes(List<String> items, JsonNode script) {
