@@ -75,7 +75,10 @@ public class FrozenContextService {
      * 消费前校验：任务手里那份输入必须和冻结上下文逐项一致。
      *
      * <p>没有上下文行的是迁移前的老任务，按 legacy 放行（否则历史任务全部失败）；
-     * 一旦有行，hash 或结构对不上就拒绝执行——宁可失败，也不要拿一份「被改过的输入」生产。
+     * 一旦有行，内容对不上就拒绝执行——宁可失败，也不要拿一份「被改过的输入」生产。
+     *
+     * <p>比的是规范化后的内容，不是写入时算的摘要：库里的小数是按 double 存的，
+     * 读回时的十进制文本与写入时不一定逐位相等，用摘要比会把没被改过的输入也判成不一致。
      */
     public FrozenContext verify(long taskId, String inputJson) {
         FrozenContext context = byTask(taskId);
@@ -86,7 +89,7 @@ public class FrozenContextService {
             throw new HeronBusinessException(409, "news_context_schema",
                 "冻结上下文版本 " + context.schemaVersion() + " 不在当前执行器支持范围");
         }
-        if (!context.contentHash().equals(FrozenContext.hash(inputJson))) {
+        if (!FrozenContext.comparable(context.contentJson()).equals(FrozenContext.comparable(inputJson))) {
             throw new HeronBusinessException(409, "news_context_mismatch",
                 "任务输入与冻结上下文不一致，拒绝执行");
         }

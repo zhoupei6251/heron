@@ -32,7 +32,7 @@ final class QualityReportContract {
         "browser_render");
     private static final Set<String> NOTES = Set.of("model_output_invalid", "model_failed",
         "model_objective_dropped", "model_blocker_dropped", "gate_drift", "focus_tautological",
-        "repair_rolled_back", "repair_not_rechecked");
+        "repair_rolled_back", "repair_not_rechecked", "audio_bgm_dropped");
 
     /** 定位符只能指向这些来源；别的写法视为无法复核。 */
     private static final Pattern LOCATOR = Pattern.compile(
@@ -151,7 +151,9 @@ final class QualityReportContract {
             throw invalid(id + " 只有 minor 或 fail 才可修复");
         }
         if (repairable && !QualityRepairPlanner.repairable(id, item)) {
-            throw invalid(id + " 不在定向修复白名单内");
+            // 越界的「可修」只降级这一条，不作废整份报告：模型或代码多说了一句话，
+            // 不该让七条已经判清楚的结论跟着消失。
+            repairable = false;
         }
 
         List<ObjectNode> evidence = new ArrayList<>();

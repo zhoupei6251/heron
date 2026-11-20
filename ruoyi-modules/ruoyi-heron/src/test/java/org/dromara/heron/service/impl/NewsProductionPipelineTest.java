@@ -189,7 +189,7 @@ class NewsProductionPipelineTest {
     void mixesBgmOnMeasuredClosing() {
         var timeline = NewsNarrationTiming.align(JSON.readTree(SCRIPT),
             JSON.readTree(NewsProductionPipeline.subtitleJson(VTT)), 41500);
-        String filter = NewsProductionPipeline.bgmFilter(timeline.get(timeline.size() - 1));
+        String filter = NewsProductionPipeline.bgmEnvelope(timeline.get(timeline.size() - 1));
         assertTrue(filter.contains("(t-28.000)/0.800"), "第28秒才进入实际结尾");
         assertTrue(filter.contains("afade=t=out:st=40.300:d=1.200"), "完整音频末尾才淡出");
         assertTrue(filter.contains("atrim=duration=41.500"));
@@ -200,13 +200,39 @@ class NewsProductionPipelineTest {
     @Test
     @DisplayName("短结尾内完成释放和淡出，非法时间不退回猜测时长")
     void handlesShortClosingWithoutInventingTiming() {
-        String filter = NewsProductionPipeline.bgmFilter(new NewsNarrationTiming.Span("closing-slot", 41000, 41500, false));
+        String filter = NewsProductionPipeline.bgmEnvelope(new NewsNarrationTiming.Span("closing-slot", 41000, 41500, false));
         assertTrue(filter.contains("(t-41.000)/0.250"));
         assertTrue(filter.contains("afade=t=out:st=41.250:d=0.250"));
-        assertThrows(HeronBusinessException.class, () -> NewsProductionPipeline.bgmFilter(
+        assertThrows(HeronBusinessException.class, () -> NewsProductionPipeline.bgmEnvelope(
             new NewsNarrationTiming.Span("scene-1", 0, 41000, false)));
-        assertThrows(HeronBusinessException.class, () -> NewsProductionPipeline.bgmFilter(
+        assertThrows(HeronBusinessException.class, () -> NewsProductionPipeline.bgmEnvelope(
             new NewsNarrationTiming.Span("closing-slot", 41000, 40000, false)));
+    }
+
+    @Test
+    @DisplayName("混音链按实测增益调整两侧，两路相加后还要再限一次幅")
+    void mixesWithMeasuredGainsAndLimitsAfterSum() {
+        String filter = NewsProductionPipeline.mixFilter("atrim=duration=41.500", 3.5, -5.1, true);
+
+        // 旁白与配乐各自限幅，两路相加后再限一次：各自不越界不代表相加后不越界
+        assertEquals(3, filter.split("alimiter", -1).length - 1, filter);
+        assertTrue(filter.contains("[0:a]volume="), filter);
+        assertTrue(filter.contains("[1:a]atrim=duration=41.500"), filter);
+        assertTrue(filter.contains("amix=inputs=2:duration=first:dropout_transition=0:normalize=0"), filter);
+        // 增益按 dB 折算成线性系数：+3.5 dB ≈ 1.496
+        assertTrue(filter.contains("volume=1.496236"), filter);
+        // -5.1 dB ≈ 0.556
+        assertTrue(filter.contains("volume=0.555904"), filter);
+    }
+
+    @Test
+    @DisplayName("没有配乐时不留混音输入，只保留旁白那一路")
+    void mixesWithoutBgm() {
+        String filter = NewsProductionPipeline.mixFilter("atrim=duration=41.500", 0, 0, false);
+
+        assertFalse(filter.contains("[1:a]"), filter);
+        assertFalse(filter.contains("amix"), filter);
+        assertTrue(filter.contains("[vo]"), filter);
     }
 
     @Test

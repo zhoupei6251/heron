@@ -96,6 +96,10 @@ public class QualityReviewer {
                 - QualityCriteria.IDS.indexOf(right.path("id").asString(""));
             return rank;
         });
+        // 成片的生产事实也进报告：配乐因响度超标被去掉，人得看得见
+        if (bgmDropped(ctx)) {
+            notes.add("audio_bgm_dropped");
+        }
         report.set("criteria", QualityReportContract.criteriaArray(entries));
         report.set("summary", QualityReportContract.summary(entries));
         report.set("repair", QualityRepairPlanner.emptyRepair());
@@ -103,6 +107,25 @@ public class QualityReviewer {
         notes.stream().distinct().forEach(noteArray::add);
         report.set("notes", noteArray);
         return QualityReportContract.validate(report, ctx).toString();
+    }
+
+    /**
+     * 成片是不是因为响度超标去掉了配乐。
+     *
+     * <p>从 {@code checks} 里读，不另存一份状态：闸里已经记着实测值，
+     * 报告再存一遍就成了两处可能对不上的事实。
+     */
+    private static boolean bgmDropped(QualityCriteria.Context ctx) {
+        JsonNode checks = ctx.checks();
+        if (checks == null || !checks.isArray()) {
+            return false;
+        }
+        for (JsonNode check : checks) {
+            if ("audio_mix".equals(check.path("gate").asString(""))) {
+                return check.path("measured").path("bgmDropped").asBoolean(false);
+            }
+        }
+        return false;
     }
 
     /** 机器定论转成报告条目。 */

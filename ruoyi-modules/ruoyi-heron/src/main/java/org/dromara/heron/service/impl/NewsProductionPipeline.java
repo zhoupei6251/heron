@@ -54,6 +54,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private static final Duration CHECK_TIMEOUT = Duration.ofSeconds(240);
     private static final Duration RENDER_TIMEOUT = Duration.ofSeconds(600);
     private static final Duration PACKAGE_TIMEOUT = Duration.ofSeconds(120);
+    /** 响度对齐最多试几轮：混一次、测一次、按差值修正后再来。 */
+    private static final int MIX_ATTEMPTS = 3;
     private static final String COMPOSITION_DIR = "composition";
     private static final String VOICE_FILE = "narration.mp3";
     private static final String SUBTITLES_FILE = "subs.vtt";
@@ -198,7 +200,9 @@ public class NewsProductionPipeline implements IProductionPipeline {
         gates.add(decodeGate(decode(run, work.resolve(RAW_FILE)), audioSeconds));
 
         stages.beginStage(run, "finalize", 85);
-        Path finalFile = tagAigc(run, work, timeline.get(timeline.size() - 1));
+        AudioMix audio = mixAndTag(run, work, timeline.get(timeline.size() - 1));
+        gates.add(audio.gate());
+        Path finalFile = audio.finalFile();
         gates.add(aigcMetadataGate(run, finalFile));
         Path sheet = contactSheet(run, work, finalFile);
         gates.add(visualGate(check, sheet));
@@ -285,6 +289,19 @@ public class NewsProductionPipeline implements IProductionPipeline {
     // ---------- 十道闸 ----------
 
     private record Gate(String gate, String inputLocator, String reason, Map<String, Object> measured) { }
+
+    /** 混音定稿的结果：成片位置与响度闸。 */
+    private record AudioMix(Path finalFile, Gate gate) { }
+
+    /**
+     * 一轮「混 → 测 → 修正」的結果。
+     *
+     * @param ok        是否达到交付口径
+     * @param voiceGain 最后一次混音用的旁白增益
+     * @param measured  最后一次成片的实测值
+     * @param attempts  混了几次
+     */
+    private record MixAttempt(boolean ok, double voiceGain, AudioLoudness.Measurement measured, int attempts) { }
 
     /**
      * 场景类型必须落在模板声明的能力里。
@@ -763,25 +780,87 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     /**
-     * 成片定稿：混入背景音乐并写 AIGC 元数据，一条命令完成。
+     * 混音定稿：先测后调，混完再复测，不达标就修正增益重来。
      *
-     * <p>配乐包络复用字幕对齐后的真实结尾窗口；不以脚本声明时长猜测释放和片尾位置。
+     * <p>三步走的原因：配乐过去是固定增益直接叠加，而仓库里 6 首 BGM 自身响度差了 8 dB，
+     * 最响的那首在片尾实测压过旁白 1.3 dB；{@code amix normalize=0} 的直接叠加也没有任何
+     * 检测会拦住峰值越界。现在按目标响度反算增益，混完复测，超标就处理。
      *
-     * <p>找不到背景音乐就退化成原样封装，不影响出片：音乐是加分项，不是闸。
+     * <p>为什么必须「混完再测」：EBU R128 的整体响度是门控后的均值，配乐填进旁白的停顿之后，
+     * 原来被整段排除的静音变成了 −28 LUFS 的底噪，测得的整体响度会比旁白自身低 2 dB 上下。
+     * 只按旁白算增益、成片一定不达标。所以增益以成片的实测值为准来修正。
+     *
+     * <p>失败分两级：旁白自身不达标是内容主体的问题，直接阻塞出片；
+     * 配乐导致超标则去掉配乐重混——音乐是加分项，不该为它卡住一条片子。
      */
-    private Path tagAigc(ProductionRunVo run, Path work, NewsNarrationTiming.Span closing) {
+    private AudioMix mixAndTag(ProductionRunVo run, Path work, NewsNarrationTiming.Span closing) {
+        // 测旁白：量的是渲染后成片里的那条音轨，不是工作目录里的配音文件
+        AudioLoudness.Measurement voice = AudioLoudness.measureFile(processes, run, work, RAW_FILE);
+        double voiceGain = AudioLoudness.voiceGain(voice);
         Path bgm = pickBgm();
+        String envelope = bgmEnvelope(closing);
+        AudioLoudness.Measurement bgmMeasured = null;
+        double bgmGain = 0;
+        if (bgm != null) {
+            // 配乐连包络一起测：正文与片尾音量不同，只测原始曲目会算错增益
+            bgmMeasured = AudioLoudness.measureBgm(processes, run, work, bgm, envelope);
+            bgmGain = AudioLoudness.bgmGain(bgmMeasured);
+        }
+        MixAttempt attempt = mixAndMeasure(run, work, bgm, envelope, voiceGain, bgmGain, MIX_ATTEMPTS);
+        boolean bgmDropped = false;
+        if (!attempt.ok() && bgm != null) {
+            // 配乐导致超标：去掉配乐重来一次，不为音乐卡住出片
+            attempt = mixAndMeasure(run, work, null, envelope, voiceGain, 0, MIX_ATTEMPTS);
+            bgmDropped = true;
+        }
+        if (!attempt.ok()) {
+            throw new HeronBusinessException(409, "news_audio_loudness_failed",
+                "成片响度不达标：整体 " + fmt(attempt.measured().integratedLufs()) + " LUFS，真峰值 "
+                    + fmt(attempt.measured().truePeakDb()) + " dBTP；目标 " + fmt(AudioLoudness.TARGET_LUFS)
+                    + " LUFS ±" + fmt(AudioLoudness.TOLERANCE_LUFS) + "，真峰值上限 "
+                    + fmt(AudioLoudness.MAX_TRUE_PEAK) + " dBTP");
+        }
+        return new AudioMix(work.resolve(FINAL_FILE),
+            audioMixGate(voice, attempt, bgm, bgmMeasured, bgmGain, bgmDropped));
+    }
+
+    /**
+     * 混一次、测一次，不达标就按实测差值修正旁白增益再混。
+     *
+     * <p>增益与实测响度近似线性（限幅器没介入时），所以第二轮一般就收敛；
+     * 限幅器介入后关系会被压平，再多试也上不去，那就该按「旁白不达标」处理。
+     */
+    private MixAttempt mixAndMeasure(ProductionRunVo run, Path work, Path bgm, String envelope,
+                                      double voiceGain, double bgmGain, int maxAttempts) {
+        double gain = voiceGain;
+        AudioLoudness.Measurement measured = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            mixTo(run, work, bgm, envelope, gain, bgmGain);
+            measured = AudioLoudness.measureFile(processes, run, work, FINAL_FILE);
+            if (measured.deliveryOk()) {
+                return new MixAttempt(true, gain, measured, attempt);
+            }
+            double residual = AudioLoudness.TARGET_LUFS - measured.integratedLufs();
+            if (Math.abs(residual) < 0.2) {
+                // 差得不多但仍在范围外：再混一次也不会变，去留由失败分支处理
+                break;
+            }
+            gain += residual;
+        }
+        return new MixAttempt(false, gain, measured, maxAttempts);
+    }
+
+    /** 混音与 AIGC 元数据一条命令完成；BGM 为空时就是只贴标签。 */
+    private void mixTo(ProductionRunVo run, Path work, Path bgm, String envelope,
+                       double voiceGain, double bgmGain) {
         List<String> command = new ArrayList<>();
         command.addAll(List.of("-y", "-loglevel", "error", "-i", RAW_FILE));
-        boolean withBgm = bgm != null;
-        if (withBgm) {
+        if (bgm != null) {
             command.addAll(List.of("-stream_loop", "-1", "-i", bgm.toAbsolutePath().toString()));
-            command.addAll(List.of("-filter_complex", bgmFilter(closing)));
-            command.addAll(List.of("-map", "0:v:0", "-map", "[mix]"));
-            command.addAll(List.of("-c:v", "copy", "-c:a", "aac", "-b:a", "160k"));
-        } else {
-            command.addAll(List.of("-c", "copy"));
         }
+        command.addAll(List.of("-filter_complex", mixFilter(envelope, voiceGain, bgmGain, bgm != null)));
+        command.addAll(List.of("-map", "0:v:0", "-map", "[mix]"));
+        command.addAll(List.of("-c:v", "copy", "-c:a", "aac", "-b:a", "160k"));
         command.addAll(List.of("-movflags", "+use_metadata_tags",
             "-metadata", AIGC_TAG + "=" + AIGC_STATEMENT, FINAL_FILE));
         ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg", command,
@@ -790,13 +869,35 @@ public class NewsProductionPipeline implements IProductionPipeline {
             // 混音失败不静默降级成无 BGM：退回去等于掩盖一次真实的编码失败
             throw new HeronBusinessException(503, "news_aigc_metadata_failed", "写入 AIGC 元数据失败");
         }
-        return work.resolve(FINAL_FILE);
+    }
+
+    /**
+     * 混音滤镜链。
+     *
+     * <p>旁白先按实测响度加增益，再限幅；配乐连包络一起加增益再限幅；两路相加后还要再限一次——
+     * 两路各自的峰值都不越界，不代表相加后不越界。
+     */
+    static String mixFilter(String envelope, double voiceGain, double bgmGain, boolean withBgm) {
+        String limiter = AudioLoudness.limiter();
+        StringBuilder text = new StringBuilder();
+        text.append("[0:a]volume=").append(AudioLoudness.fmt(AudioLoudness.factor(voiceGain)))
+            .append(',').append(limiter).append("[vo];");
+        if (withBgm) {
+            text.append("[1:a]").append(envelope)
+                .append(",volume=").append(AudioLoudness.fmt(AudioLoudness.factor(bgmGain)))
+                .append(',').append(limiter).append("[bg];");
+            text.append("[vo][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,")
+                .append(limiter).append("[mix]");
+        } else {
+            text.append("[vo]").append(limiter).append("[mix]");
+        }
+        return text.toString();
     }
 
     /**
      * 正文配乐增益0.22，实际结尾内平滑升至0.40，完整片尾淡出；短结尾缩短两段过渡。
      */
-    static String bgmFilter(NewsNarrationTiming.Span closing) {
+    static String bgmEnvelope(NewsNarrationTiming.Span closing) {
         if (closing == null || !"closing-slot".equals(closing.id()) || closing.startMs() < 0
             || closing.endMs() <= closing.startMs()) {
             throw new HeronBusinessException(409, "news_audio_alignment", "配乐缺少有效的实际结尾时间");
@@ -806,11 +907,38 @@ public class NewsProductionPipeline implements IProductionPipeline {
         double halfClosing = (closing.endMs() - closing.startMs()) / 2000.0;
         double rise = Math.min(0.8, halfClosing);
         double fade = Math.min(1.2, halfClosing);
-        return "[1:a]atrim=duration=" + fmt(total) + ",asetpts=PTS-STARTPTS,"
+        return "atrim=duration=" + fmt(total) + ",asetpts=PTS-STARTPTS,"
             + "volume='if(isnan(t),0.22,0.22+0.18*min(1,max(0,(t-" + fmt(start) + ")/" + fmt(rise)
             + ")))':eval=frame,afade=t=in:st=0:d=" + fmt(Math.min(0.8, total / 2)) + ","
-            + "afade=t=out:st=" + fmt(total - fade) + ":d=" + fmt(fade) + "[bg];"
-            + "[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mix]";
+            + "afade=t=out:st=" + fmt(total - fade) + ":d=" + fmt(fade);
+    }
+
+    /**
+     * 响度闸：把两侧的实测值都留痕，让人能复核这条片子为什么是现在这个响度。
+     */
+    private static Gate audioMixGate(AudioLoudness.Measurement voice, MixAttempt attempt, Path bgm,
+                                     AudioLoudness.Measurement bgmMeasured, double bgmGain,
+                                     boolean bgmDropped) {
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("voiceLufs", round2(voice.integratedLufs()));
+        measured.put("voiceTruePeakDb", round2(voice.truePeakDb()));
+        measured.put("voiceGainDb", round2(attempt.voiceGain()));
+        measured.put("finalLufs", round2(attempt.measured().integratedLufs()));
+        measured.put("finalTruePeakDb", round2(attempt.measured().truePeakDb()));
+        measured.put("targetLufs", AudioLoudness.TARGET_LUFS);
+        measured.put("toleranceLufs", AudioLoudness.TOLERANCE_LUFS);
+        measured.put("truePeakLimitDb", AudioLoudness.MAX_TRUE_PEAK);
+        measured.put("bgmDropped", bgmDropped);
+        measured.put("mixAttempts", attempt.attempts());
+        if (bgm != null && !bgmDropped && bgmMeasured != null) {
+            measured.put("bgmLufs", round2(bgmMeasured.integratedLufs()));
+            measured.put("bgmGainDb", round2(bgmGain));
+            measured.put("bgmOffsetLufs", AudioLoudness.BGM_OFFSET_LUFS);
+        }
+        String reason = bgmDropped
+            ? "配乐导致响度超标，去掉配乐重混后达标；配乐是加分项，不为它卡住出片"
+            : "旁白与配乐按响度口径对齐，成片整体响度与真峰值均在交付范围内";
+        return new Gate("audio_mix", FINAL_FILE + ":loudness", reason, measured);
     }
 
     private static String fmt(double seconds) {

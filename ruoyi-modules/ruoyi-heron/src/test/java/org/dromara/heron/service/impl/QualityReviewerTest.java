@@ -205,4 +205,39 @@ class QualityReviewerTest {
         assertEquals(9, report.path("summary").path("pass").asInt() + report.path("summary").path("minor").asInt()
             + report.path("summary").path("fail").asInt() + report.path("summary").path("unknown").asInt());
     }
+
+    @Test
+    @DisplayName("配乐因响度超标被去掉时，报告里要看得见")
+    void bgmDroppedIsRecordedInReport() {
+        String json = new QualityReviewer(new StubModel(MODEL_REPLY)).review(run(), ctxWithBgmDropped());
+        JsonNode report = JSON.readTree(json);
+
+        assertTrue(report.path("notes").toString().contains("audio_bgm_dropped"), report.path("notes").toString());
+    }
+
+    @Test
+    @DisplayName("没有去掉配乐时不写这条备注")
+    void bgmDroppedIsNotRecordedWhenNormal() {
+        String json = new QualityReviewer(new StubModel(MODEL_REPLY)).review(run(), ctx());
+        JsonNode report = JSON.readTree(json);
+
+        assertFalse(report.path("notes").toString().contains("audio_bgm_dropped"),
+            report.path("notes").toString());
+    }
+
+    /** 带 audio_mix 闸的上下文：闸里说配乐被去掉，报告就该记一条。 */
+    private static QualityCriteria.Context ctxWithBgmDropped() {
+        JsonNode checks = JSON.readTree("""
+            [{"gate":"audio_mix","inputLocator":"final.mp4:loudness","passed":true,
+              "reason":"配乐导致响度超标，去掉配乐重混后达标","measured":{"bgmDropped":true}},
+             {"gate":"subtitles","passed":true,"reason":"覆盖",
+              "measured":{"scene1StartMs":0,"scene2EndMs":16000,"closingStartMs":24000,"closingEndMs":30000}}]
+            """);
+        Map<Integer, DatasetVisualFocus.Focus> focus = new LinkedHashMap<>();
+        JsonNode scenes = script().path("scenes");
+        for (int index = 0; index < scenes.size(); index++) {
+            focus.put(index + 1, DatasetVisualFocus.forScene(scenes.get(index), dataset()));
+        }
+        return new QualityCriteria.Context(1900000000000000001L, "final", script(), dataset(), checks, null, focus);
+    }
 }

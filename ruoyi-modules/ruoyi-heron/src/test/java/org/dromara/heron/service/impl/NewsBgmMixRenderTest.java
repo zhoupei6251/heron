@@ -41,10 +41,11 @@ class NewsBgmMixRenderTest {
     private float[] mix(NewsNarrationTiming.Span closing, String name) throws Exception {
         Path pcm = output.resolve(name + ".f32");
         Path log = output.resolve(name + ".log");
+        // 这里只验包络形状：恒定信号进包络，读回的实际音量就是包络值本身
         Process process = new ProcessBuilder(List.of("ffmpeg", "-y", "-loglevel", "error",
             "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono:d=41.5",
             "-f", "lavfi", "-i", "aevalsrc=1:s=48000:d=50",
-            "-filter_complex", NewsProductionPipeline.bgmFilter(closing), "-map", "[mix]",
+            "-filter_complex", "[1:a]" + NewsProductionPipeline.bgmEnvelope(closing) + "[bg]", "-map", "[bg]",
             "-c:a", "pcm_f32le", "-f", "f32le", pcm.toString()))
             .redirectErrorStream(true).redirectOutput(log.toFile()).start();
         if (!process.waitFor(30, TimeUnit.SECONDS)) {

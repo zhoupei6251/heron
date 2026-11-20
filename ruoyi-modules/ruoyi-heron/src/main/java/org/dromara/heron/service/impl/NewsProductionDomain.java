@@ -31,12 +31,12 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class NewsProductionDomain implements IProductionDomain, IProductionObjectScope {
     private static final Set<String> KINDS = Set.of("mp4", "contact_sheet", "script", "subtitles", "checks", "asset_manifest");
-    private static final Set<String> GATES = Set.of("schema", "evidence", "audio", "subtitles", "render", "decode",
-        "visual", "aigc_metadata", "aigc_visible", "assets");
+    private static final Set<String> GATES = Set.of("schema", "evidence", "audio", "audio_mix", "subtitles", "render",
+        "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
     private static final Set<String> DATA_KINDS = Set.of("mp4", "contact_sheet", "script", "subtitles", "checks",
         "asset_manifest", "dataset");
-    private static final Set<String> DATA_GATES = Set.of("schema", "evidence", "data", "audio", "subtitles", "render",
-        "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
+    private static final Set<String> DATA_GATES = Set.of("schema", "evidence", "data", "audio", "audio_mix", "subtitles",
+        "render", "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
     private final HeronNewsCandidateMapper candidateMapper;
     private final FrozenContextService contexts;
     private final HeronNewsWorkMapper workMapper;

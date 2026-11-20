@@ -229,8 +229,8 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
     }
 
     protected static String checksJson() {
-        return JsonUtils.toJsonString(List.of("schema", "evidence", "audio", "subtitles", "render", "decode",
-                "visual", "aigc_metadata", "aigc_visible", "assets").stream()
+        return JsonUtils.toJsonString(List.of("schema", "evidence", "audio", "audio_mix", "subtitles", "render",
+                "decode", "visual", "aigc_metadata", "aigc_visible", "assets").stream()
             .map(gate -> Map.of("gate", gate, "inputLocator", "fixture", "passed", true,
                 "reason", "仅事务测试，非真实生产验收", "measured", Map.of())).toList());
     }

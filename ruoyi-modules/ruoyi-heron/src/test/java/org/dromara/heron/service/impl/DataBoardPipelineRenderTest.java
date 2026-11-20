@@ -164,8 +164,8 @@ class DataBoardPipelineRenderTest {
             gateNames.add(gate.path("gate").asString(""));
             assertTrue(gate.path("passed").asBoolean(), gate.path("gate").asString("") + " 未通过");
         }
-        assertEquals(java.util.Set.of("schema", "evidence", "data", "audio", "subtitles", "render", "decode",
-            "visual", "aigc_metadata", "aigc_visible", "assets", "scene_type"), gateNames, checks.toString());
+        assertEquals(java.util.Set.of("schema", "evidence", "data", "audio", "audio_mix", "subtitles", "render",
+            "decode", "visual", "aigc_metadata", "aigc_visible", "assets", "scene_type"), gateNames, checks.toString());
 
         Path mp4 = dataRoot.resolve(byKind(result, "mp4").storageKey());
         Path sheet = dataRoot.resolve(byKind(result, "contact_sheet").storageKey());

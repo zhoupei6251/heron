@@ -135,6 +135,14 @@ final class QualityCriteria {
         out.add(styleConsistency(ctx));
         out.add(noRedundancy(ctx));
         out.add(closingValue(ctx));
+        // 「可修」只认定向修复白名单：白名单外的判据即使有结论，也不进修复通道。
+        // 报告契约会把这以外的「可修」降级掉，机器自己更不该先标上。
+        for (Criterion criterion : out) {
+            if (!QualityRepairPlanner.whitelistIds().contains(criterion.id()) && criterion.repairable()) {
+                out.set(out.indexOf(criterion), new Criterion(criterion.id(), criterion.verdict(),
+                    criterion.severity(), false, criterion.evidence(), criterion.reason()));
+            }
+        }
         return out;
     }
 

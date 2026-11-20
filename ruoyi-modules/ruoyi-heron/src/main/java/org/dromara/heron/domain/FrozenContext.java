@@ -45,6 +45,21 @@ public record FrozenContext(long contextId, long workId, long versionId, long ta
     }
 
     /**
+     * 可比文本：解析 → 规范化 → 再序列化。
+     *
+     * <p>比摘要更适合「两份内容是不是同一份」的判断：MySQL 的 {@code json} 列会把小数按
+     * double 存、再按最短 double 表示打印，写入时的十进制文本与读回的不逐位相等
+     * （{@code 0.9170061196527047} 读回来是 {@code 0.9170061196527048}）。
+     * 两边都先解析再序列化，落到同一套表示上，比的就是内容本身。
+     */
+    public static String comparable(String json) {
+        if (json == null) {
+            throw new IllegalArgumentException("冻结上下文缺失，不能比较内容");
+        }
+        return canonicalJson(JSON.readTree(json));
+    }
+
+    /**
      * 递归排序键名。写入侧的 Map 与读取侧的 JsonNode 都要经过它，
      * 这样两端算出来的字节序列才一致。
      */

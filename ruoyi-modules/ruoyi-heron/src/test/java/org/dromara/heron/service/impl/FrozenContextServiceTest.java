@@ -92,4 +92,41 @@ class FrozenContextServiceTest {
 
         assertEquals("news_context_schema", error.getCode());
     }
+
+    /**
+     * 回归：库里的小数是按 double 存的，读回时打印的是最短 double 表示。
+     *
+     * <p>真实故障：机会信号里的 {@code magnitude} 写入时是 {@code 0.9170061196527047}，
+     * MySQL 的 json 列读回来是 {@code 0.9170061196527048}。行里存的摘要仍是写入时算的那个，
+     * 于是「拿写入时的摘要比读回后的内容」必然对不上，没被改过的输入也被判成「不一致」，
+     * 整条自动产出线全部失败。
+     */
+    @Test
+    @DisplayName("库里的小数按 double 归一化过：内容没被改过就不能判成不一致")
+    void normalizedDecimalDoesNotLookTampered() {
+        String written = "{\"kind\":\"data_board\",\"signals\":{\"magnitude\":0.9170061196527047}}";
+        String readBack = "{\"kind\":\"data_board\",\"signals\":{\"magnitude\":0.9170061196527048}}";
+        HeronProductionContextMapper mapper = mock(HeronProductionContextMapper.class);
+        when(mapper.selectOne(any())).thenReturn(row(readBack, FrozenContext.SCHEMA));
+
+        // 前提：行里的摘要是写入时算的，与读回后的内容对不上——旧口径就是死在这里
+        assertNotEquals(FrozenContext.hash(written), FrozenContext.hash(readBack));
+
+        FrozenContext context = service(mapper).verify(30L, readBack);
+
+        assertNotNull(context, "只是小数表示不同，内容并没有被改过");
+    }
+
+    @Test
+    @DisplayName("真的被改过：照旧拒绝")
+    void changedDecimalIsStillRejected() {
+        String readBack = "{\"kind\":\"data_board\",\"signals\":{\"magnitude\":0.9170061196527048}}";
+        HeronProductionContextMapper mapper = mock(HeronProductionContextMapper.class);
+        when(mapper.selectOne(any())).thenReturn(row(readBack, FrozenContext.SCHEMA));
+
+        HeronBusinessException error = assertThrows(HeronBusinessException.class,
+            () -> service(mapper).verify(30L, "{\"kind\":\"data_board\",\"signals\":{\"magnitude\":0.5}}"));
+
+        assertEquals("news_context_mismatch", error.getCode());
+    }
 }
