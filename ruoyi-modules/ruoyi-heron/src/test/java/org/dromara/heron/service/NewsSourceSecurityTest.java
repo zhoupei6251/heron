@@ -184,8 +184,24 @@ class NewsSourceSecurityTest {
     }
 
     @Test
-    void nonSuccessStatusIsReportedNotParsed() throws Exception {
+    void forbiddenStatusIsReportedAsAuth() throws Exception {
         transport.reply("https://feed.example.test/rss", 403, null, null, new byte[0]);
+        HeronBusinessException e = assertThrows(HeronBusinessException.class,
+            () -> fetcher().fetch(source("https://feed.example.test/rss", "rss")));
+        assertEquals("news_source_auth", e.getCode());
+    }
+
+    @Test
+    void rateLimitedStatusIsReportedSeparately() throws Exception {
+        transport.reply("https://feed.example.test/rss", 429, null, null, new byte[0]);
+        HeronBusinessException e = assertThrows(HeronBusinessException.class,
+            () -> fetcher().fetch(source("https://feed.example.test/rss", "rss")));
+        assertEquals("news_source_rate_limited", e.getCode());
+    }
+
+    @Test
+    void serverErrorIsStillReportedAsStatus() throws Exception {
+        transport.reply("https://feed.example.test/rss", 500, null, null, new byte[0]);
         HeronBusinessException e = assertThrows(HeronBusinessException.class,
             () -> fetcher().fetch(source("https://feed.example.test/rss", "rss")));
         assertEquals("news_source_status", e.getCode());

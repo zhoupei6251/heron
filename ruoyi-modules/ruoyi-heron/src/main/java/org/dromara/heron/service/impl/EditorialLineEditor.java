@@ -202,7 +202,7 @@ public class EditorialLineEditor {
         }
     }
 
-    /** 解说线的「有正文」判定：证据里有原文链接就算，与前端卡片口径一致。 */
+    /** 解说线的「有正文」判定：证据里有原文链接且不是纯选题线索才算，与前端卡片口径一致。 */
     public static boolean hasBody(HeronNewsCandidate candidate) {
         return !evidenceIds(candidate).isEmpty();
     }
@@ -212,6 +212,7 @@ public class EditorialLineEditor {
         try {
             JsonNode items = JSON.readTree(candidate.getEvidence()).path("items");
             for (JsonNode item : items) {
+                if (item.path("topicOnly").asBoolean(false)) continue;
                 String url = item.path("sourceUrl").asString("");
                 if (!url.isBlank()) {
                     String id = item.path("sourceItemId").asString("");

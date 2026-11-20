@@ -12,11 +12,15 @@ import org.dromara.common.log.enums.BusinessType;
 import org.dromara.common.redis.annotation.RepeatSubmit;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.heron.domain.bo.NewsSourceBo;
+import org.dromara.heron.domain.bo.NewsNowEnableBo;
 import org.dromara.heron.domain.bo.NewsSourceQuery;
+import org.dromara.heron.domain.vo.NewsNowPlatformVo;
 import org.dromara.heron.domain.vo.NewsSourceVo;
 import org.dromara.heron.service.INewsSourceService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * 新闻来源维护与手动采集。这里只接受已登记来源的 id，不接受任意 URL，
@@ -71,5 +75,20 @@ public class NewsSourceController extends BaseController {
     public R<Void> fetch(@PathVariable long id) {
         sources.fetch(id);
         return R.ok();
+    }
+
+    /** 平台目录只读：地址由部署基址拼出，前端据此批量启用，不需要逐个手填。 */
+    @SaCheckPermission("heron:newsSource:list")
+    @GetMapping("/newsnow/platforms")
+    public R<List<NewsNowPlatformVo>> newsnowPlatforms() {
+        return R.ok(sources.newsnowPlatforms());
+    }
+
+    @SaCheckPermission("heron:newsSource:add")
+    @RepeatSubmit
+    @Log(title = "启用 NewsNow 平台", businessType = BusinessType.INSERT, isSaveRequestData = false, isSaveResponseData = false)
+    @PostMapping("/newsnow/enable")
+    public R<Integer> enableNewsnow(@RequestBody @Valid NewsNowEnableBo bo) {
+        return R.ok(sources.enableNewsnow(bo.getPlatformIds()));
     }
 }

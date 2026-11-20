@@ -39,6 +39,19 @@ heron:
       - "s.weibo.com"
       - "top.baidu.com"
       - "www.baidu.com"
+      # 直连热榜（A 类平台）：采集入口域名；头条与澎湃另外放行详情页域名，供解说线抓正文
+      - "www.toutiao.com"
+      - "api.bilibili.com"
+      - "cache.thepaper.cn"
+      - "www.thepaper.cn"
+      - "api.zhihu.com"
+      # NewsNow 热榜：公共实例与自托管实例都走 HTTPS 域名，切自托管只需换 newsnow-base-url
+      - "newsnow.busiyi.world"
+      - "news.heronaigc.top"
+    # NewsNow 热榜实例基址；默认公共实例，切自托管只改这一行
+    newsnow-base-url: "https://newsnow.busiyi.world"
+    # NewsNow 条目是否允许进入解说线正文抓取；默认关闭，避免知乎/抖音/头条原站反爬推高失败率
+    newsnow-article-body-allowed: false
     # 来源逐条人工核对与安全验证通过后再逐条开启；总开关只控制是否跑采集
     collection-enabled: true
     # 模板、渲染器、字体与音色都锁定后才注册新闻流水线 bean

@@ -27,6 +27,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -44,6 +45,7 @@ public class NewsSourceFetcher {
     /** 单张图上限：正文配图不该有几 MB，超了通常是原图直出，压不进短视频。 */
     static final int MAX_IMAGE_BYTES = 8 << 20;
     private static final int TITLE_CODE_POINTS = 80;
+    private static final Pattern BAND_RANK = Pattern.compile("[?&]band_rank=(\\d+)");
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final NewsTransport transport;
@@ -51,13 +53,29 @@ public class NewsSourceFetcher {
     private final HeronNewsProperties properties;
 
     public List<NewsFeedItem> fetch(HeronNewsSource source) {
-        NewsTransport.Response response = request(NewsUrlPolicy.normalize(source.getUrl()));
+        NewsTransport.Response response;
+        try {
+            response = request(NewsUrlPolicy.normalize(source.getUrl()));
+        } catch (HeronBusinessException e) {
+            // NewsNow 对非法平台返回 500，必须单独归因，不能退化成「上游没数据」。
+            if ("newsnow".equals(source.getSourceType()) && "news_source_status".equals(e.getCode())) {
+                throw new HeronBusinessException(502, "news_source_platform",
+                    "NewsNow 平台不可用(" + NewsNowCatalog.platformId(source.getUrl()) + "): " + e.getMessage());
+            }
+            throw e;
+        }
         byte[] body = decode(response);
         return switch (source.getSourceType()) {
             case "rss", "atom" -> parseXml(body);
             case "text" -> parseText(body);
             case "weibo" -> parseWeibo(body);
             case "baidu" -> parseBaidu(body);
+            case "toutiao" -> parseToutiao(body);
+            case "bilibili" -> parseBilibili(body);
+            case "thepaper" -> parseThepaper(body);
+            case "zhihu" -> parseZhihu(body);
+            case "newsnow" -> parseNewsNow(body, NewsNowCatalog.platformId(source.getUrl()),
+                !properties.isNewsnowArticleBodyAllowed());
             default -> throw new HeronBusinessException(400, "news_source_type", "未知的来源类型: " + source.getSourceType());
         };
     }
@@ -135,6 +153,13 @@ public class NewsSourceFetcher {
                 }
                 current = NewsUrlPolicy.normalize(current.resolve(response.location()).toString());
                 continue;
+            }
+            // 401/403 是登录或风控拒绝，429 是限流；单独归因，别混进「上游没数据」。
+            if (status == 401 || status == 403) {
+                throw new HeronBusinessException(502, "news_source_auth", "来源要求登录或拒绝访问: " + status);
+            }
+            if (status == 429) {
+                throw new HeronBusinessException(502, "news_source_rate_limited", "来源限流: " + status);
             }
             if (status != 200) {
                 throw new HeronBusinessException(502, "news_source_status", "来源返回异常状态: " + status);
@@ -292,6 +317,212 @@ public class NewsSourceFetcher {
             }
         }
         return list;
+    }
+
+    /** 直连热榜统一入口：正常返回 JSON；返回 HTML 通常是风控/验证页，单独归因。 */
+    private static JsonNode json(byte[] body, String label) {
+        String text = new String(body, StandardCharsets.UTF_8).strip();
+        if (text.startsWith("<")) {
+            throw new HeronBusinessException(502, "news_source_blocked", label + "返回 HTML，疑似风控或验证页");
+        }
+        try {
+            return JSON.readTree(text);
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(502, "news_source_body", label + "返回不是 JSON");
+        }
+    }
+
+    /**
+     * 头条热榜：data[] 的 Title/Url/HotValue；名次按数组顺序，链接只保留身份路径。
+     * 详情页是 JS 壳，抓不到正文，只作选题线索；正文后续由大模型检索补。
+     */
+    static List<NewsFeedItem> parseToutiao(byte[] body) {
+        JsonNode items = json(body, "头条热榜").path("data");
+        if (!items.isArray()) {
+            throw new HeronBusinessException(502, "news_source_body", "头条热榜缺少 data 数组");
+        }
+        List<NewsFeedItem> list = new ArrayList<>();
+        for (JsonNode item : items) {
+            if (list.size() >= MAX_ITEMS) break;
+            String title = item.path("Title").asString("").strip();
+            String url = identityUrl(item.path("Url").asString(""));
+            if (title.isEmpty() || url.isEmpty()) continue;
+            String heat = numberText(item.path("HotValue"));
+            list.add(new NewsFeedItem(truncate(title), heat.isEmpty() ? "头条热榜" : "热度 " + heat,
+                url, item.path("ClusterIdStr").asString(""), list.size() + 1, true));
+        }
+        return list;
+    }
+
+    /** B 站热搜：data.trending.list 的 keyword/show_name/heat_score；链接按关键词构造站内搜索。视频条目无正文，只作线索。 */
+    static List<NewsFeedItem> parseBilibili(byte[] body) {
+        JsonNode root = json(body, "B站热搜");
+        int code = root.path("code").asInt(0);
+        // -412/-403 是 B 站风控与权限拒绝，先归因成 blocked，别让调用方以为是空数据。
+        if (code == -412 || code == -403) {
+            throw new HeronBusinessException(502, "news_source_blocked",
+                "B站热搜被风控拦截(" + code + "): " + root.path("message").asString(""));
+        }
+        if (code != 0) {
+            throw new HeronBusinessException(502, "news_source_platform",
+                "B站热搜接口返回错误: " + root.path("message").asString(""));
+        }
+        JsonNode items = root.path("data").path("trending").path("list");
+        if (!items.isArray()) {
+            throw new HeronBusinessException(502, "news_source_body", "B站热搜缺少 trending.list");
+        }
+        List<NewsFeedItem> list = new ArrayList<>();
+        for (JsonNode item : items) {
+            if (list.size() >= MAX_ITEMS) break;
+            String keyword = firstNonBlank(item.path("show_name").asString(""), item.path("keyword").asString(""));
+            if (keyword.isEmpty()) continue;
+            String heat = numberText(item.path("heat_score"));
+            String url = "https://search.bilibili.com/all?keyword=" + URLEncoder.encode(keyword, StandardCharsets.UTF_8);
+            list.add(new NewsFeedItem(truncate(keyword), heat.isEmpty() ? "B站热搜" : "热度 " + heat,
+                url, keyword, list.size() + 1, true));
+        }
+        return list;
+    }
+
+    /** 澎湃热榜：data.hotNews[] 的 name/nodeInfo/contId；link 为空时按 contId 拼详情地址。详情页服务端渲染，允许正文进解说线。 */
+    static List<NewsFeedItem> parseThepaper(byte[] body) {
+        JsonNode root = json(body, "澎湃热榜");
+        if (root.path("resultCode").asInt(0) != 1) {
+            throw new HeronBusinessException(502, "news_source_platform",
+                "澎湃热榜接口返回异常: " + root.path("resultMsg").asString(""));
+        }
+        JsonNode items = root.path("data").path("hotNews");
+        if (!items.isArray()) {
+            throw new HeronBusinessException(502, "news_source_body", "澎湃热榜缺少 hotNews");
+        }
+        List<NewsFeedItem> list = new ArrayList<>();
+        for (JsonNode item : items) {
+            if (list.size() >= MAX_ITEMS) break;
+            String title = item.path("name").asString("").strip();
+            String contId = item.path("contId").asString("").strip();
+            String url = item.path("link").asString("").strip();
+            // 只认站内详情链接；分享链或移动域一律按 contId 重建，避免正文抓取撞白名单。
+            if (!url.startsWith("https://www.thepaper.cn/") && !contId.isEmpty()) {
+                url = "https://www.thepaper.cn/newsDetail_forward_" + contId;
+            }
+            if (title.isEmpty() || url.isEmpty()) continue;
+            String section = item.path("nodeInfo").path("name").asString("").strip();
+            list.add(new NewsFeedItem(truncate(title), section.isEmpty() ? "澎湃热榜" : section,
+                url, contId, list.size() + 1, false));
+        }
+        return list;
+    }
+
+    /** 知乎热榜：data[].target 的 title/excerpt/url；接口域地址换成可阅读的问题页。正文要登录，只作线索。 */
+    static List<NewsFeedItem> parseZhihu(byte[] body) {
+        JsonNode items = json(body, "知乎热榜").path("data");
+        if (!items.isArray()) {
+            throw new HeronBusinessException(502, "news_source_body", "知乎热榜缺少 data 数组");
+        }
+        List<NewsFeedItem> list = new ArrayList<>();
+        for (JsonNode item : items) {
+            if (list.size() >= MAX_ITEMS) break;
+            JsonNode target = item.path("target");
+            String title = target.path("title").asString("").strip();
+            String id = target.path("id").asString("").strip();
+            String url = questionUrl(target.path("url").asString("").strip(), id);
+            if (title.isEmpty() || url.isEmpty()) continue;
+            String excerpt = target.path("excerpt").asString("").strip();
+            list.add(new NewsFeedItem(truncate(title), excerpt.isEmpty() ? "知乎热榜" : excerpt,
+                url, id, list.size() + 1, true));
+        }
+        return list;
+    }
+
+    /** 头条链接带着大段统计参数，只保留身份路径，避免同一话题因参数变化被当成新条目。 */
+    private static String identityUrl(String value) {
+        if (value == null || value.isBlank()) return "";
+        try {
+            URI uri = URI.create(value.strip());
+            String path = uri.getRawPath() == null ? "" : uri.getRawPath();
+            if (path.isEmpty()) return value.strip();
+            return uri.getScheme() + "://" + uri.getAuthority() + path;
+        } catch (RuntimeException e) {
+            return value.strip();
+        }
+    }
+
+    /** api.zhihu.com 是接口域，证据链接要换成能打开的问题页；其余形态原样保留。 */
+    private static String questionUrl(String raw, String id) {
+        String prefix = "https://api.zhihu.com/questions/";
+        if (raw.startsWith(prefix)) {
+            return "https://www.zhihu.com/question/" + raw.substring(prefix.length());
+        }
+        if (!raw.isEmpty()) return raw;
+        return id.isEmpty() ? "" : "https://www.zhihu.com/question/" + id;
+    }
+
+    /** 数值字段转文本：Jackson 对数字节点可能给出空串，取不到就退回节点字面量。 */
+    private static String numberText(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) return "";
+        String value = node.asString("");
+        return value.isBlank() ? node.toString() : value;
+    }
+
+    /** NewsNow 热榜：外壳 status/id/updatedTime/items[]，名次优先取 URL 的 band_rank，缺失时按数组下标。 */
+    static List<NewsFeedItem> parseNewsNow(byte[] body, String platformId, boolean topicOnly) {
+        JsonNode root;
+        try {
+            root = JSON.readTree(new String(body, StandardCharsets.UTF_8));
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(502, "news_source_body", "NewsNow 返回不是 JSON: " + platformId);
+        }
+        JsonNode items = root.path("items");
+        if (!items.isArray()) {
+            throw new HeronBusinessException(502, "news_source_platform", "NewsNow 未返回条目列表: " + platformId);
+        }
+        List<NewsFeedItem> list = new ArrayList<>();
+        for (JsonNode item : items) {
+            if (list.size() >= MAX_ITEMS) break;
+            String title = item.path("title").asString("").strip();
+            String rawUrl = firstNonBlank(item.path("url").asString(""), item.path("mobileUrl").asString(""));
+            String url = cleanNewsNowUrl(rawUrl);
+            if (title.isEmpty() || url == null || url.isBlank()) continue;
+            String summary = item.path("extra").path("info").asString("").strip();
+            int rank = rankFromNewsNowUrl(rawUrl, list.size() + 1);
+            list.add(new NewsFeedItem(truncate(title), summary, url, item.path("id").asString(""), rank, topicOnly));
+        }
+        return list;
+    }
+
+    /** 微博等平台把名次放在 band_rank 里；排名一变链接就变，落库前必须剥掉，避免同一话题重复建候选。 */
+    private static String cleanNewsNowUrl(String value) {
+        if (value == null || value.isBlank()) return null;
+        String url = value.strip();
+        try {
+            URI uri = URI.create(url);
+            String query = uri.getRawQuery();
+            if (query == null || query.isBlank()) return url;
+            StringBuilder kept = new StringBuilder();
+            for (String pair : query.split("&")) {
+                if (pair.isBlank()) continue;
+                int at = pair.indexOf('=');
+                String key = at > 0 ? pair.substring(0, at) : pair;
+                if ("band_rank".equalsIgnoreCase(key) || "refer".equalsIgnoreCase(key) || "t".equalsIgnoreCase(key)) continue;
+                if (!kept.isEmpty()) kept.append('&');
+                kept.append(pair);
+            }
+            String path = uri.getRawPath() == null ? "" : uri.getRawPath();
+            return uri.getScheme() + "://" + uri.getAuthority() + path + (kept.isEmpty() ? "" : "?" + kept);
+        } catch (RuntimeException e) {
+            return url;
+        }
+    }
+
+    private static int rankFromNewsNowUrl(String url, int fallback) {
+        if (url == null) return fallback;
+        var matcher = BAND_RANK.matcher(url);
+        if (!matcher.find()) return fallback;
+        try {
+            return Integer.parseInt(matcher.group(1));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     private static String truncate(String value) {

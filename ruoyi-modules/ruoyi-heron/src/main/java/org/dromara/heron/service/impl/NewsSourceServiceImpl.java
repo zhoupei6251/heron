@@ -7,21 +7,28 @@ import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
+import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.domain.HeronAccessException;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.HeronNewsSource;
 import org.dromara.heron.domain.bo.NewsSourceBo;
 import org.dromara.heron.domain.bo.NewsSourceQuery;
+import org.dromara.heron.domain.vo.NewsNowPlatformVo;
 import org.dromara.heron.domain.vo.NewsSourceVo;
 import org.dromara.heron.mapper.HeronNewsSourceMapper;
 import org.dromara.heron.service.INewsSourceService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -42,6 +49,7 @@ public class NewsSourceServiceImpl implements INewsSourceService {
     private final NewsSourceFetcher fetcher;
     private final NewsCandidateCollector collector;
     private final HeronAccessService access;
+    private final HeronNewsProperties properties;
     private final ObjectProvider<Clock> clocks;
 
     @Override
@@ -67,7 +75,7 @@ public class NewsSourceServiceImpl implements INewsSourceService {
     @Override
     public void add(NewsSourceBo bo) {
         access.requirePermission("heron:newsSource:add");
-        String url = validatedUrl(bo.getUrl());
+        String url = validatedUrl(bo.getUrl(), bo.getSourceType());
         LocalDateTime now = now();
         long actor = access.requireActor();
         HeronNewsSource source = MapstructUtils.convert(bo, HeronNewsSource.class);
@@ -88,7 +96,7 @@ public class NewsSourceServiceImpl implements INewsSourceService {
     @Override
     public void edit(NewsSourceBo bo) {
         access.requirePermission("heron:newsSource:edit");
-        String url = validatedUrl(bo.getUrl());
+        String url = validatedUrl(bo.getUrl(), bo.getSourceType());
         HeronNewsSource source = required(bo.getSourceId());
         source.setName(bo.getName());
         source.setSourceType(bo.getSourceType());
@@ -172,11 +180,77 @@ public class NewsSourceServiceImpl implements INewsSourceService {
         return source;
     }
 
+    @Override
+    public List<NewsNowPlatformVo> newsnowPlatforms() {
+        access.requirePermission("heron:newsSource:list");
+        Set<String> enabled = enabledNewsnowPlatforms();
+        String baseUrl = properties.getNewsnowBaseUrl();
+        List<NewsNowPlatformVo> list = new ArrayList<>();
+        for (NewsNowCatalog.Platform platform : NewsNowCatalog.ALL) {
+            NewsNowPlatformVo vo = new NewsNowPlatformVo();
+            vo.setPlatformId(platform.id());
+            vo.setName(platform.name());
+            vo.setUrl(NewsNowCatalog.feedUrl(baseUrl, platform.id()));
+            vo.setEnabled(enabled.contains(platform.id()));
+            list.add(vo);
+        }
+        return list;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int enableNewsnow(List<String> platformIds) {
+        access.requirePermission("heron:newsSource:add");
+        if (platformIds == null || platformIds.isEmpty()) return 0;
+        long actor = access.requireActor();
+        LocalDateTime now = now();
+        Set<String> enabled = enabledNewsnowPlatforms();
+        int created = 0;
+        for (String platformId : platformIds) {
+            NewsNowCatalog.Platform platform = NewsNowCatalog.find(platformId)
+                .orElseThrow(() -> new HeronBusinessException(400, "news_source_platform", "未知的 NewsNow 平台: " + platformId));
+            if (enabled.contains(platformId)) continue;
+            HeronNewsSource source = new HeronNewsSource();
+            source.setSourceId(IdUtil.getSnowflakeNextId());
+            source.setName(platform.name());
+            source.setSourceType("newsnow");
+            source.setUrl(NewsNowCatalog.feedUrl(properties.getNewsnowBaseUrl(), platformId));
+            source.setIntervalSeconds(DEFAULT_INTERVAL_SECONDS);
+            source.setEnabled("0");
+            source.setAuto("1");
+            source.setFailureCount(0);
+            source.setNextFetchAt(now);
+            source.setCreateBy(actor);
+            source.setUpdateBy(actor);
+            source.setCreateTime(now);
+            source.setUpdateTime(now);
+            if (sources.insert(source) != 1) throw new HeronBusinessException(409, "news_source_write", "来源保存失败");
+            enabled.add(platformId);
+            created++;
+        }
+        return created;
+    }
+
+    /** 已建来源按 URL 里的 id 反推平台标识，避免同一平台重复启用。 */
+    private Set<String> enabledNewsnowPlatforms() {
+        List<HeronNewsSource> existing = sources.selectList(QueryBuilder.lambda(HeronNewsSource.class)
+            .eq(HeronNewsSource::getSourceType, "newsnow").build());
+        Set<String> ids = new HashSet<>();
+        for (HeronNewsSource source : existing) {
+            String platformId = NewsNowCatalog.platformId(source.getUrl());
+            if (platformId != null) ids.add(platformId);
+        }
+        return ids;
+    }
+
     /** 保存时只做结构校验并归一；能不能出网由采集时的白名单与地址策略裁决。 */
-    private String validatedUrl(String url) {
+    private String validatedUrl(String url, String sourceType) {
         URI uri = NewsUrlPolicy.normalize(url);
         if (NewsUrlPolicy.isIpLiteral(NewsUrlPolicy.hostOf(uri))) {
             throw new HeronBusinessException(400, "news_source_url", "来源必须使用域名，便于白名单校验");
+        }
+        if ("newsnow".equals(sourceType) && NewsNowCatalog.platformId(uri.toString()) == null) {
+            throw new HeronBusinessException(400, "news_source_platform", "NewsNow 来源地址必须带平台 id 参数");
         }
         return uri.toString();
     }

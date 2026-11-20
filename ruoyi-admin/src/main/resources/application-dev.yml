@@ -360,6 +360,24 @@ heron:
       - www.tmtpost.com
       - m.tmtpost.com
       - www.199it.com
+      # 热榜种子源（V50）：与生产白名单对齐，本地才能实际采集微博/百度
+      - weibo.com
+      - s.weibo.com
+      - top.baidu.com
+      - www.baidu.com
+      # 直连热榜（A 类平台）：采集入口域名；头条与澎湃另外放行详情页域名，供解说线抓正文
+      - www.toutiao.com
+      - api.bilibili.com
+      - cache.thepaper.cn
+      - www.thepaper.cn
+      - api.zhihu.com
+      # NewsNow 热榜：本地联调放行公共实例与自托管实例，基址见 newsnow-base-url
+      - newsnow.busiyi.world
+      - news.heronaigc.top
+    # NewsNow 热榜实例基址；默认公共实例，切自托管只改这一行
+    newsnow-base-url: "https://newsnow.busiyi.world"
+    # NewsNow 条目默认只作选题线索，不进入解说线正文抓取
+    newsnow-article-body-allowed: false
     # 自动产出：按下述三条 cron 各产出一条并自动确认（沙箱发布）
     auto-enabled: false
     auto-slots:

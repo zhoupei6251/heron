@@ -89,6 +89,7 @@ public class NewsCandidateCollector {
         evidence.put("summary", summary);
         evidence.put("sourceItemId", item.itemId());
         evidence.put("contentSha256", contentHash);
+        evidence.put("topicOnly", item.topicOnly());
         if (matched == null) {
             HeronNewsCandidate created = new HeronNewsCandidate();
             created.setCandidateId(IdUtil.getSnowflakeNextId());

@@ -14,6 +14,12 @@ public class HeronNewsProperties {
     /** 部署侧精确主机名，不接受通配符与客户端 IP。 */
     private List<String> allowedHosts = new ArrayList<>();
 
+    /** NewsNow 热榜实例基址；默认公共实例，切自托管（如 news.heronaigc.top）只改这一行。 */
+    private String newsnowBaseUrl = "https://newsnow.busiyi.world";
+
+    /** NewsNow 条目是否允许进入解说线正文抓取；默认关闭，避免原站反爬把失败率推高。 */
+    private boolean newsnowArticleBodyAllowed;
+
     /** 定时采集开关，来源审核与安全验证通过后再开启。 */
     private boolean collectionEnabled;
 

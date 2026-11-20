@@ -13,7 +13,9 @@ import java.io.Serializable;
 public class NewsSourceBo implements Serializable {
     @NotNull(groups = EditGroup.class) private Long sourceId;
     @NotBlank @Size(max = 100) private String name;
-    @NotBlank @Pattern(regexp = "rss|atom|text") private String sourceType;
+    @NotBlank
+    @Pattern(regexp = "rss|atom|text|weibo|baidu|toutiao|bilibili|thepaper|zhihu|newsnow")
+    private String sourceType;
     @NotBlank @Size(max = 2048) private String url;
     @NotNull @Min(60) private Integer intervalSeconds;
     @NotBlank @Pattern(regexp = "0|1") private String enabled;
