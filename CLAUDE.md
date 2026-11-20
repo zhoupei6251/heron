@@ -8,6 +8,7 @@ Heron 业务管理系统，基座 RuoYi-Vue-Plus 6.1.0（Spring Boot 4.1.2 / JDK
 业务模块 `ruoyi-modules/ruoyi-heron`，包 `org.dromara.heron`，由 `ruoyi-admin` 统一启动。
 业务规格（唯一有效版）：`docs/plans/2026-10-29-heron-business-spec.md`。单租户自部署，两条业务线：新闻视频生产线、原型工坊。
 前端在 `../heron-ui`（plus-ui）。
+设计工具 `hallmark`（做新落地页/官网页用，`Skill: hallmark`）已挂到 `.claude/skills/hallmark`，指向 `D:\zhoupei\hallmark`。
 
 ### 新闻视频生产线下面还有两条子线，别混
 

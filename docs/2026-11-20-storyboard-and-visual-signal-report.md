@@ -1,7 +1,7 @@
 # Heron 分镜系统与成片画面信号：实施报告
 
 **日期：** 2026-11-20
-**范围：** `docs/plans/plan_4.md` §7.2/§8（分镜与脚本契约 v2）、`docs/plans/plan_impl.md` 七（质量检查闭环）、`docs/plans/plan_2.md` 三（FFmpeg 画面质量）
+**范围：** `plans/reference_github_4.md` §7.2/§8（分镜与脚本契约 v2）、`docs/plans/plan_impl.md` 七（质量检查闭环）、`plans/reference_github_2.md` 三（FFmpeg 画面质量）
 **不在本轮范围：** JEV 治理层、Supervisor 多 Agent、知识解释线、yt-dlp 参考素材
 
 ---
