@@ -75,6 +75,7 @@ class NewsAutoTickTest extends NewsMysqlTestSupport {
             org.mockito.Mockito.mock(org.dromara.heron.service.impl.EditorialLineEditor.class),
             org.mockito.Mockito.mock(org.dromara.heron.service.impl.DatasetRouter.class),
             org.mockito.Mockito.mock(org.dromara.heron.service.impl.StrategyReferenceService.class),
+            org.mockito.Mockito.mock(org.dromara.heron.service.impl.KnowledgeCandidateCollector.class),
             clock);
     }
 

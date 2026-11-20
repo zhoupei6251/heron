@@ -61,4 +61,18 @@ public class HeronNewsProperties {
 
     /** 分析窗口点数；与源的 cadence 一起解释，同一个数字对日频与年频含义不同。 */
     private int dataAnalysisWindowPoints = 120;
+
+    /**
+     * 知识包来源：每个源一个目录 {@code data/knowledge/<source-key>}。
+     *
+     * <p>{@code auto} 是逐源自动准入开关，默认关；人工触发不受它限制。
+     * 不在清单里的 sourceKey 即使库里有候选也不进池——知识线同样要能逐源下架。
+     */
+    private List<KnowledgeSource> knowledgeSources = new ArrayList<>();
+
+    @Data
+    public static class KnowledgeSource {
+        private String sourceKey;
+        private boolean auto;
+    }
 }

@@ -66,3 +66,7 @@ heron:
     # 自动确认会直接走发布适配器；发布最后再接，前提齐备前保持关闭
     auto-confirm-enabled: false
     auto-actor-id: 1
+    # 知识包来源：目录是 data/knowledge/<source-key>；auto 是逐源自动准入，默认关
+    knowledge-sources:
+      - source-key: how-to-live-better
+        auto: false

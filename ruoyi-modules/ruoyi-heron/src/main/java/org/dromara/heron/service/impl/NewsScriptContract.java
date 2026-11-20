@@ -26,6 +26,8 @@ public final class NewsScriptContract {
     private static final Set<String> SCENE_FIELDS_V1 = Set.of("lead", "body", "duration_s");
     /** 纯文字段也允许带场景标识。 */
     private static final Set<String> SCENE_ID_EXTRA = Set.of("scene_id");
+    /** 知识解释线：每段挂本轮引用的 entryId 列表；其他线不写，写了也不参与判定。 */
+    private static final Set<String> SCENE_CITATION = Set.of("entry_ids");
     /** v2 在 v1 之上增加的字段；scene_type 是启用 v2 校验的开关。 */
     private static final Set<String> SCENE_V2_EXTRA = Set.of("scene_type", "visual", "scene_id");
     private static final Set<String> VISUAL_FIELDS = Set.of("layout", "motion", "assets");
@@ -94,7 +96,9 @@ public final class NewsScriptContract {
             }
             boolean v2 = scene.has("scene_type");
             // scene_id 与画面无关，纯文字段也可以有：它是人工改稿定位一屏的锚点
-            Set<String> allowed = v2 ? union(SCENE_FIELDS_V1, SCENE_V2_EXTRA) : union(SCENE_FIELDS_V1, SCENE_ID_EXTRA);
+            Set<String> allowed = v2
+                ? union(union(SCENE_FIELDS_V1, SCENE_V2_EXTRA), SCENE_CITATION)
+                : union(union(SCENE_FIELDS_V1, SCENE_ID_EXTRA), SCENE_CITATION);
             for (String field : scene.propertyNames()) {
                 if (!allowed.contains(field)) items.add("第 " + (index + 1) + " 段有未知字段 " + field);
             }
@@ -108,6 +112,7 @@ public final class NewsScriptContract {
             }
             if (v2) visual(items, index, scene);
             if (scene.has("scene_id")) sceneId(items, index, scene, seenIds);
+            if (scene.has("entry_ids")) entryIds(items, index, scene);
         }
         if (total > 0 && (total < MIN_TOTAL_SECONDS || total > MAX_TOTAL_SECONDS)) {
             items.add("总时长 " + (int) total + " 秒不在 " + MIN_TOTAL_SECONDS + "–" + MAX_TOTAL_SECONDS + " 秒");
@@ -129,6 +134,23 @@ public final class NewsScriptContract {
         Integer first = seenIds.putIfAbsent(id, number);
         if (first != null) {
             items.add("第 " + number + " 段 scene_id 与第 " + first + " 段重复：" + id);
+        }
+    }
+
+    /**
+     * 引用列表只校验形状：1–5 个「章节-条号」形态的稳定 ID。
+     * 这些 ID 存不存在、集合与引用清单是否一致，是 citation 闸的事——那需要知识包才能判。
+     */
+    private static void entryIds(List<String> items, int index, JsonNode scene) {
+        JsonNode ids = scene.path("entry_ids");
+        if (!ids.isArray() || ids.isEmpty() || ids.size() > 5) {
+            items.add("第 " + (index + 1) + " 段 entry_ids 必须是 1–5 个条目的数组");
+            return;
+        }
+        for (JsonNode id : ids) {
+            if (!id.isString() || !id.asString("").matches("[0-9]{2}-[0-9]{2}")) {
+                items.add("第 " + (index + 1) + " 段 entry_ids 不是「章节-条号」形态：" + id);
+            }
         }
     }
 

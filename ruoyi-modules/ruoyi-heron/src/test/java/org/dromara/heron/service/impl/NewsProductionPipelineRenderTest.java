@@ -72,7 +72,7 @@ class NewsProductionPipelineRenderTest {
         // PATH 上的 node 可能被同机其它会话切成 20.x，而 hyperframes 要求 >=22：与部署侧一样用绝对路径钉住。
         properties.setNode(System.getenv().getOrDefault("HERON_TEST_NODE", "node"));
         NewsProductionPipeline pipeline = new NewsProductionPipeline(
-            fixedAuthor(SCRIPT), new ProductionProcessService(properties,
+            fixedAuthor(SCRIPT), null, new ProductionProcessService(properties,
             new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties,
             (run, stage, progress) -> true, null, null, null, passingReview(), null,
             new NewsSourceFetcher(null, null, new HeronNewsProperties()),
@@ -152,7 +152,7 @@ class NewsProductionPipelineRenderTest {
             }
         };
         NewsProductionPipeline pipeline = new NewsProductionPipeline(
-            fixedAuthor(script), new ProductionProcessService(properties,
+            fixedAuthor(script), null, new ProductionProcessService(properties,
             new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties,
             (run, stage, progress) -> true, null, null, null, passingReview(), null, stubFetcher,
             org.mockito.Mockito.mock(FrozenContextService.class));

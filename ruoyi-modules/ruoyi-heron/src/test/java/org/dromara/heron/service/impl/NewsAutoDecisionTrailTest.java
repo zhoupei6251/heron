@@ -72,6 +72,42 @@ class NewsAutoDecisionTrailTest {
     }
 
     @Test
+    @DisplayName("知识源逐源准入：无人值守只认显式开启的源，人工触发不受限制")
+    void knowledgeSourceKeysRespectPerSourceAuto() {
+        org.dromara.heron.config.HeronNewsProperties.KnowledgeSource on =
+            new org.dromara.heron.config.HeronNewsProperties.KnowledgeSource();
+        on.setSourceKey("how-to-live-better");
+        on.setAuto(true);
+        org.dromara.heron.config.HeronNewsProperties.KnowledgeSource off =
+            new org.dromara.heron.config.HeronNewsProperties.KnowledgeSource();
+        off.setSourceKey("second-book");
+        off.setAuto(false);
+
+        assertEquals(java.util.Set.of("how-to-live-better"),
+            NewsAutoService.knowledgeKeys(List.of(on, off), false));
+        assertEquals(java.util.Set.of("how-to-live-better", "second-book"),
+            NewsAutoService.knowledgeKeys(List.of(on, off), true));
+        assertEquals(java.util.Set.of(), NewsAutoService.knowledgeKeys(null, false));
+    }
+
+    @Test
+    @DisplayName("知识候选在总编辑摘要里带标题与钩子，不放热榜/正文池")
+    void knowledgeRefsCarryHook() {
+        HeronNewsCandidate knowledge = candidate(301L, "第一次租房先做这三件事");
+        knowledge.setSourceKind(HeronNewsCandidate.SOURCE_KNOWLEDGE);
+        knowledge.setSummary("押金条款写清楚，比什么都省钱");
+        EditorialCandidatePool pool = EditorialCandidatePool.of(
+            List.of(knowledge), item -> true, List.of(), List.of(), List.of());
+
+        EditorialDecisionService.Pools pools = NewsAutoService.pools(pool);
+
+        assertEquals(List.of(), pools.hot());
+        assertEquals(List.of(), pools.articles());
+        assertEquals(301L, pools.knowledge().get(0).candidateId());
+        assertTrue(pools.knowledge().get(0).label().contains("押金条款"));
+    }
+
+    @Test
     @DisplayName("回退后槽位记最终线，pool_json 里原判线仍在")
     void trailKeepsOriginalLine() {
         EditorialCandidatePool pool = EditorialCandidatePool.of(

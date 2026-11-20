@@ -41,7 +41,8 @@ body { margin: 0; background: #0a1013; color: #e6eef0; font-family: "Noto Sans S
 #closing { margin: 0; padding-left: 24px; border-left: 6px solid var(--accent);
            font-size: 40px; font-weight: 400; line-height: 1.6; color: #cfe0e4;
            font-variant-numeric: tabular-nums;
-           display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+           display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden;
+           overflow-wrap: anywhere; word-break: break-word; }
 #source-line { color: #7d8d92; }
 .clip { position: absolute; inset: 0; }
 .scene {

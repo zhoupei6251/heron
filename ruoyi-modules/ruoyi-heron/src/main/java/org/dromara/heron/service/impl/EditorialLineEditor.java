@@ -45,7 +45,7 @@ public class EditorialLineEditor {
      * <p>选不到就回退另一条线再试一次：日更账号直接弃更的代价比多调一次模型高得多。
      * 回退必须留痕，否则槽位上的「选了数据看板」和片子实际走的解说线永远对不上。
      *
-     * @param focusCandidateId   总编辑锁定的候选，可为空；仅解说线生效
+     * @param focusCandidateId   总编辑锁定的候选，可为空；解说线、知识线生效
      * @param focusOpportunityId 总编辑锁定的数据机会，可为空；仅数据看板线生效
      */
     public Optional<EditorialChoice> select(String line, EditorialCandidatePool pool, String intent,
@@ -55,6 +55,17 @@ public class EditorialLineEditor {
 
     public Optional<EditorialChoice> select(String line, EditorialCandidatePool pool, String intent,
                                             Long focusCandidateId, Long focusOpportunityId) {
+        if (EditorialDecisionService.KNOWLEDGE_EXPLAINER.equals(line)) {
+            Optional<EditorialSelection> knowledge = editKnowledge(pool.knowledge(), intent, focusCandidateId);
+            if (knowledge.isPresent()) {
+                return Optional.of(new EditorialChoice(knowledge.get(), line, false, null));
+            }
+            // 备用线也会空：池子里的知识候选都在重试中被剔掉时，按既定顺序回退一次
+            Optional<EditorialSelection> second = editExplainer(pool.articles(), intent, focusCandidateId)
+                .or(() -> editDatasetLine(EditorialDecisionService.DATA_BOARD,
+                    pool.datasets(), pool.opportunities(), focusOpportunityId));
+            return second.map(selection -> new EditorialChoice(selection, line, true, "knowledge_empty"));
+        }
         boolean trend = EditorialDecisionService.TREND_INSIGHT.equals(line);
         boolean datasetLine = trend || EditorialDecisionService.DATA_BOARD.equals(line);
         Optional<EditorialSelection> first = datasetLine
@@ -69,7 +80,41 @@ public class EditorialLineEditor {
             ? editExplainer(pool.articles(), intent, focusCandidateId)
             : editDatasetLine(EditorialDecisionService.DATA_BOARD,
                 pool.datasets(), pool.opportunities(), focusOpportunityId);
-        return second.map(selection -> new EditorialChoice(selection, line, true, reason));
+        if (second.isPresent()) {
+            return second.map(selection -> new EditorialChoice(selection, line, true, reason));
+        }
+        // 知识线是最后一条：其余线当天都没素材时，它也只剩这一条路
+        return editKnowledge(pool.knowledge(), intent, focusCandidateId)
+            .map(selection -> new EditorialChoice(selection, line, true, reason + "_knowledge"));
+    }
+
+    /**
+     * 知识解释线：在知识包主题候选里选一条，再选版式。
+     * 候选的 evidence.items 带选定的 entryId 列表，直接复用为 selection 的引用集合。
+     */
+    public Optional<EditorialSelection> editKnowledge(List<HeronNewsCandidate> pool, String intent,
+                                                      Long focusCandidateId) {
+        List<HeronNewsCandidate> usable = pool.stream()
+            .filter(candidate -> !evidenceIds(candidate).isEmpty()).toList();
+        if (usable.isEmpty()) {
+            return Optional.empty();
+        }
+        HeronNewsCandidate candidate = focusCandidateId == null ? null : usable.stream()
+            .filter(item -> focusCandidateId.equals(item.getCandidateId())).findFirst().orElse(null);
+        if (candidate == null) {
+            Long candidateId = screener.screen(usable).orElse(usable.get(0).getCandidateId());
+            Long picked = candidateId;
+            candidate = usable.stream()
+                .filter(item -> picked.equals(item.getCandidateId())).findFirst().orElse(usable.get(0));
+        }
+        HeronNewsCandidate chosen = candidate;
+        String template = templatePicker.pick(chosen.getTitle(), chosen.getSummary(),
+            EditorialDecisionService.KNOWLEDGE_EXPLAINER);
+        if (template == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new EditorialSelection(EditorialDecisionService.KNOWLEDGE_EXPLAINER,
+            chosen.getCandidateId(), chosen.getSourceKey(), false, template, intent, evidenceIds(chosen)));
     }
 
     /**

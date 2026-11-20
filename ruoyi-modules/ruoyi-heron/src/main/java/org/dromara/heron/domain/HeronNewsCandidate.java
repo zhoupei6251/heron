@@ -15,6 +15,8 @@ public class HeronNewsCandidate extends BaseEntity {
 
     /** 研究决策提升来的候选；为空表示热榜来源。 */
     public static final String SOURCE_RESEARCH = "research";
+    /** 知识包条目生成的选题；sourceKey 指向知识源（data/knowledge/<sourceKey>）。 */
+    public static final String SOURCE_KNOWLEDGE = "knowledge";
 
     @TableId private Long candidateId;
     private String title;

@@ -86,6 +86,7 @@ public class NewsAutoService {
     private final EditorialLineEditor lineEditor;
     private final DatasetRouter datasetRouter;
     private final StrategyReferenceService references;
+    private final KnowledgeCandidateCollector knowledgeCollector;
     private final Clock clock;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -96,10 +97,12 @@ public class NewsAutoService {
                            HeronDataSourceMapper dataSourceMapper,
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
                            EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
-                           DatasetRouter datasetRouter, StrategyReferenceService references) {
+                           DatasetRouter datasetRouter, StrategyReferenceService references,
+                           KnowledgeCandidateCollector knowledgeCollector) {
         this(news, sourceMapper, candidateMapper, workMapper, versionMapper, slotMapper, opportunityMapper,
             dataSourceMapper, newsWork,
-            pauseStore, screener, editorial, domain, lineEditor, datasetRouter, references, Clock.systemUTC());
+            pauseStore, screener, editorial, domain, lineEditor, datasetRouter, references, knowledgeCollector,
+            Clock.systemUTC());
     }
 
     public NewsAutoService(HeronNewsProperties news, HeronNewsSourceMapper sourceMapper,
@@ -109,7 +112,8 @@ public class NewsAutoService {
                            HeronDataSourceMapper dataSourceMapper,
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
                            EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
-                           DatasetRouter datasetRouter, StrategyReferenceService references, Clock clock) {
+                           DatasetRouter datasetRouter, StrategyReferenceService references,
+                           KnowledgeCandidateCollector knowledgeCollector, Clock clock) {
         this.news = news;
         this.sourceMapper = sourceMapper;
         this.candidateMapper = candidateMapper;
@@ -126,6 +130,7 @@ public class NewsAutoService {
         this.lineEditor = lineEditor;
         this.datasetRouter = datasetRouter;
         this.references = references;
+        this.knowledgeCollector = knowledgeCollector;
         this.clock = clock;
     }
 
@@ -178,11 +183,12 @@ public class NewsAutoService {
         }
         // 先建池，再由总编辑定线，最后线内编辑从同一个池子里定素材。
         // 顺序不能倒：反过来就是「先选出候选，再决定这条候选该走哪条线」。
+        collectKnowledgeCandidates(manual);
         EditorialDecisionService.Pools pools;
         EditorialDecisionService.Decision decision;
         EditorialCandidatePool pool;
         try {
-            BuiltPool built = buildPool(now);
+            BuiltPool built = buildPool(now, manual);
             pool = built.pool();
             if (pool.isEmpty()) {
                 finish(slot, "skipped", built.emptyReason(), null);
@@ -299,8 +305,32 @@ public class NewsAutoService {
      * 之前线内编辑收到摘要后又自己查了一次库，那些边界条件在那次重查里全丢了——
      * 总编辑看到的池子和真正被挑的池子是两批数据。
      */
+    /**
+     * 为配置里的知识源补候选：人工触发不受逐源 auto 开关限制，无人值守只跑显式开启的源。
+     *
+     * <p>生成失败只记日志：知识线是备用线，它的选题失败不该拖垮数据看板线的槽位。
+     */
+    private void collectKnowledgeCandidates(boolean manual) {
+        if (news.getKnowledgeSources() == null) {
+            return;
+        }
+        for (HeronNewsProperties.KnowledgeSource source : news.getKnowledgeSources()) {
+            if (!manual && !source.isAuto()) {
+                continue;
+            }
+            try {
+                int created = knowledgeCollector.ensure(source.getSourceKey());
+                if (created > 0) {
+                    log.info("知识源 {} 新生成 {} 个选题候选", source.getSourceKey(), created);
+                }
+            } catch (RuntimeException e) {
+                log.warn("知识选题生成失败 source={}: {}", source.getSourceKey(), e.getMessage());
+            }
+        }
+    }
+
     private EditorialCandidatePool candidatePool(LocalDateTime now) {
-        return buildPool(now).pool();
+        return buildPool(now, false).pool();
     }
 
     /**
@@ -310,6 +340,10 @@ public class NewsAutoService {
     record BuiltPool(EditorialCandidatePool pool, String emptyReason) { }
 
     BuiltPool buildPool(LocalDateTime now) {
+        return buildPool(now, false);
+    }
+
+    BuiltPool buildPool(LocalDateTime now, boolean manual) {
         List<HeronNewsSource> sources = autoSources();
         if (sources.isEmpty()) {
             log.warn("自动源白名单为空：本期没有新闻候选");
@@ -342,8 +376,10 @@ public class NewsAutoService {
         List<HeronDataOpportunity> opportunities = opportunities(now);
         // 研究来源单独取并合并：它走数据集源的逐源准入，和新闻源的 host 白名单是两套闸
         allowed.addAll(researchCandidates(now));
+        // 知识候选按配置清单的逐源开关准入；knowledge 会在建池时单独成池，不混进解说线
+        allowed.addAll(knowledgeCandidates(now, manual));
         if (allowed.isEmpty() && opportunities.isEmpty()) {
-            // 新闻和数据机会都空才是真的没得做；只有数据机会时，数据看板照样能出
+            // 新闻、数据机会、知识候选都空才是真的没得做
             String reason = sources.isEmpty()
                 ? "no_news_source_and_no_opportunity"
                 : "no_fresh_candidate_and_no_opportunity";
@@ -379,6 +415,53 @@ public class NewsAutoService {
             log.warn("研究候选不可用，本期自动池不含研究来源: {}", e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * 知识候选进自动池：只认配置清单里的源；无人值守时还要该源显式开了 auto。
+     *
+     * <p>知识选题不是热点，但仍是「当天做的这条」，24 小时窗口和新闻候选一致：
+     * 隔天再发已经不新鲜，没跑掉的选题留在人工选题列表里。
+     */
+    private List<HeronNewsCandidate> knowledgeCandidates(LocalDateTime now, boolean manual) {
+        Set<String> keys = knowledgeKeys(news.getKnowledgeSources(), manual);
+        if (keys.isEmpty()) {
+            return List.of();
+        }
+        try {
+            return candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
+                .eq(HeronNewsCandidate::getSourceKind, HeronNewsCandidate.SOURCE_KNOWLEDGE)
+                .isNull(HeronNewsCandidate::getPublishedAt)
+                .isNull(HeronNewsCandidate::getClaimedBy)
+                .isNull(HeronNewsCandidate::getActiveTaskId)
+                .ge(HeronNewsCandidate::getLastSeenAt, now.minusHours(24))
+                .in(HeronNewsCandidate::getSourceKey, keys)
+                .orderByDesc(HeronNewsCandidate::getLastSeenAt)
+                .last("LIMIT " + RESEARCH_POOL_LIMIT).build());
+        } catch (RuntimeException e) {
+            log.warn("知识候选不可用，本期自动池不含知识来源: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 知识源逐源准入：清单里的源才算注册；无人值守时还要显式打开 auto。
+     * 人工触发不受 auto 限制——这两个开关管的是无人值守，不是人的明确意图。
+     */
+    static Set<String> knowledgeKeys(List<HeronNewsProperties.KnowledgeSource> sources, boolean manual) {
+        if (sources == null) {
+            return Set.of();
+        }
+        Set<String> keys = new HashSet<>();
+        for (HeronNewsProperties.KnowledgeSource source : sources) {
+            if (source == null || source.getSourceKey() == null || source.getSourceKey().isBlank()) {
+                continue;
+            }
+            if (manual || source.isAuto()) {
+                keys.add(source.getSourceKey());
+            }
+        }
+        return keys;
     }
 
     /**
@@ -476,10 +559,23 @@ public class NewsAutoService {
         // 机会的 label 必须带分数与变化：只给标题，总编辑没有依据判断值不值得做
         List<EditorialDecisionService.OpportunityRef> opportunities = pool.opportunities().stream()
             .map(item -> new EditorialDecisionService.OpportunityRef(item.getOpportunityId(), opportunityLabel(item))).toList();
+        // 知识候选的 label 带钩子：总编辑要判断这个主题能不能抓人
+        List<EditorialDecisionService.CandidateRef> knowledge = pool.knowledge().stream()
+            .map(item -> new EditorialDecisionService.CandidateRef(item.getCandidateId(), knowledgeLabel(item))).toList();
         List<String> recent = pool.recent().stream().map(HeronNewsWork::getTitle)
             .filter(title -> title != null && !title.isBlank()).toList();
         return new EditorialDecisionService.Pools(pool.poolId(), pool.poolHash(), hot, articles, datasets,
-            opportunities, recent, lockedScopes);
+            opportunities, recent, lockedScopes, knowledge);
+    }
+
+    /** 知识候选摘要：标题 + 钩子，钩子过长只留前 80 字。 */
+    static String knowledgeLabel(HeronNewsCandidate item) {
+        String summary = item.getSummary();
+        if (summary == null || summary.isBlank()) {
+            return item.getTitle();
+        }
+        String hook = summary.length() > 80 ? summary.substring(0, 80) + "…" : summary;
+        return item.getTitle() + "：" + hook;
     }
 
     /**

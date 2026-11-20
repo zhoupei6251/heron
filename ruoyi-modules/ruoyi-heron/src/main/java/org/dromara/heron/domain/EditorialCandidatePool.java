@@ -9,16 +9,17 @@ import java.util.function.Predicate;
 /**
  * 自动线的候选池：一次性建好，总编辑与线内编辑都从这里取。
  *
- * <p>五类候选分开装：热榜标题、带正文文章、可用数据源、自动来源、最近已发布。
+ * <p>候选按线分开装：热榜标题、带正文文章、知识包条目、可用数据源、自动来源、最近已发布。
  * 之所以要 {@code poolId} 与 {@code poolHash} 两个身份：
  * id 标识「这一次快照」，hash 证明「内容没被换过」——只有 id 相同不足以说明内容一致。
  *
- * <p>建好即不可变；分线判定（有正文才走解说线）由 {@link #of} 在代码里完成，不交给模型。
+ * <p>建好即不可变；分线判定（有正文才走解说线、知识来源只走知识线）由 {@link #of} 在代码里完成，不交给模型。
  */
 public record EditorialCandidatePool(String poolId, String poolHash,
                                      List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,
                                      List<HeronDataSource> datasets, List<HeronNewsSource> sources,
-                                     List<HeronNewsWork> recent, List<HeronDataOpportunity> opportunities) {
+                                     List<HeronNewsWork> recent, List<HeronDataOpportunity> opportunities,
+                                     List<HeronNewsCandidate> knowledge) {
 
     public EditorialCandidatePool {
         if (poolId == null || poolId.isBlank()) {
@@ -33,10 +34,11 @@ public record EditorialCandidatePool(String poolId, String poolHash,
         sources = sources == null ? List.of() : List.copyOf(sources);
         recent = recent == null ? List.of() : List.copyOf(recent);
         opportunities = opportunities == null ? List.of() : List.copyOf(opportunities);
+        knowledge = knowledge == null ? List.of() : List.copyOf(knowledge);
     }
 
     public static EditorialCandidatePool empty() {
-        return build(List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        return build(List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     /** 老入口：没有数据机会时的池子（机会是后加的一条线）。 */
@@ -49,8 +51,8 @@ public record EditorialCandidatePool(String poolId, String poolHash,
     }
 
     /**
-     * 建池：先按「有没有正文」分线，再连同其余候选一起算摘要。
-     * 标题为空的候选直接丢掉，不占名额。
+     * 建池：先按来源/正文分线，再连同其余候选一起算摘要。
+     * 标题为空的候选直接丢掉，不占名额；知识来源不参与「有没有正文」的判定。
      */
     public static EditorialCandidatePool of(List<HeronNewsCandidate> candidates,
                                             Predicate<HeronNewsCandidate> hasBody,
@@ -60,23 +62,26 @@ public record EditorialCandidatePool(String poolId, String poolHash,
                                             List<HeronDataOpportunity> opportunities) {
         List<HeronNewsCandidate> hot = new ArrayList<>();
         List<HeronNewsCandidate> articles = new ArrayList<>();
+        List<HeronNewsCandidate> knowledge = new ArrayList<>();
         for (HeronNewsCandidate candidate : candidates == null ? List.<HeronNewsCandidate>of() : candidates) {
             String title = candidate == null ? null : candidate.getTitle();
             if (title == null || title.isBlank()) {
                 continue;
             }
-            if (hasBody.test(candidate)) {
+            if (HeronNewsCandidate.SOURCE_KNOWLEDGE.equals(candidate.getSourceKind())) {
+                knowledge.add(candidate);
+            } else if (hasBody.test(candidate)) {
                 articles.add(candidate);
             } else {
                 hot.add(candidate);
             }
         }
-        return build(hot, articles, datasets, sources, recent, opportunities);
+        return build(hot, articles, datasets, sources, recent, opportunities, knowledge);
     }
 
-    /** 三条线都空才算空池：没有新闻但数据里有值得做的东西时，数据看板照样能产。 */
+    /** 四条线都空才算空池：没有新闻但数据里有值得做的东西时，数据看板照样能产。 */
     public boolean isEmpty() {
-        return hot.isEmpty() && articles.isEmpty() && opportunities.isEmpty();
+        return hot.isEmpty() && articles.isEmpty() && opportunities.isEmpty() && knowledge.isEmpty();
     }
 
     /**
@@ -99,14 +104,16 @@ public record EditorialCandidatePool(String poolId, String poolHash,
             articles.stream().filter(item -> !candidateIds.contains(item.getCandidateId())).toList(),
             datasets.stream().filter(item -> !sourceKeys.contains(item.getSourceKey())).toList(),
             sources, recent,
-            opportunities.stream().filter(item -> !sourceKeys.contains(item.getSourceKey())).toList());
+            opportunities.stream().filter(item -> !sourceKeys.contains(item.getSourceKey())).toList(),
+            knowledge.stream().filter(item -> !candidateIds.contains(item.getCandidateId())).toList());
     }
 
     private static EditorialCandidatePool build(List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,
                                                 List<HeronDataSource> datasets, List<HeronNewsSource> sources,
-                                                List<HeronNewsWork> recent, List<HeronDataOpportunity> opportunities) {
+                                                List<HeronNewsWork> recent, List<HeronDataOpportunity> opportunities,
+                                                List<HeronNewsCandidate> knowledge) {
         return new EditorialCandidatePool(UUID.randomUUID().toString(),
-            PoolDigest.of(hot, articles, datasets, sources, recent, opportunities),
-            hot, articles, datasets, sources, recent, opportunities);
+            PoolDigest.of(hot, articles, datasets, sources, recent, opportunities, knowledge),
+            hot, articles, datasets, sources, recent, opportunities, knowledge);
     }
 }

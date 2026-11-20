@@ -384,6 +384,11 @@ heron:
       - "0 0 11 * * ?"
       - "0 0 15 * * ?"
       - "0 0 19 * * ?"
+    # 知识源逐源准入：这里只打开 HowToLiveBetter；总开关 auto-enabled 仍决定是否真的跑自动槽位。
+    # 备用线规则不变：数据看板当天有素材时不会走知识线。
+    knowledge-sources:
+      - source-key: how-to-live-better
+        auto: true
     # 发布出口：douyin-cli 调 social-auto-upload 的 sau（浏览器自动化，不用开放平台凭据）。
     # 首次使用先跑一次登录，cookie 存在仓库的 accounts 目录里：
     #   data/tools/social-auto-upload/.venv/Scripts/sau.exe douyin login --account heron

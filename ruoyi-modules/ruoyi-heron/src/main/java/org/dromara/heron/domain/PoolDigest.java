@@ -38,10 +38,18 @@ public final class PoolDigest {
     public static String of(List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,
                             List<HeronDataSource> datasets, List<HeronNewsSource> sources,
                             List<HeronNewsWork> recent, List<HeronDataOpportunity> opportunities) {
+        return of(hot, articles, datasets, sources, recent, opportunities, List.of());
+    }
+
+    public static String of(List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,
+                            List<HeronDataSource> datasets, List<HeronNewsSource> sources,
+                            List<HeronNewsWork> recent, List<HeronDataOpportunity> opportunities,
+                            List<HeronNewsCandidate> knowledge) {
         Map<String, Object> canonical = new TreeMap<>();
         canonical.put("articles", candidates(articles));
         canonical.put("datasets", datasets(datasets));
         canonical.put("hot", candidates(hot));
+        canonical.put("knowledge", candidates(knowledge));
         canonical.put("opportunities", opportunities(opportunities));
         canonical.put("recent", recent(recent));
         canonical.put("sources", sources(sources));

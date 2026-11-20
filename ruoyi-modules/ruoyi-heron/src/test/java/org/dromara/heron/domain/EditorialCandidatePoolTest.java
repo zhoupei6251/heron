@@ -110,6 +110,21 @@ class EditorialCandidatePoolTest {
     }
 
     @Test
+    @DisplayName("知识来源单独成池，不混进解说线")
+    void separatesKnowledgeCandidates() {
+        HeronNewsCandidate knowledge = candidate("知识主题");
+        knowledge.setSourceKind(HeronNewsCandidate.SOURCE_KNOWLEDGE);
+        knowledge.setEvidence("{\"items\":[{\"sourceItemId\":\"05-01\",\"sourceUrl\":\"https://example.com\"}]}");
+
+        EditorialCandidatePool pool = pool(List.of(knowledge), item -> true);
+
+        assertEquals(List.of(knowledge), pool.knowledge());
+        assertEquals(List.of(), pool.articles());
+        assertEquals(List.of(), pool.hot());
+        assertFalse(pool.isEmpty());
+    }
+
+    @Test
     @DisplayName("没试过任何选题时返回自身，不白白重算")
     void excludingNothingReturnsSamePool() {
         EditorialCandidatePool pool = pool(List.of(candidate("a")), item -> true);

@@ -42,6 +42,11 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         "asset_manifest", "dataset", "trend");
     private static final Set<String> TREND_GATES = Set.of("schema", "evidence", "data", "trend", "audio", "audio_mix",
         "subtitles", "render", "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
+    /** 知识解释线多一份 citations.json 产物与一道引用闸；不取数，故没有 data 闸。 */
+    private static final Set<String> KNOWLEDGE_KINDS = Set.of("mp4", "contact_sheet", "script", "subtitles", "checks",
+        "asset_manifest", "citations");
+    private static final Set<String> KNOWLEDGE_GATES = Set.of("schema", "evidence", "citation", "audio", "audio_mix",
+        "subtitles", "render", "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
     private final HeronNewsCandidateMapper candidateMapper;
     private final FrozenContextService contexts;
     private final HeronNewsWorkMapper workMapper;
@@ -68,7 +73,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     }
 
     /**
-     * 这条视频属于哪条子线：数据看板线还是文稿解说线。
+     * 这条视频属于哪条子线：数据看板线、趋势线、知识解释线，还是文稿解说线。
      *
      * <p>由线内编辑的选择直接给出，不由模板名前缀反推——反推等于让命名决定业务。
      * 表现归因也按这一层分桶，所以取值和写入放在一处，免得两处各写一份判定。
@@ -79,6 +84,9 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         }
         if (selection.trendInsight()) {
             return "trend";
+        }
+        if (selection.knowledgeExplainer()) {
+            return "knowledge_explainer";
         }
         return selection.dataBoard() ? "data_board" : "article";
     }
@@ -341,10 +349,18 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         return trend(JsonUtils.getJsonMapper().readTree(version.getInputSnapshot()));
     }
 
-    /** 某版本必须全部通过且必须出现的闸口清单：文章、数据看板、趋势三套口径。 */
+    /** 知识解释线：素材来自固定版本的知识包，产物多一份 citations.json、闸多一道引用校验。 */
+    public boolean knowledgeExplainer(HeronVideoVersion version) {
+        return knowledgeExplainer(JsonUtils.getJsonMapper().readTree(version.getInputSnapshot()));
+    }
+
+    /** 某版本必须全部通过且必须出现的闸口清单：文章、数据看板、趋势、知识四套口径。 */
     public Set<String> requiredGates(HeronVideoVersion version) {
         if (trend(version)) {
             return TREND_GATES;
+        }
+        if (knowledgeExplainer(version)) {
+            return KNOWLEDGE_GATES;
         }
         return dataBoard(version) ? DATA_GATES : GATES;
     }
@@ -355,6 +371,10 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
 
     private static boolean trend(JsonNode input) {
         return "trend".equals(input.path("kind").asString(""));
+    }
+
+    private static boolean knowledgeExplainer(JsonNode input) {
+        return "knowledge_explainer".equals(input.path("kind").asString(""));
     }
 
     /** 查询、审核、下载均核对版本与任务的不可变归属。 */
@@ -371,9 +391,11 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         requireTask(version, task);
         boolean dataBoard = dataBoard(version);
         boolean trend = trend(version);
-        Set<String> expected = trend ? TREND_KINDS : dataBoard ? DATA_KINDS : KINDS;
+        boolean knowledge = knowledgeExplainer(version);
+        Set<String> expected = trend ? TREND_KINDS : knowledge ? KNOWLEDGE_KINDS : dataBoard ? DATA_KINDS : KINDS;
         if (files == null || files.size() != expected.size()) {
             throw conflict("manifest_invalid", trend ? "必须具备全部八类产物（含 dataset 与 trend）"
+                : knowledge ? "必须具备全部七类产物（含 citations）"
                 : dataBoard ? "必须具备全部七类产物（含 dataset）" : "必须具备全部六类产物");
         }
         Set<String> kinds = new HashSet<>();
@@ -551,7 +573,8 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             return dirs.filter(Files::isDirectory)
                 .filter(dir -> Files.isRegularFile(dir.resolve("LOCK.json")))
                 .filter(dir -> properties.isArticleEnabled()
-                    || dir.getFileName().toString().startsWith("news-data-"))
+                    || dir.getFileName().toString().startsWith("news-data-")
+                    || dir.getFileName().toString().startsWith("knowledge-"))
                 .map(dir -> dir.getFileName().toString())
                 .sorted()
                 .toList();

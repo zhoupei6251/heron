@@ -27,11 +27,13 @@ public class EditorialDecisionService {
     public static final String NEWS_EXPLAINER = "NEWS_EXPLAINER";
     /** 趋势洞察线：数据看板讲发生了什么，这条线讲变化意味着什么。 */
     public static final String TREND_INSIGHT = "TREND_INSIGHT";
+    /** 知识解释线：备用线，只在其余三条线当天都没有素材时才可选。 */
+    public static final String KNOWLEDGE_EXPLAINER = "KNOWLEDGE_EXPLAINER";
     public static final String NO_PUBLISH = "NO_PUBLISH";
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String SYSTEM = resource("/prompt/editorial/daily-editor.md");
-    private static final Set<String> LINES = Set.of(DATA_BOARD, TREND_INSIGHT, NEWS_EXPLAINER);
+    private static final Set<String> LINES = Set.of(DATA_BOARD, TREND_INSIGHT, NEWS_EXPLAINER, KNOWLEDGE_EXPLAINER);
 
     private final OpenAiModelClient model;
 
@@ -56,19 +58,27 @@ public class EditorialDecisionService {
                         List<CandidateRef> hot, List<CandidateRef> articles,
                         List<DatasetRef> datasets, List<OpportunityRef> opportunities,
                         List<String> recentPublications,
-                        List<LockedScope> lockedScopes) {
+                        List<LockedScope> lockedScopes,
+                        List<CandidateRef> knowledge) {
 
         /** 老入口：没有数据机会时的摘要。 */
         public Pools(String poolId, String poolHash, List<CandidateRef> hot, List<CandidateRef> articles,
                      List<DatasetRef> datasets, List<String> recentPublications) {
-            this(poolId, poolHash, hot, articles, datasets, List.of(), recentPublications, List.of());
+            this(poolId, poolHash, hot, articles, datasets, List.of(), recentPublications, List.of(), List.of());
         }
 
         /** 没有锁定时的入口。 */
         public Pools(String poolId, String poolHash, List<CandidateRef> hot, List<CandidateRef> articles,
                      List<DatasetRef> datasets, List<OpportunityRef> opportunities,
                      List<String> recentPublications) {
-            this(poolId, poolHash, hot, articles, datasets, opportunities, recentPublications, List.of());
+            this(poolId, poolHash, hot, articles, datasets, opportunities, recentPublications, List.of(), List.of());
+        }
+
+        /** 没有知识候选时的入口。 */
+        public Pools(String poolId, String poolHash, List<CandidateRef> hot, List<CandidateRef> articles,
+                     List<DatasetRef> datasets, List<OpportunityRef> opportunities,
+                     List<String> recentPublications, List<LockedScope> lockedScopes) {
+            this(poolId, poolHash, hot, articles, datasets, opportunities, recentPublications, lockedScopes, List.of());
         }
     }
 
@@ -135,6 +145,15 @@ public class EditorialDecisionService {
         if (NEWS_EXPLAINER.equals(line) && pools.articles().isEmpty()) {
             throw poolEmpty("解说线没有带正文的文章");
         }
+        if (KNOWLEDGE_EXPLAINER.equals(line)) {
+            // 备用线：其余三条线当天有素材就不许占槽。这是边界，不是权重。
+            if (!pools.datasets().isEmpty() || !pools.opportunities().isEmpty() || !pools.articles().isEmpty()) {
+                throw invalid("知识解释线是备用线，其余三条线今天有素材，不能选它");
+            }
+            if (pools.knowledge().isEmpty()) {
+                throw poolEmpty("知识解释线没有候选");
+            }
+        }
         Long focus = focus(node, pools);
         Long focusOpportunity = focusOpportunity(node, pools);
         return new Decision("PUBLISH", line, reason, intent, focus, focusOpportunity);
@@ -148,7 +167,8 @@ public class EditorialDecisionService {
         }
         long id = raw.asLong(0L);
         boolean known = pools.hot().stream().anyMatch(ref -> ref.candidateId() == id)
-            || pools.articles().stream().anyMatch(ref -> ref.candidateId() == id);
+            || pools.articles().stream().anyMatch(ref -> ref.candidateId() == id)
+            || pools.knowledge().stream().anyMatch(ref -> ref.candidateId() == id);
         if (id == 0L || !known) {
             throw invalid("focusCandidateId 不在候选池里：" + raw);
         }
@@ -177,6 +197,7 @@ public class EditorialDecisionService {
         append(text, "数据机会（带分数与取数口径，分数越高越值得做）", pools.opportunities());
         text.append("形态为 wide、点数充足且信号里出现连续方向的机会，优先考虑 TREND_INSIGHT；\n")
             .append("只是单点异常或形态不是 wide 的，仍走 DATA_BOARD。\n");
+        append(text, "知识包主题（备用线，只有其余三条线今天都没有素材时才可选）", pools.knowledge());
         append(text, "最近已发布", pools.recentPublications());
         // 锁进提示词，但只有锁本身（作用域与理由），不带表现数据。
         // 表现数据一旦进提示词，模型就有了策略倾向，那正是「用印象代替证据」。

@@ -154,6 +154,7 @@ class DataBoardRealChainTest {
                     return scriptJson;
                 }
             },
+            null,
             new ProductionProcessService(properties, new ProductionArtifactService(properties)),
             new ProductionArtifactService(properties), properties, (run, stage, progress) -> true,
             router, fetch, author, passingReview(), null, new NewsSourceFetcher(null, null, new HeronNewsProperties()),

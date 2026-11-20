@@ -32,6 +32,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -77,6 +78,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         "(\\d+):(\\d+):(\\d+)[.,](\\d+) --> (\\d+):(\\d+):(\\d+)[.,](\\d+)");
 
     private final NewsScriptAuthor author;
+    private final KnowledgeScriptAuthor knowledgeAuthor;
     private final ProductionProcessService processes;
     private final ProductionArtifactService artifacts;
     private final HeronProductionProperties properties;
@@ -89,13 +91,15 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private final NewsSourceFetcher fetcher;
     private final FrozenContextService contexts;
 
-    public NewsProductionPipeline(NewsScriptAuthor author, ProductionProcessService processes,
+    public NewsProductionPipeline(NewsScriptAuthor author, KnowledgeScriptAuthor knowledgeAuthor,
+                                  ProductionProcessService processes,
                                   ProductionArtifactService artifacts, HeronProductionProperties properties,
                                   ProductionStageReporter stages, DatasetRouter router,
                                   DatasetFetchService datasets, DatasetScriptAuthor datasetAuthor,
                                   EditorialReviewer reviewer, QualityReviewer qualityReviewer,
                                   NewsSourceFetcher fetcher, FrozenContextService contexts) {
         this.author = author;
+        this.knowledgeAuthor = knowledgeAuthor;
         this.processes = processes;
         this.artifacts = artifacts;
         this.properties = properties;
@@ -125,9 +129,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
         // 阶段回报只给操作员看进度；租约已易主时返回 false，交给 runner 收尾，这里不因此失败。
         boolean dataBoard = "data_board".equals(input.path("kind").asString(""));
         boolean trend = "trend".equals(input.path("kind").asString(""));
+        // 知识解释线的正文来自知识包，不抓新闻正文，也不受「文章路径开关」约束
+        boolean knowledge = "knowledge_explainer".equals(input.path("kind").asString(""));
         // 趋势线也走数据源取数，所以和看板线一起算「数据线」
         boolean datasetLine = dataBoard || trend;
-        if (!datasetLine && !properties.isArticleEnabled()) {
+        if (!datasetLine && !knowledge && !properties.isArticleEnabled()) {
             throw new HeronBusinessException(409, "article_disabled", "文章新闻路径已下线，只生产数据看板与趋势洞察");
         }
         stages.beginStage(run, "script", 5);
@@ -135,6 +141,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         JsonNode dataset = null;
         // 趋势稿的方向来自机器判定，判定必须在写稿之前算出来，写完再补就改不动旁白了
         JsonNode trendDoc = null;
+        KnowledgePack knowledgePack = null;
         String scriptJson;
         String hookType = null;
         ReviewOutcome review;
@@ -161,12 +168,22 @@ public class NewsProductionPipeline implements IProductionPipeline {
                 : datasetAuthor.author(run, fetched.json(), route.digest());
             scriptJson = draft.script();
             hookType = draft.hookType();
-            review = reviewScript(run, scriptJson, dataset.path("facts").toString(), fetched, true, hookType, trendDoc);
+            review = reviewScript(run, scriptJson, dataset.path("facts").toString(), fetched, hookType, trendDoc,
+                author, "editorial-review");
+        } else if (knowledge) {
+            scriptJson = knowledgeAuthor.author(run);
+            knowledgePack = knowledgePack(input);
+            List<KnowledgePack.Entry> selected = knowledgePack.require(selecteds(input));
+            // 知识线的审稿依据是选定的几条建议：它是事实清单，不是外网证据片段，
+            // 所以走 facts 审稿而不是 evidence 审稿；自动发布因此不要求 coreFacts。
+            review = reviewScript(run, scriptJson, knowledgePack.evidenceJson(selected), null, null, null,
+                knowledgeAuthor, "knowledge-review");
         } else {
             // 正文由作者从冻结层取：首次抓取并落库，重试读同一份，写稿阶段不再二次出网
             scriptJson = author.author(run);
             // 解说线此前完全没有审稿，自动确认会把没审过的片子直接发出去
-            review = reviewScript(run, scriptJson, evidenceQuotes(input), null, false, null, null);
+            review = reviewScript(run, scriptJson, evidenceQuotes(input), null, null, null, author,
+                "evidence-review");
         }
         scriptJson = review.script;
         hookType = review.hookType;
@@ -177,6 +194,12 @@ public class NewsProductionPipeline implements IProductionPipeline {
         }
         if (!datasetLine) {
             gates.add(evidenceGate(script));
+        }
+        // 引用闸只对知识线开：它要读知识包，别的线没有 entryId 可核
+        String citations = null;
+        if (knowledge) {
+            citations = knowledgePack.citationsJson(sceneRefs(script));
+            gates.add(citationGate(script, citations, knowledgePack, properties.getKnowledgeVerbatimMaxChars()));
         }
 
         Path work = artifacts.prepareWorkDirectory(run);
@@ -242,6 +265,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
         if (trendDoc != null) {
             files.add(artifacts.finalizeFile(run, "trend",
                 write(work.resolve("trend.json"), JSON.writeValueAsString(trendDoc)), "application/json"));
+        }
+        if (knowledge) {
+            files.add(artifacts.finalizeFile(run, "citations", write(work.resolve("citations.json"), citations),
+                "application/json"));
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -516,11 +543,12 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     private ReviewOutcome reviewScript(ProductionRunVo run, String scriptJson, String basisJson,
-                                       DatasetFetchService.Result datasetFetched, boolean dataBoard,
-                                       String hookType, JsonNode trend) {
-        EditorialReviewer.Verdict verdict = review(run, scriptJson, basisJson, dataBoard);
+                                       DatasetFetchService.Result datasetFetched,
+                                       String hookType, JsonNode trend, NewsScriptAuthor repairer,
+                                       String reviewKind) {
+        EditorialReviewer.Verdict verdict = review(run, scriptJson, basisJson, reviewKind);
         if (!verdict.blocked()) {
-            return reviewed(scriptJson, verdict, 0, dataBoard, hookType);
+            return reviewed(scriptJson, verdict, 0, reviewKind, hookType);
         }
         // 证据不够：改稿救不了。把核不住的断言删掉只会得到一条没有信息量的稿子，
         // 那不是自愈是降级凑数。这类失败交给槽位层换选题。
@@ -531,7 +559,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         String repaired = scriptJson;
         String repairedHook = hookType;
         if (datasetFetched == null) {
-            repaired = author.repair(run, scriptJson, verdict.blockingNotes());
+            repaired = repairer.repair(run, scriptJson, verdict.blockingNotes());
         } else {
             // 趋势稿改稿必须带着判定一起改，否则修完方向词又跑回机器结论之外
             DatasetScriptAuthor.Result result = trend == null
@@ -541,27 +569,26 @@ public class NewsProductionPipeline implements IProductionPipeline {
             repaired = result.script();
             repairedHook = result.hookType();
         }
-        EditorialReviewer.Verdict again = review(run, repaired, basisJson, dataBoard);
+        EditorialReviewer.Verdict again = review(run, repaired, basisJson, reviewKind);
         if (again.blocked()) {
             throw reviewBlocked(again, "改稿后仍未通过");
         }
-        return reviewed(repaired, again, 1, dataBoard, repairedHook);
+        return reviewed(repaired, again, 1, reviewKind, repairedHook);
     }
 
     private EditorialReviewer.Verdict review(ProductionRunVo run, String scriptJson, String basisJson,
-                                             boolean dataBoard) {
-        return dataBoard
-            ? reviewer.review(run, scriptJson, basisJson)
-            : reviewer.reviewEvidence(run, scriptJson, basisJson);
+                                             String reviewKind) {
+        return "evidence-review".equals(reviewKind)
+            ? reviewer.reviewEvidence(run, scriptJson, basisJson)
+            : reviewer.review(run, scriptJson, basisJson);
     }
 
     private ReviewOutcome reviewed(String script, EditorialReviewer.Verdict verdict,
-                                   int attempts, boolean dataBoard, String hookType) {
+                                   int attempts, String reviewKind, String hookType) {
         ReviewOutcome outcome = new ReviewOutcome();
         outcome.script = script;
         outcome.hookType = hookType;
-        outcome.record = verdict.toRecord(attempts, dataBoard ? "editorial-review" : "evidence-review",
-            LocalDateTime.now(ZoneOffset.UTC));
+        outcome.record = verdict.toRecord(attempts, reviewKind, LocalDateTime.now(ZoneOffset.UTC));
         return outcome;
     }
 
@@ -582,8 +609,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     /** 解说线审稿依据：只给抓到的证据片段与出处，不给模型自述。 */
-    private static String evidenceQuotes(JsonNode input) {
-        ArrayNode quotes = JsonNodeFactory.instance.arrayNode();
+    private static String evidenceQuotes(JsonNode input) {        ArrayNode quotes = JsonNodeFactory.instance.arrayNode();
         for (JsonNode item : input.path("evidence").path("items")) {
             ObjectNode quote = quotes.addObject();
             quote.put("title", item.path("title").asString(""));
@@ -649,6 +675,113 @@ public class NewsProductionPipeline implements IProductionPipeline {
         measured.put("fetchedAt", true);
         measured.put("sourceUrl", true);
         return new Gate("evidence", "script.source_url", "出处由抓取覆盖，不信模型自述", measured);
+    }
+
+    /** 知识包按 sourceKey 从 data/knowledge 读取；selection.dataSourceKey 在知识线里存的是它。 */
+    private KnowledgePack knowledgePack(JsonNode input) {
+        return KnowledgePack.load(properties.knowledgeDir(),
+            input.path("selection").path("dataSourceKey").asString(""));
+    }
+
+    /** 选题时定下的 entryId 列表；写稿只能引用这几条。 */
+    private static List<String> selecteds(JsonNode input) {
+        List<String> ids = new ArrayList<>();
+        for (JsonNode id : input.path("selection").path("sourceEvidenceIds")) {
+            ids.add(id.asString(""));
+        }
+        return ids;
+    }
+
+    /** 每段引用的 entryId，键是屏号（从 1 起）。 */
+    static Map<Integer, List<String>> sceneRefs(JsonNode script) {
+        Map<Integer, List<String>> refs = new LinkedHashMap<>();
+        JsonNode scenes = script.path("scenes");
+        for (int index = 0; index < scenes.size(); index++) {
+            List<String> ids = new ArrayList<>();
+            for (JsonNode id : scenes.get(index).path("entry_ids")) {
+                ids.add(id.asString(""));
+            }
+            refs.put(index + 1, ids);
+        }
+        return refs;
+    }
+
+    /**
+     * 引用闸：引用可定位、清单一致、署名齐全、没有照抄原文。
+     *
+     * <p>四件事缺一不可：前三条是 CC BY 4.0 的许可义务，最后一条是平台原创度与「有修改」的边界。
+     * 阈值可配，但只放宽不取消——照抄整段原文永远不能过。
+     */
+    static Gate citationGate(JsonNode script, String citationsJson, KnowledgePack pack, int maxVerbatim) {
+        List<String> violations = new ArrayList<>();
+        Map<Integer, List<String>> refs = sceneRefs(script);
+        long longest = 0;
+        for (Map.Entry<Integer, List<String>> scene : refs.entrySet()) {
+            List<String> ids = scene.getValue();
+            if (ids.isEmpty()) {
+                violations.add("第 " + scene.getKey() + " 段没有引用 entryId");
+                continue;
+            }
+            String sceneText = sceneText(script.path("scenes").get(scene.getKey() - 1));
+            for (String id : ids) {
+                KnowledgePack.Entry entry = pack.entry(id);
+                if (entry == null) {
+                    violations.add("第 " + scene.getKey() + " 段引用了不存在的条目 " + id);
+                    continue;
+                }
+                long run = longestCommonRun(sceneText, pack.verifiableText(entry));
+                if (run > maxVerbatim) {
+                    violations.add("第 " + scene.getKey() + " 段与条目 " + id + " 连续相同 " + run
+                        + " 字，超过上限 " + maxVerbatim);
+                }
+                longest = Math.max(longest, run);
+            }
+        }
+        Set<String> cited = new LinkedHashSet<>();
+        for (JsonNode item : JSON.readTree(citationsJson).path("entries")) {
+            cited.add(item.path("entryId").asString(""));
+        }
+        Set<String> referenced = new LinkedHashSet<>();
+        refs.values().forEach(referenced::addAll);
+        if (!cited.equals(referenced)) {
+            violations.add("引用清单与脚本引用集合不一致");
+        }
+        if (!script.path("closing").asString("").contains(pack.attribution())) {
+            violations.add("片尾缺少署名原文");
+        }
+        if (!violations.isEmpty()) {
+            throw new HeronBusinessException(409, "citation_invalid", "引用闸退回：" + String.join("；", violations));
+        }
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("entries", cited.size());
+        measured.put("scenes", refs.size());
+        measured.put("longestVerbatim", longest);
+        measured.put("attribution", true);
+        return new Gate("citation", "script.scenes.entry_ids",
+            "每条引用都能在固定版本知识包里定位，署名与照抄上限通过", measured);
+    }
+
+    private static String sceneText(JsonNode scene) {
+        return scene.path("lead").asString("") + scene.path("body").asString("");
+    }
+
+    /** 最长连续相同片段（按字符，去掉空白）：只用来判照抄，不做模糊相似度。 */
+    static long longestCommonRun(String left, String right) {
+        int[] a = left.replaceAll("\\s+", "").codePoints().toArray();
+        int[] b = right.replaceAll("\\s+", "").codePoints().toArray();
+        int[] previous = new int[b.length + 1];
+        long longest = 0;
+        for (int i = 1; i <= a.length; i++) {
+            int[] current = new int[b.length + 1];
+            for (int j = 1; j <= b.length; j++) {
+                if (a[i - 1] == b[j - 1]) {
+                    current[j] = previous[j - 1] + 1;
+                    longest = Math.max(longest, current[j]);
+                }
+            }
+            previous = current;
+        }
+        return longest;
     }
 
     private static Gate voiceGate(Path voice, double audioSeconds) {

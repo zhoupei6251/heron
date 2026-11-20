@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "sourceKey": "how-to-live-better",
+  "title": "高性价比人生指南",
+  "author": "albert4719",
+  "originUrl": "https://github.com/eternity4719/HowToLiveBetter",
+  "pinnedCommit": "49fceab4254c8c2df0f7cdb1b2959cab6c451b96",
+  "pinnedDate": "2026-11-20",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "attribution": "内容改编自《高性价比人生指南》（https://github.com/eternity4719/HowToLiveBetter），CC BY 4.0，有修改。",
+  "importScript": "import.py",
+  "entryCount": 772,
+  "chapters": [
+    {
+      "chapterNo": 1,
+      "title": "不要早死",
+      "file": "chapters/01-不要早死.md"
+    },
+    {
+      "chapterNo": 2,
+      "title": "不要慢慢死",
+      "file": "chapters/02-不要慢慢死.md"
+    },
+    {
+      "chapterNo": 3,
+      "title": "不要浪费精力",
+      "file": "chapters/03-不要浪费精力.md"
+    },
+    {
+      "chapterNo": 4,
+      "title": "不要浪费时间",
+      "file": "chapters/04-不要浪费时间.md"
+    },
+    {
+      "chapterNo": 5,
+      "title": "不要浪费钱",
+      "file": "chapters/05-不要浪费钱.md"
+    },
+    {
+      "chapterNo": 6,
+      "title": "反面清单",
+      "file": "chapters/06-反面清单.md"
+    },
+    {
+      "chapterNo": 7,
+      "title": "没钱的时候怎么活",
+      "file": "chapters/07-没钱的时候怎么活.md"
+    },
+    {
+      "chapterNo": 8,
+      "title": "别把自己搭进去：法律与财产安全",
+      "file": "chapters/08-别把自己搭进去.md"
+    },
+    {
+      "chapterNo": 9,
+      "title": "普通人容易踩的法律红线",
+      "file": "chapters/09-普通人容易踩的法律红线.md"
+    },
+    {
+      "chapterNo": 10,
+      "title": "恋爱和结婚划不划算",
+      "file": "chapters/10-恋爱和结婚划不划算.md"
+    },
+    {
+      "chapterNo": 11,
+      "title": "程序员和技术人容易踩的红线",
+      "file": "chapters/11-程序员和技术人容易踩的红线.md"
+    },
+    {
+      "chapterNo": 12,
+      "title": "创业与做生意：别把家底赔进去",
+      "file": "chapters/12-创业与做生意.md"
+    },
+    {
+      "chapterNo": 13,
+      "title": "紧急情况：先做什么",
+      "file": "chapters/13-紧急情况.md"
+    },
+    {
+      "chapterNo": 14,
+      "title": "账号与信息安全",
+      "file": "chapters/14-账号与信息安全.md"
+    },
+    {
+      "chapterNo": 15,
+      "title": "租房与买房",
+      "file": "chapters/15-租房与买房.md"
+    },
+    {
+      "chapterNo": 16,
+      "title": "得了慢性病之后怎么活",
+      "file": "chapters/16-得了慢性病之后怎么活.md"
+    },
+    {
+      "chapterNo": 17,
+      "title": "家里有老人",
+      "file": "chapters/17-家里有老人.md"
+    },
+    {
+      "chapterNo": 18,
+      "title": "养孩子划不划算",
+      "file": "chapters/18-养孩子划不划算.md"
+    },
+    {
+      "chapterNo": 19,
+      "title": "在职、离职和工伤",
+      "file": "chapters/19-在职离职和工伤.md"
+    },
+    {
+      "chapterNo": 20,
+      "title": "刚出生的孩子怎么带",
+      "file": "chapters/20-刚出生的孩子怎么带.md"
+    },
+    {
+      "chapterNo": 21,
+      "title": "出国、旅行与境外安全",
+      "file": "chapters/21-出国旅行与境外安全.md"
+    },
+    {
+      "chapterNo": 22,
+      "title": "怎么放松：娱乐场所和减压",
+      "file": "chapters/22-怎么放松.md"
+    },
+    {
+      "chapterNo": 23,
+      "title": "学什么技能划算",
+      "file": "chapters/23-学什么技能划算.md"
+    },
+    {
+      "chapterNo": 24,
+      "title": "看病：怎么少花钱少走弯路",
+      "file": "chapters/24-看病.md"
+    },
+    {
+      "chapterNo": 25,
+      "title": "人走了以后要办什么",
+      "file": "chapters/25-人走了以后要办什么.md"
+    },
+    {
+      "chapterNo": 26,
+      "title": "做一个网站或平台：资质、备案和服务器",
+      "file": "chapters/26-做一个网站或平台.md"
+    },
+    {
+      "chapterNo": 27,
+      "title": "怀孕和生产：从发现怀孕到出院办证",
+      "file": "chapters/27-怀孕和生产.md"
+    },
+    {
+      "chapterNo": 28,
+      "title": "别为了外形把身体搞坏",
+      "file": "chapters/28-别为了外形把身体搞坏.md"
+    },
+    {
+      "chapterNo": 29,
+      "title": "遭遇重大打击之后",
+      "file": "chapters/29-遭遇重大打击之后.md"
+    },
+    {
+      "chapterNo": 30,
+      "title": "上学以后的孩子",
+      "file": "chapters/30-上学以后的孩子.md"
+    },
+    {
+      "chapterNo": 31,
+      "title": "十八岁之后有哪几条路",
+      "file": "chapters/31-十八岁之后有哪几条路.md"
+    },
+    {
+      "chapterNo": 32,
+      "title": "出国留学：身份、打工、保险和回国认证",
+      "file": "chapters/32-出国留学.md"
+    },
+    {
+      "chapterNo": 33,
+      "title": "残疾之后怎么活",
+      "file": "chapters/33-残疾之后怎么活.md"
+    },
+    {
+      "chapterNo": 34,
+      "title": "家里的常备药别吃出事",
+      "file": "chapters/34-家里的常备药别吃出事.md"
+    }
+  ]
+}

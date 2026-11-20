@@ -23,6 +23,8 @@ public record EditorialSelection(
     public static final String NEWS_EXPLAINER = "NEWS_EXPLAINER";
     /** 趋势洞察线：与数据看板共用取数口径，但结论由 trend/1 的机器判定驱动。 */
     public static final String TREND_INSIGHT = "TREND_INSIGHT";
+    /** 知识解释线：不抓正文，正文来自固定版本的知识包；sourceEvidenceIds 是 entryId 列表。 */
+    public static final String KNOWLEDGE_EXPLAINER = "KNOWLEDGE_EXPLAINER";
 
     /**
      * 选题上下文：机会自己的头线与信号，以及当时的取数口径。
@@ -71,9 +73,15 @@ public record EditorialSelection(
         return dataBoard() || trendInsight();
     }
 
+    /** 知识解释线：素材是知识包里的条目，没有任何抓取正文。 */
+    public boolean knowledgeExplainer() {
+        return KNOWLEDGE_EXPLAINER.equals(line);
+    }
+
     /** 校验放在紧凑构造器里：两条线的必填规则不同，不能靠一组可空字段表达。 */
     public EditorialSelection {
-        if (!DATA_BOARD.equals(line) && !TREND_INSIGHT.equals(line) && !NEWS_EXPLAINER.equals(line)) {
+        if (!DATA_BOARD.equals(line) && !TREND_INSIGHT.equals(line) && !NEWS_EXPLAINER.equals(line)
+            && !KNOWLEDGE_EXPLAINER.equals(line)) {
             throw new IllegalStateException("线内编辑给出了未知生产线：" + line);
         }
         if (templateId == null || !templateId.matches("[a-zA-Z0-9_-]{1,80}")) {
@@ -82,6 +90,16 @@ public record EditorialSelection(
         if (DATA_BOARD.equals(line) || TREND_INSIGHT.equals(line)) {
             if (dataSourceKey == null || dataSourceKey.isBlank()) {
                 throw new IllegalStateException("数据线缺少数据源");
+            }
+        } else if (KNOWLEDGE_EXPLAINER.equals(line)) {
+            if (candidateId == null) {
+                throw new IllegalStateException("知识解释线缺少候选");
+            }
+            if (dataSourceKey == null || dataSourceKey.isBlank()) {
+                throw new IllegalStateException("知识解释线缺少知识源");
+            }
+            if (sourceEvidenceIds == null || sourceEvidenceIds.isEmpty()) {
+                throw new IllegalStateException("知识解释线缺少条目");
             }
         } else {
             if (candidateId == null) {

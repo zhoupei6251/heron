@@ -40,6 +40,17 @@ public class HeronProductionProperties {
     /** edge-tts 语速，形如 +12%；资讯口播默认略快，同样的稿子能省下约一成时长。 */
     private String voiceRate = "+12%";
 
+    /** 知识解释线允许与原文连续相同的最大字数；超过即判照抄，CC BY 4.0 要求「有修改」。 */
+    private int knowledgeVerbatimMaxChars = 20;
+
+    /** 知识包根目录；留空时取 data-root 下的 knowledge/。 */
+    private Path knowledgeRoot;
+
+    /** 知识包实际目录：部署默认 data/knowledge，测试可指向独立卷而不动产物目录。 */
+    public Path knowledgeDir() {
+        return knowledgeRoot != null ? knowledgeRoot : dataRoot.resolve("knowledge");
+    }
+
     /** Windows 开发机上 Linux 监护脚本跑不起来，只能显式关掉；关掉就没有 rlimit 三项，不做平台自动探测。 */
     private boolean guardEnabled = true;
 

@@ -8,6 +8,7 @@ import org.dromara.heron.service.ProtoRp1Author;
 import org.dromara.heron.service.impl.DatasetFetchService;
 import org.dromara.heron.service.impl.DatasetRouter;
 import org.dromara.heron.service.impl.DatasetScriptAuthor;
+import org.dromara.heron.service.impl.KnowledgeScriptAuthor;
 import org.dromara.heron.service.impl.NewsSourceFetcher;
 import org.dromara.heron.service.impl.EditorialReviewer;
 import org.dromara.heron.service.impl.FrozenContextService;
@@ -80,6 +81,7 @@ public class HeronProductionConfiguration {
     @Bean("newsProductionPipeline")
     @ConditionalOnProperty(prefix = "heron.news", name = "pipeline-enabled", havingValue = "true")
     public NewsProductionPipeline newsProductionPipeline(NewsScriptAuthor author,
+                                                         KnowledgeScriptAuthor knowledgeAuthor,
                                                          ProductionProcessService processes,
                                                          ProductionArtifactService artifacts,
                                                          HeronProductionProperties properties,
@@ -91,9 +93,9 @@ public class HeronProductionConfiguration {
                                                          QualityReviewer qualityReviewer,
                                                          NewsSourceFetcher newsSourceFetcher,
                                                          FrozenContextService frozenContexts) {
-        return new NewsProductionPipeline(author, processes, artifacts, properties, execution::beginStage,
-            datasetRouter, datasetFetch, datasetAuthor, reviewer, qualityReviewer, newsSourceFetcher,
-            frozenContexts);
+        return new NewsProductionPipeline(author, knowledgeAuthor, processes, artifacts, properties,
+            execution::beginStage, datasetRouter, datasetFetch, datasetAuthor, reviewer, qualityReviewer,
+            newsSourceFetcher, frozenContexts);
     }
 
     /**
