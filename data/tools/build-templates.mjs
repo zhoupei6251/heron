@@ -82,9 +82,11 @@ function loadConfig(dir) {
   for (const cap of cfg.capabilities) {
     if (!CAPABILITIES.has(cap)) fail(`${key}: 未知能力「${cap}」，合法值：${[...CAPABILITIES].join('、')}`);
   }
-  cfg.sceneTypes ??= [];
   cfg.activeScenes ??= cfg.scenes;
   cfg.defaults ??= {};
+  // 声明了组件能力的模板才进分镜：场景类型、叙事节点与上屏文字一起进出，
+  // 一半有、一半没有的模板会在 --strict-variables 上被卡住。
+  const storyboard = (cfg.supportedSceneTypes ?? []).length > 0;
   if (cfg.activeScenes > cfg.scenes) fail(`${key}: activeScenes(${cfg.activeScenes}) 大于 scenes(${cfg.scenes})`);
   return cfg;
 }
@@ -131,12 +133,20 @@ function variables(cfg) {
   for (let i = 1; i <= cfg.scenes; i++) {
     out.push({ id: `scene${i}_type`, type: 'string', label: '场景类型', default: '' });
   }
+  if (cfg.storyboard) {
+    // 分镜另两件：叙事节点给版式一条辅线，上屏文字与旁白解耦。
+    // 与 sceneN_focus 一样不绑到元素上，由 fill.js 从 declared 里读。
+    for (let i = 1; i <= cfg.scenes; i++) {
+      out.push({ id: `scene${i}_beat`, type: 'string', label: '叙事节点', default: '' });
+      out.push({ id: `scene${i}_text`, type: 'string', label: '上屏文字', default: '' });
+    }
+  }
   if (cfg.capabilities.includes('image')) {
     for (let i = 1; i <= cfg.scenes; i++) {
       out.push({ id: `scene${i}_image`, type: 'string', label: '第' + i + '屏配图', default: '' });
     }
   }
-  return cfg.sceneTypes.length ? out : out.filter((v) => !v.id.endsWith('_type'));
+  return (cfg.supportedSceneTypes ?? []).length ? out : out.filter((v) => !v.id.endsWith('_type'));
 }
 
 /** 片尾留给结尾口播的时间窗。和最后一屏共用窗口会让两块文字互相遮挡。 */
@@ -214,6 +224,8 @@ function styles(cfg) {
     path.join(SHARED, 'tokens', `${cfg.style}.css`),
   ];
   if (cfg.capabilities.includes('chart')) files.push(path.join(GEN, 'behaviors', 'chart.css'));
+  // 分镜版式：只给声明了分镜的模板，三套数据风格共用一份规则
+  if (cfg.storyboard) files.push(path.join(SHARED, 'storyboard.css'));
   files.push(path.join(LAYOUTS, cfg.style, `${cfg.layout}.css`));
   for (const file of files) {
     if (!fs.existsSync(file)) fail(`${cfg.key}: 缺少样式文件 ${path.relative(TEMPLATES, file)}`);

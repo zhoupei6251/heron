@@ -34,6 +34,10 @@ public final class DatasetPlaceholders {
             ObjectNode slot = (ObjectNode) scene;
             slot.put("lead", fill(slot.path("lead").asString(""), root, precision));
             slot.put("body", fill(slot.path("body").asString(""), root, precision));
+            // 上屏文字也可能带占位符；不填的话模板上会直接显示 {{facts.xxx}}
+            if (slot.has("on_screen_text")) {
+                slot.put("on_screen_text", fill(slot.path("on_screen_text").asString(""), root, precision));
+            }
         }
         copy.put("closing", fill(copy.path("closing").asString(""), root, precision));
         copy.put("title", fill(copy.path("title").asString(""), root, precision));

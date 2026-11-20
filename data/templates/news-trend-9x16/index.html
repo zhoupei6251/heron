@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-composition-variables='[{"id":"title","type":"string","label":"标题","maxLength":15,"default":"关注指数十二期走势"},{"id":"kicker","type":"string","label":"栏目标签","maxLength":12,"default":"趋势洞察"},{"id":"scene1_lead","type":"string","label":"第1屏领句","maxLength":40,"default":"先问：这轮抬升是趋势还是反弹？"},{"id":"scene1_body","type":"string","label":"第1屏正文","maxLength":600,"default":"从 2025 年 1 月的 61.20 点到 12 月的 78.40 点，关注指数连续十一个月抬升，期间只在 4 月与 7 月出现两次小幅回撤。趋势线要先回答这个问题。"},{"id":"scene2_lead","type":"string","label":"第2屏领句","maxLength":40,"default":"现象：十一个月里九个月收涨"},{"id":"scene2_body","type":"string","label":"第2屏正文","maxLength":600,"default":"十二期快照中九期环比上行，两次回撤的幅度都没有超过前一期涨幅；末端两期仍在抬升，走势尚未走平。"},{"id":"scene3_lead","type":"string","label":"第3屏领句","maxLength":40,"default":"证据：涨幅集中在下半年"},{"id":"scene3_body","type":"string","label":"第3屏正文","maxLength":600,"default":"上半年累计抬升约 7 点，下半年累计抬升约 10 点；斜率在下半年变陡，说明抬升在加速，而不是收敛。"},{"id":"scene4_lead","type":"string","label":"第4屏领句","maxLength":40,"default":"解释：需求侧先于供给收缩"},{"id":"scene4_body","type":"string","label":"第4屏正文","maxLength":600,"default":"需求端扩张先于供给端收缩出现，关注度与成交同步走高；这个先后顺序决定了抬升更可能延续，而不是一次性脉冲。"},{"id":"scene5_lead","type":"string","label":"第5屏领句","maxLength":40,"default":"洞察：拐点看下一期斜率"},{"id":"scene5_body","type":"string","label":"第5屏正文","maxLength":600,"default":"判断反转要看斜率，而不是单期涨跌；本期数据暂不支持反转。"},{"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"以上只描述示例快照的走势，不构成对下一期的预测。"},{"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"来源：示例数据集"},{"id":"accent","type":"color","label":"品牌色","default":"#d9a05b"},{"id":"scene_count","type":"number","label":"场景数","min":3,"max":5,"default":5},{"id":"chart","type":"enum","label":"图表模块","default":"line","options":[{"value":"line","label":"折线"},{"value":"bars","label":"排行"},{"value":"race","label":"赛跑"},{"value":"stacked","label":"堆叠"},{"value":"multiline","label":"多线"},{"value":"radar","label":"雷达"}]},{"id":"dataset_json","type":"string","label":"数据快照","default":"{\"contract\":\"dataset/1\",\"source_key\":\"sample-attention-index\",\"source_name\":\"示例数据集\",\"cadence\":\"monthly\",\"shape\":\"wide\",\"columns\":[\"date\",\"value\"],\"metric\":{\"key\":\"attention_index\",\"label\":\"关注指数\",\"unit\":\"点\",\"precision\":2},\"rows\":[[\"2025-01-01\",61.2],[\"2025-02-01\",62.45],[\"2025-03-01\",64.8],[\"2025-04-01\",63.9],[\"2025-05-01\",66.1],[\"2025-06-01\",68.3],[\"2025-07-01\",67.4],[\"2025-08-01\",70.2],[\"2025-09-01\",72.6],[\"2025-10-01\",73.1],[\"2025-11-01\",75.8],[\"2025-12-01\",78.4]],\"time_range\":{\"start\":\"2025-01-01\",\"end\":\"2025-12-01\",\"points\":12},\"facts\":{\"first\":{\"date\":\"2025-01-01\",\"value\":61.2},\"last\":{\"date\":\"2025-12-01\",\"value\":78.4},\"min\":{\"date\":\"2025-01-01\",\"value\":61.2},\"max\":{\"date\":\"2025-12-01\",\"value\":78.4},\"change\":17.2,\"change_pct\":28.1,\"period\":{\"start_year\":2025,\"end_year\":2025}}}"},{"id":"scene1_focus","type":"string","label":"第1屏画面依据","default":"{}"},{"id":"scene2_focus","type":"string","label":"第2屏画面依据","default":"{}"},{"id":"scene3_focus","type":"string","label":"第3屏画面依据","default":"{}"},{"id":"scene4_focus","type":"string","label":"第4屏画面依据","default":"{}"},{"id":"scene5_focus","type":"string","label":"第5屏画面依据","default":"{}"}]'>
+<html lang="zh-CN" data-composition-variables='[{"id":"title","type":"string","label":"标题","maxLength":15,"default":"关注指数十二期走势"},{"id":"kicker","type":"string","label":"栏目标签","maxLength":12,"default":"趋势洞察"},{"id":"scene1_lead","type":"string","label":"第1屏领句","maxLength":40,"default":"先问：这轮抬升是趋势还是反弹？"},{"id":"scene1_body","type":"string","label":"第1屏正文","maxLength":600,"default":"从 2025 年 1 月的 61.20 点到 12 月的 78.40 点，关注指数连续十一个月抬升，期间只在 4 月与 7 月出现两次小幅回撤。趋势线要先回答这个问题。"},{"id":"scene2_lead","type":"string","label":"第2屏领句","maxLength":40,"default":"现象：十一个月里九个月收涨"},{"id":"scene2_body","type":"string","label":"第2屏正文","maxLength":600,"default":"十二期快照中九期环比上行，两次回撤的幅度都没有超过前一期涨幅；末端两期仍在抬升，走势尚未走平。"},{"id":"scene3_lead","type":"string","label":"第3屏领句","maxLength":40,"default":"证据：涨幅集中在下半年"},{"id":"scene3_body","type":"string","label":"第3屏正文","maxLength":600,"default":"上半年累计抬升约 7 点，下半年累计抬升约 10 点；斜率在下半年变陡，说明抬升在加速，而不是收敛。"},{"id":"scene4_lead","type":"string","label":"第4屏领句","maxLength":40,"default":"解释：需求侧先于供给收缩"},{"id":"scene4_body","type":"string","label":"第4屏正文","maxLength":600,"default":"需求端扩张先于供给端收缩出现，关注度与成交同步走高；这个先后顺序决定了抬升更可能延续，而不是一次性脉冲。"},{"id":"scene5_lead","type":"string","label":"第5屏领句","maxLength":40,"default":"洞察：拐点看下一期斜率"},{"id":"scene5_body","type":"string","label":"第5屏正文","maxLength":600,"default":"判断反转要看斜率，而不是单期涨跌；本期数据暂不支持反转。"},{"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"以上只描述示例快照的走势，不构成对下一期的预测。"},{"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"来源：示例数据集"},{"id":"accent","type":"color","label":"品牌色","default":"#d9a05b"},{"id":"scene_count","type":"number","label":"场景数","min":3,"max":5,"default":5},{"id":"chart","type":"enum","label":"图表模块","default":"line","options":[{"value":"line","label":"折线"},{"value":"bars","label":"排行"},{"value":"race","label":"赛跑"},{"value":"stacked","label":"堆叠"},{"value":"multiline","label":"多线"},{"value":"radar","label":"雷达"}]},{"id":"dataset_json","type":"string","label":"数据快照","default":"{\"contract\":\"dataset/1\",\"source_key\":\"sample-attention-index\",\"source_name\":\"示例数据集\",\"cadence\":\"monthly\",\"shape\":\"wide\",\"columns\":[\"date\",\"value\"],\"metric\":{\"key\":\"attention_index\",\"label\":\"关注指数\",\"unit\":\"点\",\"precision\":2},\"rows\":[[\"2025-01-01\",61.2],[\"2025-02-01\",62.45],[\"2025-03-01\",64.8],[\"2025-04-01\",63.9],[\"2025-05-01\",66.1],[\"2025-06-01\",68.3],[\"2025-07-01\",67.4],[\"2025-08-01\",70.2],[\"2025-09-01\",72.6],[\"2025-10-01\",73.1],[\"2025-11-01\",75.8],[\"2025-12-01\",78.4]],\"time_range\":{\"start\":\"2025-01-01\",\"end\":\"2025-12-01\",\"points\":12},\"facts\":{\"first\":{\"date\":\"2025-01-01\",\"value\":61.2},\"last\":{\"date\":\"2025-12-01\",\"value\":78.4},\"min\":{\"date\":\"2025-01-01\",\"value\":61.2},\"max\":{\"date\":\"2025-12-01\",\"value\":78.4},\"change\":17.2,\"change_pct\":28.1,\"period\":{\"start_year\":2025,\"end_year\":2025}}}"},{"id":"scene1_focus","type":"string","label":"第1屏画面依据","default":"{}"},{"id":"scene2_focus","type":"string","label":"第2屏画面依据","default":"{}"},{"id":"scene3_focus","type":"string","label":"第3屏画面依据","default":"{}"},{"id":"scene4_focus","type":"string","label":"第4屏画面依据","default":"{}"},{"id":"scene5_focus","type":"string","label":"第5屏画面依据","default":"{}"},{"id":"scene1_type","type":"string","label":"场景类型","default":""},{"id":"scene2_type","type":"string","label":"场景类型","default":""},{"id":"scene3_type","type":"string","label":"场景类型","default":""},{"id":"scene4_type","type":"string","label":"场景类型","default":""},{"id":"scene5_type","type":"string","label":"场景类型","default":""},{"id":"scene1_beat","type":"string","label":"叙事节点","default":""},{"id":"scene1_text","type":"string","label":"上屏文字","default":""},{"id":"scene2_beat","type":"string","label":"叙事节点","default":""},{"id":"scene2_text","type":"string","label":"上屏文字","default":""},{"id":"scene3_beat","type":"string","label":"叙事节点","default":""},{"id":"scene3_text","type":"string","label":"上屏文字","default":""},{"id":"scene4_beat","type":"string","label":"叙事节点","default":""},{"id":"scene4_text","type":"string","label":"上屏文字","default":""},{"id":"scene5_beat","type":"string","label":"叙事节点","default":""},{"id":"scene5_text","type":"string","label":"上屏文字","default":""}]'>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
@@ -168,6 +168,35 @@ body {
 .radar-label { fill: var(--legend); font-weight: 600; }
 .radar-value { fill: var(--muted-2); font-weight: 400; font-variant-numeric: tabular-nums; }
 .chart-note { fill: var(--muted); font-size: var(--fs-note); }
+/* 分镜：这一屏用什么画面、承担什么叙事节点、上屏写哪句话。
+   三套数据风格共用这一份规则——字号差异由令牌承担，版式差异由各自的 layout 负责。
+   变量落到 DOM 属性上的位置在 fill.js：只声明变量不写属性，这些变体就是死代码。 */
+
+/* 上屏文字与旁白解耦：屏幕文字节点同时带 lead 类，直接继承领句的排版，
+   这里只藏掉原来那条领句。三套版式的领句排版各不相同（flex / grid / 缩进），
+   另写一份屏幕文字样式等于把三套版式再抄一遍。 */
+.scene.has-screen-text .lead:not(.screen-text) { display: none; }
+
+/* headline：一屏一句话。领句顶到标题级，正文让位。 */
+.scene[data-scene-type="headline"] .lead {
+  font-size: var(--fs-title-sm);
+  max-height: 212px;
+}
+.scene[data-scene-type="headline"] .body { display: none; }
+
+/* number：这一屏就是一个数。正文让位，数字交给常驻的 KPI 头。 */
+.scene[data-scene-type="number"] .body { display: none; }
+
+/* compare：结论卡。正文垫一层面板，读起来是对照关系而不是流水句。
+   用面板而不是左边框：播报版式整屏本来就挂着一条强调竖条，再加一条会变成双线。 */
+.scene[data-scene-type="compare"] .body {
+  background: var(--panel);
+  padding: 18px 22px;
+  border-radius: var(--radius);
+}
+
+/* timeline：时间轴屏。屏次编号让位给刻度，记号更轻。 */
+.scene[data-scene-type="timeline"] .scene-no { letter-spacing: 0.06em; }
 /* news-trend-9x16 的版式差异（风格 B · 数据调查 / 趋势洞察线）。
    趋势线讲「变化意味着什么」：五屏沿同一条时间轴推进，刻度随屏次向右点亮；
    第 3、4 屏（证据 / 解释）用左侧加粗强调条 + 淡淡底色标成「论证段」。
@@ -463,6 +492,21 @@ document.querySelectorAll(".scene").forEach((slot) => {
   // 只声明变量不写属性，那些变体就是死代码。
   const type = declared["scene" + index + "_type"];
   if (type) slot.dataset.sceneType = type;
+  // 叙事节点给版式一条辅线
+  const beat = declared["scene" + index + "_beat"];
+  if (beat) slot.dataset.beat = beat;
+  // 上屏文字与旁白解耦：屏幕文字节点同时带 lead 类，继承三套版式各自的领句排版。
+  // 原来的领句由 .has-screen-text 藏掉，两条不会同时上屏。
+  const screen = declared["scene" + index + "_text"];
+  if (screen && String(screen).trim()) {
+    const text = document.createElement("p");
+    text.className = "lead screen-text";
+    text.textContent = screen;
+    const lead = slot.querySelector(".lead");
+    if (lead) lead.after(text);
+    else slot.appendChild(text);
+    slot.classList.add("has-screen-text");
+  }
   const figure = slot.querySelector(".scene-figure");
   const src = declared["scene" + index + "_image"];
   if (!figure || !src) return;

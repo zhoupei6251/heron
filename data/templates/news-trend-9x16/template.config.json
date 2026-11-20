@@ -13,11 +13,15 @@
   "capabilities": [
     "chart"
   ],
-  "sceneTypes": [],
   "supportedSceneTypes": [
     "headline",
-    "chart"
+    "text",
+    "chart",
+    "number",
+    "compare",
+    "timeline"
   ],
+  "storyboard": true,
   "description": "趋势洞察线：讲「变化意味着什么」，不是「发生了什么」。五屏沿同一条时间轴推进（问题 / 现象 / 证据 / 解释 / 洞察），结尾口播收束；1080×1920，数据由 dataset/1 快照驱动。",
   "recommendedDuration": {
     "min": 45,

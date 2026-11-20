@@ -15,10 +15,6 @@
   "decor": [
     "rail"
   ],
-  "sceneTypes": [
-    "headline",
-    "text"
-  ],
   "supportedSceneTypes": [
     "headline",
     "text"

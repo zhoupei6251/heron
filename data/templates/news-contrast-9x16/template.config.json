@@ -15,10 +15,6 @@
   "decor": [
     "plate"
   ],
-  "sceneTypes": [
-    "headline",
-    "text"
-  ],
   "supportedSceneTypes": [
     "headline",
     "text"

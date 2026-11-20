@@ -194,6 +194,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         write(work.resolve(VARS_FILE), variables);
         gates.add(assetsGate(composition, input.path("assets"), templateDir));
         gates.add(sceneTypeGate(script, templateDir));
+        gates.add(storyboardGate(script, dataset, trendDoc));
         write(composition.resolve("index.html"), bindVariablesString(read(composition.resolve("index.html")), variables));
 
         Path voice = composition.resolve(VOICE_FILE);
@@ -220,6 +221,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         gates.add(aigcMetadataGate(run, finalFile));
         Path sheet = contactSheet(run, work, finalFile);
         gates.add(visualGate(check, sheet));
+        gates.add(videoSignalGate(run, work, finalFile));
         gates.add(aigcVisibleGate(check, composition));
         gates.sort((left, right) -> left.gate().compareTo(right.gate()));
 
@@ -359,8 +361,55 @@ public class NewsProductionPipeline implements IProductionPipeline {
             "场景类型必须落在模板声明的能力里", measured);
     }
 
-    /** 模板没写 supportedSceneTypes 时返回空集，表示不做类型约束（老模板）。 */
-    @SuppressWarnings("unchecked")
+    /**
+     * 画面信号闸：黑屏与冻结帧。
+     *
+     * <p>只记不拦：黑场与冻结帧是症状，拦下来之后没有对应的自动修复动作，
+     * 只会让这条片子白跑一遍渲染。数字进 checks，审稿层据此给结论。
+     */
+    private Gate videoSignalGate(ProductionRunVo run, Path work, Path finalFile) {
+        double seconds = probeDuration(run, finalFile);
+        VideoSignalCheck.Result signal = VideoSignalCheck.run(processes, run, work, FINAL_FILE, seconds);
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("blackSpans", signal.black().size());
+        measured.put("longestBlackSeconds", round2(signal.longestBlack()));
+        measured.put("freezeSpans", signal.freeze().size());
+        measured.put("longestFreezeSeconds", round2(signal.longestFreeze()));
+        measured.put("videoSeconds", round2(seconds));
+        String reason = signal.black().isEmpty() && signal.freeze().isEmpty()
+            ? "全片没有黑场与冻结段"
+            : "检出黑场 " + signal.black().size() + " 段（最长 " + round2(signal.longestBlack())
+                + " 秒）、冻结 " + signal.freeze().size() + " 段（最长 "
+                + round2(signal.longestFreeze()) + " 秒）";
+        return new Gate("video_signal", FINAL_FILE + ":vf", reason, measured);
+    }
+
+    /**
+     * 分镜闸：叙事节点、画面组件与上屏文字。
+     *
+     * <p>整篇没写 beat 的旧稿直接放行——那是「还没用分镜」，不是「分镜写错了」。
+     * 写了分镜的稿子必须自洽：节点成序列、组件有层次、上屏的字放得下。
+     */
+    private static Gate storyboardGate(JsonNode script, JsonNode dataset, JsonNode trendDoc) {
+        // 上屏文字的长度按占位符解析后的实际字数算；趋势稿的 {{trend.*}} 只有带上判定才解析得动
+        JsonNode resolved = script;
+        if (dataset != null) {
+            try {
+                resolved = DatasetPlaceholders.resolve(script, dataset, trendDoc);
+            } catch (RuntimeException e) {
+                // 占位符解析不了是取数闸的事，这里按原文判，不越权改稿
+                resolved = script;
+            }
+        }
+        List<String> violations = StoryboardContract.violations(script, resolved);
+        if (!violations.isEmpty()) {
+            throw new HeronBusinessException(409, "storyboard_invalid",
+                "分镜退回写稿：" + String.join("；", violations));
+        }
+        return new Gate("storyboard", "script", "叙事节点、画面组件与上屏文字全部成立", Map.of("violations", 0));
+    }
+
+    /** 模板没写 supportedSceneTypes 时返回空集，表示不做类型约束（老模板）。 */    @SuppressWarnings("unchecked")
     static java.util.Set<String> supportedSceneTypes(Path templateDir) {
         Path meta = templateDir.resolve("template.json");
         if (!java.nio.file.Files.isRegularFile(meta)) {
@@ -1096,6 +1145,9 @@ public class NewsProductionPipeline implements IProductionPipeline {
             vars.put("scene" + (index + 1) + "_image", images.getOrDefault(String.valueOf(index + 1), ""));
             // 场景类型是渲染信号，不只是契约层的分类：模板按它切换版式变体
             vars.put("scene" + (index + 1) + "_type", scene.path("scene_type").asString(""));
+            // 分镜另两件：叙事节点给版式一条辅线，上屏文字与旁白解耦
+            vars.put("scene" + (index + 1) + "_beat", scene.path("beat").asString(""));
+            vars.put("scene" + (index + 1) + "_text", scene.path("on_screen_text").asString(""));
         }
         if (!declared.isEmpty()) {
             vars.keySet().retainAll(declared);

@@ -32,7 +32,7 @@ class QualityReportToleranceTest {
             """.formatted(id, verdict, repairable));
     }
 
-    /** 九条判据齐全的报告，越界的「可修」放在 early_payoff 上。 */
+    /** 十条判据齐全的报告，越界的「可修」放在 early_payoff 上。 */
     private static tools.jackson.databind.node.ObjectNode report() {
         var root = JSON.createObjectNode();
         var array = JSON.createArrayNode();
@@ -68,7 +68,7 @@ class QualityReportToleranceTest {
     void outOfWhitelistRepairableIsDowngraded() {
         JsonNode out = QualityReportContract.validate(report(), context());
 
-        assertEquals(9, out.path("criteria").size(), "九条判据一条都不能少");
+        assertEquals(10, out.path("criteria").size(), "十条判据一条都不能少");
         for (JsonNode item : out.path("criteria")) {
             if ("early_payoff".equals(item.path("id").asString())) {
                 assertFalse(item.path("repairable").asBoolean(),

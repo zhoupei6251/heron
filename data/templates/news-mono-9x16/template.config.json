@@ -15,10 +15,6 @@
   "decor": [
     "tick"
   ],
-  "sceneTypes": [
-    "headline",
-    "text"
-  ],
   "supportedSceneTypes": [
     "headline",
     "text"

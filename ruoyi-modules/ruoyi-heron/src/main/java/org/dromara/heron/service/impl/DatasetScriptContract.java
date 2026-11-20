@@ -15,7 +15,13 @@ public final class DatasetScriptContract {
 
     private static final Set<String> FIELDS = Set.of("dataset_sha256", "source_key", "title", "scenes", "closing",
         "source_name", "chart");
-    private static final Set<String> SCENE_FIELDS = Set.of("lead", "body", "duration_s");
+    /**
+     * 段落字段。scene_type / beat / on_screen_text 是分镜三件套：
+     * 这一屏用什么画面、承担什么叙事节点、上屏写哪句话。形状在契约层看，
+     * 取值是否成立由 StoryboardContract 判（它要等模板声明的组件能力才知道）。
+     */
+    private static final Set<String> SCENE_FIELDS = Set.of("lead", "body", "duration_s",
+        "scene_type", "beat", "on_screen_text");
     /**
      * 渲染端真正实现了的图表模块，取值必须与 data/templates/_gen/behaviors/chart.js 的白名单一致。
      * 契约只映射到这张表里的值：纸上写过但没实现的图表类型不允许放行。

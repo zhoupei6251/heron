@@ -102,13 +102,13 @@ class QualityReviewerTest {
         """;
 
     @Test
-    @DisplayName("九条判据一条不少，客观与主观分层")
-    void reportCarriesAllNineCriteria() {
+    @DisplayName("十条判据一条不少，客观与主观分层")
+    void reportCarriesAllTenCriteria() {
         String json = new QualityReviewer(new StubModel(MODEL_REPLY)).review(run(), ctx());
         JsonNode report = JSON.readTree(json);
 
         assertEquals("quality-review/1", report.path("schemaVersion").asString());
-        assertEquals(9, report.path("criteria").size());
+        assertEquals(10, report.path("criteria").size());
         assertEquals(7, report.path("summary").path("objectiveVerified").asInt());
         assertEquals(2, report.path("summary").path("subjectiveVerified").asInt());
     }
@@ -167,7 +167,7 @@ class QualityReviewerTest {
         String json = new QualityReviewer(new StubModel("这不是 JSON")).review(run(), ctx());
         JsonNode report = JSON.readTree(json);
 
-        assertEquals(9, report.path("criteria").size(), "九条判据一条都不能少");
+        assertEquals(10, report.path("criteria").size(), "十条判据一条都不能少");
         assertTrue(report.path("notes").toString().contains("model_output_invalid"), report.path("notes").toString());
         assertEquals(7, report.path("summary").path("objectiveVerified").asInt());
     }
@@ -202,7 +202,7 @@ class QualityReviewerTest {
         List<String> fields = report.path("summary").propertyNames().stream().toList();
         assertFalse(fields.contains("totalScore"), fields.toString());
         assertFalse(fields.contains("score"), fields.toString());
-        assertEquals(9, report.path("summary").path("pass").asInt() + report.path("summary").path("minor").asInt()
+        assertEquals(10, report.path("summary").path("pass").asInt() + report.path("summary").path("minor").asInt()
             + report.path("summary").path("fail").asInt() + report.path("summary").path("unknown").asInt());
     }
 

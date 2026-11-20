@@ -15,7 +15,11 @@
   ],
   "supportedSceneTypes": [
     "headline",
-    "chart"
+    "text",
+    "chart",
+    "number",
+    "compare",
+    "timeline"
   ],
   "aspectRatio": "9:16",
   "recommendedDuration": {

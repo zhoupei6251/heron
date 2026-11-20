@@ -13,11 +13,15 @@
   "capabilities": [
     "chart"
   ],
-  "sceneTypes": [],
   "supportedSceneTypes": [
     "headline",
-    "chart"
+    "text",
+    "chart",
+    "number",
+    "compare",
+    "timeline"
   ],
+  "storyboard": true,
   "description": "专业新闻播报：下三分之一信息条、红色立标、克制动效，1080×1920，数据由 dataset/1 快照驱动",
   "recommendedDuration": {
     "min": 30,

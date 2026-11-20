@@ -26,13 +26,14 @@ final class QualityCriteria {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
-    /** 九条判据，顺序即报告里展示的顺序。 */
+    /** 十条判据，顺序即报告里展示的顺序。 */
     static final List<String> IDS = List.of("hook_3s", "early_payoff", "mid_progression", "peak_focus",
-        "visual_sync", "style_consistency", "pacing_variation", "no_redundancy", "closing_value");
+        "visual_sync", "picture_motion", "style_consistency", "pacing_variation", "no_redundancy",
+        "closing_value");
 
     /** 这几条由机器定论，报告里是 objective 条目。 */
     static final Set<String> MACHINE_DECIDED = Set.of("hook_3s", "early_payoff", "mid_progression",
-        "visual_sync", "style_consistency", "no_redundancy", "closing_value");
+        "visual_sync", "picture_motion", "style_consistency", "no_redundancy", "closing_value");
 
     /** 机器只提供证据、结论由模型给的两条。 */
     static final Set<String> MODEL_DECIDED = Set.of("peak_focus", "pacing_variation");
@@ -49,6 +50,10 @@ final class QualityCriteria {
     static final int REPEAT_PATH_LIMIT = 3;
     /** 结尾短于这个长度即判结尾空泛。 */
     static final long CLOSING_MIN_MS = 3_000L;
+    /** 最长黑场超过这个秒数即判画面没出来。 */
+    private static final double BLACK_MAX_SECONDS = 1.0;
+    /** 最长静止段超过这个秒数即判画面不动。 */
+    private static final double FREEZE_MAX_SECONDS = 3.0;
 
     private static final Pattern REFERENCE = Pattern.compile("\\{\\{(facts\\.[^{}]+)}}");
 
@@ -132,6 +137,7 @@ final class QualityCriteria {
         out.add(earlyPayoff(ctx));
         out.add(midProgression(ctx));
         out.add(visualSync(ctx));
+        out.add(pictureMotion(ctx));
         out.add(styleConsistency(ctx));
         out.add(noRedundancy(ctx));
         out.add(closingValue(ctx));
@@ -321,6 +327,33 @@ final class QualityCriteria {
         String reason = "可解析画面焦点的段数=" + parsed + "，焦点引用全部可解析=" + resolvable
             + "，图表类型=" + (chart.isBlank() ? "（无）" : chart) + "。";
         return new Criterion("visual_sync", verdict, "fail".equals(verdict) ? "major" : "none",
+            false, evidence, reason);
+    }
+
+    /**
+     * 画面到底有没有在动。
+     *
+     * <p>机器定论：黑场说明画面没出来，冻结段说明画面不动。两者都是「像 PPT」的直接来源——
+     * 版式再花，画面一停，观众看到的就是一张静止的图配一段念稿。
+     *
+     * <p>检不出来就交 unknown，不猜：没有画面信号检测结果时不能说「画面在动」。
+     */
+    private static Criterion pictureMotion(Context ctx) {
+        List<Evidence> evidence = new ArrayList<>();
+        Double black = ctx.measured("video_signal", "longestBlackSeconds");
+        Double freeze = ctx.measured("video_signal", "longestFreezeSeconds");
+        if (black == null || freeze == null) {
+            return new Criterion("picture_motion", "unknown", "none", false, evidence,
+                "没有画面信号检测结果，无法判断画面有没有在动。");
+        }
+        evidence.add(new Evidence("checks[video_signal].measured.longestBlackSeconds", String.valueOf(black)));
+        evidence.add(new Evidence("checks[video_signal].measured.longestFreezeSeconds", String.valueOf(freeze)));
+        boolean blackOk = black <= BLACK_MAX_SECONDS;
+        boolean freezeOk = freeze <= FREEZE_MAX_SECONDS;
+        String verdict = blackOk && freezeOk ? "pass" : "fail";
+        String reason = "最长黑场 " + black + " 秒（上限 " + BLACK_MAX_SECONDS + " 秒），最长静止段 "
+            + freeze + " 秒（上限 " + FREEZE_MAX_SECONDS + " 秒）。";
+        return new Criterion("picture_motion", verdict, "fail".equals(verdict) ? "major" : "none",
             false, evidence, reason);
     }
 

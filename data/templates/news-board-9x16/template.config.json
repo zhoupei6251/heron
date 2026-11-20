@@ -12,10 +12,6 @@
   "activeScenes": 6,
   "capabilities": [],
   "ambient": true,
-  "sceneTypes": [
-    "headline",
-    "text"
-  ],
   "supportedSceneTypes": [
     "headline",
     "text"

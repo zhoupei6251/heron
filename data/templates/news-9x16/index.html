@@ -306,6 +306,21 @@ document.querySelectorAll(".scene").forEach((slot) => {
   // 只声明变量不写属性，那些变体就是死代码。
   const type = declared["scene" + index + "_type"];
   if (type) slot.dataset.sceneType = type;
+  // 叙事节点给版式一条辅线
+  const beat = declared["scene" + index + "_beat"];
+  if (beat) slot.dataset.beat = beat;
+  // 上屏文字与旁白解耦：屏幕文字节点同时带 lead 类，继承三套版式各自的领句排版。
+  // 原来的领句由 .has-screen-text 藏掉，两条不会同时上屏。
+  const screen = declared["scene" + index + "_text"];
+  if (screen && String(screen).trim()) {
+    const text = document.createElement("p");
+    text.className = "lead screen-text";
+    text.textContent = screen;
+    const lead = slot.querySelector(".lead");
+    if (lead) lead.after(text);
+    else slot.appendChild(text);
+    slot.classList.add("has-screen-text");
+  }
   const figure = slot.querySelector(".scene-figure");
   const src = declared["scene" + index + "_image"];
   if (!figure || !src) return;

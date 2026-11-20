@@ -50,11 +50,11 @@ public class DatasetScriptAuthor {
         JsonNode editorial = editorialOf(run);
         JsonNode draft = withEvidence(parse(model.chat(run, STAGE, system,
             prompt(snapshot, titles, editorial, digest))), snapshot);
-        List<String> violations = violations(draft, snapshot, titles);
+        List<String> violations = violations(draft, snapshot, titles, null);
         for (int repair = 0; repair < MAX_REPAIRS && !violations.isEmpty(); repair++) {
             draft = withEvidence(parse(model.chat(run, STAGE + "-repair", system,
                 repairPrompt(draft, violations, titles, editorial))), snapshot);
-            violations = violations(draft, snapshot, titles);
+            violations = violations(draft, snapshot, titles, null);
         }
         if (!violations.isEmpty()) {
             throw new HeronBusinessException(409, "dataset_script_contract",
@@ -154,7 +154,7 @@ public class DatasetScriptAuthor {
 
     private static List<String> trendViolations(JsonNode script, JsonNode snapshot, JsonNode trend,
                                                 List<String> titles) {
-        List<String> out = new java.util.ArrayList<>(violations(script, snapshot, titles));
+        List<String> out = new java.util.ArrayList<>(violations(script, snapshot, titles, trend));
         out.addAll(TrendContract.violations(trend, script, snapshot));
         return out;
     }
@@ -168,7 +168,7 @@ public class DatasetScriptAuthor {
             + ColumnPacks.text(snapshot.path("source_key").asString(""));
         JsonNode repaired = withEvidence(parse(model.chat(run, STAGE + "-repair", system,
             repairPrompt(JSON.readTree(scriptJson), issues, titles, editorialOf(run)))), snapshot);
-        List<String> violations = violations(repaired, snapshot, titles);
+        List<String> violations = violations(repaired, snapshot, titles, null);
         if (!violations.isEmpty()) {
             throw new HeronBusinessException(409, "dataset_script_contract",
                 "脚本退回修复：" + String.join("；", violations));
@@ -204,12 +204,24 @@ public class DatasetScriptAuthor {
         }
     }
 
-    private static List<String> violations(JsonNode script, JsonNode snapshot, List<String> titles) {
+    private static List<String> violations(JsonNode script, JsonNode snapshot, List<String> titles,
+                                         JsonNode trend) {
         List<String> violations = new java.util.ArrayList<>(DatasetScriptContract.violations(script, snapshot));
+        // 分镜也要进修复循环：分镜不合规时渲染闸会直接退回整条片子，
+        // 与其出片前才发现，不如在写稿阶段就修一次。
+        JsonNode resolved;
+        try {
+            // 趋势稿的 {{trend.*}} 只有带上趋势判定才解析得动
+            resolved = trend == null ? DatasetPlaceholders.resolve(script, snapshot)
+                : DatasetPlaceholders.resolve(script, snapshot, trend);
+        } catch (RuntimeException e) {
+            resolved = script;
+        }
+        violations.addAll(StoryboardContract.violations(script, resolved));
         if (!titles.contains(script.path("title").asString(""))) {
             violations.add("title 必须从候选里原样选一个");
         }
-        return violations;
+        return List.copyOf(new java.util.LinkedHashSet<>(violations));
     }
 
     /** 快照事实覆盖模型自述，模型只负责旁白。 */

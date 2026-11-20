@@ -1,0 +1,29 @@
+/* 分镜：这一屏用什么画面、承担什么叙事节点、上屏写哪句话。
+   三套数据风格共用这一份规则——字号差异由令牌承担，版式差异由各自的 layout 负责。
+   变量落到 DOM 属性上的位置在 fill.js：只声明变量不写属性，这些变体就是死代码。 */
+
+/* 上屏文字与旁白解耦：屏幕文字节点同时带 lead 类，直接继承领句的排版，
+   这里只藏掉原来那条领句。三套版式的领句排版各不相同（flex / grid / 缩进），
+   另写一份屏幕文字样式等于把三套版式再抄一遍。 */
+.scene.has-screen-text .lead:not(.screen-text) { display: none; }
+
+/* headline：一屏一句话。领句顶到标题级，正文让位。 */
+.scene[data-scene-type="headline"] .lead {
+  font-size: var(--fs-title-sm);
+  max-height: 212px;
+}
+.scene[data-scene-type="headline"] .body { display: none; }
+
+/* number：这一屏就是一个数。正文让位，数字交给常驻的 KPI 头。 */
+.scene[data-scene-type="number"] .body { display: none; }
+
+/* compare：结论卡。正文垫一层面板，读起来是对照关系而不是流水句。
+   用面板而不是左边框：播报版式整屏本来就挂着一条强调竖条，再加一条会变成双线。 */
+.scene[data-scene-type="compare"] .body {
+  background: var(--panel);
+  padding: 18px 22px;
+  border-radius: var(--radius);
+}
+
+/* timeline：时间轴屏。屏次编号让位给刻度，记号更轻。 */
+.scene[data-scene-type="timeline"] .scene-no { letter-spacing: 0.06em; }

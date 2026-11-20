@@ -62,7 +62,10 @@ class QualityCriteriaTest {
                  "scene3StartMs": 16000, "scene3EndMs": 24000,
                  "closingStartMs": 24000, "closingEndMs": 30000}},
               {"gate": "visual", "passed": true, "reason": "版式通过",
-               "measured": {"blankFrames": 0, "checkErrors": 0, "checkWarnings": 0}}
+               "measured": {"blankFrames": 0, "checkErrors": 0, "checkWarnings": 0}},
+              {"gate": "video_signal", "passed": true, "reason": "画面在动",
+               "measured": {"blackSpans": 0, "longestBlackSeconds": 0,
+                 "freezeSpans": 0, "longestFreezeSeconds": 1.2, "videoSeconds": 38.1}}
             ]
             """);
     }
@@ -159,7 +162,24 @@ class QualityCriteriaTest {
         List<String> judged = QualityCriteria.judge(ctx).stream().map(QualityCriteria.Criterion::id).toList();
         assertFalse(judged.contains("peak_focus"), judged.toString());
         assertFalse(judged.contains("pacing_variation"), judged.toString());
-        assertEquals(7, judged.size());
+        assertEquals(8, judged.size());
+    }
+
+    @Test
+    @DisplayName("画面长时间不动判 fail：静止的图配旁白就是 PPT")
+    void stillPictureFails() {
+        var ctx = context(script(), dataset(), JSON.readTree("""
+            [{"gate": "video_signal", "passed": true, "reason": "有静止段",
+              "measured": {"longestBlackSeconds": 0, "longestFreezeSeconds": 5.4}}]
+            """));
+        assertEquals("fail", criterion(ctx, "picture_motion").verdict());
+    }
+
+    @Test
+    @DisplayName("没有画面信号检测结果时交 unknown，不猜")
+    void pictureMotionUnknownWithoutSignal() {
+        var ctx = context(script(), dataset(), JSON.readTree("[]"));
+        assertEquals("unknown", criterion(ctx, "picture_motion").verdict());
     }
 
     @Test

@@ -45,6 +45,11 @@
 5. 洞察：回答 `plan.question`，落在变化意味着什么。
 6. 结尾：总结 + 说明还缺什么证据、还需要观察什么。
 
+每段还要写分镜三件套（`scene_type` / `beat` / `on_screen_text`，口径见 `script-contract.md`）。
+`beat` 直接照 `plan.beats` 的顺序落：问题→`HOOK`，现象→`CONTEXT`，证据→`EVIDENCE`，
+解释→`EXPLANATION`，洞察→`INSIGHT`，待观察→`CONCLUSION`。
+`scene_type` 按每段实际在讲什么选：问题屏用 `headline`，现象与证据屏用 `chart`，解释屏用 `text`，洞察屏用 `number` 或 `chart`。
+
 ## 红线（写错直接退稿）
 
 1. 不得把短期波动说成长期趋势：`range_fluctuation` 里出现方向词一律退稿。
@@ -61,5 +66,5 @@
 
 ## 输出
 
-字段与 `script-contract.md` 完全一致：`title`、`scenes[]`（每段 `{lead, body, duration_s}`）、`closing`。
+字段与 `script-contract.md` 完全一致：`title`、`scenes[]`（每段 `{lead, body, duration_s, scene_type, beat, on_screen_text}`）、`closing`。
 系统会补 `dataset_sha256` / `source_key` / `chart` / `source_name`。合计 30–75 秒，3–6 屏。

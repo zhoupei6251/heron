@@ -37,7 +37,9 @@ class QualityReportContractTest {
     private static JsonNode checks() {
         return JSON.readTree("""
             [{"gate": "visual", "passed": true, "reason": "版式通过",
-              "measured": {"blankFrames": 0, "checkErrors": 0, "checkWarnings": 0}}]
+              "measured": {"blankFrames": 0, "checkErrors": 0, "checkWarnings": 0}},
+             {"gate": "video_signal", "passed": true, "reason": "画面在动",
+              "measured": {"longestBlackSeconds": 0, "longestFreezeSeconds": 1.2}}]
             """);
     }
 
@@ -60,6 +62,8 @@ class QualityReportContractTest {
                 "focus[scene1].mode", "latest"),
             entry("visual_sync", "pass", "objective", "high", true, "none", false,
                 "focus[scene1].refs", "last.value"),
+            entry("picture_motion", "pass", "objective", "high", true, "none", false,
+                "checks[video_signal].measured.longestFreezeSeconds", "1.2"),
             entry("style_consistency", "pass", "objective", "high", true, "none", false,
                 "checks[visual].measured.checkErrors", "0"),
             entry("pacing_variation", "minor", "subjective", "medium", false, "minor", true,
@@ -96,10 +100,10 @@ class QualityReportContractTest {
     void compliantReportPasses() {
         ObjectNode validated = QualityReportContract.validate(report(), ctx());
         JsonNode summary = validated.path("summary");
-        assertEquals(8, summary.path("pass").asInt());
+        assertEquals(9, summary.path("pass").asInt());
         assertEquals(1, summary.path("minor").asInt());
         assertEquals(0, summary.path("fail").asInt());
-        assertEquals(7, summary.path("objectiveVerified").asInt());
+        assertEquals(8, summary.path("objectiveVerified").asInt());
         assertEquals(2, summary.path("subjectiveVerified").asInt());
     }
 

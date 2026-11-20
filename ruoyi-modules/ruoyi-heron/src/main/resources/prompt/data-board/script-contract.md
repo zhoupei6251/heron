@@ -12,12 +12,35 @@
 | `source_key` | 系统覆盖 | 数据源 key，不必自己填 |
 | `chart` | 系统覆盖 | 由数据形态决定，不必自己填 |
 | `title` | 是 | 屏幕标题，不超过 15 字 |
-| `scenes` | 是 | 3–6 段，每段 `{lead, body, duration_s}` |
+| `scenes` | 是 | 3–6 段，每段 `{lead, body, duration_s, scene_type, beat, on_screen_text}` |
 | `closing` | 是 | 结尾一句话 |
 | `source_name` | 系统覆盖 | 画面「来源：xxx」文案，不必自己填 |
 
 - 每段 `lead` ≤ 20 字、`body` ≤ 70 字、`duration_s` 为正数秒；全部段落合计 30–75 秒。
 - 只允许上述字段。出现未知字段直接退回。
+
+## 分镜：每段三件套
+
+旁白讲的是「说了什么」，分镜讲的是「这一屏画面上在干什么」。两者分开写，画面才不会退化成照着稿子念。
+
+| 字段 | 取值 | 作用 |
+|---|---|---|
+| `scene_type` | `headline` / `text` / `chart` / `number` / `compare` / `timeline` | 这一屏用什么画面 |
+| `beat` | `HOOK` / `CONTEXT` / `QUESTION` / `EVIDENCE` / `COMPARISON` / `REVEAL` / `EXPLANATION` / `INSIGHT` / `CONCLUSION` | 这一屏承担什么叙事节点 |
+| `on_screen_text` | ≤ 18 字，可省略 | 上屏的那一行短句，与旁白解耦 |
+
+1. **`scene_type` 只能用上表六种**，写别的直接退回。
+2. **`beat` 每段都要写**：第一段必须是 `HOOK`（抓人），最后一段必须是 `CONCLUSION`、`INSIGHT` 或 `REVEAL`（收束）。只写几段等于没写，直接退回。
+3. **整篇不能只有一种 `scene_type`**：全篇都是 `text` 等于没做分镜，画面还是一张静止的图配旁白。
+4. `on_screen_text` 是写给观众看的那一行短句，**不是旁白的复制**。旁白是完整句子，上屏文字要一眼读完；写不出来就省略，省略时上屏沿用 `lead`。
+5. `scene_type` 按这一屏实际在讲什么来选，不是按顺序轮着填：
+   - `headline`：一句话立论或转折，正文全部让位给这一句。
+   - `number`：这一屏就是一个关键数字。
+   - `chart`：这一屏在讲图表本身——形态、拐点、对比方式。
+   - `compare`：两项对照（前 vs 后、A vs B）。
+   - `timeline`：按时间推进的一段。
+   - `text`：纯文字叙述。
+6. `on_screen_text` 里的数字与旁白同规则：只能用 `{{facts.<路径>}}`，不能自己写。
 
 ## 旁白规则（最重要）
 
