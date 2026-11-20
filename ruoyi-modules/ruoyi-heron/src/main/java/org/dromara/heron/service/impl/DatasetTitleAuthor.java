@@ -36,9 +36,14 @@ public class DatasetTitleAuthor {
     record Candidate(String title, String kind) { }
 
     public List<Candidate> candidates(ProductionRunVo run, String datasetJson) {
+        return candidates(run, datasetJson, "");
+    }
+
+    /** 趋势线多给一段判定摘要：标题要问「变化意味着什么」，不能只复述数值。 */
+    public List<Candidate> candidates(ProductionRunVo run, String datasetJson, String context) {
         JsonNode snapshot = JSON.readTree(datasetJson);
         String pack = ColumnPacks.text(snapshot.path("source_key").asString(""));
-        String reply = model.chat(run, STAGE, SYSTEM + "\n\n---\n\n" + pack, prompt(snapshot));
+        String reply = model.chat(run, STAGE, SYSTEM + "\n\n---\n\n" + pack, prompt(snapshot, context));
         return parse(reply, snapshot);
     }
 
@@ -93,8 +98,9 @@ public class DatasetTitleAuthor {
         return false;
     }
 
-    private static String prompt(JsonNode snapshot) {
-        return "数据快照：\n" + snapshot + "\n按契约输出五个候选，每个 kind 一个。";
+    private static String prompt(JsonNode snapshot, String context) {
+        String extra = context == null || context.isBlank() ? "" : context.strip() + "\n\n";
+        return extra + "数据快照：\n" + snapshot + "\n按契约输出五个候选，每个 kind 一个。";
     }
 
     private static HeronBusinessException contract(String reason) {

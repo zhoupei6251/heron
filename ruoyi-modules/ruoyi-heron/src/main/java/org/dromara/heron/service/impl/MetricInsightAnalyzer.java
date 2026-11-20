@@ -116,6 +116,7 @@ public final class MetricInsightAnalyzer {
      * 但它有 candidate_id，旧口径于是把它判成 hotlist。先看子线，再看来源。
      */
     private static String sourceBucket(Sample sample) {
+        if ("trend".equals(sample.kind())) return "trend";
         if ("data_board".equals(sample.kind())) return "data_board";
         if ("research".equals(sample.sourceKind())) return "research";
         if (sample.candidateId() == null) return UNKNOWN;

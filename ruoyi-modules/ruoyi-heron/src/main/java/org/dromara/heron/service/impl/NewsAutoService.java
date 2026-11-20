@@ -499,9 +499,24 @@ public class NewsAutoService {
         }
     }
 
+    /**
+     * 机会摘要：分数之外必须带取数口径。
+     *
+     * <p>总编辑要判断「这条该走趋势线还是看板线」，靠的就是形态与点数；
+     * 只给分数等于逼它凭标题猜，趋势线于是永远选不出来。
+     */
     static String opportunityLabel(HeronDataOpportunity item) {
         String score = item.getScore() == null ? "" : "，分 " + item.getScore().stripTrailingZeros().toPlainString();
-        return item.getHeadline() + score;
+        String shape = item.getShape();
+        Integer points = item.getWindowPoints();
+        String cadence = item.getCadence();
+        StringBuilder text = new StringBuilder(item.getHeadline()).append(score);
+        if (shape != null || points != null || cadence != null) {
+            text.append("（").append(shape == null || shape.isBlank() ? "未知形态" : shape)
+                .append("，").append(points == null ? 0 : points).append(" 点，")
+                .append(cadence == null || cadence.isBlank() ? "节奏未知" : cadence).append("）");
+        }
+        return text.toString();
     }
 
     private static String datasetLabel(HeronDataSource source) {

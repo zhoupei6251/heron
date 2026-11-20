@@ -37,6 +37,11 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         "asset_manifest", "dataset");
     private static final Set<String> DATA_GATES = Set.of("schema", "evidence", "data", "audio", "audio_mix", "subtitles",
         "render", "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
+    /** 趋势线多一份 trend.json 产物与一道趋势判定闸；其余与数据看板线一致。 */
+    private static final Set<String> TREND_KINDS = Set.of("mp4", "contact_sheet", "script", "subtitles", "checks",
+        "asset_manifest", "dataset", "trend");
+    private static final Set<String> TREND_GATES = Set.of("schema", "evidence", "data", "trend", "audio", "audio_mix",
+        "subtitles", "render", "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
     private final HeronNewsCandidateMapper candidateMapper;
     private final FrozenContextService contexts;
     private final HeronNewsWorkMapper workMapper;
@@ -69,7 +74,13 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
      * 表现归因也按这一层分桶，所以取值和写入放在一处，免得两处各写一份判定。
      */
     static String kindOf(EditorialSelection selection) {
-        return selection != null && selection.dataBoard() ? "data_board" : "article";
+        if (selection == null) {
+            return "article";
+        }
+        if (selection.trendInsight()) {
+            return "trend";
+        }
+        return selection.dataBoard() ? "data_board" : "article";
     }
 
     /** 总编辑判断：线、意图、理由，以及提示词版本，便于回溯「当时为什么这么选」。 */
@@ -235,14 +246,18 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         JsonNode content = JsonUtils.getJsonMapper().readTree(result.resultJson());
         if (!content.isObject() || !content.path("script").isObject() || !content.path("durationMs").isIntegralNumber()
             || content.path("durationMs").asLong() <= 0) throw conflict("result_invalid", "脚本或实测时长缺失");
+        boolean trend = trend(version);
         boolean dataBoard = dataBoard(version);
-        if (dataBoard && !content.path("dataset").isObject()) throw conflict("result_invalid", "数据看板缺少快照");
-        List<String> violations = dataBoard
+        boolean dataBoardLine = dataBoard || trend;
+        if (dataBoardLine && !content.path("dataset").isObject()) {
+            throw conflict("result_invalid", trend ? "趋势线缺少快照" : "数据看板缺少快照");
+        }
+        List<String> violations = dataBoardLine
             ? DatasetScriptContract.violations(content.path("script"), content.path("dataset"))
             : NewsScriptContract.violations(content.path("script"));
         if (!violations.isEmpty()) throw conflict("script_contract", "稿件退回写稿：" + String.join("；", violations));
         String checks = JsonUtils.toJsonString(content.path("checks"));
-        validateChecks(checks, dataBoard);
+        validateChecks(checks, requiredGates(version));
         // 审稿记录必须随结果一起落库；缺失即视为没审过，自动发布会被门禁挡住
         JsonNode reviewRecord = content.path("editorialReview");
         if (!reviewRecord.isObject()) throw conflict("result_invalid", "缺少 AI 审稿记录");
@@ -274,7 +289,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             .eq(HeronNewsWork::getWorkId, task.getBizId()).eq(HeronNewsWork::getActiveTaskId, task.getTaskId()).updateCount() != 1) {
             throw conflict("completion_conflict", "作品在途指针已变化");
         }
-        if (dataBoard) {
+        if (dataBoardLine) {
             recordDatasetUsage(task, content.path("dataset"));
         }
     }
@@ -321,8 +336,25 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         return dataBoard(JsonUtils.getJsonMapper().readTree(version.getInputSnapshot()));
     }
 
+    /** 趋势洞察线：和数据看板共用取数，但多一道趋势判定闸与一份 trend.json 产物。 */
+    public boolean trend(HeronVideoVersion version) {
+        return trend(JsonUtils.getJsonMapper().readTree(version.getInputSnapshot()));
+    }
+
+    /** 某版本必须全部通过且必须出现的闸口清单：文章、数据看板、趋势三套口径。 */
+    public Set<String> requiredGates(HeronVideoVersion version) {
+        if (trend(version)) {
+            return TREND_GATES;
+        }
+        return dataBoard(version) ? DATA_GATES : GATES;
+    }
+
     private static boolean dataBoard(JsonNode input) {
         return "data_board".equals(input.path("kind").asString(""));
+    }
+
+    private static boolean trend(JsonNode input) {
+        return "trend".equals(input.path("kind").asString(""));
     }
 
     /** 查询、审核、下载均核对版本与任务的不可变归属。 */
@@ -338,9 +370,11 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     public void validateManifest(HeronVideoVersion version, HeronProductionTask task, List<ProductionArtifactVo> files, boolean verifyFiles) {
         requireTask(version, task);
         boolean dataBoard = dataBoard(version);
-        Set<String> expected = dataBoard ? DATA_KINDS : KINDS;
+        boolean trend = trend(version);
+        Set<String> expected = trend ? TREND_KINDS : dataBoard ? DATA_KINDS : KINDS;
         if (files == null || files.size() != expected.size()) {
-            throw conflict("manifest_invalid", dataBoard ? "必须具备全部七类产物（含 dataset）" : "必须具备全部六类产物");
+            throw conflict("manifest_invalid", trend ? "必须具备全部八类产物（含 dataset 与 trend）"
+                : dataBoard ? "必须具备全部七类产物（含 dataset）" : "必须具备全部六类产物");
         }
         Set<String> kinds = new HashSet<>();
         Set<String> ids = new HashSet<>();
@@ -383,6 +417,15 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
 
     /** 闸口必须全部存在且通过；检查明细只接受安全定位符和数值测量。 */
     public void validateChecks(String checks, boolean dataBoard) {
+        validateChecks(checks, dataBoard ? DATA_GATES : GATES);
+    }
+
+    /** 按版本自己的产线取闸集：趋势线有 trend 闸，文章线没有 data 闸。 */
+    public void validateChecks(String checks, HeronVideoVersion version) {
+        validateChecks(checks, requiredGates(version));
+    }
+
+    public void validateChecks(String checks, Set<String> requiredGates) {
         boundedJson(checks);
         JsonNode list = JsonUtils.getJsonMapper().readTree(checks);
         if (!list.isArray() || list.isEmpty() || list.size() > 200) throw conflict("checks_invalid", "完整检查报告缺失");
@@ -404,8 +447,9 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             }
             seen.add(gate);
         }
-        Set<String> required = dataBoard ? DATA_GATES : GATES;
-        if (!seen.containsAll(required)) throw conflict("checks_incomplete", "结构、依据、数据、音轨、字幕、渲染、解码、视觉、AIGC或许可闸缺失");
+        if (!seen.containsAll(requiredGates)) {
+            throw conflict("checks_incomplete", "结构、依据、数据、音轨、字幕、渲染、解码、视觉、AIGC或许可闸缺失");
+        }
     }
 
     /** 新闻文件使用固定服务端布局，逐层拒绝符号链接；复用底座哈希校验。 */

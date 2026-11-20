@@ -4,8 +4,8 @@ package org.dromara.heron.domain;
  * 线内编辑的最终选择：总编辑定了走哪条线，线内编辑定具体素材。
  * 这些值必须在认领时一次性定下来，之后生产只读冻结快照，不再重新选择。
  *
- * <p>两条线的必填项不同，故意不统一成同一组可空字段：
- * 数据看板线要 dataSourceKey 和 templateId；解说线要 candidateId 和至少一条证据。
+ * <p>线的必填项不同，故意不统一成同一组可空字段：
+ * 数据看板线与趋势洞察线要 dataSourceKey 和 templateId；解说线要 candidateId 和至少一条证据。
  */
 public record EditorialSelection(
     String line,
@@ -21,6 +21,8 @@ public record EditorialSelection(
 
     public static final String DATA_BOARD = "DATA_BOARD";
     public static final String NEWS_EXPLAINER = "NEWS_EXPLAINER";
+    /** 趋势洞察线：与数据看板共用取数口径，但结论由 trend/1 的机器判定驱动。 */
+    public static final String TREND_INSIGHT = "TREND_INSIGHT";
 
     /**
      * 选题上下文：机会自己的头线与信号，以及当时的取数口径。
@@ -59,17 +61,27 @@ public record EditorialSelection(
         return DATA_BOARD.equals(line);
     }
 
+    /** 趋势洞察线也走数据源取数，但稿子与闸集不同。 */
+    public boolean trendInsight() {
+        return TREND_INSIGHT.equals(line);
+    }
+
+    /** 两条数据线（看板 / 趋势）共用取数、占位符与模板变量路径。 */
+    public boolean datasetLine() {
+        return dataBoard() || trendInsight();
+    }
+
     /** 校验放在紧凑构造器里：两条线的必填规则不同，不能靠一组可空字段表达。 */
     public EditorialSelection {
-        if (!DATA_BOARD.equals(line) && !NEWS_EXPLAINER.equals(line)) {
+        if (!DATA_BOARD.equals(line) && !TREND_INSIGHT.equals(line) && !NEWS_EXPLAINER.equals(line)) {
             throw new IllegalStateException("线内编辑给出了未知生产线：" + line);
         }
         if (templateId == null || !templateId.matches("[a-zA-Z0-9_-]{1,80}")) {
             throw new IllegalStateException("线内编辑没有给出合法模板：" + templateId);
         }
-        if (DATA_BOARD.equals(line)) {
+        if (DATA_BOARD.equals(line) || TREND_INSIGHT.equals(line)) {
             if (dataSourceKey == null || dataSourceKey.isBlank()) {
-                throw new IllegalStateException("数据看板线缺少数据源");
+                throw new IllegalStateException("数据线缺少数据源");
             }
         } else {
             if (candidateId == null) {

@@ -124,16 +124,21 @@ public class NewsProductionPipeline implements IProductionPipeline {
         List<Gate> gates = new ArrayList<>();
         // 阶段回报只给操作员看进度；租约已易主时返回 false，交给 runner 收尾，这里不因此失败。
         boolean dataBoard = "data_board".equals(input.path("kind").asString(""));
-        if (!dataBoard && !properties.isArticleEnabled()) {
-            throw new HeronBusinessException(409, "article_disabled", "文章新闻路径已下线，只生产数据看板");
+        boolean trend = "trend".equals(input.path("kind").asString(""));
+        // 趋势线也走数据源取数，所以和看板线一起算「数据线」
+        boolean datasetLine = dataBoard || trend;
+        if (!datasetLine && !properties.isArticleEnabled()) {
+            throw new HeronBusinessException(409, "article_disabled", "文章新闻路径已下线，只生产数据看板与趋势洞察");
         }
         stages.beginStage(run, "script", 5);
         DatasetFetchService.Result fetched = null;
         JsonNode dataset = null;
+        // 趋势稿的方向来自机器判定，判定必须在写稿之前算出来，写完再补就改不动旁白了
+        JsonNode trendDoc = null;
         String scriptJson;
         String hookType = null;
         ReviewOutcome review;
-        if (dataBoard) {
+        if (datasetLine) {
             DatasetRouter.Route route = frozenRoute(run, input);
             // 取数口径随冻结输入走：选题当时用多少点，这里就用多少点。
             // 过去固定取 30 点，与选题分析的窗口必然不同，两边归约出的 sha 也永远比不了。
@@ -147,21 +152,30 @@ public class NewsProductionPipeline implements IProductionPipeline {
             dataset = JSON.readTree(fetched.json());
             gates.add(dataGate(dataset, window));
             gates.add(datasetEvidenceGate(dataset));
-            DatasetScriptAuthor.Result draft = datasetAuthor.author(run, fetched.json(), route.digest());
+            if (trend) {
+                // 单次运行只冻结一个源，跨源印证这里拿不到，trend/1 会自己记 single_source
+                trendDoc = TrendAnalysis.analyze(dataset);
+            }
+            DatasetScriptAuthor.Result draft = trend
+                ? datasetAuthor.authorTrend(run, fetched.json(), JSON.writeValueAsString(trendDoc), route.digest())
+                : datasetAuthor.author(run, fetched.json(), route.digest());
             scriptJson = draft.script();
             hookType = draft.hookType();
-            review = reviewScript(run, scriptJson, dataset.path("facts").toString(), fetched, true, hookType);
+            review = reviewScript(run, scriptJson, dataset.path("facts").toString(), fetched, true, hookType, trendDoc);
         } else {
             // 正文由作者从冻结层取：首次抓取并落库，重试读同一份，写稿阶段不再二次出网
             scriptJson = author.author(run);
             // 解说线此前完全没有审稿，自动确认会把没审过的片子直接发出去
-            review = reviewScript(run, scriptJson, evidenceQuotes(input), null, false, null);
+            review = reviewScript(run, scriptJson, evidenceQuotes(input), null, false, null, null);
         }
         scriptJson = review.script;
         hookType = review.hookType;
         JsonNode script = JSON.readTree(scriptJson);
-        gates.add(contractGate(script, dataset, dataBoard));
-        if (!dataBoard) {
+        gates.add(contractGate(script, dataset, datasetLine));
+        if (trend) {
+            gates.add(trendGate(trendDoc, script, dataset));
+        }
+        if (!datasetLine) {
             gates.add(evidenceGate(script));
         }
 
@@ -169,12 +183,12 @@ public class NewsProductionPipeline implements IProductionPipeline {
         Path templateDir = templateDir(input.path("assets").path("templateKey").asString(""));
         Path composition = copyTemplate(work, templateDir);
         // 占位稿入库供 data 闸复核；TTS 与模板用解析后的可读文本。
-        JsonNode renderScript = dataBoard ? DatasetPlaceholders.resolve(script, dataset) : script;
+        JsonNode renderScript = datasetLine ? DatasetPlaceholders.resolve(script, dataset, trendDoc) : script;
         // 解说线的图片场景：把稿子里引用的资产下载进工作目录，再以 sceneN_image 变量交给模板
-        Map<String, String> images = dataBoard ? Map.of() : materializeImages(composition, renderScript, input);
+        Map<String, String> images = datasetLine ? Map.of() : materializeImages(composition, renderScript, input);
         // 只给模板自己声明过的变量：--strict-variables 会把「多给的变量」判成未声明并直接中止渲染
         java.util.Set<String> declared = declaredVariables(templateDir);
-        String variables = dataBoard
+        String variables = datasetLine
             ? dataTemplateVariables(script, dataset, declared)
             : templateVariables(renderScript, images, declared);
         write(work.resolve(VARS_FILE), variables);
@@ -223,6 +237,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
         if (fetched != null) {
             files.add(fetched.artifact());
         }
+        if (trendDoc != null) {
+            files.add(artifacts.finalizeFile(run, "trend",
+                write(work.resolve("trend.json"), JSON.writeValueAsString(trendDoc)), "application/json"));
+        }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("script", script);
@@ -230,6 +248,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
         result.put("editorialReview", JSON.readTree(review.record));
         if (dataset != null) {
             result.put("dataset", dataset);
+        }
+        // 趋势判定随结果落盘：报告、复盘与前端都读这份，不从旁白里反推
+        if (trendDoc != null) {
+            result.put("trend", trendDoc);
         }
         result.put("durationMs", (long) Math.round(audioSeconds * 1000));
         result.put("checks", JSON.readTree(checks));
@@ -377,6 +399,33 @@ public class NewsProductionPipeline implements IProductionPipeline {
      * 口径一致但上游数据变了（活的源每天都在变）不在这里拒——
      * 拒了每日看板线就出不了片——但两个哈希都要留在报告里，不许悄悄换一批数据。
      */
+    /**
+     * 趋势闸：判定契约、方向词、推测词、证据锚点、占位符可解析全过。
+     * 机器判定是唯一对外结论，旁白违背它就退稿；模型异议只进质量报告的推测区，不上画面。
+     */
+    private static Gate trendGate(JsonNode trend, JsonNode script, JsonNode dataset) {
+        if (trend == null || !trend.isObject()) {
+            throw new HeronBusinessException(409, "trend_contract_missing", "趋势线缺少 trend/1 判定，不能出片");
+        }
+        List<String> violations = new ArrayList<>(TrendContract.violations(trend, script, dataset));
+        // 正文允许引用 {{trend.*}}：解析不到说明稿子引了不存在的键
+        try {
+            DatasetPlaceholders.resolve(script, dataset, trend);
+        } catch (HeronBusinessException e) {
+            violations.add(e.getMessage());
+        }
+        if (!violations.isEmpty()) {
+            throw new HeronBusinessException(409, "trend_contract", "趋势稿退回改写：" + String.join("；", violations));
+        }
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("points", trend.path("points").asInt(0));
+        measured.put("segments", trend.path("segments").size());
+        measured.put("evidence", trend.path("evidence").size());
+        measured.put("directional", TrendAnalysis.directional(trend));
+        measured.put("violations", 0);
+        return new Gate("trend", "trend.json#verdict", "方向、推测边界与证据锚点全由机器判定覆盖", measured);
+    }
+
     private static Gate dataGate(JsonNode dataset, DatasetWindowContract.Window window) {
         List<String> problems = DatasetWindowContract.violations(window, dataset);
         if (!problems.isEmpty()) {
@@ -419,7 +468,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     private ReviewOutcome reviewScript(ProductionRunVo run, String scriptJson, String basisJson,
                                        DatasetFetchService.Result datasetFetched, boolean dataBoard,
-                                       String hookType) {
+                                       String hookType, JsonNode trend) {
         EditorialReviewer.Verdict verdict = review(run, scriptJson, basisJson, dataBoard);
         if (!verdict.blocked()) {
             return reviewed(scriptJson, verdict, 0, dataBoard, hookType);
@@ -435,8 +484,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
         if (datasetFetched == null) {
             repaired = author.repair(run, scriptJson, verdict.blockingNotes());
         } else {
-            DatasetScriptAuthor.Result result =
-                datasetAuthor.repair(run, datasetFetched.json(), scriptJson, verdict.blockingNotes());
+            // 趋势稿改稿必须带着判定一起改，否则修完方向词又跑回机器结论之外
+            DatasetScriptAuthor.Result result = trend == null
+                ? datasetAuthor.repair(run, datasetFetched.json(), scriptJson, verdict.blockingNotes())
+                : datasetAuthor.repairTrend(run, datasetFetched.json(), JSON.writeValueAsString(trend),
+                    scriptJson, verdict.blockingNotes());
             repaired = result.script();
             repairedHook = result.hookType();
         }

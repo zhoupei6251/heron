@@ -55,17 +55,20 @@ public class EditorialLineEditor {
 
     public Optional<EditorialChoice> select(String line, EditorialCandidatePool pool, String intent,
                                             Long focusCandidateId, Long focusOpportunityId) {
-        boolean dataBoard = EditorialDecisionService.DATA_BOARD.equals(line);
-        Optional<EditorialSelection> first = dataBoard
-            ? editDataBoard(pool.datasets(), pool.opportunities(), focusOpportunityId)
+        boolean trend = EditorialDecisionService.TREND_INSIGHT.equals(line);
+        boolean datasetLine = trend || EditorialDecisionService.DATA_BOARD.equals(line);
+        Optional<EditorialSelection> first = datasetLine
+            ? editDatasetLine(trend ? EditorialDecisionService.TREND_INSIGHT : EditorialDecisionService.DATA_BOARD,
+                pool.datasets(), pool.opportunities(), focusOpportunityId)
             : editExplainer(pool.articles(), intent, focusCandidateId);
         if (first.isPresent()) {
             return Optional.of(new EditorialChoice(first.get(), line, false, null));
         }
-        String reason = dataBoard ? "data_board_empty" : "explainer_empty";
-        Optional<EditorialSelection> second = dataBoard
+        String reason = trend ? "trend_empty" : datasetLine ? "data_board_empty" : "explainer_empty";
+        Optional<EditorialSelection> second = datasetLine
             ? editExplainer(pool.articles(), intent, focusCandidateId)
-            : editDataBoard(pool.datasets(), pool.opportunities(), focusOpportunityId);
+            : editDatasetLine(EditorialDecisionService.DATA_BOARD,
+                pool.datasets(), pool.opportunities(), focusOpportunityId);
         return second.map(selection -> new EditorialChoice(selection, line, true, reason));
     }
 
@@ -112,13 +115,29 @@ public class EditorialLineEditor {
     public Optional<EditorialSelection> editDataBoard(List<HeronDataSource> datasets,
                                                       List<HeronDataOpportunity> opportunities,
                                                       Long focusOpportunityId) {
-        HeronDataOpportunity focused = focusOpportunityId == null || opportunities == null ? null
-            : opportunities.stream()
+        return editDatasetLine(EditorialDecisionService.DATA_BOARD, datasets, opportunities, focusOpportunityId);
+    }
+
+    /**
+     * 数据线（看板 / 趋势）共用一次选源：机会优先，其次按选源器。
+     *
+     * <p>趋势线只认能算出判定的机会：形态不是 wide、点数不够的时间序列，
+     * 机器只能给「样本不足」，那不是趋势洞察，不该占一个趋势槽位。
+     */
+    public Optional<EditorialSelection> editDatasetLine(String line, List<HeronDataSource> datasets,
+                                                        List<HeronDataOpportunity> opportunities,
+                                                        Long focusOpportunityId) {
+        boolean trend = EditorialDecisionService.TREND_INSIGHT.equals(line);
+        List<HeronDataOpportunity> usable = opportunities == null ? List.of()
+            : trend ? opportunities.stream().filter(item -> TrendAnalysis.routable(opportunityOf(item))).toList()
+            : opportunities;
+        HeronDataOpportunity focused = focusOpportunityId == null ? null
+            : usable.stream()
                 .filter(item -> focusOpportunityId.equals(item.getOpportunityId()))
                 .findFirst().orElse(null);
-        if (focused == null && opportunities != null && !opportunities.isEmpty()) {
+        if (focused == null && !usable.isEmpty()) {
             // 没锁定就用分数最高的那条：选源器拿到的是写死的题材，不可能比算出来的机会更懂今天
-            focused = opportunities.get(0);
+            focused = usable.get(0);
         }
         if (focused != null) {
             HeronDataOpportunity chosen = focused;
@@ -126,7 +145,7 @@ public class EditorialLineEditor {
                 .filter(item -> item.getSourceKey().equals(chosen.getSourceKey()))
                 .map(HeronDataSource::getName).findFirst().orElse(null);
             String name = sourceName == null ? chosen.getHeadline() : sourceName;
-            String template = templatePicker.pick(name, "数据看板", EditorialDecisionService.DATA_BOARD);
+            String template = templatePicker.pick(name, trend ? "趋势洞察" : "数据看板", line);
             if (template == null) {
                 return Optional.empty();
             }
@@ -135,8 +154,8 @@ public class EditorialLineEditor {
             DatasetStoryAngle.Angle angle = DatasetStoryAngle.pick(chosen.getShape(),
                 signalsOf(chosen.getSignals()), chosen.getPeriodStart(), chosen.getPeriodEnd());
             // digest=false：这是被机会明确选中的源，不是「没题材时的速览」
-            return Optional.of(new EditorialSelection(EditorialDecisionService.DATA_BOARD,
-                null, chosen.getSourceKey(), false, template, angle.text(), List.of(),
+            return Optional.of(new EditorialSelection(line,
+                null, chosen.getSourceKey(), false, template, text(angle, trend), List.of(),
                 chosen.getOpportunityId(), opportunityOf(chosen)));
         }
         if (datasets == null || datasets.isEmpty()) {
@@ -151,12 +170,27 @@ public class EditorialLineEditor {
         HeronDataSource source = datasets.stream()
             .filter(item -> item.getSourceKey().equals(route.sourceKey())).findFirst().orElse(null);
         String name = source == null ? route.sourceKey() : source.getName();
-        String template = templatePicker.pick(name, "数据看板", EditorialDecisionService.DATA_BOARD);
+        String template = templatePicker.pick(name, trend ? "趋势洞察" : "数据看板", line);
         if (template == null) {
             return Optional.empty();
         }
-        return Optional.of(new EditorialSelection(EditorialDecisionService.DATA_BOARD,
-            null, route.sourceKey(), route.digest(), template, DatasetStoryAngle.DIGEST_ANGLE, List.of()));
+        return Optional.of(new EditorialSelection(line,
+            null, route.sourceKey(), route.digest(), template, text(DatasetStoryAngle.DIGEST_ANGLE, trend), List.of()));
+    }
+
+
+    /** 趋势线的故事角度要落到「变化意味着什么」，否则写稿只会写成第二份数据看板。 */
+    private static String text(DatasetStoryAngle.Angle angle, boolean trend) {
+        return text(angle == null ? "" : angle.text(), trend);
+    }
+
+    private static String text(String angle, boolean trend) {
+        String base = angle == null ? "" : angle;
+        if (!trend) {
+            return base;
+        }
+        String suffix = "；趋势线：讲变化意味着什么，方向以 trend/1 的机器判定为准";
+        return base + suffix;
     }
 
     /** 机会的信号 JSON：解析不了就当没有信号，角度退回兜底。 */

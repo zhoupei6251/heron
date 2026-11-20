@@ -1,0 +1,36 @@
+{
+  "templateKey": "news-trend-9x16",
+  "templateVersion": "1",
+  "files": [
+    {
+      "path": "gsap.min.js",
+      "sha256": "c174bfce53a729418d57a8ad8625e7247c793a22fef8e2851e3cfa3de9cd8280",
+      "bytes": 72779
+    },
+    {
+      "path": "index.html",
+      "sha256": "cc75c1194295d30224498869fa07b2b7f478ac0559682b30b585d3c572949000",
+      "bytes": 72099
+    },
+    {
+      "path": "index.motion.json",
+      "sha256": "8ab00c6b407d6b5d48cedef0b725716c89ad05189eb447835868731cf26d7a1c",
+      "bytes": 483
+    },
+    {
+      "path": "narration.mp3",
+      "sha256": "f42dfbf9155145b9dd3d284cad0e7c88a25b3fe47bbbe87be92874051038f623",
+      "bytes": 179522
+    },
+    {
+      "path": "template.config.json",
+      "sha256": "33564088f5b244b7e0a68beef07fe3f44aa9f5b710eea1d65ccf542e083c61c7",
+      "bytes": 3875
+    },
+    {
+      "path": "template.json",
+      "sha256": "7e6d14339a142e4092b5cc6a36d19190535f3d8dd00f12346719a374c7fc5c1b",
+      "bytes": 829
+    }
+  ]
+}

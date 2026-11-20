@@ -23,7 +23,11 @@ public class DatasetScriptAuthor {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String BASE_SYSTEM = resource("/prompt/data-board/script-contract.md");
+    /** 趋势稿在数据看板契约之上再加一层：方向由 trend/1 说了算，推测与证据必须分开。 */
+    private static final String TREND_SYSTEM = BASE_SYSTEM + "\n\n---\n\n"
+        + resource("/prompt/data-board/trend-script.md");
     private static final String STAGE = "dataset-script";
+    private static final String TREND_STAGE = "trend-script";
     private static final int MAX_REPAIRS = 2;
 
     private final OpenAiModelClient model;
@@ -58,6 +62,101 @@ public class DatasetScriptAuthor {
         }
         return new Result(JSON.writeValueAsString(draft),
             hookType(candidates, draft.path("title").asString("")));
+    }
+
+    /**
+     * 趋势稿：多一份 trend/1 判定进提示词与复核。
+     * 判定由机器先算出来，写稿只负责把它讲清楚；方向词与推测词在这里就被卡住，不指望模型自觉。
+     */
+    public Result authorTrend(ProductionRunVo run, String datasetJson, String trendJson, boolean digest) {
+        JsonNode snapshot = JSON.readTree(datasetJson);
+        JsonNode trend = JSON.readTree(trendJson);
+        List<DatasetTitleAuthor.Candidate> candidates =
+            titleAuthor.candidates(run, datasetJson, titleContext(trend));
+        List<String> titles = candidates.stream().map(DatasetTitleAuthor.Candidate::title).toList();
+        String system = TREND_SYSTEM + "\n\n---\n\n"
+            + ColumnPacks.text(snapshot.path("source_key").asString(""));
+        JsonNode editorial = editorialOf(run);
+        JsonNode draft = withEvidence(parse(model.chat(run, TREND_STAGE, system,
+            trendPrompt(snapshot, trend, titles, editorial, digest))), snapshot);
+        List<String> violations = trendViolations(draft, snapshot, trend, titles);
+        for (int repair = 0; repair < MAX_REPAIRS && !violations.isEmpty(); repair++) {
+            draft = withEvidence(parse(model.chat(run, TREND_STAGE + "-repair", system,
+                trendRepairPrompt(draft, violations, titles, editorial, trend))), snapshot);
+            violations = trendViolations(draft, snapshot, trend, titles);
+        }
+        if (!violations.isEmpty()) {
+            throw new HeronBusinessException(409, "trend_script_contract",
+                "趋势稿退回写稿：" + String.join("；", violations));
+        }
+        return new Result(JSON.writeValueAsString(draft),
+            hookType(candidates, draft.path("title").asString("")));
+    }
+
+    /** 趋势稿的定向修复：趋势判定与方向口径一并带回，改稿不许把结论改没。 */
+    public Result repairTrend(ProductionRunVo run, String datasetJson, String trendJson,
+                              String scriptJson, List<String> issues) {
+        JsonNode snapshot = JSON.readTree(datasetJson);
+        JsonNode trend = JSON.readTree(trendJson);
+        List<DatasetTitleAuthor.Candidate> candidates =
+            titleAuthor.candidates(run, datasetJson, titleContext(trend));
+        List<String> titles = candidates.stream().map(DatasetTitleAuthor.Candidate::title).toList();
+        String system = TREND_SYSTEM + "\n\n---\n\n"
+            + ColumnPacks.text(snapshot.path("source_key").asString(""));
+        JsonNode repaired = withEvidence(parse(model.chat(run, TREND_STAGE + "-repair", system,
+            trendRepairPrompt(JSON.readTree(scriptJson), issues, titles, editorialOf(run), trend))), snapshot);
+        List<String> violations = trendViolations(repaired, snapshot, trend, titles);
+        if (!violations.isEmpty()) {
+            throw new HeronBusinessException(409, "trend_script_contract",
+                "趋势稿退回修复：" + String.join("；", violations));
+        }
+        return new Result(JSON.writeValueAsString(repaired),
+            hookType(candidates, repaired.path("title").asString("")));
+    }
+
+    private static String titleContext(JsonNode trend) {
+        return "本期趋势判定：\n" + TrendAnalysis.summary(trend)
+            + "\n标题要落在「变化意味着什么」，不要复述快照数值。";
+    }
+
+    private static String trendPrompt(JsonNode snapshot, JsonNode trend, List<String> titles,
+                                      JsonNode editorial, boolean digest) {
+        StringBuilder text = new StringBuilder();
+        if (digest) {
+            text.append("这是一条「今日数据速览」，不是热点解读，开头点明这是例行盘点。\n");
+        }
+        appendEditorial(text, editorial);
+        text.append("机器趋势判定（方向以它为准，不许改写）：\n")
+            .append(TrendAnalysis.summary(trend)).append('\n')
+            .append("trend/1：\n").append(trend.toString()).append('\n')
+            .append("数据快照：\n").append(snapshot).append('\n')
+            .append("标题候选（title 必须与下面某一项完全一致，原样复制）：\n");
+        for (String title : titles) {
+            text.append("- ").append(title).append('\n');
+        }
+        return text.append("按契约输出完整脚本 JSON。旁白只能用 {{facts.*}} 或 {{trend.*}} 引用实测值，")
+            .append("正文不得出现任何阿拉伯数字；不许写「预计」「将会」「有望」一类推测词。").toString();
+    }
+
+    private static String trendRepairPrompt(JsonNode script, List<String> violations, List<String> titles,
+                                            JsonNode editorial, JsonNode trend) {
+        StringBuilder text = new StringBuilder()
+            .append("上一版趋势稿没有通过校验，问题如下：\n")
+            .append("- ").append(String.join("\n- ", violations)).append('\n')
+            .append("机器趋势判定（方向以它为准，不许改写）：\n")
+            .append(TrendAnalysis.summary(trend)).append('\n');
+        appendEditorial(text, editorial);
+        return text.append("title 只能从这些候选里原样选一个：\n")
+            .append("- ").append(String.join("\n- ", titles)).append('\n')
+            .append("只修改不符合要求的字段，其余字段原样保留，输出完整 JSON。\n")
+            .append("上一版脚本：\n").append(script.toString()).toString();
+    }
+
+    private static List<String> trendViolations(JsonNode script, JsonNode snapshot, JsonNode trend,
+                                                List<String> titles) {
+        List<String> out = new java.util.ArrayList<>(violations(script, snapshot, titles));
+        out.addAll(TrendContract.violations(trend, script, snapshot));
+        return out;
     }
 
     /** 审稿不过时的定向修复：复用同一套修复提示与契约复核，只换掉问题清单。 */

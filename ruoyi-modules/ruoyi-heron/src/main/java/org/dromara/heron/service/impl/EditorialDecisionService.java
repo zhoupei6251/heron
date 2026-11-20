@@ -25,11 +25,13 @@ public class EditorialDecisionService {
 
     public static final String DATA_BOARD = "DATA_BOARD";
     public static final String NEWS_EXPLAINER = "NEWS_EXPLAINER";
+    /** 趋势洞察线：数据看板讲发生了什么，这条线讲变化意味着什么。 */
+    public static final String TREND_INSIGHT = "TREND_INSIGHT";
     public static final String NO_PUBLISH = "NO_PUBLISH";
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String SYSTEM = resource("/prompt/editorial/daily-editor.md");
-    private static final Set<String> LINES = Set.of(DATA_BOARD, NEWS_EXPLAINER);
+    private static final Set<String> LINES = Set.of(DATA_BOARD, TREND_INSIGHT, NEWS_EXPLAINER);
 
     private final OpenAiModelClient model;
 
@@ -127,6 +129,9 @@ public class EditorialDecisionService {
         if (DATA_BOARD.equals(line) && pools.opportunities().isEmpty() && pools.datasets().isEmpty()) {
             throw poolEmpty("数据看板线既没有数据机会也没有可用数据集");
         }
+        if (TREND_INSIGHT.equals(line) && pools.opportunities().isEmpty() && pools.datasets().isEmpty()) {
+            throw poolEmpty("趋势洞察线既没有数据机会也没有可用数据集");
+        }
         if (NEWS_EXPLAINER.equals(line) && pools.articles().isEmpty()) {
             throw poolEmpty("解说线没有带正文的文章");
         }
@@ -169,7 +174,9 @@ public class EditorialDecisionService {
         append(text, "热榜标题", pools.hot());
         append(text, "带正文的文章", pools.articles());
         appendDatasets(text, "可用数据集", pools.datasets());
-        append(text, "数据机会（带分数与变化，分数越高越值得做）", pools.opportunities());
+        append(text, "数据机会（带分数与取数口径，分数越高越值得做）", pools.opportunities());
+        text.append("形态为 wide、点数充足且信号里出现连续方向的机会，优先考虑 TREND_INSIGHT；\n")
+            .append("只是单点异常或形态不是 wide 的，仍走 DATA_BOARD。\n");
         append(text, "最近已发布", pools.recentPublications());
         // 锁进提示词，但只有锁本身（作用域与理由），不带表现数据。
         // 表现数据一旦进提示词，模型就有了策略倾向，那正是「用印象代替证据」。

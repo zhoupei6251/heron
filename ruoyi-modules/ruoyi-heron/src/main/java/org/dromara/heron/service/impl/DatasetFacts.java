@@ -217,10 +217,27 @@ public final class DatasetFacts {
         return ((BigDecimal) row.cells().get(index)).setScale(precision, RoundingMode.HALF_UP);
     }
 
-    /** 按点路径取快照节点；占位符与闸共用同一份解析。 */
+    /**
+     * 按点路径取快照节点；占位符与闸共用同一份解析。
+     *
+     * <p>数组下标两种写法都认：`scenes.0.lead` 与 `scenes[0].lead`。
+     * 后者是提示词里给模型看的写法（跟 checks 里的定位符一致），
+     * 解析器不认就等于让趋势稿的分段引用永远拿不到值。
+     */
     static JsonNode at(JsonNode root, String path) {
         JsonNode node = root;
         for (String part : path.split("\\.")) {
+            int bracket = part.indexOf('[');
+            if (bracket >= 0 && part.endsWith("]") && node.isObject()) {
+                String field = part.substring(0, bracket);
+                String digits = part.substring(bracket + 1, part.length() - 1);
+                if (!digits.matches("\\d+") || !node.has(field)) return null;
+                JsonNode array = node.path(field);
+                int index = Integer.parseInt(digits);
+                if (!array.isArray() || index >= array.size()) return null;
+                node = array.get(index);
+                continue;
+            }
             if (node.isArray()) {
                 if (!part.matches("\\d+")) return null;
                 int index = Integer.parseInt(part);

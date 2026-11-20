@@ -1,0 +1,193 @@
+/* news-trend-9x16 的版式差异（风格 B · 数据调查 / 趋势洞察线）。
+   趋势线讲「变化意味着什么」：五屏沿同一条时间轴推进，刻度随屏次向右点亮；
+   第 3、4 屏（证据 / 解释）用左侧加粗强调条 + 淡淡底色标成「论证段」。
+   纵向预算（1080×1920）：标题区 0–600 / 图表 600–1070 / 场景 1085–1570 / 底栏 1600–1665。
+
+   本套与 news-data-investigate-9x16 共用 data-investigation 的设计语言：
+   1. .scene 缩进到 --pad-frame 并带左侧结构线（本套把结构线拆成「时间轴刻度 + 场景引线」）
+   2. .body 是本套唯一的 300 字重，靠 300↔900 的字重差造编辑气质
+   3. #closing 用 border-top 而不是面板盒子——B 不用卡片
+   骨架不变的断言在 news-data-investigate-9x16.css 上，本文件只做本模板的加法。 */
+
+/* 节奏令牌：趋势线比调查线快一档。入场 0.9s → 0.5s，让第一屏在 0.5s 内立住，
+   后面每屏的 lead/body 也更快换句——这是「随时间演进」的观感来源之一。
+   只在本模板的版式覆盖里改时长，不动 _shared/tokens 的基准值。 */
+:root {
+  --dur-entrance: 0.5s;
+  --dur-swap: 0.4s;
+}
+
+/* ---------- 标题区：把「变化值」当结论露出 ---------- */
+#title-card { padding: 118px var(--pad-frame) 0 var(--pad-frame); }
+#kicker { display: flex; align-items: center; gap: 18px; margin-bottom: 24px; }
+#kicker-flag { width: 3px; height: 28px; background: var(--accent); }
+#kicker-text { font-size: var(--fs-note); font-weight: 700; letter-spacing: var(--track-kicker); color: var(--muted); }
+#title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 900;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: var(--fg);
+}
+/* 趋势线比调查线快一档：标题下的分隔线缩短，把版面让给图表与时间轴 */
+#rule { margin-top: 20px; width: 108px; height: var(--rule-width); background: var(--accent); transform-origin: left center; }
+
+/* 变化值是趋势线的结论：字号大于调查线的 32px，并用 accent 强调。
+   focus.js 每帧把 #kpi-change 的颜色写回 muted-2（行内样式），
+   这里必须用 !important 才能保住结论色——骨架与共享脚本都不改。 */
+#kpi { margin-top: 18px; }
+#kpi-change {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--accent) !important;
+}
+/* 一句话结论位：更重的字重 + 更宽的可用宽度（向右借 46px，仍在画布安全区内） */
+#focus-caption {
+  width: calc(100% + 46px);
+  margin: 12px -46px 0 0;
+  padding: 0;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.32;
+  color: var(--fg);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  max-height: 94px;
+  overflow: hidden;
+}
+
+/* ---------- 图表：趋势线是主角，但要给口径注记留一条常显带 ---------- */
+#chart-slot { top: 600px; left: var(--pad-frame); right: var(--pad-frame); height: 470px; }
+#chart { height: calc(100% - 46px); }
+/* 口径常显：默认 chart=line 的 SVG 不会自建 .chart-note，这里用 CSS 生成同一条注记带；
+   其它图表模块自建的 .chart-note 由下面的规则显示。两处都不隐藏。 */
+#chart-slot::after {
+  content: "口径 · 逐期观测值，示例快照，数据源见页脚";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  font-size: var(--fs-note);
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  color: var(--muted-2);
+}
+/* 图表外观覆盖（L1，版式 CSS 排在 chart.css 之后）：趋势线要的是一条干净的走势线。
+   极值点只作刻度、不做发光——发光会把「趋势」说成「爆点」。 */
+.series-line { filter: drop-shadow(0 0 5px var(--accent-glow)); }
+.dot { filter: none; }
+.axis { stroke: var(--rule-faint); }
+/* 口径注记：趋势线必须显示、不许隐藏；颜色与字号对齐 --muted-2 / --fs-note */
+.chart-note { display: inline; fill: var(--muted-2); font-size: var(--fs-note); font-weight: 500; }
+
+/* ---------- 场景：五屏共用一条时间轴 ---------- */
+.scene {
+  top: 1085px;
+  bottom: 350px;
+  left: var(--pad-frame);
+  right: var(--pad-frame);
+  padding: 58px 26px 0 34px;
+  border-left: 2px solid var(--rule-soft);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+/* 时间轴：一条 --rule-faint 的底线 + 五枚刻度，5 个场景各占一枚；
+   每屏只点亮属于自己的那一枚（下面的 #scene-N::after），刻度随屏次向右走。 */
+.scene::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  border-bottom: 1px solid var(--rule-faint);
+  background-image:
+    linear-gradient(var(--rule-faint), var(--rule-faint)),
+    linear-gradient(var(--rule-faint), var(--rule-faint)),
+    linear-gradient(var(--rule-faint), var(--rule-faint)),
+    linear-gradient(var(--rule-faint), var(--rule-faint)),
+    linear-gradient(var(--rule-faint), var(--rule-faint));
+  background-repeat: no-repeat;
+  background-size: 2px 8px, 2px 8px, 2px 8px, 2px 8px, 2px 8px;
+  background-position: 0% 100%, 25% 100%, 50% 100%, 75% 100%, 100% 100%;
+}
+/* 当前屏的刻度：accent 短竖条，叠在时间轴上；第 3、4 屏（论证段）加宽加高。 */
+.scene::after { content: ""; position: absolute; top: 0; width: 3px; height: 14px; background: var(--accent); }
+#scene-1::after { left: 0; }
+#scene-2::after { left: calc(25% - 1px); }
+#scene-3::after { left: calc(50% - 3px); width: 6px; height: 18px; }
+#scene-4::after { left: calc(75% - 3px); width: 6px; height: 18px; }
+#scene-5::after { left: calc(100% - 3px); }
+
+/* 论证段（scene-3 证据 / scene-4 解释）：左侧加粗 accent 竖条 + 淡淡底色块，
+   只用 CSS 改已有节点，不加 DOM。padding-left 相应减小，文字基线仍与其它屏对齐。 */
+#scene-3,
+#scene-4 {
+  border-left: 8px solid var(--accent);
+  padding-left: 28px;
+  background: linear-gradient(90deg, rgba(217, 160, 91, 0.12), transparent 55%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent 55%);
+}
+
+.scene-no {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--fs-note);
+  letter-spacing: 0.22em;
+  margin-bottom: 10px;
+}
+/* 屏次旁标出这是同一段趋势线：CSS 生成文本，不新增变量槽位 */
+.scene-no::after { content: " · 趋势线"; color: var(--muted); letter-spacing: 0.06em; font-weight: 500; }
+.lead {
+  flex: none;
+  margin: 0 0 16px;
+  font-size: var(--fs-lead);
+  font-weight: 800;
+  line-height: 1.34;
+  color: var(--fg);
+  max-height: 134px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.body {
+  flex: none;
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 300;
+  line-height: 1.62;
+  color: var(--body);
+  max-height: 234px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+/* ---------- 结尾与底栏：与 data-investigation 同一套骨架 ---------- */
+#closing-slot { top: 1085px; bottom: 350px; padding: 0 var(--pad-frame); display: flex; align-items: flex-start; }
+#closing {
+  margin: 0;
+  padding: 24px 0 0;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  line-height: 1.58;
+  color: var(--fg);
+  border-top: 2px solid var(--accent);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 240px; padding: 0 var(--pad-frame); }
+#progress { display: block; height: 3px; background: var(--accent); transform-origin: left center; margin-bottom: 26px; }
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+#aigc-badge { font-size: var(--fs-note); letter-spacing: 0.12em; white-space: nowrap; color: var(--muted); }
+#source-line { font-size: var(--fs-note); max-width: 560px; text-align: right; color: var(--muted); }

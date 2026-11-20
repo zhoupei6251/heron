@@ -907,7 +907,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         if (!"succeeded".equals(task.getStatus()) || version.getScript() == null || version.getDurationMs() == null || version.getDurationMs() <= 0) {
             throw conflict("not_complete", "生产任务尚未成功完成");
         }
-        domain.validateChecks(version.getChecks(), domain.dataBoard(version));
+        domain.validateChecks(version.getChecks(), version);
         List<ProductionArtifactVo> files = parseManifest(version);
         domain.validateManifest(version, task, files, false);
         for (ProductionArtifactVo file : files) {

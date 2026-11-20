@@ -65,6 +65,30 @@ class EditorialDecisionTest {
     }
 
     @Test
+    @DisplayName("走趋势洞察：line 原样保留，不许被并成数据看板")
+    void publishesToTrendInsight() {
+        var decision = EditorialDecisionService.plan("""
+            {"decision":"PUBLISH","selectedLine":"TREND_INSIGHT",
+             "reason":"金价连续三个月同向抬升","editorialIntent":"讲这段抬升意味着什么"}
+            """, pools(List.of("金价新高"), List.of(), List.of("sample-gold")));
+        assertTrue(decision.publish());
+        assertEquals(EditorialDecisionService.TREND_INSIGHT, decision.selectedLine());
+        assertEquals("讲这段抬升意味着什么", decision.editorialIntent());
+    }
+
+    @Test
+    @DisplayName("趋势线与看板线共用数据池：没有数据也不许走趋势")
+    void rejectsTrendInsightWithoutData() {
+        HeronBusinessException error = assertThrows(HeronBusinessException.class,
+            () -> EditorialDecisionService.plan("""
+                {"decision":"PUBLISH","selectedLine":"TREND_INSIGHT",
+                 "reason":"想讲趋势","editorialIntent":"讲变化"}
+                """, pools(List.of("热榜"), List.of("有正文"), List.of())));
+        assertEquals("editorial_pool_empty", error.getCode());
+        assertTrue(error.getMessage().contains("趋势"), error.getMessage());
+    }
+
+    @Test
     @DisplayName("没有带正文的文章时不许走解说线——热榜标题不算正文")
     void rejectsExplainerWithoutArticles() {
         HeronBusinessException error = assertThrows(HeronBusinessException.class,
