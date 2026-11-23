@@ -15,7 +15,7 @@
 | 5 | **渲染成本与预算观测** | 耗时已记（2026-11-23）：`renderGate` 增加 `renderMs` / `videoSeconds` / `msPerVideoSecond`；本地渲一条 57.8s 成片 hyperframes 自报 3m8s（≈3.3× 实时） | 还没有显存/WebGL 指标，也没有预算线。`docs/plans/2026-11-23-data-visual-mode-3d-design.md` §6 #3 |
 | 6 | **2D vs 3D 对照实验** | 没有实验脚本与对照报告 | 3D 线已有真片（`docs/acceptance-2026-11-23/geo-acceptance-summary.md`），但留存/完播/成本没记录，跑不出结论 |
 | 7 | **agentscope 升级到 2.1.0-BETA1 + JEV 阶段 0** | `ruoyi-modules/ruoyi-heron/pom.xml:53/59/65` 三个依赖写死 `2.0.4`；JEV 全仓零代码（无依赖、无客户端、无金标集与离线评估） | 版本已拍板（`docs/reports/heron-jev-architecture-review.md`）；阶段 0 按该报告是「不引入 JEV，用现有账本 + 报告做离线评估并建金标集」 |
-| 8 | **模板生成器里 `cfg.storyboard` 的死代码** | `data/tools/build-templates.mjs:97` 算了局部 `storyboard` 却没赋给 `cfg.storyboard`，真正生效的是配置里的显式 `"storyboard": true` | 改它等于给 14 个文稿/知识模板打开分镜样式（`sceneN_beat`/`sceneN_text`/`storyboard.css` 全进），视觉大改，要单独一轮验证 |
+| 8 | **模板生成器里 `cfg.storyboard` 的死代码** | 死代码已删（2026-11-23）：`build-templates.mjs` 里算了却没用的局部 `storyboard` 已去掉，规则写进注释——分镜由模板配置显式开启 | 给 14 个文稿/知识模板开分镜仍是另一件事：它们的稿子不产 beat 与上屏文字，开了 headline 屏会藏正文、藏标题卡，要等文稿线启用（`article-enabled: false`）后单独一轮渲染验证 |
 
 ## 不做（设计上的决定，不是欠账）
 

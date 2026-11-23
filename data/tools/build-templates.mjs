@@ -92,9 +92,10 @@ function loadConfig(dir) {
   }
   cfg.activeScenes ??= cfg.scenes;
   cfg.defaults ??= {};
-  // 声明了组件能力的模板才进分镜：场景类型、叙事节点与上屏文字一起进出，
-  // 一半有、一半没有的模板会在 --strict-variables 上被卡住。
-  const storyboard = (cfg.supportedSceneTypes ?? []).length > 0;
+  // 分镜由模板配置显式开启（现只有五个数据模板开了）：场景类型、叙事节点与上屏文字
+  // 一起进出，一半有、一半没有的模板会在 --strict-variables 上被卡住。
+  // 别改成「有 supportedSceneTypes 就开」——文稿与知识模板的稿子不产 beat 与上屏文字，
+  // 开了会让 headline 屏藏正文、藏标题卡，是一轮单独的渲染验证。
   if (cfg.activeScenes > cfg.scenes) fail(`${key}: activeScenes(${cfg.activeScenes}) 大于 scenes(${cfg.scenes})`);
   return cfg;
 }
