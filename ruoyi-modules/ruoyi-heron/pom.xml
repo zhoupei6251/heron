@@ -50,19 +50,19 @@
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-harness</artifactId>
-            <version>2.0.4</version>
+            <version>2.1.0-BETA1</version>
         </dependency>
         <!-- 模型实现本身不在 core/harness 里；走 OpenAI 兼容协议，配置沿用 sys_config 的 heron.model.* -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-model-openai</artifactId>
-            <version>2.0.4</version>
+            <version>2.1.0-BETA1</version>
         </dependency>
         <!-- AgentState 落 MySQL：不落用户目录，多副本也能共用 -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-mysql</artifactId>
-            <version>2.0.4</version>
+            <version>2.1.0-BETA1</version>
         </dependency>
         <!-- 定稿产物落对象存储：复用基座 sys_oss_config 与 S3 客户端，不自建第二套存储配置 -->
         <dependency>

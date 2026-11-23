@@ -14,7 +14,7 @@
 | 4 | **3D 资产库只有 1 个模板** | `data/templates` 下只有 `news-data-3d-9x16` 声明 globe；`data/templates/_gen/behaviors/globe.js:13` 只认 `dataset.shape === "geo"` | 要第二个空间模板（terrain / 剖面 / 柱阵），先定做哪种 |
 | 5 | **渲染成本与预算观测** | 耗时已记（2026-11-23）：`renderGate` 增加 `renderMs` / `videoSeconds` / `msPerVideoSecond`；本地渲一条 57.8s 成片 hyperframes 自报 3m8s（≈3.3× 实时） | 还没有显存/WebGL 指标，也没有预算线。`docs/plans/2026-11-23-data-visual-mode-3d-design.md` §6 #3 |
 | 6 | **2D vs 3D 对照实验** | 没有实验脚本与对照报告 | 3D 线已有真片（`docs/acceptance-2026-11-23/geo-acceptance-summary.md`），但留存/完播/成本没记录，跑不出结论 |
-| 7 | **agentscope 升级到 2.1.0-BETA1 + JEV 阶段 0** | `ruoyi-modules/ruoyi-heron/pom.xml:53/59/65` 三个依赖写死 `2.0.4`；JEV 全仓零代码（无依赖、无客户端、无金标集与离线评估） | 版本已拍板（`docs/reports/heron-jev-architecture-review.md`）；阶段 0 按该报告是「不引入 JEV，用现有账本 + 报告做离线评估并建金标集」 |
+| 7 | **agentscope 升级到 2.1.0-BETA1 + JEV 阶段 0** | 版本已升（2026-11-23）：`ruoyi-modules/ruoyi-heron/pom.xml` 三个构件 `2.0.4` → `2.1.0-BETA1`，编译通过、模块 707 例全过；构件能力面已核实（`docs/reports/heron-jev-2.1.0-beta1-capability-check.md`：JEV 扩展 68 类、`JevExecution$Mode` 带 `SHADOW`） | 阶段 0 仍欠：用现有账本 + 报告做离线评估并建金标集。JEV 运行时按报告口径不引入；数据出境口径没过前不做 SHADOW 旁路 |
 | 8 | **模板生成器里 `cfg.storyboard` 的死代码** | 死代码已删（2026-11-23）：`build-templates.mjs` 里算了却没用的局部 `storyboard` 已去掉，规则写进注释——分镜由模板配置显式开启 | 给 14 个文稿/知识模板开分镜仍是另一件事：它们的稿子不产 beat 与上屏文字，开了 headline 屏会藏正文、藏标题卡，要等文稿线启用（`article-enabled: false`）后单独一轮渲染验证 |
 
 ## 不做（设计上的决定，不是欠账）
