@@ -241,8 +241,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
         stages.beginStage(run, "render", 45);
         timeComposition(composition, timeline, audioSeconds);
         JsonNode check = checkComposition(run, work);
+        long renderStartedAt = System.nanoTime();
         render(run, work);
-        gates.add(renderGate(work.resolve(RAW_FILE)));
+        long renderMs = (System.nanoTime() - renderStartedAt) / 1_000_000L;
+        gates.add(renderGate(work.resolve(RAW_FILE), renderMs, audioSeconds));
         gates.add(decodeGate(decode(run, work.resolve(RAW_FILE)), audioSeconds));
 
         stages.beginStage(run, "finalize", 85);
@@ -399,8 +401,9 @@ public class NewsProductionPipeline implements IProductionPipeline {
     /**
      * 画面信号闸：黑屏与冻结帧。
      *
-     * <p>只记不拦：黑场与冻结帧是症状，拦下来之后没有对应的自动修复动作，
-     * 只会让这条片子白跑一遍渲染。数字进 checks，审稿层据此给结论。
+     * <p>黑场拦、冻结只记：整段纯黑一秒以上，画面上没有任何内容可讲，成片本身就不成立，
+     * 这样的片不该走到审稿人面前（渲染已经跑完，拦下来不多花渲染的钱，只省下人工）。
+     * 冻结帧不一样——静帧有时是刻意的表达，而且阈值需要先收一段量，暂不拦，只把数字记进 checks。
      */
     private Gate videoSignalGate(ProductionRunVo run, Path work, Path finalFile) {
         double seconds = probeDuration(run, finalFile);
@@ -411,11 +414,16 @@ public class NewsProductionPipeline implements IProductionPipeline {
         measured.put("freezeSpans", signal.freeze().size());
         measured.put("longestFreezeSeconds", round2(signal.longestFreeze()));
         measured.put("videoSeconds", round2(seconds));
-        String reason = signal.black().isEmpty() && signal.freeze().isEmpty()
+        VideoSignalCheck.Span black = VideoSignalCheck.blockingBlack(signal);
+        if (black != null) {
+            throw new HeronBusinessException(409, "news_video_black_frame",
+                "画面信号闸：成片第 " + round2(black.start()) + "–" + round2(black.end())
+                    + " 秒整段纯黑（" + round2(black.seconds()) + " 秒），画面上没有内容可讲");
+        }
+        String reason = signal.freeze().isEmpty()
             ? "全片没有黑场与冻结段"
-            : "检出黑场 " + signal.black().size() + " 段（最长 " + round2(signal.longestBlack())
-                + " 秒）、冻结 " + signal.freeze().size() + " 段（最长 "
-                + round2(signal.longestFreeze()) + " 秒）";
+            : "无黑场；检出冻结 " + signal.freeze().size() + " 段（最长 "
+                + round2(signal.longestFreeze()) + " 秒），冻结只记不拦";
         return new Gate("video_signal", FINAL_FILE + ":vf", reason, measured);
     }
 
@@ -872,7 +880,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return new Gate("subtitles", SUBTITLES_FILE, "字幕覆盖音频九成以上，口播文本与各分镜及结尾对应", measured);
     }
 
-    private Gate renderGate(Path raw) {
+    private Gate renderGate(Path raw, long renderMs, double videoSeconds) {
         long bytes = size(raw);
         if (bytes <= 0) {
             throw new HeronBusinessException(503, "news_render_failed", "渲染退出 0 但没有成片文件");
@@ -880,6 +888,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
         Map<String, Object> measured = new TreeMap<>();
         measured.put("bytes", bytes);
         measured.put("exitCode", 0);
+        // 渲染成本：一条片渲多久、每秒画面花多少毫秒。没有这组数就定不了渲染预算。
+        measured.put("renderMs", renderMs);
+        measured.put("videoSeconds", round2(videoSeconds));
+        measured.put("msPerVideoSecond", videoSeconds > 0 ? Math.round(renderMs / videoSeconds) : 0);
         return new Gate("render", RAW_FILE, "hyperframes render 退出 0 且产物非空", measured);
     }
 

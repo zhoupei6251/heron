@@ -9,10 +9,10 @@
 | # | 欠账 | 现状（代码证据） | 下一步的卡点 |
 | --- | --- | --- | --- |
 | 1 | **compare 做成真正两栏对照** | 已做（2026-11-23）：`docs/plans/2026-11-23-compare-two-column-design.md` | 原来只有「正文垫一层面板」，对照关系只在句子里 |
-| 2 | **黑场/冻结帧从「只记」变成「拦」** | `VideoSignalCheck.java:29-45` 用 ffmpeg 算得出黑场与冻结，`:106` 解析；`NewsProductionPipeline.java:405-420` 注释明写「只记不拦」，只写 measured | 阈值没定。报告 `docs/2026-11-20-storyboard-and-visual-signal-report.md:216` 建议先收一个月量再定 |
+| 2 | **黑场/冻结帧从「只记」变成「拦」** | 黑场已拦（2026-11-23）：`VideoSignalCheck.blockingBlack()` 给出致命黑场，`NewsProductionPipeline.videoSignalGate` 抛 `news_video_black_frame`（409）；冻结仍只记 | 冻结阈值还没定。报告 `docs/2026-11-20-storyboard-and-visual-signal-report.md:216` 建议先收一个月量再定 |
 | 3 | **人工编辑故事 + 故事历史表现回填** | story 由 `DatasetStoryPlanner` 生成；`controller/` 下没有任何 story 写接口，前端 `api/heron/editorial/index.ts` 只有 2 个 GET | 表现数据挂在版本上不挂故事：`NewsMetricBo.java:15-22` 按 versionId/platform/plays/completionRate；消费方 `NewsCandidateScreener.java:61,93-97` |
 | 4 | **3D 资产库只有 1 个模板** | `data/templates` 下只有 `news-data-3d-9x16` 声明 globe；`data/templates/_gen/behaviors/globe.js:13` 只认 `dataset.shape === "geo"` | 要第二个空间模板（terrain / 剖面 / 柱阵），先定做哪种 |
-| 5 | **渲染成本与预算观测** | `NewsProductionPipeline.java:875-884` 的 renderGate 只记 bytes + exitCode；`:1038-1048` 只校验退出码与文件大小 | 没有耗时/显存指标，也就没有预算线。`docs/plans/2026-11-23-data-visual-mode-3d-design.md` §6 #3 |
+| 5 | **渲染成本与预算观测** | 耗时已记（2026-11-23）：`renderGate` 增加 `renderMs` / `videoSeconds` / `msPerVideoSecond`；本地渲一条 57.8s 成片 hyperframes 自报 3m8s（≈3.3× 实时） | 还没有显存/WebGL 指标，也没有预算线。`docs/plans/2026-11-23-data-visual-mode-3d-design.md` §6 #3 |
 | 6 | **2D vs 3D 对照实验** | 没有实验脚本与对照报告 | 3D 线已有真片（`docs/acceptance-2026-11-23/geo-acceptance-summary.md`），但留存/完播/成本没记录，跑不出结论 |
 | 7 | **agentscope 升级到 2.1.0-BETA1 + JEV 阶段 0** | `ruoyi-modules/ruoyi-heron/pom.xml:53/59/65` 三个依赖写死 `2.0.4`；JEV 全仓零代码（无依赖、无客户端、无金标集与离线评估） | 版本已拍板（`docs/reports/heron-jev-architecture-review.md`）；阶段 0 按该报告是「不引入 JEV，用现有账本 + 报告做离线评估并建金标集」 |
 | 8 | **模板生成器里 `cfg.storyboard` 的死代码** | `data/tools/build-templates.mjs:97` 算了局部 `storyboard` 却没赋给 `cfg.storyboard`，真正生效的是配置里的显式 `"storyboard": true` | 改它等于给 14 个文稿/知识模板打开分镜样式（`sceneN_beat`/`sceneN_text`/`storyboard.css` 全进），视觉大改，要单独一轮验证 |
@@ -29,6 +29,7 @@
 - **3D 链路端到端**：2026-11-23 已跑通（16 道门禁全过，见 `docs/acceptance-2026-11-23/geo-acceptance-summary.md`）。
 - **冲击屏**（本轮做的）：`docs/plans/2026-11-23-storyboard-takeover-design.md`。
 - **compare 真两栏**（本轮做的）：`docs/plans/2026-11-23-compare-two-column-design.md`。
+- **黑场闸与渲染耗时**（本轮做的）：`docs/plans/2026-11-23-video-signal-gate-design.md`。
 - **字体可变字重**：`data/fonts/NotoSansSC-Regular.otf` 带 fvar/gvar 真可变表，文档里「单字重」的说法与代码不符。
 - **成片保留 30 天**：`NewsCleanupRunner` 已在跑。
 - **geo 数据源接入**：`UsgsQuakeGeoAdapter` + 迁移 `V52__data_source_geo.sql`。

@@ -19,6 +19,8 @@ import java.util.regex.Pattern;
  * 看的是排版与对比度。两者都答不上「画面到底有没有在动」——而短视频最常见的失败不是画错，
  * 是不动：一张静止的图配一段念稿，观感就是 PPT。
  *
+ * <p>黑场拦、冻结只记：黑场是成片本身不成立，冻结是观感问题，两者不是一个量级。
+ *
  * <p>阈值是量出来的，不是拍的：三套数据风格都是暗底（亮度 13～20/255），
  * 像素黑阈取 3%（约 7.7/255）而不是默认的 10%（25.5/255）——默认值会把深色底的正片整段判成黑屏。
  * 实测 4 支真实样片零误报，合成的「暗底 + 纯黑 + 暗底」片能准确报出那段黑场。
@@ -128,6 +130,17 @@ final class VideoSignalCheck {
             freeze.add(new Span(pendingStart, videoSeconds));
         }
         return new Result(List.copyOf(black), List.copyOf(freeze), videoSeconds);
+    }
+
+    /**
+     * 第一段致命黑场；没有就返回 null。
+     *
+     * <p>致命口径就一条：检出的黑场已经在检测阈值上了（至少 1 秒、98% 画面是黑像素），
+     * 短于此的转场根本不会被报上来。整段纯黑一秒以上，画面上没有内容可讲，
+     * 这样的成片不该再往审稿环节走。
+     */
+    static Span blockingBlack(Result result) {
+        return result.black().isEmpty() ? null : result.black().get(0);
     }
 
     private static String tail(String text) {

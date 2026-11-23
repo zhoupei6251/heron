@@ -4,6 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** 画面信号检测：黑场与冻结段的解析。 */
@@ -56,5 +58,39 @@ class VideoSignalCheckTest {
         assertTrue(result.freeze().isEmpty());
         assertEquals(0.0, result.longestFreeze(), 0.001);
         assertEquals(0.0, result.longestBlack(), 0.001);
+    }
+
+    @Test
+    @DisplayName("有黑场就是致命的：整段纯黑，画面上没有内容")
+    void blackFrameIsBlocking() {
+        VideoSignalCheck.Result result = VideoSignalCheck.parse(LOG, 12.0);
+        VideoSignalCheck.Span black = VideoSignalCheck.blockingBlack(result);
+        assertNotNull(black);
+        assertEquals(4.0, black.start(), 0.001);
+        assertEquals(7.0, black.end(), 0.001);
+    }
+
+    @Test
+    @DisplayName("干净成片没有致命黑场")
+    void cleanVideoHasNoBlockingBlack() {
+        String log = """
+            Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'final.mp4':
+              Duration: 00:00:38.10, start: 0.000000, bitrate: 2000 kb/s
+            """;
+        VideoSignalCheck.Result result = VideoSignalCheck.parse(log, 38.1);
+        assertNull(VideoSignalCheck.blockingBlack(result));
+    }
+
+    @Test
+    @DisplayName("只有冻结帧不拦：静帧有时是刻意的表达")
+    void freezeAloneIsNotBlocking() {
+        String log = """
+            [Parsed_freezedetect_1 @ 0000021ada84ed80] lavfi.freezedetect.freeze_start: 0
+            [Parsed_freezedetect_1 @ 0000021ada84ed80] lavfi.freezedetect.freeze_duration: 4
+            [Parsed_freezedetect_1 @ 0000021ada84ed80] lavfi.freezedetect.freeze_end: 4
+            """;
+        VideoSignalCheck.Result result = VideoSignalCheck.parse(log, 12.0);
+        assertNull(VideoSignalCheck.blockingBlack(result));
+        assertEquals(1, result.freeze().size());
     }
 }
