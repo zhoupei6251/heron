@@ -273,6 +273,9 @@ function styles(cfg) {
 
 function script(cfg) {
   const files = [path.join(GEN, 'behaviors', 'fill.js')];
+  // 冲击屏：headline 屏接管整幅画面。只给声明了分镜的模板——
+  // 没有分镜就没有 headline 屏，接管逻辑是死代码。
+  if (cfg.storyboard) files.push(path.join(GEN, 'behaviors', 'headline.js'));
   if (cfg.capabilities.includes('chart')) {
     files.push(path.join(GEN, 'behaviors', 'chart.js'), path.join(GEN, 'behaviors', 'focus.js'));
   }
