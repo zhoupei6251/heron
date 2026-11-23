@@ -3,6 +3,7 @@ package org.dromara.heron.service.impl;
 import org.dromara.heron.domain.EditorialCandidatePool;
 import org.dromara.heron.domain.EditorialChoice;
 import org.dromara.heron.domain.EditorialSelection;
+import org.dromara.heron.domain.EditorialStory;
 import org.dromara.heron.domain.HeronDataOpportunity;
 import org.dromara.heron.domain.HeronDataSource;
 import org.dromara.heron.domain.HeronNewsCandidate;
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -79,12 +81,35 @@ class EditorialLineEditorTrendTest {
         return picker;
     }
 
+    /**
+     * 看板线现在「没故事就不做」：策划器必须给出通过的故事，机会才认。
+     * 这里只桩住「通过」这一条路径，被否掉的路径由 StoryDecisionTest 单独覆盖。
+     */
+    private static DatasetStoryPlanner storyPlanner() {
+        DatasetStoryPlanner planner = mock(DatasetStoryPlanner.class);
+        when(planner.plan(any(), any(), anyInt(), anyString(), any(), any(), any()))
+            .thenReturn(DatasetStoryPlanner.Result.accepted(story()));
+        return planner;
+    }
+
+    private static EditorialStory story() {
+        return new EditorialStory(EditorialStory.SCHEMA_VERSION, "numeric_contrast", "金价涨势超出常态",
+            new EditorialStory.Protagonist("metric", "黄金价格", null),
+            new EditorialStory.Tension("gap", "涨幅远超常态", List.of("facts.last.value")),
+            List.of(new EditorialStory.Claim("c1", "价格连续上行", "fact", List.of("facts.last.value"))),
+            new EditorialStory.Payoff("需要留意回撤", List.of("facts.last.value")),
+            new EditorialStory.Stakes("持有黄金的账户", "资产配置需要复核"),
+            List.of(),
+            new EditorialStory.Basis("mover", 0.2, null, false, 1.0, 10, "2026-01-01", "2026-01-10",
+                "a".repeat(64), "opportunity", 11L));
+    }
+
     @Test
     @DisplayName("趋势线：wide 且点数够的机会被选中，角度落到「变化意味着什么」")
     void trendPicksRoutableOpportunity() {
         DatasetRouter router = mock(DatasetRouter.class);
         EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class),
-            templatePicker(), router);
+            templatePicker(), router, storyPlanner());
         HeronDataOpportunity routable = opportunity(11L, "sample-gold", "wide", 12, "daily");
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
             List.of(dataset("sample-gold", "wide"), dataset("worldbank-gdp", "rows")),
@@ -116,7 +141,7 @@ class EditorialLineEditorTrendTest {
         DatasetRouter router = mock(DatasetRouter.class);
         when(router.pick(any(), any(), anyList())).thenReturn(new DatasetRouter.Route("worldbank-gdp", false));
         EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class),
-            templatePicker(), router);
+            templatePicker(), router, storyPlanner());
         HeronDataOpportunity tooShort = opportunity(12L, "sample-gold", "wide", 5, "daily");
         HeronDataOpportunity rows = opportunity(13L, "sample-rows", "rows", 40, "daily");
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
@@ -133,11 +158,11 @@ class EditorialLineEditorTrendTest {
     }
 
     @Test
-    @DisplayName("看板线不受趋势门槛限制：同一个短序列机会，看板线照样能用")
+    @DisplayName("看板线不受趋势门槛限制：同一个短序列机会，出得了策划结论就用它")
     void dataBoardStillTakesShortSeriesOpportunity() {
         DatasetRouter router = mock(DatasetRouter.class);
         EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class),
-            templatePicker(), router);
+            templatePicker(), router, storyPlanner());
         HeronDataOpportunity tooShort = opportunity(12L, "sample-gold", "wide", 5, "daily");
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
             List.of(dataset("sample-gold", "wide")),
@@ -150,6 +175,7 @@ class EditorialLineEditorTrendTest {
         assertEquals("sample-gold", choice.get().selection().dataSourceKey());
         assertEquals(12L, choice.get().selection().opportunityId(),
             "看板线只要求有数据，趋势门槛不该外溢到这里");
+        assertNotNull(choice.get().selection().story(), "看板线的选材必须带策划结论");
         verify(router, never()).pick(any(), any(), anyList());
     }
 
@@ -158,7 +184,7 @@ class EditorialLineEditorTrendTest {
     void trendEmptyFallsBackWithReason() {
         DatasetRouter router = mock(DatasetRouter.class);
         EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class),
-            templatePicker(), router);
+            templatePicker(), router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
             List.of(), List.of(), List.of(),
             List.of(opportunity(14L, "sample-attention", "rows", 30, "daily")));

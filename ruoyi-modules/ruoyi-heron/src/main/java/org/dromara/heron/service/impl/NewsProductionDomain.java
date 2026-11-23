@@ -37,6 +37,9 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         "asset_manifest", "dataset");
     private static final Set<String> DATA_GATES = Set.of("schema", "evidence", "data", "audio", "audio_mix", "subtitles",
         "render", "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
+    /** 有策划结论时多一道故事闸：策划依据要在生产快照上复核一遍，才算数。 */
+    private static final Set<String> STORY_GATES = Set.of("schema", "evidence", "data", "story", "audio", "audio_mix",
+        "subtitles", "render", "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
     /** 趋势线多一份 trend.json 产物与一道趋势判定闸；其余与数据看板线一致。 */
     private static final Set<String> TREND_KINDS = Set.of("mp4", "contact_sheet", "script", "subtitles", "checks",
         "asset_manifest", "dataset", "trend");
@@ -145,6 +148,11 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         Map<String, Object> window = datasetWindowNode(selection);
         if (window != null) {
             node.put("datasetWindow", window);
+        }
+        // 策划结论随冻结输入落盘：写稿与审稿读同一份，「策划说什么」和「片子讲什么」才对得上。
+        // 没有故事的老快照不写这一节点，生产照旧。
+        if (selection.story() != null) {
+            node.put("story", selection.story().toMap());
         }
         return node;
     }
@@ -362,7 +370,22 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         if (knowledgeExplainer(version)) {
             return KNOWLEDGE_GATES;
         }
-        return dataBoard(version) ? DATA_GATES : GATES;
+        if (!dataBoard(version)) {
+            return GATES;
+        }
+        // 故事闸只在有策划结论时要求：没有故事的老快照重跑不能因为少一道闸就失败。
+        return story(version) ? STORY_GATES : DATA_GATES;
+    }
+
+    /** 冻结输入里有没有策划结论。 */
+    private static boolean story(JsonNode input) {
+        JsonNode node = input.path("selection").path("story");
+        return node.isObject() && !node.isEmpty();
+    }
+
+    /** 某版本有没有策划结论。 */
+    private boolean story(HeronVideoVersion version) {
+        return story(JsonUtils.getJsonMapper().readTree(version.getInputSnapshot()));
     }
 
     private static boolean dataBoard(JsonNode input) {

@@ -16,7 +16,8 @@ public record EditorialSelection(
     String storyAngle,
     java.util.List<String> sourceEvidenceIds,
     Long opportunityId,
-    Opportunity opportunity
+    Opportunity opportunity,
+    EditorialStory story
 ) {
 
     public static final String DATA_BOARD = "DATA_BOARD";
@@ -49,14 +50,22 @@ public record EditorialSelection(
     /** 老入口：不是从数据机会来的（解说线、以及数据看板的旧选源路径）。 */
     public EditorialSelection(String line, Long candidateId, String dataSourceKey, boolean digest,
                               String templateId, String storyAngle, java.util.List<String> sourceEvidenceIds) {
-        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, null, null);
+        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, null, null, null);
     }
 
     /** 从数据机会来的选择：还没有带取数口径的老调用。 */
     public EditorialSelection(String line, Long candidateId, String dataSourceKey, boolean digest,
                               String templateId, String storyAngle, java.util.List<String> sourceEvidenceIds,
                               Long opportunityId) {
-        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, opportunityId, null);
+        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, opportunityId, null, null);
+    }
+
+    /** 带取数口径、但还没有策划结论的老调用。 */
+    public EditorialSelection(String line, Long candidateId, String dataSourceKey, boolean digest,
+                              String templateId, String storyAngle, java.util.List<String> sourceEvidenceIds,
+                              Long opportunityId, Opportunity opportunity) {
+        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, opportunityId,
+            opportunity, null);
     }
 
     public boolean dataBoard() {
@@ -110,5 +119,10 @@ public record EditorialSelection(
             }
         }
         sourceEvidenceIds = sourceEvidenceIds == null ? java.util.List.of() : java.util.List.copyOf(sourceEvidenceIds);
+        // 有策划结论时只核版本：内容是否成立由契约闸判，domain 不该反过来依赖 service 层。
+        // 数据看板线缺故事不放这里拦——线内编辑是唯一该拦的地方，它拿得到拒绝理由。
+        if (story != null && !EditorialStory.SCHEMA_VERSION.equals(story.schemaVersion())) {
+            throw new IllegalStateException("策划结论的版本不是 " + EditorialStory.SCHEMA_VERSION + "：" + story.schemaVersion());
+        }
     }
 }

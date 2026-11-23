@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.dromara.heron.domain.EditorialCandidatePool;
 import org.dromara.heron.domain.EditorialChoice;
 import org.dromara.heron.domain.EditorialSelection;
+import org.dromara.heron.domain.EditorialStory;
 import org.dromara.heron.domain.HeronDataOpportunity;
 import org.dromara.heron.domain.HeronDataSource;
 import org.dromara.heron.domain.HeronNewsCandidate;
@@ -22,6 +23,10 @@ import java.util.Optional;
  * <p>关键约束是「认领之前完成」：所有选择在这一步定完，生产只读冻结快照。
  * 之前自动线是先预选候选、总编辑再定线、最后按模板名前缀 findFirst 取第一个模板——
  * 三步各选一次，结果互相不认识。
+ *
+ * <p>数据看板线还有一条更硬的约束：<b>没故事就不做</b>。这条线的片子必须先有一份
+ * 可校验的策划结论（story/1），写标题与写旁白都按它来；策划不通过就换下一条候选，
+ * 全不通过则这条线本轮不出片。趋势线不走策划：它的结论由 trend/1 的机器判定驱动。
  */
 @Service
 @RequiredArgsConstructor
@@ -29,6 +34,11 @@ public class EditorialLineEditor {
 
     /** 线内编辑不在生产任务里，用量用 0 任务号走纯决策调用。 */
     private static final long NO_TASK = 0L;
+    /**
+     * 看板线最多试几条候选机会：一条不行换下一条，但必须有上限。
+     * 每条都要一次取数 + 一次模型调用，不封顶就会把一个槽位的时长吃光。
+     */
+    private static final int MAX_STORY_CANDIDATES = 3;
     /** 本地 mapper：证据解析与上下文构造要能在纯单测里跑，不依赖 Spring 上下文。 */
     private static final tools.jackson.databind.json.JsonMapper JSON =
         tools.jackson.databind.json.JsonMapper.builder().build();
@@ -36,6 +46,7 @@ public class EditorialLineEditor {
     private final NewsCandidateScreener screener;
     private final NewsTemplatePicker templatePicker;
     private final DatasetRouter datasetRouter;
+    private final DatasetStoryPlanner storyPlanner;
 
     /**
      * 总编辑定线之后的唯一入口。候选与数据源都只从传入的池子里取，不再自己查库——
@@ -55,37 +66,55 @@ public class EditorialLineEditor {
 
     public Optional<EditorialChoice> select(String line, EditorialCandidatePool pool, String intent,
                                             Long focusCandidateId, Long focusOpportunityId) {
+        // 策划拒绝是候选级的：一条不行换下一条，这些原因码是「今天为什么没选它」的唯一证据
+        List<String> rejects = new ArrayList<>();
         if (EditorialDecisionService.KNOWLEDGE_EXPLAINER.equals(line)) {
             Optional<EditorialSelection> knowledge = editKnowledge(pool.knowledge(), intent, focusCandidateId);
             if (knowledge.isPresent()) {
-                return Optional.of(new EditorialChoice(knowledge.get(), line, false, null));
+                return Optional.of(new EditorialChoice(knowledge.get(), line, false, null, rejects));
             }
             // 备用线也会空：池子里的知识候选都在重试中被剔掉时，按既定顺序回退一次
-            Optional<EditorialSelection> second = editExplainer(pool.articles(), intent, focusCandidateId)
-                .or(() -> editDatasetLine(EditorialDecisionService.DATA_BOARD,
-                    pool.datasets(), pool.opportunities(), focusOpportunityId));
-            return second.map(selection -> new EditorialChoice(selection, line, true, "knowledge_empty"));
+            Optional<EditorialSelection> second = editExplainer(pool.articles(), intent, focusCandidateId);
+            if (second.isPresent()) {
+                return Optional.of(new EditorialChoice(second.get(), line, true, "knowledge_empty", rejects));
+            }
+            DatasetPlan plan = planDatasetLine(EditorialDecisionService.DATA_BOARD,
+                pool.datasets(), pool.opportunities(), focusOpportunityId);
+            rejects.addAll(plan.rejects());
+            return plan.selection()
+                .map(selection -> new EditorialChoice(selection, line, true, "knowledge_empty", rejects));
         }
         boolean trend = EditorialDecisionService.TREND_INSIGHT.equals(line);
         boolean datasetLine = trend || EditorialDecisionService.DATA_BOARD.equals(line);
-        Optional<EditorialSelection> first = datasetLine
-            ? editDatasetLine(trend ? EditorialDecisionService.TREND_INSIGHT : EditorialDecisionService.DATA_BOARD,
-                pool.datasets(), pool.opportunities(), focusOpportunityId)
-            : editExplainer(pool.articles(), intent, focusCandidateId);
+        Optional<EditorialSelection> first;
+        if (datasetLine) {
+            DatasetPlan plan = planDatasetLine(trend ? EditorialDecisionService.TREND_INSIGHT
+                    : EditorialDecisionService.DATA_BOARD,
+                pool.datasets(), pool.opportunities(), focusOpportunityId);
+            rejects.addAll(plan.rejects());
+            first = plan.selection();
+        } else {
+            first = editExplainer(pool.articles(), intent, focusCandidateId);
+        }
         if (first.isPresent()) {
-            return Optional.of(new EditorialChoice(first.get(), line, false, null));
+            return Optional.of(new EditorialChoice(first.get(), line, false, null, rejects));
         }
         String reason = trend ? "trend_empty" : datasetLine ? "data_board_empty" : "explainer_empty";
-        Optional<EditorialSelection> second = datasetLine
-            ? editExplainer(pool.articles(), intent, focusCandidateId)
-            : editDatasetLine(EditorialDecisionService.DATA_BOARD,
+        Optional<EditorialSelection> second;
+        if (datasetLine) {
+            second = editExplainer(pool.articles(), intent, focusCandidateId);
+        } else {
+            DatasetPlan plan = planDatasetLine(EditorialDecisionService.DATA_BOARD,
                 pool.datasets(), pool.opportunities(), focusOpportunityId);
+            rejects.addAll(plan.rejects());
+            second = plan.selection();
+        }
         if (second.isPresent()) {
-            return second.map(selection -> new EditorialChoice(selection, line, true, reason));
+            return Optional.of(new EditorialChoice(second.get(), line, true, reason, rejects));
         }
         // 知识线是最后一条：其余线当天都没素材时，它也只剩这一条路
         return editKnowledge(pool.knowledge(), intent, focusCandidateId)
-            .map(selection -> new EditorialChoice(selection, line, true, reason + "_knowledge"));
+            .map(selection -> new EditorialChoice(selection, line, true, reason + "_knowledge", rejects));
     }
 
     /**
@@ -149,7 +178,7 @@ public class EditorialLineEditor {
     }
 
     /**
-     * 数据看板线：从**建池时冻结的**数据源候选里挑一条 + 选版式。
+     * 数据看板线：从**建池时冻结的**数据源候选里挑一条 + 选版式 + 定故事。
      * 这里不再查库：启用状态、探测结果、7 天去重都已在建池时判定过，
      * 重查一次就会出现「池子里说能用、选的时候已经不能用」的两套事实。
      * 没有可用数据源是正常结果，交给调用方回退到解说线。
@@ -172,7 +201,34 @@ public class EditorialLineEditor {
     public Optional<EditorialSelection> editDatasetLine(String line, List<HeronDataSource> datasets,
                                                         List<HeronDataOpportunity> opportunities,
                                                         Long focusOpportunityId) {
+        return planDatasetLine(line, datasets, opportunities, focusOpportunityId).selection();
+    }
+
+    /**
+     * 数据线的一次策划结果：选中了什么，以及途中被策划闸否掉的候选。
+     *
+     * @param selection 选中的素材；空表示这条线本轮没有能做的素材
+     * @param rejects   被否掉的候选，形如 {@code 源键:story_duplicate}
+     */
+    private record DatasetPlan(Optional<EditorialSelection> selection, List<String> rejects) {
+
+        static DatasetPlan empty(List<String> rejects) {
+            return new DatasetPlan(Optional.empty(), rejects);
+        }
+    }
+
+    /**
+     * 数据线的一次完整策划。
+     *
+     * <p>看板线在这层做「没故事就不做」：按分数依次试前几条机会，每条都要先出一份
+     * 可校验的策划结论才认；机会都不成立再退到选源器兜底，兜底同样要有故事。
+     * 趋势线不走这套：它的结论由 trend/1 的机器判定驱动，写稿时带着判定即可。
+     */
+    private DatasetPlan planDatasetLine(String line, List<HeronDataSource> datasets,
+                                        List<HeronDataOpportunity> opportunities,
+                                        Long focusOpportunityId) {
         boolean trend = EditorialDecisionService.TREND_INSIGHT.equals(line);
+        List<String> rejects = new ArrayList<>();
         List<HeronDataOpportunity> usable = opportunities == null ? List.of()
             : trend ? opportunities.stream().filter(item -> TrendAnalysis.routable(opportunityOf(item))).toList()
             : opportunities;
@@ -184,25 +240,120 @@ public class EditorialLineEditor {
             // 没锁定就用分数最高的那条：选源器拿到的是写死的题材，不可能比算出来的机会更懂今天
             focused = usable.get(0);
         }
-        if (focused != null) {
-            HeronDataOpportunity chosen = focused;
-            String sourceName = datasets == null ? null : datasets.stream()
-                .filter(item -> item.getSourceKey().equals(chosen.getSourceKey()))
-                .map(HeronDataSource::getName).findFirst().orElse(null);
-            String name = sourceName == null ? chosen.getHeadline() : sourceName;
-            String template = templatePicker.pick(name, trend ? "趋势洞察" : "数据看板", line);
-            if (template == null) {
-                return Optional.empty();
-            }
-            // 故事角度由机会自己的信号决定。编辑意图已经在 editorialIntent 里，
-            // 角度再抄一遍就没有第二个视角，写稿只能拿到一条「今天要讲它」的通用稿。
-            DatasetStoryAngle.Angle angle = DatasetStoryAngle.pick(chosen.getShape(),
-                signalsOf(chosen.getSignals()), chosen.getPeriodStart(), chosen.getPeriodEnd());
-            // digest=false：这是被机会明确选中的源，不是「没题材时的速览」
-            return Optional.of(new EditorialSelection(line,
-                null, chosen.getSourceKey(), false, template, text(angle, trend), List.of(),
-                chosen.getOpportunityId(), opportunityOf(chosen)));
+        if (focused != null && trend) {
+            return new DatasetPlan(trendSelection(line, datasets, focused), rejects);
         }
+        if (focused != null) {
+            // 看板线：锁定时只试锁定的那条（不擅自换题），没锁定时按分数取前几条依次试
+            List<HeronDataOpportunity> candidates = focusOpportunityId == null
+                ? usable.stream().limit(MAX_STORY_CANDIDATES).toList()
+                : List.of(focused);
+            for (HeronDataOpportunity candidate : candidates) {
+                Optional<EditorialSelection> selection = planOpportunity(line, datasets, candidate, rejects);
+                if (selection.isPresent()) {
+                    return new DatasetPlan(selection, rejects);
+                }
+            }
+            // 机会都不成立：退到选源器兜底，兜底也要有故事
+            return planDigest(line, datasets, rejects);
+        }
+        if (trend) {
+            return new DatasetPlan(digestSelection(line, datasets), rejects);
+        }
+        return planDigest(line, datasets, rejects);
+    }
+
+    /**
+     * 趋势线选中机会：角度由机会自己的信号决定，结论交给 trend/1 的机器判定。
+     */
+    private Optional<EditorialSelection> trendSelection(String line, List<HeronDataSource> datasets,
+                                                        HeronDataOpportunity chosen) {
+        HeronDataSource source = sourceOf(datasets, chosen.getSourceKey());
+        String sourceName = source == null ? null : source.getName();
+        String name = sourceName == null ? chosen.getHeadline() : sourceName;
+        String template = templatePicker.pick(name, "趋势洞察", line);
+        if (template == null) {
+            return Optional.empty();
+        }
+        DatasetStoryAngle.Angle angle = DatasetStoryAngle.pick(chosen.getShape(),
+            signalsOf(chosen.getSignals()), chosen.getPeriodStart(), chosen.getPeriodEnd());
+        // digest=false：这是被机会明确选中的源，不是「没题材时的速览」
+        return Optional.of(new EditorialSelection(line,
+            null, chosen.getSourceKey(), false, template, text(angle, true), List.of(),
+            chosen.getOpportunityId(), opportunityOf(chosen)));
+    }
+
+    /**
+     * 看板线选中机会：先出一份策划结论，通过了才认这条机会。
+     */
+    private Optional<EditorialSelection> planOpportunity(String line, List<HeronDataSource> datasets,
+                                                        HeronDataOpportunity candidate,
+                                                        List<String> rejects) {
+        HeronDataSource source = sourceOf(datasets, candidate.getSourceKey());
+        if (source == null) {
+            rejects.add(candidate.getSourceKey() + ":story_source_missing");
+            return Optional.empty();
+        }
+        String name = source.getName() == null ? candidate.getHeadline() : source.getName();
+        String template = templatePicker.pick(name, "数据看板", line);
+        if (template == null) {
+            rejects.add(candidate.getSourceKey() + ":story_template_missing");
+            return Optional.empty();
+        }
+        int points = candidate.getWindowPoints() == null || candidate.getWindowPoints() <= 0
+            ? DatasetStoryPlanner.DEFAULT_POINTS : candidate.getWindowPoints();
+        DatasetStoryPlanner.Result result = storyPlanner.plan(decisionRun(), source, points,
+            "opportunity", candidate.getOpportunityId(), candidate.getHeadline(), candidate.getSignals());
+        if (!result.accepted()) {
+            rejects.add(candidate.getSourceKey() + ":" + result.rejectCode());
+            return Optional.empty();
+        }
+        return Optional.of(new EditorialSelection(line,
+            null, candidate.getSourceKey(), false, template, storyAngle(result.story(), candidate),
+            List.of(), candidate.getOpportunityId(), opportunityOf(candidate), result.story()));
+    }
+
+    /**
+     * 看板线走选源器兜底：速览也得有故事，否则这条线本轮就不出片。
+     */
+    private DatasetPlan planDigest(String line, List<HeronDataSource> datasets, List<String> rejects) {
+        if (datasets == null || datasets.isEmpty()) {
+            return DatasetPlan.empty(rejects);
+        }
+        DatasetRouter.Route route;
+        try {
+            route = datasetRouter.pick(decisionRun(), decisionContext(), datasets);
+        } catch (RuntimeException e) {
+            return DatasetPlan.empty(rejects);
+        }
+        if (route == null) {
+            return DatasetPlan.empty(rejects);
+        }
+        HeronDataSource source = sourceOf(datasets, route.sourceKey());
+        if (source == null) {
+            rejects.add(route.sourceKey() + ":story_source_missing");
+            return DatasetPlan.empty(rejects);
+        }
+        String name = source.getName() == null ? route.sourceKey() : source.getName();
+        String template = templatePicker.pick(name, "数据看板", line);
+        if (template == null) {
+            rejects.add(route.sourceKey() + ":story_template_missing");
+            return DatasetPlan.empty(rejects);
+        }
+        DatasetStoryPlanner.Result result = storyPlanner.plan(decisionRun(), source,
+            DatasetStoryPlanner.DEFAULT_POINTS, "digest", null, null, null);
+        if (!result.accepted()) {
+            rejects.add(route.sourceKey() + ":" + result.rejectCode());
+            return DatasetPlan.empty(rejects);
+        }
+        EditorialStory story = result.story();
+        return new DatasetPlan(Optional.of(new EditorialSelection(line,
+            null, route.sourceKey(), route.digest(), template, storyAngle(story), List.of(),
+            null, null, story)), rejects);
+    }
+
+    /** 趋势线的兜底：没有能算出判定的机会时走选源器，稿子不带策划结论。 */
+    private Optional<EditorialSelection> digestSelection(String line, List<HeronDataSource> datasets) {
         if (datasets == null || datasets.isEmpty()) {
             return Optional.empty();
         }
@@ -212,17 +363,46 @@ public class EditorialLineEditor {
         } catch (RuntimeException e) {
             return Optional.empty();
         }
-        HeronDataSource source = datasets.stream()
-            .filter(item -> item.getSourceKey().equals(route.sourceKey())).findFirst().orElse(null);
+        if (route == null) {
+            return Optional.empty();
+        }
+        HeronDataSource source = sourceOf(datasets, route.sourceKey());
         String name = source == null ? route.sourceKey() : source.getName();
-        String template = templatePicker.pick(name, trend ? "趋势洞察" : "数据看板", line);
+        String template = templatePicker.pick(name, "趋势洞察", line);
         if (template == null) {
             return Optional.empty();
         }
         return Optional.of(new EditorialSelection(line,
-            null, route.sourceKey(), route.digest(), template, text(DatasetStoryAngle.DIGEST_ANGLE, trend), List.of()));
+            null, route.sourceKey(), route.digest(), template, text(DatasetStoryAngle.DIGEST_ANGLE, true),
+            List.of()));
     }
 
+    /** 池子里的数据源：机会与兜底都要按 sourceKey 找到它才能拿到类别与许可口径。 */
+    private static HeronDataSource sourceOf(List<HeronDataSource> datasets, String sourceKey) {
+        if (datasets == null || sourceKey == null) {
+            return null;
+        }
+        return datasets.stream()
+            .filter(item -> sourceKey.equals(item.getSourceKey()))
+            .findFirst().orElse(null);
+    }
+
+    /** 故事角度优先用策划的一句话：那就是「这条片子讲的是什么事」。 */
+    private static String storyAngle(EditorialStory story, HeronDataOpportunity candidate) {
+        if (story != null && story.oneLine() != null && !story.oneLine().isBlank()) {
+            return story.oneLine();
+        }
+        DatasetStoryAngle.Angle angle = DatasetStoryAngle.pick(candidate.getShape(),
+            signalsOf(candidate.getSignals()), candidate.getPeriodStart(), candidate.getPeriodEnd());
+        return angle == null ? "" : angle.text();
+    }
+
+    private static String storyAngle(EditorialStory story) {
+        if (story != null && story.oneLine() != null && !story.oneLine().isBlank()) {
+            return story.oneLine();
+        }
+        return "";
+    }
 
     /** 趋势线的故事角度要落到「变化意味着什么」，否则写稿只会写成第二份数据看板。 */
     private static String text(DatasetStoryAngle.Angle angle, boolean trend) {

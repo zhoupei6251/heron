@@ -1,6 +1,7 @@
 package org.dromara.heron.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.dromara.heron.domain.EditorialStory;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.vo.ProductionRunVo;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,9 @@ import java.util.List;
 /**
  * 数据看板脚本由模型写，出处三件（哈希、源、图表类型）由快照覆盖；
  * 契约不过先定向修复一次，再不过就退回，不盲目重跑。
+ *
+ * <p>有策划结论（story/1）时，策划结论只走两条通道进写稿：
+ * 提示词（唯一内容入口）与 Java 复核（唯一硬结构）。脚本 JSON 一个字段都不加。
  */
 @Service
 @RequiredArgsConstructor
@@ -42,19 +46,29 @@ public class DatasetScriptAuthor {
     public record Result(String script, String hookType) { }
 
     public Result author(ProductionRunVo run, String datasetJson, boolean digest) {
+        return author(run, datasetJson, digest, null);
+    }
+
+    /**
+     * 有策划结论时的写稿。
+     *
+     * <p>策划结论只走两条通道进写稿：提示词（唯一内容入口）与 Java 复核（唯一硬结构）。
+     * 脚本 JSON 一个字段都不加，策划结论只决定「讲什么」，不改变结构。
+     */
+    public Result author(ProductionRunVo run, String datasetJson, boolean digest, EditorialStory story) {
         JsonNode snapshot = JSON.readTree(datasetJson);
-        List<DatasetTitleAuthor.Candidate> candidates = titleAuthor.candidates(run, datasetJson);
+        List<DatasetTitleAuthor.Candidate> candidates = titleAuthor.candidates(run, datasetJson, "", story);
         List<String> titles = candidates.stream().map(DatasetTitleAuthor.Candidate::title).toList();
         String system = BASE_SYSTEM + "\n\n---\n\n"
             + ColumnPacks.text(snapshot.path("source_key").asString(""));
         JsonNode editorial = editorialOf(run);
         JsonNode draft = withEvidence(parse(model.chat(run, STAGE, system,
-            prompt(snapshot, titles, editorial, digest))), snapshot);
-        List<String> violations = violations(draft, snapshot, titles, null);
+            prompt(snapshot, titles, editorial, digest, story))), snapshot);
+        List<String> violations = violations(draft, snapshot, titles, null, story);
         for (int repair = 0; repair < MAX_REPAIRS && !violations.isEmpty(); repair++) {
             draft = withEvidence(parse(model.chat(run, STAGE + "-repair", system,
-                repairPrompt(draft, violations, titles, editorial))), snapshot);
-            violations = violations(draft, snapshot, titles, null);
+                repairPrompt(draft, violations, titles, editorial, story))), snapshot);
+            violations = violations(draft, snapshot, titles, null, story);
         }
         if (!violations.isEmpty()) {
             throw new HeronBusinessException(409, "dataset_script_contract",
@@ -154,21 +168,27 @@ public class DatasetScriptAuthor {
 
     private static List<String> trendViolations(JsonNode script, JsonNode snapshot, JsonNode trend,
                                                 List<String> titles) {
-        List<String> out = new java.util.ArrayList<>(violations(script, snapshot, titles, trend));
+        List<String> out = new java.util.ArrayList<>(violations(script, snapshot, titles, trend, null));
         out.addAll(TrendContract.violations(trend, script, snapshot));
         return out;
     }
 
     /** 审稿不过时的定向修复：复用同一套修复提示与契约复核，只换掉问题清单。 */
     public Result repair(ProductionRunVo run, String datasetJson, String scriptJson, List<String> issues) {
+        return repair(run, datasetJson, scriptJson, issues, null);
+    }
+
+    /** 有策划结论时的定向修复：策划结论与对位问题一起带回，改稿不许把故事改没。 */
+    public Result repair(ProductionRunVo run, String datasetJson, String scriptJson, List<String> issues,
+                         EditorialStory story) {
         JsonNode snapshot = JSON.readTree(datasetJson);
-        List<DatasetTitleAuthor.Candidate> candidates = titleAuthor.candidates(run, datasetJson);
+        List<DatasetTitleAuthor.Candidate> candidates = titleAuthor.candidates(run, datasetJson, "", story);
         List<String> titles = candidates.stream().map(DatasetTitleAuthor.Candidate::title).toList();
         String system = BASE_SYSTEM + "\n\n---\n\n"
             + ColumnPacks.text(snapshot.path("source_key").asString(""));
         JsonNode repaired = withEvidence(parse(model.chat(run, STAGE + "-repair", system,
-            repairPrompt(JSON.readTree(scriptJson), issues, titles, editorialOf(run)))), snapshot);
-        List<String> violations = violations(repaired, snapshot, titles, null);
+            repairPrompt(JSON.readTree(scriptJson), issues, titles, editorialOf(run), story))), snapshot);
+        List<String> violations = violations(repaired, snapshot, titles, null, story);
         if (!violations.isEmpty()) {
             throw new HeronBusinessException(409, "dataset_script_contract",
                 "脚本退回修复：" + String.join("；", violations));
@@ -205,7 +225,7 @@ public class DatasetScriptAuthor {
     }
 
     private static List<String> violations(JsonNode script, JsonNode snapshot, List<String> titles,
-                                         JsonNode trend) {
+                                         JsonNode trend, EditorialStory story) {
         List<String> violations = new java.util.ArrayList<>(DatasetScriptContract.violations(script, snapshot));
         // 分镜也要进修复循环：分镜不合规时渲染闸会直接退回整条片子，
         // 与其出片前才发现，不如在写稿阶段就修一次。
@@ -221,6 +241,8 @@ public class DatasetScriptAuthor {
         if (!titles.contains(script.path("title").asString(""))) {
             violations.add("title 必须从候选里原样选一个");
         }
+        // 策划结论的对位：开场讲张力、中段一条主张一段、结尾讲落点、引用的路径不出信封
+        violations.addAll(StoryScriptAlignment.violations(script, story, script.path("title").asString("")));
         return List.copyOf(new java.util.LinkedHashSet<>(violations));
     }
 
@@ -236,11 +258,17 @@ public class DatasetScriptAuthor {
     }
 
     private static String prompt(JsonNode snapshot, List<String> titles, JsonNode editorial, boolean digest) {
+        return prompt(snapshot, titles, editorial, digest, null);
+    }
+
+    private static String prompt(JsonNode snapshot, List<String> titles, JsonNode editorial, boolean digest,
+                                 EditorialStory story) {
         StringBuilder text = new StringBuilder();
         if (digest) {
             text.append("这是一条「今日数据速览」，不是热点解读，开头点明这是例行盘点。\n");
         }
         appendEditorial(text, editorial);
+        appendStory(text, story);
         text.append("数据快照：\n").append(snapshot).append('\n')
             .append("标题候选（title 必须与下面某一项完全一致，原样复制）：\n");
         for (String title : titles) {
@@ -252,10 +280,16 @@ public class DatasetScriptAuthor {
 
     private static String repairPrompt(JsonNode script, List<String> violations, List<String> titles,
                                        JsonNode editorial) {
+        return repairPrompt(script, violations, titles, editorial, null);
+    }
+
+    private static String repairPrompt(JsonNode script, List<String> violations, List<String> titles,
+                                       JsonNode editorial, EditorialStory story) {
         StringBuilder text = new StringBuilder()
             .append("上一版脚本没有通过契约校验，问题如下：\n")
             .append("- ").append(String.join("\n- ", violations)).append('\n');
         appendEditorial(text, editorial);
+        appendStory(text, story);
         return text.append("title 只能从这些候选里原样选一个：\n")
             .append("- ").append(String.join("\n- ", titles)).append('\n')
             .append("只修改不符合要求的字段，其余字段原样保留，输出完整 JSON。\n")
@@ -282,6 +316,39 @@ public class DatasetScriptAuthor {
         if (!reason.isBlank()) text.append("为什么今天选它：").append(reason).append('\n');
         if (!angle.isBlank()) text.append("故事视角：").append(angle).append('\n');
         appendOpportunity(text, editorial);
+    }
+
+    /**
+     * 已定故事：写稿必须照着讲，不许自己另起一套结论。
+     *
+     * <p>三件事说清：故事讲的是什么、哪条是推测（要写成推测口吻）、段落顺序怎么排。
+     * 可用的数字路径只给信封里那些，出了信封的数字一律不许引用。
+     */
+    private static void appendStory(StringBuilder text, EditorialStory story) {
+        if (story == null) return;
+        text.append("已定故事（策划已定，照着讲，不许另起结论）：\n");
+        text.append("- 一句话：").append(story.oneLine()).append('\n');
+        if (story.tension() != null) {
+            text.append("- 张力：").append(story.tension().statement()).append('\n');
+        }
+        if (story.payoff() != null) {
+            text.append("- 落点：").append(story.payoff().text()).append('\n');
+        }
+        text.append("- 主张列表：\n");
+        for (EditorialStory.Claim claim : story.claims()) {
+            String tag = "fact".equals(claim.kind()) ? "事实" : "假设";
+            text.append("  ").append(claim.id()).append('[').append(tag).append("]：")
+                .append(claim.text()).append('\n');
+        }
+        if (!story.assumptions().isEmpty()) {
+            text.append("- 假设必须写成推测口吻，不许写成断言：\n");
+            for (String assumption : story.assumptions()) {
+                text.append("  ").append(assumption).append('\n');
+            }
+        }
+        text.append("- 可用的数字路径只有这些：")
+            .append(String.join("、", story.allEvidenceRefs())).append('\n');
+        text.append("- 段落顺序：第 1 段讲张力（不复述标题），中间每段讲一条主张，结尾讲落点。\n");
     }
 
     /**

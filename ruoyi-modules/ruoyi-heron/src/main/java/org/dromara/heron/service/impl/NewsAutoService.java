@@ -697,12 +697,27 @@ public class NewsAutoService {
         slotMapper.lambda()
             .set(HeronAutoSlot::getSelectedLine, executedLine(decision, choice))
             .set(HeronAutoSlot::getEditorialIntent, clip(decision.editorialIntent(), 500))
-            .set(HeronAutoSlot::getDecisionReason, clip(decision.reason(), 500))
+            .set(HeronAutoSlot::getDecisionReason, clip(decisionReason(decision, choice), 500))
             .set(HeronAutoSlot::getPoolJson, decisionTrail(pools, decision, choice))
             .set(HeronAutoSlot::getUpdateTime, LocalDateTime.now(clock))
             .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
             .eq(HeronAutoSlot::getSlotTime, slot.getSlotTime())
             .update();
+    }
+
+    /**
+     * 槽位上的决策理由：总编辑给的理由，末尾再挂上被策划闸否掉的候选。
+     *
+     * <p>策划拒绝是候选级的——一条不行换下一条，最后选上的那条没问题。
+     * 但「今天为什么没选那几条」必须留在槽位上，否则数据看板线一旦策划不出故事，
+     * 槽位上只剩一句「data_board_empty」，没人知道卡在哪道闸上。
+     */
+    static String decisionReason(EditorialDecisionService.Decision decision, EditorialChoice choice) {
+        String base = decision.reason();
+        if (choice == null || choice.storyRejects().isEmpty()) {
+            return base;
+        }
+        return base + "｜策划拒绝：" + String.join("、", choice.storyRejects());
     }
 
     static String executedLine(EditorialDecisionService.Decision decision, EditorialChoice choice) {
@@ -731,6 +746,11 @@ public class NewsAutoService {
         pools.opportunities().forEach(ref -> opportunities.add(ref.label()));
         ArrayNode recent = root.putArray("recentPublications");
         pools.recentPublications().forEach(recent::add);
+        // 策划拒绝也是平级新键：前端只认上面四个原键，多出来的键它不解析也不会白屏
+        ArrayNode storyRejects = root.putArray("storyRejects");
+        if (choice != null) {
+            choice.storyRejects().forEach(storyRejects::add);
+        }
         root.put("poolId", pools.poolId());
         root.put("poolHash", pools.poolHash());
         ObjectNode trail = root.putObject("decision");

@@ -3,6 +3,7 @@ package org.dromara.heron.service.impl;
 import cn.hutool.crypto.digest.DigestUtil;
 import cn.hutool.core.util.EscapeUtil;
 import org.dromara.heron.config.HeronProductionProperties;
+import org.dromara.heron.domain.EditorialStory;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.bo.ProductionProcessBo;
 import org.dromara.heron.domain.vo.ProductionArtifactVo;
@@ -133,6 +134,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
         boolean knowledge = "knowledge_explainer".equals(input.path("kind").asString(""));
         // 趋势线也走数据源取数，所以和看板线一起算「数据线」
         boolean datasetLine = dataBoard || trend;
+        // 策划结论随冻结输入一起落盘；写稿、审稿、生产期复核读的都是这一份。
+        EditorialStory story = storyOf(input);
         if (!datasetLine && !knowledge && !properties.isArticleEnabled()) {
             throw new HeronBusinessException(409, "article_disabled", "文章新闻路径已下线，只生产数据看板与趋势洞察");
         }
@@ -159,17 +162,22 @@ public class NewsProductionPipeline implements IProductionPipeline {
             dataset = JSON.readTree(fetched.json());
             gates.add(dataGate(dataset, window));
             gates.add(datasetEvidenceGate(dataset));
+            // 策划结论要在写稿之前先跟生产快照对一次：引用还在、方向没翻、覆盖没塌、极值没失效。
+            // 对不上就是策划与数据脱节，退回换选题，别把片子写出来再审。
+            if (story != null) {
+                gates.add(storyGate(story, dataset));
+            }
             if (trend) {
                 // 单次运行只冻结一个源，跨源印证这里拿不到，trend/1 会自己记 single_source
                 trendDoc = TrendAnalysis.analyze(dataset);
             }
             DatasetScriptAuthor.Result draft = trend
                 ? datasetAuthor.authorTrend(run, fetched.json(), JSON.writeValueAsString(trendDoc), route.digest())
-                : datasetAuthor.author(run, fetched.json(), route.digest());
+                : datasetAuthor.author(run, fetched.json(), route.digest(), story);
             scriptJson = draft.script();
             hookType = draft.hookType();
             review = reviewScript(run, scriptJson, dataset.path("facts").toString(), fetched, hookType, trendDoc,
-                author, "editorial-review");
+                story, author, "editorial-review");
         } else if (knowledge) {
             scriptJson = knowledgeAuthor.author(run);
             knowledgePack = knowledgePack(input);
@@ -177,13 +185,13 @@ public class NewsProductionPipeline implements IProductionPipeline {
             // 知识线的审稿依据是选定的几条建议：它是事实清单，不是外网证据片段，
             // 所以走 facts 审稿而不是 evidence 审稿；自动发布因此不要求 coreFacts。
             review = reviewScript(run, scriptJson, knowledgePack.evidenceJson(selected), null, null, null,
-                knowledgeAuthor, "knowledge-review");
+                null, knowledgeAuthor, "knowledge-review");
         } else {
             // 正文由作者从冻结层取：首次抓取并落库，重试读同一份，写稿阶段不再二次出网
             scriptJson = author.author(run);
             // 解说线此前完全没有审稿，自动确认会把没审过的片子直接发出去
-            review = reviewScript(run, scriptJson, evidenceQuotes(input), null, null, null, author,
-                "evidence-review");
+            review = reviewScript(run, scriptJson, evidenceQuotes(input), null, null, null,
+                null, author, "evidence-review");
         }
         scriptJson = review.script;
         hookType = review.hookType;
@@ -530,6 +538,39 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return new Gate("data", "dataset.json", reason, measured);
     }
 
+    /**
+     * 生产期的策划复核：策划结论与生产快照必须是同一件事。
+     *
+     * <p>只核四个粗粒度不变量——引用还能解析、方向没翻转、覆盖没塌陷、极值没失效。
+     * 策划快照与生产快照本来就可能不是同一批数据，所以不做逐点相等；两个哈希都留痕。
+     */
+    private static Gate storyGate(EditorialStory story, JsonNode dataset) {
+        List<String> problems = DatasetStoryContract.evidenceViolations(story, dataset);
+        if (!problems.isEmpty()) {
+            throw new HeronBusinessException(409, "news_story_evidence_mismatch",
+                "策划结论与生产快照对不上：" + String.join("；", problems));
+        }
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("refsResolved", true);
+        measured.put("refsTotal", story.allEvidenceRefs().size());
+        measured.put("directionStable", true);
+        measured.put("coverageStable", true);
+        String planning = story.basis() == null ? "" : story.basis().planningDataSha256();
+        return new Gate("story", "dataset.json#facts",
+            "策划结论的引用、方向、覆盖与极值在生产快照里成立（策划哈希 " + planning
+                + "，生产哈希 " + dataset.path("data_sha256").asString("") + "）",
+            measured);
+    }
+
+    /** 冻结输入里的策划结论；没有就是没有，老快照照旧生产。 */
+    private static EditorialStory storyOf(JsonNode input) {
+        JsonNode node = input.path("selection").path("story");
+        if (node == null || !node.isObject() || node.isEmpty()) {
+            return null;
+        }
+        return EditorialStory.fromJson(node);
+    }
+
     /** 审稿发现表达与事实矛盾时定向改一次；改完还不合格就退出，不无限重试。 */
     /**
      * 一次定向修复 + 复审。返回的 record 是最终结论，调用方必须落盘：
@@ -544,9 +585,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     private ReviewOutcome reviewScript(ProductionRunVo run, String scriptJson, String basisJson,
                                        DatasetFetchService.Result datasetFetched,
-                                       String hookType, JsonNode trend, NewsScriptAuthor repairer,
+                                       String hookType, JsonNode trend, EditorialStory story,
+                                       NewsScriptAuthor repairer,
                                        String reviewKind) {
-        EditorialReviewer.Verdict verdict = review(run, scriptJson, basisJson, reviewKind);
+        EditorialReviewer.Verdict verdict = review(run, scriptJson, basisJson, story, reviewKind);
         if (!verdict.blocked()) {
             return reviewed(scriptJson, verdict, 0, reviewKind, hookType);
         }
@@ -563,13 +605,13 @@ public class NewsProductionPipeline implements IProductionPipeline {
         } else {
             // 趋势稿改稿必须带着判定一起改，否则修完方向词又跑回机器结论之外
             DatasetScriptAuthor.Result result = trend == null
-                ? datasetAuthor.repair(run, datasetFetched.json(), scriptJson, verdict.blockingNotes())
+                ? datasetAuthor.repair(run, datasetFetched.json(), scriptJson, verdict.blockingNotes(), story)
                 : datasetAuthor.repairTrend(run, datasetFetched.json(), JSON.writeValueAsString(trend),
                     scriptJson, verdict.blockingNotes());
             repaired = result.script();
             repairedHook = result.hookType();
         }
-        EditorialReviewer.Verdict again = review(run, repaired, basisJson, reviewKind);
+        EditorialReviewer.Verdict again = review(run, repaired, basisJson, story, reviewKind);
         if (again.blocked()) {
             throw reviewBlocked(again, "改稿后仍未通过");
         }
@@ -577,10 +619,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     private EditorialReviewer.Verdict review(ProductionRunVo run, String scriptJson, String basisJson,
-                                             String reviewKind) {
+                                             EditorialStory story, String reviewKind) {
         return "evidence-review".equals(reviewKind)
             ? reviewer.reviewEvidence(run, scriptJson, basisJson)
-            : reviewer.review(run, scriptJson, basisJson);
+            : reviewer.review(run, scriptJson, basisJson, story);
     }
 
     private ReviewOutcome reviewed(String script, EditorialReviewer.Verdict verdict,

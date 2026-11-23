@@ -2,6 +2,7 @@ package org.dromara.heron.service.impl;
 
 import org.dromara.heron.domain.EditorialCandidatePool;
 import org.dromara.heron.domain.EditorialChoice;
+import org.dromara.heron.domain.EditorialStory;
 import org.dromara.heron.domain.HeronDataOpportunity;
 import org.dromara.heron.domain.HeronDataSource;
 import org.dromara.heron.domain.HeronNewsCandidate;
@@ -51,12 +52,35 @@ class EditorialLineEditorFrozenPoolTest {
         return picker;
     }
 
+    /**
+     * 看板线「没故事就不做」：选源器兜底出来的速览同样要先有一份策划结论。
+     * 这里只桩住通过路径，被否掉的路径由 StoryDecisionTest 覆盖。
+     */
+    private static DatasetStoryPlanner storyPlanner() {
+        DatasetStoryPlanner planner = mock(DatasetStoryPlanner.class);
+        when(planner.plan(any(), any(), anyInt(), anyString(), any(), any(), any()))
+            .thenReturn(DatasetStoryPlanner.Result.accepted(story()));
+        return planner;
+    }
+
+    private static EditorialStory story() {
+        return new EditorialStory(EditorialStory.SCHEMA_VERSION, "numeric_contrast", "增速明显高于常态",
+            new EditorialStory.Protagonist("metric", "国内生产总值", null),
+            new EditorialStory.Tension("gap", "增速远超常态", List.of("facts.last.value")),
+            List.of(new EditorialStory.Claim("c1", "增速连续走高", "fact", List.of("facts.last.value"))),
+            new EditorialStory.Payoff("需要留意后续回落", List.of("facts.last.value")),
+            new EditorialStory.Stakes("关注经济的家庭", "预算安排需要复核"),
+            List.of(),
+            new EditorialStory.Basis("mover", 0.2, null, false, 1.0, 10, "2026-01-01", "2026-01-10",
+                "a".repeat(64), "opportunity", 900L));
+    }
+
     @Test
     @DisplayName("数据看板线：只用池里的数据源，不走 discover/route")
     void dataBoardUsesFrozenDatasets() {
         DatasetRouter router = mock(DatasetRouter.class);
         when(router.pick(any(), any(), anyList())).thenReturn(new DatasetRouter.Route("worldbank-gdp", false));
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router);
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
             List.of(dataset("worldbank-gdp")), List.of(), List.of());
 
@@ -74,7 +98,7 @@ class EditorialLineEditorFrozenPoolTest {
     @DisplayName("数据看板无源：回退解说线并写明原因")
     void dataBoardEmptyFallsBackWithReason() {
         DatasetRouter router = mock(DatasetRouter.class);
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router);
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
             List.of(), List.of(), List.of());
 
@@ -92,7 +116,7 @@ class EditorialLineEditorFrozenPoolTest {
     @DisplayName("总编辑锁定候选：解说线直接用那一条")
     void honoursFocusCandidate() {
         DatasetRouter router = mock(DatasetRouter.class);
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router);
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
         HeronNewsCandidate first = article(9L, "稿子A");
         HeronNewsCandidate second = article(10L, "稿子B");
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(first, second), item -> true,
@@ -118,9 +142,10 @@ class EditorialLineEditorFrozenPoolTest {
     @DisplayName("总编辑锁定数据机会：直接用它的源，不再让选源器重挑")
     void focusedOpportunityLocksItsSource() {
         DatasetRouter router = mock(DatasetRouter.class);
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router);
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(), item -> true,
-            List.of(), List.of(), List.of(), List.of(opportunity(900L, "frankfurter-audcny")));
+            List.of(dataset("frankfurter-audcny")), List.of(), List.of(),
+            List.of(opportunity(900L, "frankfurter-audcny")));
 
         Optional<EditorialChoice> choice = editor.select(DATA_BOARD, pool, "讲人民币", null, 900L);
 
@@ -128,21 +153,22 @@ class EditorialLineEditorFrozenPoolTest {
         assertEquals("frankfurter-audcny", choice.get().selection().dataSourceKey());
         assertFalse(choice.get().selection().digest(), "被机会选中的源不是「没题材时的速览」");
         assertEquals(900L, choice.get().selection().opportunityId(), "要记住这条片子的来源机会，产出后好置 used");
+        assertNotNull(choice.get().selection().story(), "看板线的选材必须带策划结论");
         assertFalse(choice.get().fallbackApplied());
         verify(router, never()).pick(any(), any(), anyList());
     }
 
     @Test
-    @DisplayName("只有数据机会、没有数据源清单：数据看板线照样能出")
-    void opportunityAloneKeepsDataBoard() {
+    @DisplayName("只有数据机会、没有数据源清单：出不了策划结论，看板线就不占槽位")
+    void opportunityWithoutSourceKeepsDataBoardEmpty() {
         DatasetRouter router = mock(DatasetRouter.class);
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router);
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(), item -> true,
             List.of(), List.of(), List.of(), List.of(opportunity(900L, "frankfurter-audcny")));
 
         Optional<EditorialChoice> choice = editor.select(DATA_BOARD, pool, "讲人民币", null);
 
-        assertTrue(choice.isPresent(), "机会非空时不该回退到解说线");
-        assertEquals(DATA_BOARD, choice.get().finalLine());
+        assertTrue(choice.isEmpty(), "找不到数据源就出不了策划结论，这条线不该占槽位");
+        verify(router, never()).pick(any(), any(), anyList());
     }
 }

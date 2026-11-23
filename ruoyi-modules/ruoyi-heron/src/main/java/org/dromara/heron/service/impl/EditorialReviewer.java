@@ -1,6 +1,7 @@
 package org.dromara.heron.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.dromara.heron.domain.EditorialStory;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.vo.ProductionRunVo;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,9 @@ import java.util.Set;
 /**
  * 独立审稿：只审文案有没有把已验证的事实讲对，不重算数据。
  * 事实清单由 Java 给，模型没有独立信源，重新计算只会得到自我确认。
+ *
+ * <p>有策划结论（story/1）时，依据里多一份策划结论：审稿要能回答
+ * 「片子讲的是不是策划讲的那件事」，背离策划就是 MAJOR。
  */
 @Service
 @RequiredArgsConstructor
@@ -95,8 +99,18 @@ public class EditorialReviewer {
     }
 
     public Verdict review(ProductionRunVo run, String scriptJson, String factsJson) {
+        return review(run, scriptJson, factsJson, null);
+    }
+
+    /**
+     * 有策划结论时的审稿。
+     *
+     * <p>审稿要回答的是「片子讲的是不是策划讲的那件事」：张力有没有兑现、
+     * 假设有没有被写成断言、标题的钩子有没有在开场兑现。任何一层背离策划都是 MAJOR。
+     */
+    public Verdict review(ProductionRunVo run, String scriptJson, String factsJson, EditorialStory story) {
         // 事实清单由 Java 给，不存在「核不了」，不要求 coreFacts
-        return plan(model.chat(run, "editorial-review", SYSTEM, prompt(scriptJson, factsJson)), false);
+        return plan(model.chat(run, "editorial-review", SYSTEM, prompt(scriptJson, factsJson, story)), false);
     }
 
     /** 解说线审稿：依据是抓到的证据片段，审「有没有超出原文说过的范围」。 */
@@ -179,9 +193,42 @@ public class EditorialReviewer {
     }
 
     static String prompt(String scriptJson, String factsJson) {
-        return "已被 Java 验证的事实：\n" + factsJson
-            + "\n\n待审文案：\n" + scriptJson
-            + "\n\n按契约输出 JSON。";
+        return prompt(scriptJson, factsJson, null);
+    }
+
+    /** 有策划结论时的审稿依据：事实清单之外多一份策划结论，审的是「有没有按策划讲」。 */
+    static String prompt(String scriptJson, String factsJson, EditorialStory story) {
+        String base = "已被 Java 验证的事实：\n" + factsJson
+            + "\n\n待审文案：\n" + scriptJson;
+        if (story == null) {
+            return base + "\n\n按契约输出 JSON。";
+        }
+        return base + "\n\n已定故事（策划结论，审稿按它对照）：\n" + storyText(story)
+            + "\n\n额外要回答的问题（背离策划就是 MAJOR）：\n"
+            + "- 开场是不是在讲张力，还是背离策划另起了一套？\n"
+            + "- 结尾有没有落到策划的落点，还是自己编了个结论？\n"
+            + "- 标记为假设的主张有没有被写成断言？\n"
+            + "- 标题的钩子有没有在开场兑现？\n"
+            + "段落对应关系：scene1=张力，sceneN=c(N-1)，closing=落点。\n"
+            + "\n按契约输出 JSON。";
+    }
+
+    /** 策划结论的审稿摘要：张力、主张、落点，以及每段该讲什么。 */
+    private static String storyText(EditorialStory story) {
+        StringBuilder text = new StringBuilder();
+        text.append("- 一句话：").append(story.oneLine()).append('\n');
+        if (story.tension() != null) {
+            text.append("- 张力：").append(story.tension().statement()).append('\n');
+        }
+        for (EditorialStory.Claim claim : story.claims()) {
+            text.append("- ").append(claim.id()).append('[')
+                .append("fact".equals(claim.kind()) ? "事实" : "假设").append("]：")
+                .append(claim.text()).append('\n');
+        }
+        if (story.payoff() != null) {
+            text.append("- 落点：").append(story.payoff().text()).append('\n');
+        }
+        return text.toString();
     }
 
     static String evidencePrompt(String scriptJson, String evidenceJson) {

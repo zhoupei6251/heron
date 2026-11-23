@@ -85,6 +85,30 @@ public final class DatasetSignal {
      */
     public static Signal of(JsonNode snapshot, int windowPoints, java.time.YearMonth today,
                             CategoryPolicy policy) {
+        Signal signal = raw(snapshot, windowPoints, policy);
+        if (signal == null) {
+            return null;
+        }
+        // 历史序列（年频的 OWID/Gapminder 一类）末点可能是几年前，当「今天变了」用就是假新闻
+        if (stale(signal.periodEnd(), snapshot.path("cadence").asString(""), today)) {
+            return null;
+        }
+        // 幅度大到不合常理的多半是口径变了，宁可漏掉也不发一条 +1040%
+        if (signal.changePct() != null && Math.abs(signal.changePct()) > MAX_PLAUSIBLE_CHANGE) {
+            return null;
+        }
+        return signal;
+    }
+
+    /**
+     * 与 {@link #of} 同一套算式，但不做「数据过期」与「幅度不可信」两道过滤。
+     *
+     * <p>故事策划要用这两道过滤给出具体的拒绝理由（「数据不新鲜」还是「幅度不可信」），
+     * 所以把它们留在外层单独判，而不是在算信号时一并吞掉。
+     *
+     * @param policy 该类数据的「大变化」口径；{@code eligible=false} 时一律返回 null
+     */
+    static Signal raw(JsonNode snapshot, int windowPoints, CategoryPolicy policy) {
         if (policy == null || !policy.eligible()) {
             return null;
         }
@@ -106,14 +130,6 @@ public final class DatasetSignal {
             default -> null;
         };
         if (signal == null) {
-            return null;
-        }
-        // 历史序列（年频的 OWID/Gapminder 一类）末点可能是几年前，当「今天变了」用就是假新闻
-        if (stale(signal.periodEnd(), cadence, today)) {
-            return null;
-        }
-        // 幅度大到不合常理的多半是口径变了，宁可漏掉也不发一条 +1040%
-        if (signal.changePct() != null && Math.abs(signal.changePct()) > MAX_PLAUSIBLE_CHANGE) {
             return null;
         }
         return signal;

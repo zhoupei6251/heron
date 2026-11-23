@@ -1,5 +1,7 @@
 package org.dromara.heron.domain;
 
+import java.util.List;
+
 /**
  * 线内编辑的最终选择 + 它相对总编辑原判的偏差。
  *
@@ -11,9 +13,18 @@ package org.dromara.heron.domain;
  * @param originalLine    总编辑原始决策线（DATA_BOARD / NEWS_EXPLAINER）
  * @param fallbackApplied 是否发生了跨线回退
  * @param fallbackReason  回退原因码：data_board_empty / explainer_empty
+ * @param storyRejects    被策划闸否掉的候选及原因码，形如 {@code 源键:story_duplicate}。
+ *                        空列表表示没有被否掉的候选。策划拒绝是候选级的：一条不行就换下一条，
+ *                        这些原因码是「今天为什么没选它」的唯一证据，必须跟选择一起留痕。
  */
 public record EditorialChoice(EditorialSelection selection, String originalLine,
-                              boolean fallbackApplied, String fallbackReason) {
+                              boolean fallbackApplied, String fallbackReason,
+                              List<String> storyRejects) {
+
+    public EditorialChoice(EditorialSelection selection, String originalLine,
+                           boolean fallbackApplied, String fallbackReason) {
+        this(selection, originalLine, fallbackApplied, fallbackReason, List.of());
+    }
 
     public EditorialChoice {
         if (selection == null) {
@@ -28,6 +39,7 @@ public record EditorialChoice(EditorialSelection selection, String originalLine,
         if (fallbackApplied && (fallbackReason == null || fallbackReason.isBlank())) {
             throw new IllegalStateException("发生了回退但没有原因");
         }
+        storyRejects = storyRejects == null ? List.of() : List.copyOf(storyRejects);
     }
 
     /** 最终执行线：落库与后续分析都以它为准。 */
