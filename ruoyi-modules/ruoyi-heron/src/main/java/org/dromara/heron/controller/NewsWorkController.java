@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -98,6 +99,17 @@ public class NewsWorkController extends BaseController {
     public void preview(@PathVariable long id, @PathVariable long versionId, @PathVariable String artifactId,
                         HttpServletRequest request, HttpServletResponse response) throws IOException {
         try (NewsFileVo file = news.preview(id, versionId, artifactId)) { stream(file, response, false, request); }
+    }
+
+    /**
+     * 补充评审：按字幕实测区间从成片抽帧，给审片的人看画面。
+     *
+     * <p>帧只回给页面，不落库、不当产物，也不改写质量报告——它不参与任何闸。
+     */
+    @SaCheckPermission("heron:newsWork:review")
+    @GetMapping("/{id}/versions/{versionId}/quality-frames")
+    public R<List<QualityFrameVo>> qualityFrames(@PathVariable long id, @PathVariable long versionId) {
+        return R.ok(news.qualityFrames(id, versionId));
     }
 
     @SaCheckPermission("heron:newsWork:publish")

@@ -1,6 +1,7 @@
 package org.dromara.heron.service.impl;
 
 import cn.hutool.core.util.IdUtil;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
@@ -11,6 +12,7 @@ import org.dromara.heron.domain.HeronVideoVersion;
 import org.dromara.heron.domain.bo.NewsMetricBo;
 import org.dromara.heron.domain.vo.NewsMetricVo;
 import org.dromara.heron.domain.vo.NewsPerformanceInsightVo;
+import org.dromara.heron.domain.vo.NewsSuggestionVo;
 import org.dromara.heron.mapper.HeronNewsMetricMapper;
 import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.dromara.heron.service.INewsMetricService;
@@ -23,7 +25,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /** 发布表现：只做记录与读取，不做推算；没有数据时如实返回空表。 */
 @Slf4j
@@ -32,6 +36,11 @@ import java.util.List;
 public class NewsMetricServiceImpl implements INewsMetricService {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final int MAX_SUGGESTIONS = 20;
+    /** 创作建议只取模型给的主观条目；客观条目的结论是算出来的，不该出现在这一区。 */
+    private static final Set<String> MODEL_CLASSES = Set.of("subjective", "hypothesis");
+    /** pass 没有可改的东西，unknown 没有内容；只有这两档才是真的提了建议。 */
+    private static final Set<String> ACTIONABLE_VERDICTS = Set.of("minor", "fail");
 
     private final HeronNewsMetricMapper metrics;
     private final HeronVideoVersionMapper versions;
@@ -104,6 +113,49 @@ public class NewsMetricServiceImpl implements INewsMetricService {
             .map(this::toSample)
             .toList();
         return MetricInsightAnalyzer.analyze(key, samples);
+    }
+
+    /**
+     * 创作建议：L3 报告里模型给的主观条目。
+     *
+     * <p>只取 subjective / hypothesis 且不是 pass 的条目——客观条目的结论是算出来的，
+     * 放进建议区会让「算出来的」和「模型说的」混成一类。这些条目不是结论也不是预测：
+     * 采纳与否由人决定，采纳后要显式记一条策略覆盖，而不是让页面替人做决定。
+     */
+    @Override
+    public List<NewsSuggestionVo> suggestions(int limit) {
+        int size = limit <= 0 ? MAX_SUGGESTIONS : Math.min(limit, MAX_SUGGESTIONS);
+        List<HeronVideoVersion> rows = versions.selectPage(new Page<HeronVideoVersion>(1, size, false),
+            QueryBuilder.lambda(HeronVideoVersion.class)
+                .isNotNull(HeronVideoVersion::getQualityReport)
+                .orderByDesc(HeronVideoVersion::getUpdateTime)
+                .build()).getRecords();
+        List<NewsSuggestionVo> out = new ArrayList<>();
+        for (HeronVideoVersion row : rows) {
+            JsonNode report = readTree(row.getQualityReport(), row.getVersionId());
+            String promptVersion = report.path("promptVersion").asString("");
+            String modelId = report.path("modelId").asString("");
+            String source = "L3 质量审稿"
+                + (promptVersion.isBlank() ? "" : " · " + promptVersion)
+                + (modelId.isBlank() ? "" : " · " + modelId);
+            for (JsonNode item : report.path("criteria")) {
+                String criterionClass = item.path("class").asString("");
+                String verdict = item.path("verdict").asString("");
+                String reason = item.path("reason").asString("");
+                if (!MODEL_CLASSES.contains(criterionClass) || !ACTIONABLE_VERDICTS.contains(verdict)
+                    || reason.isBlank()) {
+                    continue;
+                }
+                String criterionId = item.path("id").asString("");
+                out.add(new NewsSuggestionVo(row.getVersionId() + ":" + criterionId, row.getVersionId(),
+                    criterionId, reason, source, "hypothesis".equals(criterionClass), criterionClass,
+                    item.path("confidence").asString("")));
+                if (out.size() >= size) {
+                    return out;
+                }
+            }
+        }
+        return out;
     }
 
     /** 一行采样 + 这版视频身上能直接读出来的创作属性。读不到的属性留空，交给分桶归到「未记录」。 */

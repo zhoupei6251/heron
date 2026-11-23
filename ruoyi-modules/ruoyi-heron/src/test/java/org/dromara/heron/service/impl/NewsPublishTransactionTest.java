@@ -59,7 +59,7 @@ class NewsPublishTransactionTest {
             var clock = Clock.fixed(Instant.parse("2026-11-18T08:10:00Z"), ZoneOffset.UTC);
             var clocks = new StaticListableBeanFactory(Map.of("clock", clock)).getBeanProvider(Clock.class);
             service = new NewsWorkServiceImpl(null, null, null, null, null, access, null, null, null,
-                tx, clocks, adapter, null, new HeronNewsProperties(), attempts) {
+                tx, clocks, adapter, null, new HeronNewsProperties(), attempts, null) {
                 @Override PreparedPublish prepareConfirm(long work, long version, NewsReviewBo review, long actor, boolean system) {
                     assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
                     PublishRequest request = replay ? null : new PublishRequest(8, version, "标题", "a".repeat(64),

@@ -40,7 +40,7 @@
 | 字幕是 cue 级不是词级 | `NewsNarrationTiming.java` | `Span(id, startMs, endMs, cueInterpolated)`，插值上限 1000ms |
 | 视觉焦点是机器算的 | `DatasetVisualFocus.forScene(scene, snapshot)` | 返回 `Focus(mode, refs, labels)`，mode ∈ change/comparison/range/latest/leader/item/overview；取不到就抛 `dataset_focus_invalid`，**没有静默降级** |
 | 归因已有四个维度 | `HeronNewsMetricMapper.xml` `performanceBreakdown` | 用 `json_extract(v.input_snapshot,'$.selection.templateId')`、`'$.editorial.line'`、`'$.editorial.storyAngle'`、`c.source_kind` 分桶；无快照归「未记录」；每个版本只取 `fetched_at` 最新一条采样 |
-| **`source` 维度对数据看板线归因错误** | `HeronNewsMetricMapper.xml` 的 `case when c.source_kind = 'research' then 'research' when c.candidate_id is null then '未记录' else 'hotlist' end` + `NewsWorkServiceImpl.java:214-237` `placeholderCandidate` | `source_kind` 全仓只有 `ResearchPromotionServiceImpl.java:143` 写过（值 `research`）；数据看板线认领时建的是**占位候选**，`source_kind` 为 NULL → 落进 `else 'hotlist'`。**当前形态的数据看板片在归因里被算成「热榜」**。P3 引用这个维度前必须先修（§11.6） |
+| **`source` 维度对数据看板线归因错误** | `HeronNewsMetricMapper.xml` 的 `case when c.source_kind = 'research' then 'research' when c.candidate_id is null then '未记录' else 'hotlist' end` + `NewsWorkServiceImpl.java:214-237` `placeholderCandidate` | `source_kind` 全仓只有 `ResearchPromotionServiceImpl.java:143` 写过（值 `research`）；数据看板线认领时建的是**占位候选**，`source_kind` 为 NULL → 落进 `else 'hotlist'`。**当前形态的数据看板片在归因里被算成「热榜」**。P3 引用这个维度前必须先修（§11.6）。**已修**：读侧 Java 分桶 + 写侧占位写 `data_board`，存量回填 V53 待执行 |
 | 维度是白名单 | `NewsMetricServiceImpl.java:26-27` | `GROUP_BY_KEYS = {template, line, angle, source}`，未知维度直接 400 `metric_dimension_invalid` |
 | 表现数据是人工录入的 | `NewsMetricController.java`、`007-news-metric.sql` | `heron_news_metric` 一行一次采样；无采集器，样本天然稀少 |
 | 样本不足的提示已经存在 | `heron-ui/src/views/heron/analytics/index.vue:63` | `samples >= 3 ? '可参考' : '样本不足'`；页面明确写着「还不能做的：让编辑策略自动参考历史表现」 |
@@ -618,18 +618,9 @@ MySQL 8 没有 `median()`。实现路径：**在 SQL 里用窗口函数排出每
 
 **先修既有错误，再谈新维度**：`source` 维度当前的 `case when c.source_kind = 'research' then 'research' when c.candidate_id is null then '未记录' else 'hotlist' end` 分桶，对数据看板线是错的——该线的候选是 `NewsWorkServiceImpl.java:214-237` `placeholderCandidate` 建的占位行，`source_kind` 为 NULL 而 `candidate_id` 非空，于是落进 `else 'hotlist'`。**当前形态的数据看板片在归因里被算成「热榜」**（证据见 §1、§9 第 1 行）。
 
-修法（设计，未执行）：`source` 分桶改成先看快照 `$.kind`，再看候选来源——
+修法（已落地）：读侧分桶移到 Java（`MetricInsightAnalyzer.sourceBucket`），先看快照 `$.kind`（trend / data_board），再看候选来源，取不到归「未记录」——比原设计的 SQL case-when 多覆盖了 trend 子线；写侧 `placeholderCandidate` 现在写入 `source_kind = 'data_board'`（常量 `HeronNewsCandidate.SOURCE_DATA_BOARD`），存量占位行由 `047-candidate-source-data-board.sql` / `V53` 回填（迁移未执行，需库变更授权）。测试：`MetricInsightAnalyzerTest`（读侧）、`NewsPlaceholderSourceKindTest`（写侧）。
 
-```sql
-case
-  when json_extract(v.input_snapshot, '$.kind') = 'data_board' then 'data_board'
-  when c.source_kind = 'research' then 'research'
-  when c.candidate_id is null then '未记录'
-  else 'hotlist'
-end
-```
-
-`$.kind` 是冻结快照的既有字段（`FrozenContext` 节点之一，`SCHEMA = "1.0"`），不需要新增任何数据。改完这一步，`source` 才是可信的归因维度；**在此之前，任何按 `source` 做的历史表现结论都不可用**（§11.4 的样本量与置信度约束以分桶正确为前提）。
+`$.kind` 是冻结快照的既有字段（`FrozenContext` 节点之一，`SCHEMA = "1.0"`），不需要新增任何数据。**V53 回填执行前，任何按 `source` 做的历史表现结论仍不可用**（§11.4 的样本量与置信度约束以分桶正确为前提；新数据读侧已按快照分流，不受回填影响）。
 
 **新增维度建议**（按 §9 的十二项属性，且都能稳定分桶）：
 

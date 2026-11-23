@@ -10,8 +10,11 @@ import org.dromara.common.web.core.BaseController;
 import org.dromara.heron.domain.bo.NewsMetricBo;
 import org.dromara.heron.domain.vo.NewsMetricVo;
 import org.dromara.heron.domain.vo.NewsPerformanceInsightVo;
+import org.dromara.heron.domain.vo.NewsSuggestionVo;
+import org.dromara.heron.domain.vo.StrategyHypothesisVo;
 import org.dromara.heron.domain.vo.StrategyReferenceVo;
 import org.dromara.heron.service.INewsMetricService;
+import org.dromara.heron.service.impl.StrategyHypothesisService;
 import org.dromara.heron.service.impl.StrategyReferenceService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -26,6 +29,7 @@ import java.util.List;
 public class NewsMetricController extends BaseController {
     private final INewsMetricService metrics;
     private final StrategyReferenceService references;
+    private final StrategyHypothesisService hypotheses;
 
     @SaCheckPermission("heron:newsWork:publish")
     @Log(title = "发布表现", businessType = BusinessType.INSERT)
@@ -66,5 +70,35 @@ public class NewsMetricController extends BaseController {
         @RequestParam(defaultValue = "template") String dimension,
         @RequestParam(required = false) String bucketValue) {
         return R.ok(references.reference(dimension, bucketValue));
+    }
+
+    /**
+     * 创作建议：L3 质量报告里的主观条目（subjective / hypothesis）。
+     *
+     * <p>它们不是结论、也不是预测：采纳与否是人决定的，采纳后要显式记一条策略覆盖。
+     */
+    @SaCheckPermission("heron:newsWork:list")
+    @GetMapping("/suggestions")
+    public R<List<NewsSuggestionVo>> suggestions(@RequestParam(defaultValue = "20") int limit) {
+        return R.ok(metrics.suggestions(limit));
+    }
+
+    /** 模型提出的策略假设：只作待验证项，不是结论。 */
+    @SaCheckPermission("heron:newsWork:list")
+    @GetMapping("/hypotheses")
+    public R<List<StrategyHypothesisVo>> hypotheses(@RequestParam(defaultValue = "20") int limit) {
+        return R.ok(hypotheses.list(limit));
+    }
+
+    /**
+     * 生成一批策略假设：人工触发，一次最多 5 条。
+     *
+     * <p>模型只看归因分组，分组不存在、验证条件不够硬、带预测措辞的一律不进库。
+     */
+    @SaCheckPermission("heron:newsWork:review")
+    @Log(title = "策略假设", businessType = BusinessType.INSERT, isSaveRequestData = false, isSaveResponseData = false)
+    @PostMapping("/hypotheses")
+    public R<List<StrategyHypothesisVo>> generateHypotheses() {
+        return R.ok(hypotheses.generate());
     }
 }

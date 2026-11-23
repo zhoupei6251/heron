@@ -6,7 +6,9 @@ import org.dromara.heron.service.impl.DataOpportunityRunner;
 import org.dromara.heron.service.impl.DataOpportunityService;
 import org.dromara.heron.service.impl.NewsAutoRunner;
 import org.dromara.heron.service.impl.NewsAutoService;
+import org.dromara.heron.service.impl.NewsCleanupRunner;
 import org.dromara.heron.service.impl.NewsSourceRunner;
+import org.dromara.heron.service.impl.NewsWorkServiceImpl;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -48,5 +50,12 @@ public class HeronNewsConfiguration {
     public DataOpportunityRunner dataOpportunityRunner(DataOpportunityService opportunities, HeronNewsProperties news,
                                                        @Qualifier("scheduledExecutorService") ScheduledExecutorService scheduler) {
         return new DataOpportunityRunner(opportunities, news, scheduler);
+    }
+
+    /** 成片本地副本保留 30 天，到期定时清理；清理自带发布保护与 .keep，无需额外开关。 */
+    @Bean
+    public NewsCleanupRunner newsCleanupRunner(NewsWorkServiceImpl maintenance,
+                                               @Qualifier("scheduledExecutorService") ScheduledExecutorService scheduler) {
+        return new NewsCleanupRunner(maintenance, scheduler);
     }
 }

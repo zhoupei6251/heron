@@ -5,6 +5,8 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.heron.domain.bo.*;
 import org.dromara.heron.domain.vo.*;
 
+import java.util.List;
+
 /** 新闻候选、作品和人工审片业务入口。 */
 public interface INewsWorkService {
     PageResult<NewsCandidateVo> candidates(NewsCandidateQuery query);
@@ -32,6 +34,8 @@ public interface INewsWorkService {
     NewsVideoVersionVo resolvePublishAttempt(long workId, long versionId, long attemptId, NewsPublishResolveBo bo);
     /** 审片专用文件入口，不赋予正式下载权。 */
     NewsFileVo preview(long workId, long versionId, String artifactId);
+    /** 补充评审：按字幕实测区间从成片抽帧，帧只回给页面，不落库、不进质量报告。 */
+    List<QualityFrameVo> qualityFrames(long workId, long versionId);
     /** 仅返回已审且双指纹仍匹配的 MP4。调用方负责关闭返回句柄。 */
     NewsFileVo download(long workId, long versionId, String artifactId, String videoSha256);
 }

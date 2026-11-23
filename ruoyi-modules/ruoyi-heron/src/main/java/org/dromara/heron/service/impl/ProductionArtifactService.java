@@ -241,7 +241,7 @@ public class ProductionArtifactService {
         return configKey == null || configKey.isBlank() ? null : OssFactory.instance(configKey);
     }
 
-    /** 定稿即上传、上传成功才删本地：磁盘只当工作区，桶才是产物的长期落点。 */
+    /** 定稿即上传；本地副本保留到版本清理（30 天），供发布与抽帧直接用，不即时删。 */
     private void uploadIfConfigured(Path target, String mediaType, String sha256) {
         OssClient oss = oss();
         if (oss == null) {
@@ -250,8 +250,7 @@ public class ProductionArtifactService {
         try {
             oss.upload(storageKey(target), target, Options.create()
                 .setContentType(mediaType).setMetadata(Map.of("sha256", sha256)));
-            Files.delete(target);
-        } catch (IOException | RuntimeException e) {
+        } catch (RuntimeException e) {
             throw new HeronBusinessException(503, "production_object_store_failed",
                 "产物上传对象存储失败: " + e.getClass().getSimpleName());
         }

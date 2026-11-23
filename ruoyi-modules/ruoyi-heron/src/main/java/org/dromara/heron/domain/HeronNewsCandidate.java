@@ -17,6 +17,8 @@ public class HeronNewsCandidate extends BaseEntity {
     public static final String SOURCE_RESEARCH = "research";
     /** 知识包条目生成的选题；sourceKey 指向知识源（data/knowledge/<sourceKey>）。 */
     public static final String SOURCE_KNOWLEDGE = "knowledge";
+    /** 数据看板线的占位候选；不写就会被列语义（空=热榜）错归因成热榜。 */
+    public static final String SOURCE_DATA_BOARD = "data_board";
 
     @TableId private Long candidateId;
     private String title;
@@ -24,7 +26,7 @@ public class HeronNewsCandidate extends BaseEntity {
     /** 有界证据 JSON：items 与 evidenceTruncated。 */
     private String evidence;
     /**
-     * 来源：research 表示由内容决策提升而来，空表示热榜抓取。
+     * 来源：research 表示由内容决策提升而来，knowledge 知识选题，data_board 数据看板占位，空表示热榜抓取。
      *
      * <p>为什么要独立成列而不是从证据 JSON 里现解析：自动模式要按来源做准入判定，
      * 靠证据结构推出来的结论会随证据形状变化而静默失效。

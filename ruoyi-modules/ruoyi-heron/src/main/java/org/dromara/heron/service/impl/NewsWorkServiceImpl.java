@@ -62,6 +62,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private final NewsTemplatePicker templatePicker;
     private final HeronNewsProperties news;
     private final NewsPublishAttempts publishAttempts;
+    private final QualityFrameService frameExtractor;
 
     @Override
     public PageResult<NewsCandidateVo> candidates(NewsCandidateQuery query) {
@@ -221,6 +222,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         // dedup_key 由候选 ID 派生，保证每次占位互不覆盖——占位候选不进热榜池，不参与去重。
         placeholder.setDedupKey(DigestUtil.sha256Hex("data-board:" + placeholder.getCandidateId()));
         placeholder.setNormalizedTitle(NewsDedup.normalizedTitle(title));
+        placeholder.setSourceKind(HeronNewsCandidate.SOURCE_DATA_BOARD);
         placeholder.setSummary("数据看板线由数据集驱动，非新闻候选");
         placeholder.setEvidence(JsonUtils.toJsonString(java.util.Map.of("items", java.util.List.of())));
         placeholder.setHitCount(1L);
@@ -783,6 +785,19 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         NewsProductionDomain.requirePreviewKind(selected.kind());
         readyFiles(version);
         return domain.openFile(version, selected);
+    }
+
+    /**
+     * 补充评审抽帧：只读，不加锁也不落库。
+     *
+     * <p>帧是给人的画面证据，不改写质量报告，也不影响任何闸。
+     */
+    @Override
+    public List<QualityFrameVo> qualityFrames(long workId, long versionId) {
+        HeronVideoVersion version = requireVersion(requireWork(workId, "review"), versionId);
+        if (version.getArtifactManifest() == null) throw new HeronBusinessException(410, "news_files_expired", "该版本还没有成片");
+        readyFiles(version);
+        return frameExtractor.extract(version);
     }
 
     @Override
