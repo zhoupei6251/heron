@@ -4,10 +4,11 @@
 
 ## 编码前读取
 
-1. [CLAUDE.md](CLAUDE.md)：项目定位、业务边界、代码约定与验证命令。
-2. [后端编码 Skill](.codex/skills/ruoyi-plus-ai-coding/SKILL.md) 和 [后端 reference](.codex/skills/ruoyi-plus-ai-coding/references/backend.md)。
-3. 需要场景细化或委派时读取 [后端角色入口](.claude/agents/backend-engineering.md)，再按其路由读取适用角色，不展开全部角色。
-4. 涉及前端时同时读取 [前端入口](../heron-ui/AGENTS.md)；业务需求查阅 [业务规格](docs/plans/2026-10-29-heron-business-spec.md)。
+1. [个人上下文](../personal-ai-context/CORE.md)：关于本人的背景与协作偏好，换机或换工具后从同一份恢复；只作背景，不扩大本仓库写库、重启、部署的授权。
+2. [CLAUDE.md](CLAUDE.md)：项目定位、业务边界、代码约定与验证命令。
+3. [后端编码 Skill](.codex/skills/ruoyi-plus-ai-coding/SKILL.md) 和 [后端 reference](.codex/skills/ruoyi-plus-ai-coding/references/backend.md)。
+4. 需要场景细化或委派时读取 [后端角色入口](.claude/agents/backend-engineering.md)，再按其路由读取适用角色，不展开全部角色。
+5. 涉及前端时同时读取 [前端入口](../heron-ui/AGENTS.md)；业务需求查阅 [业务规格](docs/plans/2026-10-29-heron-business-spec.md)。
 
 Qoder 可直接读取以上指导材料；只有会话已列出的 Skill 和 Agent 才能按原生名称调用，文件存在不代表同名能力已注册。不要复制 Claude/Codex 的平台配置、权限或 Hooks。
 
