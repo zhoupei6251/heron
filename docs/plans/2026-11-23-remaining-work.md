@@ -8,7 +8,7 @@
 
 | # | 欠账 | 现状（代码证据） | 下一步的卡点 |
 | --- | --- | --- | --- |
-| 1 | **compare 做成真正两栏对照** | `data/templates/_shared/storyboard.css:22-26` 只有面板底色，没有两栏结构；`data/templates/_gen/behaviors/chart.js:3-5` 没有 compare 分支 | 数据其实有：`DatasetFacts.java:77-83`（首末/变化）、`:116-132`（每序列首末、领先者）、`:144-180`（rows/geo 的领先者与差值）。缺的是契约：`DatasetScriptContract` 里 compare 零命中，得先定「比哪两个」 |
+| 1 | **compare 做成真正两栏对照** | 已做（2026-11-23）：`docs/plans/2026-11-23-compare-two-column-design.md` | 原来只有「正文垫一层面板」，对照关系只在句子里 |
 | 2 | **黑场/冻结帧从「只记」变成「拦」** | `VideoSignalCheck.java:29-45` 用 ffmpeg 算得出黑场与冻结，`:106` 解析；`NewsProductionPipeline.java:405-420` 注释明写「只记不拦」，只写 measured | 阈值没定。报告 `docs/2026-11-20-storyboard-and-visual-signal-report.md:216` 建议先收一个月量再定 |
 | 3 | **人工编辑故事 + 故事历史表现回填** | story 由 `DatasetStoryPlanner` 生成；`controller/` 下没有任何 story 写接口，前端 `api/heron/editorial/index.ts` 只有 2 个 GET | 表现数据挂在版本上不挂故事：`NewsMetricBo.java:15-22` 按 versionId/platform/plays/completionRate；消费方 `NewsCandidateScreener.java:61,93-97` |
 | 4 | **3D 资产库只有 1 个模板** | `data/templates` 下只有 `news-data-3d-9x16` 声明 globe；`data/templates/_gen/behaviors/globe.js:13` 只认 `dataset.shape === "geo"` | 要第二个空间模板（terrain / 剖面 / 柱阵），先定做哪种 |
@@ -28,6 +28,7 @@
   `headline / number / compare / chart / text / compare`，`scene_count=6`。
 - **3D 链路端到端**：2026-11-23 已跑通（16 道门禁全过，见 `docs/acceptance-2026-11-23/geo-acceptance-summary.md`）。
 - **冲击屏**（本轮做的）：`docs/plans/2026-11-23-storyboard-takeover-design.md`。
+- **compare 真两栏**（本轮做的）：`docs/plans/2026-11-23-compare-two-column-design.md`。
 - **字体可变字重**：`data/fonts/NotoSansSC-Regular.otf` 带 fvar/gvar 真可变表，文档里「单字重」的说法与代码不符。
 - **成片保留 30 天**：`NewsCleanupRunner` 已在跑。
 - **geo 数据源接入**：`UsgsQuakeGeoAdapter` + 迁移 `V52__data_source_geo.sql`。

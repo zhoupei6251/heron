@@ -283,6 +283,11 @@ function script(cfg) {
     files.push(path.join(GEN, 'behaviors', 'globe.js'));
   }
   files.push(path.join(GEN, 'motion.js'));
+  // compare 真两栏：数字与标签来自数据事实。这一段要借 motion.js 的 DUR / EASE
+  // 与同一条时间轴（进出场跟着所在屏走），所以必须排在 motion.js 之后。
+  if ((cfg.supportedSceneTypes || []).includes('compare')) {
+    files.push(path.join(GEN, 'behaviors', 'compare.js'));
+  }
   for (const file of files) {
     if (!fs.existsSync(file)) fail(`${cfg.key}: 缺少脚本片段 ${path.relative(TEMPLATES, file)}`);
   }
