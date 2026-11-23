@@ -613,11 +613,20 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     public record TemplateInfo(String key, String name, String description,
                                List<String> supportedLines, List<String> supportedSceneTypes,
                                String aspectRatio, Integer minDuration, Integer maxDuration,
-                               TemplateStyle style) {
+                               TemplateStyle style, VisualMode visualMode) {
 
         /** 只关心名字与描述的调用方（运行回放、提示词摘要）用这个。 */
         public TemplateInfo(String key, String name, String description) {
-            this(key, name, description, List.of(), List.of(), null, null, null, null);
+            this(key, name, description, List.of(), List.of(), null, null, null, null, VisualMode.TWO_D);
+        }
+
+        /** 没声明视觉模式的模板都是 2D：3D 必须是显式声明，不能靠缺省猜出来。 */
+        public TemplateInfo(String key, String name, String description,
+                            List<String> supportedLines, List<String> supportedSceneTypes,
+                            String aspectRatio, Integer minDuration, Integer maxDuration,
+                            TemplateStyle style) {
+            this(key, name, description, supportedLines, supportedSceneTypes,
+                aspectRatio, minDuration, maxDuration, style, VisualMode.TWO_D);
         }
 
         /** 老模板没写 supportedLines 时按命名前缀推：news-data-* 是看板线，其余是解说线。 */
@@ -630,8 +639,14 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         }
     }
 
-    /** 风格只用于展示与前端预览，不参与选模板：选模板看的是线路与场景能力。 */
+    /**
+     * 风格：一套画面语法的身份。
+     *
+     * <p>叙事类型登记在风格上，不登记在模板上——一套画面语法能承载多种叙事，模板只是它的实现。
+     * 叙事类型是选风格的硬依据：先有故事（知道这条片子讲什么），才知道该用哪套画面。
+     */
     public record TemplateStyle(String key, String name, String label, String role,
+                                List<String> narratives,
                                 String bg, String fg, String accent) { }
 
     public List<TemplateInfo> templateCatalog() {
@@ -645,6 +660,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             Integer minDuration = null;
             Integer maxDuration = null;
             TemplateStyle style = null;
+            VisualMode visualMode = VisualMode.TWO_D;
             if (root != null) {
                 Path meta = root.toAbsolutePath().normalize().resolve(key).resolve("template.json");
                 if (Files.isRegularFile(meta)) {
@@ -655,6 +671,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
                         lines = strings(node.path("supportedLines"));
                         sceneTypes = strings(node.path("supportedSceneTypes"));
                         aspectRatio = node.path("aspectRatio").asString("");
+                        visualMode = VisualMode.ofKey(node.path("visualMode").asString(""));
                         JsonNode duration = node.path("recommendedDuration");
                         if (duration.isObject()) {
                             minDuration = duration.path("min").isInt() ? duration.path("min").asInt() : null;
@@ -667,6 +684,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
                                 styleNode.path("name").asString(""),
                                 styleNode.path("label").asString(""),
                                 styleNode.path("role").asString(""),
+                                strings(styleNode.path("narratives")),
                                 styleNode.path("bg").asString(""),
                                 styleNode.path("fg").asString(""),
                                 styleNode.path("accent").asString(""));
@@ -677,7 +695,8 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
                 }
             }
             return new TemplateInfo(key, name, description, lines, sceneTypes,
-                aspectRatio == null || aspectRatio.isBlank() ? null : aspectRatio, minDuration, maxDuration, style);
+                aspectRatio == null || aspectRatio.isBlank() ? null : aspectRatio, minDuration, maxDuration,
+                style, visualMode);
         }).toList();
     }
 

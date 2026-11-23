@@ -44,6 +44,8 @@ class NewsTemplatePickerTest {
      * <p>曾经有过：人工认领走两参版本，两条线的模板一起进候选，于是有正文的文章候选
      * 选中了 news-data-9x16，脚本却按解说线写 text 场景，契约校验直接失败
      * （error_code = scene_type_unsupported）。线路必须由调用方交代清楚。
+     *
+     * <p>带叙事的那一版是四参：叙事决定视觉风格，风格再决定模板。
      */
     @Test
     void pickAlwaysRequiresLine() {
@@ -51,8 +53,10 @@ class NewsTemplatePickerTest {
             .filter(method -> "pick".equals(method.getName())).toList();
 
         assertFalse(picks.isEmpty(), "找不到 pick 方法，测试失去意义");
-        assertTrue(picks.stream().allMatch(method -> method.getParameterCount() == 3),
+        assertTrue(picks.stream().allMatch(method -> method.getParameterCount() >= 3),
             "pick 必须带 line 参数，否则两条线的模板会混在一起");
+        assertTrue(picks.stream().noneMatch(method -> method.getParameterCount() == 2),
+            "pick 不能没有 line 参数");
     }
 
     @Test
@@ -67,5 +71,37 @@ class NewsTemplatePickerTest {
         assertTrue(explainer.supports(EditorialDecisionService.NEWS_EXPLAINER));
         assertTrue(dataBoard.supports(EditorialDecisionService.DATA_BOARD));
         assertFalse(explainer.supports(EditorialDecisionService.DATA_BOARD));
+    }
+
+    private static final NewsProductionDomain.TemplateStyle DATA_BOARD_STYLE =
+        new NewsProductionDomain.TemplateStyle("data-board", "Dynamic Data Explainer", "动态数据解释",
+            "数据看板解读", List.of("trend_reversal", "numeric_contrast"), "#000000", "#ffffff", "#18b7c9");
+
+    private static NewsProductionDomain.TemplateInfo dataBoard(String key, VisualMode mode) {
+        return new NewsProductionDomain.TemplateInfo(key, key, "",
+            List.of(EditorialDecisionService.DATA_BOARD), List.of("headline", "chart"), "9:16", 30, 60,
+            DATA_BOARD_STYLE, mode);
+    }
+
+    @Test
+    @DisplayName("视觉模式决定实现：2D 不会挑到 3D 模板，3D 也不会落到 2D")
+    void visualModeSelectsImplementation() {
+        var picker = new NewsTemplatePicker(null, null, null);
+        var pool = List.of(dataBoard("board-2d", VisualMode.TWO_D), dataBoard("board-3d", VisualMode.THREE_D));
+
+        assertEquals("board-2d", picker.pickFrom(pool, "标题", "摘要",
+            EditorialDecisionService.DATA_BOARD, "numeric_contrast", VisualMode.TWO_D));
+        assertEquals("board-3d", picker.pickFrom(pool, "标题", "摘要",
+            EditorialDecisionService.DATA_BOARD, "numeric_contrast", VisualMode.THREE_D));
+    }
+
+    @Test
+    @DisplayName("要求 3D 却没有 3D 模板：拒绝这条候选，不悄悄退回 2D")
+    void threeDWithoutTemplateIsRejected() {
+        var picker = new NewsTemplatePicker(null, null, null);
+        var only2d = List.of(dataBoard("board-2d", VisualMode.TWO_D));
+
+        assertNull(picker.pickFrom(only2d, "标题", "摘要",
+            EditorialDecisionService.DATA_BOARD, "numeric_contrast", VisualMode.THREE_D));
     }
 }

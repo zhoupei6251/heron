@@ -1,0 +1,28 @@
+/* 三维地球：画布、图例与 KPI。KPI 的排版与 chart.css 保持同一口径，
+   因为 globe 模板不带 chart.js，读不到那边的样式。 */
+#kpi { display: flex; align-items: baseline; gap: 14px; margin-top: 24px; }
+#kpi-value { font-size: var(--fs-data); font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
+#kpi-unit { font-size: var(--fs-label); color: var(--muted); }
+#kpi-change { font-size: 32px; font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+#focus-caption { margin: 12px 0 0; font-size: 28px; font-weight: 600; line-height: 1.4; color: var(--muted-2); }
+
+.globe-stage { position: relative; width: 100%; height: 100%; }
+#globe-fallback, #globe-canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+#globe-canvas { visibility: hidden; }
+.globe-stage.is-webgl #globe-canvas { visibility: visible; }
+.globe-stage.is-webgl #globe-fallback { visibility: hidden; }
+
+#globe-legend {
+  position: absolute;
+  left: var(--pad-frame);
+  right: var(--pad-frame);
+  bottom: 0;
+  display: flex;
+  gap: 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+#globe-legend li { flex: 1; display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 4px solid var(--accent); }
+.globe-legend-name { font-size: 26px; font-weight: 700; line-height: 1.3; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.globe-legend-value { font-size: 30px; font-weight: 800; line-height: 1.1; color: var(--accent); font-variant-numeric: tabular-nums; }

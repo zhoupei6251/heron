@@ -27,7 +27,7 @@ public final class DatasetScriptContract {
      * 契约只映射到这张表里的值：纸上写过但没实现的图表类型不允许放行。
      */
     private static final Set<String> RENDERABLE_CHARTS = Set.of("line", "bars", "race", "stacked", "multiline",
-        "radar");
+        "radar", "globe");
     private static final int TITLE_CODE_POINTS = 15;
     private static final int MIN_SCENES = 3;
     private static final int MAX_SCENES = 6;
@@ -66,15 +66,17 @@ public final class DatasetScriptContract {
     /**
      * 数据形态 → 图表模块；模板侧按这个值选绘图区。
      *
-     * <p>只映射渲染端真有的模块。{@code geo} 曾经映射到 {@code map}，
-     * 但 chart.js 没有地图实现，渲到一半就抛错——空串表示「这个形态没有可用图表」，
-     * 由取数闸在调模型之前就拒绝，而不是写完整条稿子才发现出不了图。
+     * <p>{@code geo} 映射到 {@code globe}：三维地球由 3D 模板实现，2D 模板没有这个模块。
+     * 选线内编辑按 {@link VisualMode} 把 geo 故事收窄到 3D 模板，
+     * 所以 {@code chart=globe} 不会落进 2D 模板——配对由选模板那一层保证，不靠渲染期碰运气。
+     * 空串仍表示「这个形态没有可用图表」，由取数闸在调模型之前拒绝。
      */
     public static String chartFor(String shape) {
         return switch (shape == null ? "" : shape) {
             case "wide" -> "line";
             case "long" -> "race";
             case "rows" -> "bars";
+            case "geo" -> "globe";
             default -> "";
         };
     }

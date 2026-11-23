@@ -49,6 +49,8 @@ class EditorialLineEditorFrozenPoolTest {
     private static NewsTemplatePicker templatePicker() {
         NewsTemplatePicker picker = mock(NewsTemplatePicker.class);
         when(picker.pick(any(), any(), anyString())).thenReturn("news-9x16");
+        // 看板线带叙事选模板：叙事决定风格，风格决定模板
+        when(picker.pick(any(), any(), anyString(), any(), any())).thenReturn("news-data-9x16");
         return picker;
     }
 
@@ -127,6 +129,39 @@ class EditorialLineEditorFrozenPoolTest {
         assertTrue(choice.isPresent());
         assertEquals(10L, choice.get().selection().candidateId());
         assertFalse(choice.get().fallbackApplied());
+    }
+
+    @Test
+    @DisplayName("总编辑意图进选源上下文：选源器看得到今天要做什么方向")
+    void intentReachesRouterContext() {
+        DatasetRouter router = mock(DatasetRouter.class);
+        when(router.pick(any(), any(), anyList())).thenReturn(new DatasetRouter.Route("worldbank-gdp", false));
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
+        EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(), item -> true,
+            List.of(dataset("worldbank-gdp")), List.of(), List.of());
+
+        editor.select(DATA_BOARD, pool, "用 3D 地球呈现全球地震分布", null);
+
+        org.mockito.ArgumentCaptor<tools.jackson.databind.JsonNode> input =
+            org.mockito.ArgumentCaptor.forClass(tools.jackson.databind.JsonNode.class);
+        verify(router).pick(any(), input.capture(), anyList());
+        assertEquals("用 3D 地球呈现全球地震分布", input.getValue().path("title").asString());
+    }
+
+    @Test
+    @DisplayName("数据线回退解说线：不带旧方向的角度，geo 意图不能塞进新闻片")
+    void crossLineFallbackDropsStaleIntent() {
+        DatasetRouter router = mock(DatasetRouter.class);
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
+        EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
+            List.of(), List.of(), List.of());
+
+        Optional<EditorialChoice> choice = editor.select(DATA_BOARD, pool, "用 3D 地球呈现全球地震分布", null);
+
+        assertTrue(choice.isPresent());
+        assertTrue(choice.get().fallbackApplied());
+        assertEquals(NEWS_EXPLAINER, choice.get().finalLine());
+        assertEquals("", choice.get().selection().storyAngle());
     }
 
     private static HeronDataOpportunity opportunity(long id, String sourceKey) {

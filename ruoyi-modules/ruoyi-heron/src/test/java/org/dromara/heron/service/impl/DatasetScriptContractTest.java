@@ -78,10 +78,10 @@ class DatasetScriptContractTest {
     }
 
     @Test
-    @DisplayName("geo 没有渲染模块：映射为空、不可渲染、契约直接拒绝")
-    void geoFailsClosed() {
-        assertTrue(DatasetScriptContract.chartFor("geo").isEmpty(), "geo 不该再映射到没有实现的 map");
-        assertFalse(DatasetScriptContract.renderable("geo"));
+    @DisplayName("geo 走三维地球模块：映射为 globe，不再以「没有可渲染」拒绝")
+    void geoMapsToGlobe() {
+        assertEquals("globe", DatasetScriptContract.chartFor("geo"), "geo 只能交给 3D 模板的 globe 模块");
+        assertTrue(DatasetScriptContract.renderable("geo"));
         assertTrue(DatasetScriptContract.renderable("wide"));
         assertTrue(DatasetScriptContract.renderable("long"));
         assertTrue(DatasetScriptContract.renderable("rows"));
@@ -89,7 +89,8 @@ class DatasetScriptContractTest {
         geo.put("shape", "geo");
         List<String> items = DatasetScriptContract.violations(
             JSON.readTree(script(snapshot().path("data_sha256").asString(), "", "上涨 {{facts.change}} 美元。")), geo);
-        assertTrue(items.stream().anyMatch(item -> item.contains("geo") && item.contains("没有可渲染")), items.toString());
+        assertTrue(items.stream().noneMatch(item -> item.contains("没有可渲染")), items.toString());
+        assertTrue(items.stream().anyMatch(item -> item.contains("chart") && item.contains("globe")), items.toString());
     }
 
     @Test

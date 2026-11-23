@@ -29,12 +29,12 @@ public class TemplateCatalogService {
                     text(lock.get("templateVersion")), text(lock.get("voiceKey")),
                     text(lock.get("assetManifestSha256")),
                     info.supportedLines(), info.supportedSceneTypes(), info.aspectRatio(),
-                    info.minDuration(), info.maxDuration(), style(info.style()));
+                    info.minDuration(), info.maxDuration(), style(info.style()), info.visualMode().key());
             } catch (HeronBusinessException e) {
                 // LOCK 缺失或与目录不一致：模板仍要出现在列表里，否则「少了一个模板」没人发现
                 return new VideoTemplateVo(info.key(), info.name(), info.description(), false, e.getMessage(),
                     null, null, null, info.supportedLines(), info.supportedSceneTypes(), info.aspectRatio(),
-                    info.minDuration(), info.maxDuration(), style(info.style()));
+                    info.minDuration(), info.maxDuration(), style(info.style()), info.visualMode().key());
             }
         }).toList();
     }

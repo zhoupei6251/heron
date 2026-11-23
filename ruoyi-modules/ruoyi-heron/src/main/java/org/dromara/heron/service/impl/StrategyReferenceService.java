@@ -109,7 +109,10 @@ public class StrategyReferenceService {
      */
     public void appendOverride(java.time.LocalDate slotDate, String slotTime, Override override) {
         validate(override);
-        HeronAutoSlot slot = slots.selectById(slotDate);
+        // 真实键是 日期+时刻：同一天有多个槽位，selectById(slotDate) 会 selectOne 撞多行
+        HeronAutoSlot slot = slots.selectOne(org.dromara.common.mybatis.core.query.QueryBuilder.lambda(HeronAutoSlot.class)
+            .eq(HeronAutoSlot::getSlotDate, slotDate)
+            .eq(HeronAutoSlot::getSlotTime, slotTime).build());
         if (slot == null) {
             throw new HeronBusinessException(404, "slot_missing", "槽位不存在");
         }

@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -42,6 +43,8 @@ class StoryDecisionTest {
         storyPlanner = mock(DatasetStoryPlanner.class);
         editor = new EditorialLineEditor(screener, templatePicker, datasetRouter, storyPlanner);
         when(templatePicker.pick(anyString(), anyString(), anyString())).thenReturn("news-data-9x16");
+        // 看板线带叙事选模板：叙事决定风格，风格决定模板
+        when(templatePicker.pick(anyString(), anyString(), anyString(), anyString(), any())).thenReturn("news-data-9x16");
     }
 
     private static HeronDataSource source(String key) {
@@ -80,6 +83,20 @@ class StoryDecisionTest {
                 "2026-11-01", "2026-11-30", "a".repeat(64), "opportunity", 3L));
     }
 
+    /** geo 故事：策划器把 basis.signalType 写成 geo，视觉模式据此转 3D。 */
+    private static EditorialStory geoStory() {
+        return new EditorialStory(EditorialStory.SCHEMA_VERSION, "numeric_contrast",
+            "八座城市的成本差出两倍",
+            new EditorialStory.Protagonist("group", "枢纽城市", null),
+            new EditorialStory.Tension("gap", "最高与最低差出两倍", List.of("facts.leader.value")),
+            List.of(new EditorialStory.Claim("c1", "最高的是上海", "fact", List.of("facts.leader.value"))),
+            new EditorialStory.Payoff("关注你所在城市的位置", List.of("facts.leader.value")),
+            new EditorialStory.Stakes("发货的人", "成本结构不同"),
+            List.of(),
+            new EditorialStory.Basis("geo", null, null, null, 1.0, 8,
+                null, null, "b".repeat(64), "router", null));
+    }
+
     private static EditorialCandidatePool pool(List<HeronDataSource> datasets,
                                                 List<HeronDataOpportunity> opportunities) {
         return new EditorialCandidatePool("pool-1", "a".repeat(64), List.of(), List.of(), datasets,
@@ -113,6 +130,24 @@ class StoryDecisionTest {
         assertEquals(2, rejects.size(), rejects.toString());
         assertTrue(rejects.contains("src-1:story_duplicate"), rejects.toString());
         assertTrue(rejects.contains("src-2:story_duplicate"), rejects.toString());
+    }
+
+    @Test
+    @DisplayName("geo 故事按 3D 模式选模板：2D 模板画不出经纬度")
+    void geoStoryRequestsThreeDMode() {
+        List<HeronDataSource> datasets = List.of(source("geo-src"));
+        List<HeronDataOpportunity> opportunities = List.of(opportunity(1L, "geo-src"));
+        when(storyPlanner.plan(any(ProductionRunVo.class), any(HeronDataSource.class), anyInt(),
+            anyString(), any(), any(), any())).thenReturn(DatasetStoryPlanner.Result.accepted(geoStory()));
+        when(templatePicker.pick(anyString(), anyString(), anyString(), anyString(), eq(VisualMode.THREE_D)))
+            .thenReturn("news-data-3d-9x16");
+
+        Optional<EditorialChoice> choice = editor.select(EditorialDecisionService.DATA_BOARD,
+            pool(datasets, opportunities), "今天的意图", null, null);
+
+        assertTrue(choice.isPresent());
+        assertEquals("news-data-3d-9x16", choice.orElseThrow().selection().templateId());
+        verify(templatePicker).pick(anyString(), anyString(), anyString(), anyString(), eq(VisualMode.THREE_D));
     }
 
     @Test

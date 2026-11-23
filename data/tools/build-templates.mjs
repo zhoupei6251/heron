@@ -34,7 +34,9 @@ const ONLY = value('--template');
 const STAGE = value('--stage');
 const STAGE_OUT = value('--out');
 
-const CAPABILITIES = new Set(['chart', 'image']);
+const CAPABILITIES = new Set(['chart', 'image', 'globe']);
+// globe 模板自带的渲染库：与 gsap 一样随模板一起提交，渲染时不需要联网。
+const THREE_SOURCE = path.resolve(import.meta.dirname, 'node_modules', 'three', 'build', 'three.min.js');
 // 版式自带的静态装饰节点。迁移前它们写在各模板的 HTML 里，迁移后由配置声明，
 // 否则 layouts/article 里的 #plate / #rail / #tick 规则会指向不存在的元素。
 const DECOR = {
@@ -82,6 +84,12 @@ function loadConfig(dir) {
   for (const cap of cfg.capabilities) {
     if (!CAPABILITIES.has(cap)) fail(`${key}: 未知能力「${cap}」，合法值：${[...CAPABILITIES].join('、')}`);
   }
+  if (cfg.visualMode !== undefined && !['2d', '3d'].includes(cfg.visualMode)) {
+    fail(`${key}: visualMode 只能是 2d 或 3d，收到：${cfg.visualMode}`);
+  }
+  if (cfg.visualMode === '3d' && !cfg.capabilities.includes('globe')) {
+    fail(`${key}: 3D 模板必须声明 globe 能力——没有渲染库的三维模板渲不出来`);
+  }
   cfg.activeScenes ??= cfg.scenes;
   cfg.defaults ??= {};
   // 声明了组件能力的模板才进分镜：场景类型、叙事节点与上屏文字一起进出，
@@ -110,17 +118,21 @@ function variables(cfg) {
     id: 'scene_count', type: 'number', label: '场景数',
     min: 3, max: cfg.scenes, default: Math.min(cfg.activeScenes, cfg.scenes),
   });
-  if (cfg.capabilities.includes('chart')) {
+  if (cfg.capabilities.includes('chart') || cfg.capabilities.includes('globe')) {
+    const globe = cfg.capabilities.includes('globe');
     out.push({
-      id: 'chart', type: 'enum', label: '图表模块', default: d.chart ?? 'line',
-      options: [
-        { value: 'line', label: '折线' },
-        { value: 'bars', label: '排行' },
-        { value: 'race', label: '赛跑' },
-        { value: 'stacked', label: '堆叠' },
-        { value: 'multiline', label: '多线' },
-        { value: 'radar', label: '雷达' },
-      ],
+      id: 'chart', type: 'enum', label: globe ? '三维画面' : '图表模块',
+      default: d.chart ?? (globe ? 'globe' : 'line'),
+      options: globe
+        ? [{ value: 'globe', label: '三维地球' }]
+        : [
+          { value: 'line', label: '折线' },
+          { value: 'bars', label: '排行' },
+          { value: 'race', label: '赛跑' },
+          { value: 'stacked', label: '堆叠' },
+          { value: 'multiline', label: '多线' },
+          { value: 'radar', label: '雷达' },
+        ],
     });
     out.push({
       id: 'dataset_json', type: 'string', label: '数据快照',
@@ -200,7 +212,21 @@ function decorBlock(cfg) {
   return '\n' + nodes.join('\n') + '\n';
 }
 
-function chartSlot(cfg) {  if (!cfg.capabilities.includes('chart')) return '';
+function chartSlot(cfg) {
+  if (cfg.capabilities.includes('globe')) {
+    // 两层画布：底层是 2D 兜底（WebGL 不可用时仍有画面），上层 WebGL 就绪后接管。
+    // 同一个 canvas 先取 2D 上下文就再也拿不到 WebGL，所以必须分开。
+    return `
+      <section id="chart-slot" class="clip" data-start="0" data-duration="${num(cfg.duration)}" data-track-index="1">
+        <div id="chart" class="globe-stage" role="img" aria-label="三维地球数据图">
+          <canvas id="globe-fallback" width="1080" height="520" aria-hidden="true"></canvas>
+          <canvas id="globe-canvas" width="1080" height="520" aria-hidden="true"></canvas>
+        </div>
+        <ul id="globe-legend"></ul>
+      </section>
+`;
+  }
+  if (!cfg.capabilities.includes('chart')) return '';
   return `
       <section id="chart-slot" class="clip" data-start="0" data-duration="${num(cfg.duration)}" data-track-index="1">
         <svg id="chart" viewBox="0 0 912 760" role="img" aria-label="数据图表"></svg>
@@ -209,7 +235,7 @@ function chartSlot(cfg) {  if (!cfg.capabilities.includes('chart')) return '';
 }
 
 function kpiBlock(cfg) {
-  if (!cfg.capabilities.includes('chart')) return '';
+  if (!cfg.capabilities.includes('chart') && !cfg.capabilities.includes('globe')) return '';
   return `        <div id="kpi">
           <span id="kpi-value"></span>
           <span id="kpi-unit"></span>
@@ -224,6 +250,7 @@ function styles(cfg) {
     path.join(SHARED, 'tokens', `${cfg.style}.css`),
   ];
   if (cfg.capabilities.includes('chart')) files.push(path.join(GEN, 'behaviors', 'chart.css'));
+  if (cfg.capabilities.includes('globe')) files.push(path.join(GEN, 'behaviors', 'globe.css'));
   // 分镜版式：只给声明了分镜的模板，三套数据风格共用一份规则
   if (cfg.storyboard) files.push(path.join(SHARED, 'storyboard.css'));
   files.push(path.join(LAYOUTS, cfg.style, `${cfg.layout}.css`));
@@ -249,12 +276,27 @@ function script(cfg) {
   if (cfg.capabilities.includes('chart')) {
     files.push(path.join(GEN, 'behaviors', 'chart.js'), path.join(GEN, 'behaviors', 'focus.js'));
   }
+  if (cfg.capabilities.includes('globe')) {
+    files.push(path.join(GEN, 'behaviors', 'globe.js'));
+  }
   files.push(path.join(GEN, 'motion.js'));
   for (const file of files) {
     if (!fs.existsSync(file)) fail(`${cfg.key}: 缺少脚本片段 ${path.relative(TEMPLATES, file)}`);
   }
   return files.map((file) => read(file).trimEnd()).join('\n\n');
 }
+
+/**
+ * 产物统一用 LF。
+ *
+ * <p>仓库没给 data/** 定 eol 规则，Windows 上 git checkout 会把 LF 换成 CRLF；
+ * 构建脚本原样读进骨架与样式，产物就跟着变成 CRLF，提交回去又被换回 LF——
+ * 于是「在本地重建一次模板」等于全仓 diff，跟本次改动毫无关系。
+ *
+ * <p>写盘前统一成 LF：产物与仓库规范一致，两端构建结果相同，
+ * --check 才不会在 Windows 上误报。
+ */
+const normalizeEol = (text) => text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
 function render(cfg) {
   const skeleton = read(path.join(GEN, 'skeleton.html'));
@@ -281,12 +323,13 @@ function render(cfg) {
     DEFAULT_KICKER: escapeHtml(cfg.defaults.kicker ?? ''),
     DEFAULT_CLOSING: escapeHtml(cfg.defaults.closing),
     DEFAULT_SOURCE: escapeHtml(cfg.defaults.sourceName),
+    EXTRA_LIB: cfg.capabilities.includes('globe') ? '<script src="three.min.js"></script>' : '',
     SCRIPT: script(cfg),
   };
-  return skeleton.replace(/\{\{([A-Z_]+)\}\}/g, (match, name) => {
+  return normalizeEol(skeleton.replace(/\{\{([A-Z_]+)\}\}/g, (match, name) => {
     if (!(name in slots)) fail(`${cfg.key}: 骨架里有未定义的占位符 ${match}`);
     return slots[name];
-  });
+  }));
 }
 
 function aspectRatio(cfg) {
@@ -305,11 +348,15 @@ function styleMeta(cfg) {
   const catalog = JSON.parse(read(path.join(SHARED, 'styles.json')));
   const meta = catalog[cfg.style];
   if (!meta) fail(`${cfg.key}: 风格 ${cfg.style} 没有在 _shared/styles.json 登记`);
+  // 叙事类型登记在风格上，不登记在模板上：
+  // 一套画面语法能承载多种叙事，模板只是这套语法的实现。
+  // 它是选风格的硬依据——先有故事，才知道该用哪套画面。
   return {
     key: cfg.style,
     name: meta.name,
     label: meta.label,
     role: meta.role,
+    narratives: meta.narratives ?? [],
     bg: declared('bg'),
     fg: declared('fg'),
     accent: cfg.defaults.accent ?? null,
@@ -323,6 +370,8 @@ function templateJson(cfg) {
     style: styleMeta(cfg),
     supportedLines: [cfg.line],
     supportedSceneTypes: cfg.supportedSceneTypes ?? ['headline', 'text'],
+    // 只有 3D 才写：2D 是缺省值，写出来只会让历史模板全部产生无意义 diff
+    ...(cfg.visualMode === '3d' ? { visualMode: '3d' } : {}),
     aspectRatio: aspectRatio(cfg),
     recommendedDuration: cfg.recommendedDuration ?? { min: cfg.duration, max: cfg.duration },
     requiredAssets: [],
@@ -441,6 +490,35 @@ const CHART_TOKENS = [
 ];
 
 /**
+ * 叙事类型与风格的对应必须唯一。
+ *
+ * <p>收窄候选的前提是「一种叙事只对应一套画面」——若两个风格都声明同一个叙事，
+ * 收窄就收不窄，选风格又退回模型随机挑，正是这套设计要消灭的东西。
+ *
+ * <p>叙事类型的全集由后端契约定（Java 侧 DatasetStoryContract.NARRATIVES），
+ * 这里不重复列一遍：清单写两处迟早会漂。这里只管「不重」这一层，
+ * 「不漏」由后端在运行时再查一次。
+ */
+function checkNarrativeContract(catalog) {
+  const owner = new Map();
+  for (const [style, meta] of Object.entries(catalog)) {
+    const narratives = meta.narratives ?? [];
+    if (!Array.isArray(narratives)) {
+      fail(`风格 ${style} 的 narratives 必须是数组`);
+    }
+    for (const narrative of narratives) {
+      if (typeof narrative !== 'string' || !narrative) {
+        fail(`风格 ${style} 的 narratives 里有空项`);
+      }
+      if (owner.has(narrative)) {
+        fail(`叙事类型 ${narrative} 同时登记在 ${owner.get(narrative)} 与 ${style} 上——一种叙事只能对应一套画面`);
+      }
+      owner.set(narrative, style);
+    }
+  }
+}
+
+/**
  * 从一份 CSS 文本里取某个选择器块的内容；找不到返回 null。
  *
  * <p>选择器必须精确匹配到 `{` 为止：`.scene` 不能匹配到 `.scene-no` / `.scene-figure`，
@@ -497,9 +575,33 @@ function checkStyleContract(cfg) {
   }
 }
 
+/**
+ * globe 模板自带 three.min.js：渲染不联网，产物必须自包含。
+ *
+ * <p>源文件来自 data/tools 的依赖；--check 时比对哈希，防止模板里的副本悄悄漂移。
+ */
+function vendorThree(dir) {
+  const key = path.basename(dir);
+  if (!fs.existsSync(THREE_SOURCE)) {
+    fail(`${key}: 找不到 Three.js 构建产物 ${THREE_SOURCE}（先在 data/tools 安装依赖）`);
+  }
+  const target = path.join(dir, 'three.min.js');
+  const same = fs.existsSync(target) && sha256(target) === sha256(THREE_SOURCE);
+  if (same) return true;
+  if (CHECK_ONLY) {
+    console.log(`✗ ${key}: three.min.js 与依赖里的版本不一致（运行不带 --check 以重新拷贝）`);
+    return false;
+  }
+  fs.copyFileSync(THREE_SOURCE, target);
+  return true;
+}
+
 function build(dir) {
   const cfg = loadConfig(dir);
   checkStyleContract(cfg);
+  if (cfg.capabilities.includes('globe') && !vendorThree(dir)) {
+    return false;
+  }
   // 三个产物都从配置派生，--check 就三个都要比：
   // 只比 index.html 的话，手改 index.motion.json 能悄悄放宽断言而检查不出来。
   const generated = {
@@ -514,7 +616,7 @@ function build(dir) {
     const drifted = Object.entries(generated)
       .filter(([name, expected]) => {
         const file = path.join(dir, name);
-        return !fs.existsSync(file) || read(file) !== expected;
+        return !fs.existsSync(file) || normalizeEol(read(file)) !== expected;
       })
       .map(([name]) => name);
     if (drifted.length) {
@@ -579,6 +681,10 @@ function verify(dir) {
 }
 
 function main() {
+  // 叙事类型与风格的对应是全局不变量：每构建一个模板都查一遍太吵，
+  // 但一次都不查就等于没有——风格登记写错时没有任何地方会响。
+  checkNarrativeContract(JSON.parse(read(path.join(SHARED, 'styles.json'))));
+
   if (STAGE) {
     const dir = path.join(TEMPLATES, STAGE);
     if (!fs.existsSync(path.join(dir, 'template.config.json'))) {

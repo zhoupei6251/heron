@@ -42,29 +42,69 @@ public class NewsTemplatePicker {
      * 契约校验当场炸。线路是调用方必须交代清楚的事。
      */
     public String pick(String title, String summary, String line) {
-        return pickFrom(domain.templateCatalog().stream()
-            .filter(item -> item.supports(line)).toList(), title, summary, line);
+        return pick(title, summary, line, null);
     }
 
-    private String pickFrom(List<NewsProductionDomain.TemplateInfo> all, String title, String summary, String line) {
+    /**
+     * 带叙事结论的选模板。
+     *
+     * <p>叙事先把风格定死：同一种叙事每次都该长成同一套画面，
+     * 所以模型只在风格内部挑实现，不再在几套画面之间现挑。
+     * 收窄到只剩一套时连模型都不用调——风格是机器定死的，请模型再挑一次只会让它随机。
+     */
+    public String pick(String title, String summary, String line, String narrative) {
+        return pick(title, summary, line, narrative, null);
+    }
+
+    /**
+     * 叙事 + 视觉模式一起收窄。
+     *
+     * <p>3D 不是又一套风格，而是同一套风格下的另一种实现：先按叙事定风格，再按模式定实现。
+     * 要求 3D 却没有 3D 模板时返回 null（拒绝这条候选），不退回 2D——
+     * geo 数据进了 2D 模板画不出图，退回只会把失败推迟到渲染。
+     */
+    public String pick(String title, String summary, String line, String narrative, VisualMode mode) {
+        List<NewsProductionDomain.TemplateInfo> catalog = domain.templateCatalog();
+        List<String> problems = StoryStyleMap.violations(catalog);
+        if (!problems.isEmpty()) {
+            throw new IllegalStateException("模板目录与叙事契约对不上：" + String.join("；", problems));
+        }
+        return pickFrom(catalog.stream().filter(item -> item.supports(line)).toList(),
+            title, summary, line, narrative, mode);
+    }
+
+    String pickFrom(List<NewsProductionDomain.TemplateInfo> all, String title, String summary, String line,
+                    String narrative, VisualMode mode) {
         if (all.isEmpty()) {
             return null;
         }
-        if (all.size() == 1) {
-            return all.get(0).key();
+        // 叙事先定风格。收窄不到说明模板产物没登记这个叙事，
+        // 退回全量让模型挑——配置缺了不该把这条线卡死，但也不能装作收窄成功。
+        List<NewsProductionDomain.TemplateInfo> narrowed = StoryStyleMap.narrow(all, narrative);
+        List<NewsProductionDomain.TemplateInfo> pool = narrowed.isEmpty() ? all : narrowed;
+        if (mode != null) {
+            pool = pool.stream().filter(item -> item.visualMode() == mode).toList();
+            if (pool.isEmpty()) {
+                return null;
+            }
+        }
+        if (pool.size() == 1) {
+            return pool.get(0).key();
         }
         List<String> recent = recentKeys();
         List<String> blocked = recent.stream().limit(BLOCK_LIMIT).toList();
-        List<NewsProductionDomain.TemplateInfo> candidates = all.stream()
+        List<NewsProductionDomain.TemplateInfo> candidates = pool.stream()
             .filter(item -> !blocked.contains(item.key())).toList();
         if (candidates.isEmpty()) {
-            candidates = all;
+            // 退回收窄后的池，不退回全量：叙事已经把风格定死了，
+            // 退回全量等于让风格随机轮换，正是这套规则要杜绝的。
+            candidates = pool;
         }
         String reply = null;
         OpenAiModelClient model = modelProvider.getIfAvailable();
         if (model != null) {
             try {
-                reply = model.chatWithoutUsage(SYSTEM, prompt(title, summary, candidates, recent, line));
+                reply = model.chatWithoutUsage(SYSTEM, prompt(title, summary, candidates, recent, line, narrative, mode));
             } catch (RuntimeException e) {
                 // 选择失败不阻塞认领：与模型不可用时的行为一致，退回最久未用
                 reply = null;
@@ -116,10 +156,18 @@ public class NewsTemplatePicker {
     }
 
     private static String prompt(String title, String summary, List<NewsProductionDomain.TemplateInfo> candidates,
-                                 List<String> recent, String line) {
+                                 List<String> recent, String line, String narrative, VisualMode mode) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("本期标题：").append(nullToEmpty(title)).append('\n');
         prompt.append("本期摘要：").append(nullToEmpty(summary)).append('\n');
+        if (mode == VisualMode.THREE_D) {
+            prompt.append("本期视觉模式：3D（空间数据，尽量用三维版式）\n");
+        }
+        if (narrative != null && !narrative.isBlank()) {
+            // 风格已经定死，模型挑的是同一套画面里的哪个实现，不是换一套画面
+            prompt.append("本期叙事类型：").append(narrative)
+                .append("（画面风格已按叙事定好，下面几套是同一风格的不同版式，按标题适配度挑）\n");
+        }
         prompt.append("可用版式（标识 名称：说明；画面支持哪些场景类型写在其后）：\n");
         for (NewsProductionDomain.TemplateInfo item : candidates) {
             prompt.append("- ").append(item.key()).append(' ').append(item.name())
@@ -127,6 +175,10 @@ public class NewsTemplatePicker {
             // 画面能力进选版式：有原文配图的题材选不了图片版式，出片后只能退化成纯文字
             if (item.supportedSceneTypes() != null && !item.supportedSceneTypes().isEmpty()) {
                 prompt.append("（画面支持：").append(String.join("、", item.supportedSceneTypes())).append('）');
+            }
+            if (narrative != null && !narrative.isBlank() && item.style() != null
+                && item.style().label() != null && !item.style().label().isBlank()) {
+                prompt.append("（风格：").append(item.style().label()).append('）');
             }
             prompt.append('\n');
         }

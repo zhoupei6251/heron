@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='[{"id":"title","type":"string","label":"标题","maxLength":15,"default":"八座城市的物流成本差多少"},{"id":"kicker","type":"string","label":"栏目标签","maxLength":12,"default":"空间数据"},{"id":"scene1_lead","type":"string","label":"第1屏领句","maxLength":40,"default":"八座枢纽，成本差出一截"},{"id":"scene1_body","type":"string","label":"第1屏正文","maxLength":600,"default":"示例数据里，八座城市的示例指数从 3.2 到 9.4 不等。"},{"id":"scene2_lead","type":"string","label":"第2屏领句","maxLength":40,"default":"最高的那座在哪里"},{"id":"scene2_body","type":"string","label":"第2屏正文","maxLength":600,"default":"上海在示例数据中最高，指数 9.4，比最低的城市高出两倍多。"},{"id":"scene3_lead","type":"string","label":"第3屏领句","maxLength":40,"default":"差距落在谁身上"},{"id":"scene3_body","type":"string","label":"第3屏正文","maxLength":600,"default":"同样的货走不同的枢纽，成本结构完全不同。"},{"id":"scene4_lead","type":"string","label":"第4屏领句","maxLength":40,"default":""},{"id":"scene4_body","type":"string","label":"第4屏正文","maxLength":600,"default":""},{"id":"scene5_lead","type":"string","label":"第5屏领句","maxLength":40,"default":""},{"id":"scene5_body","type":"string","label":"第5屏正文","maxLength":600,"default":""},{"id":"scene6_lead","type":"string","label":"第6屏领句","maxLength":40,"default":""},{"id":"scene6_body","type":"string","label":"第6屏正文","maxLength":600,"default":""},{"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"关注你所在城市在链条里的位置。"},{"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"来源：示例数据集"},{"id":"accent","type":"color","label":"品牌色","default":"#18b7c9"},{"id":"scene_count","type":"number","label":"场景数","min":3,"max":6,"default":3},{"id":"chart","type":"enum","label":"三维画面","default":"globe","options":[{"value":"globe","label":"三维地球"}]},{"id":"dataset_json","type":"string","label":"数据快照","default":"{\"contract\":\"dataset/1\",\"source_key\":\"sample-global-hubs\",\"source_name\":\"示例数据集\",\"source_url\":\"https://example.com/sample-global-hubs\",\"retrieved_at\":\"2026-11-23T00:00:00Z\",\"license\":{\"name\":\"示例数据\",\"commercial_ok\":\"true\"},\"cadence\":\"annual\",\"shape\":\"geo\",\"columns\":[\"location\",\"latitude\",\"longitude\",\"value\"],\"metric\":{\"key\":\"sample_index\",\"label\":\"示例指数\",\"unit\":\"（示例）\",\"precision\":1},\"rows\":[[\"上海\",31.23,121.47,9.4],[\"东京\",35.68,139.69,8.1],[\"新加坡\",1.35,103.82,7.3],[\"迪拜\",25.2,55.27,6.4],[\"鹿特丹\",51.92,4.48,5.6],[\"孟买\",19.08,72.88,4.9],[\"洛杉矶\",34.05,-118.24,4.1],[\"圣保罗\",-23.55,-46.63,3.2]],\"facts\":{\"items\":[{\"location\":\"上海\",\"value\":9.4},{\"location\":\"东京\",\"value\":8.1},{\"location\":\"新加坡\",\"value\":7.3},{\"location\":\"迪拜\",\"value\":6.4},{\"location\":\"鹿特丹\",\"value\":5.6},{\"location\":\"孟买\",\"value\":4.9},{\"location\":\"洛杉矶\",\"value\":4.1},{\"location\":\"圣保罗\",\"value\":3.2}],\"leader\":{\"location\":\"上海\",\"value\":9.4},\"spread\":6.2,\"count\":8}}"},{"id":"scene1_focus","type":"string","label":"第1屏画面依据","default":"{}"},{"id":"scene2_focus","type":"string","label":"第2屏画面依据","default":"{}"},{"id":"scene3_focus","type":"string","label":"第3屏画面依据","default":"{}"},{"id":"scene4_focus","type":"string","label":"第4屏画面依据","default":"{}"},{"id":"scene5_focus","type":"string","label":"第5屏画面依据","default":"{}"},{"id":"scene6_focus","type":"string","label":"第6屏画面依据","default":"{}"},{"id":"scene1_type","type":"string","label":"场景类型","default":""},{"id":"scene2_type","type":"string","label":"场景类型","default":""},{"id":"scene3_type","type":"string","label":"场景类型","default":""},{"id":"scene4_type","type":"string","label":"场景类型","default":""},{"id":"scene5_type","type":"string","label":"场景类型","default":""},{"id":"scene6_type","type":"string","label":"场景类型","default":""},{"id":"scene1_beat","type":"string","label":"叙事节点","default":""},{"id":"scene1_text","type":"string","label":"上屏文字","default":""},{"id":"scene2_beat","type":"string","label":"叙事节点","default":""},{"id":"scene2_text","type":"string","label":"上屏文字","default":""},{"id":"scene3_beat","type":"string","label":"叙事节点","default":""},{"id":"scene3_text","type":"string","label":"上屏文字","default":""},{"id":"scene4_beat","type":"string","label":"叙事节点","default":""},{"id":"scene4_text","type":"string","label":"上屏文字","default":""},{"id":"scene5_beat","type":"string","label":"叙事节点","default":""},{"id":"scene5_text","type":"string","label":"上屏文字","default":""},{"id":"scene6_beat","type":"string","label":"叙事节点","default":""},{"id":"scene6_text","type":"string","label":"上屏文字","default":""}]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Heron 数据看板三维地球竖版</title>
+    <style>
+/* 所有模板共享的画布基础。令牌由 _shared/tokens 下的同名样式文件提供。
+   注意：注释里不要出现 style 标签的字面写法，它会被 HTML 解析器当成真的开始标签。 */
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("fonts/NotoSansSC-Regular.otf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+}
+#root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+.clip { position: absolute; inset: 0; }
+
+/* 纵深：环境层是最远的一层，永远在内容之下、永远在动。
+   三层各自可开关（透明度为 0 即视为关闭），但网格与光晕是默认配置。 */
+.ambient { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.ambient > div { position: absolute; inset: 0; }
+.ambient-grid {
+  background-image:
+    linear-gradient(to right, var(--rule-faint) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule-faint) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  opacity: var(--grid-opacity);
+}
+.ambient-glow {
+  background: radial-gradient(circle at var(--glow-x) var(--glow-y),
+              var(--glow-color) 0%, transparent var(--glow-spread));
+  opacity: var(--glow-opacity);
+}
+.ambient-grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.55'/></svg>");
+  background-size: 140px 140px;
+  opacity: var(--grain-opacity);
+}
+/* 内容层压在环境层之上：骨架里的每块都自己定位，这里只统一抬 z-index。 */
+#title-card, #chart-slot, .scene, #closing-slot, #bottom-bar { z-index: 1; }
+
+/* 场景序号：给画面一个「第几拍」的锚点，避免每屏长得一样。 */
+.scene-no {
+  display: block;
+  font-family: var(--font-num);
+  font-size: var(--fs-note);
+  font-weight: 700;
+  letter-spacing: var(--track-kicker);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 硬规则 1：视频字号下限 24px，竖屏 32px。这条不能靠 CSS 强制，只作为约定写在这里，由构建期校验兜底。 */
+/* 风格 C · Dynamic Data Explainer：深底、高对比、等宽数字、网格装饰。
+   定位：数据看板解读、指标变化、排行与趋势。信息密度最高的一套。
+   注意：--accent 不在这里定义——它由 HyperFrames 从 composition 的
+   color 类型变量自动注入为同名 CSS 自定义属性，手写会与之冲突。 */
+:root {
+  --bg: #0c1417;
+  --fg: #f3f0e8;
+  --muted: #7f949b;
+  --muted-2: #9fb0b6;
+  --body: #b7c4c9;
+  --legend: #dde6e8;
+  --down: #e06c5a;
+
+  --rule-faint: rgba(243, 240, 232, 0.12);
+  --rule-soft: rgba(243, 240, 232, 0.14);
+  --rule-strong: rgba(243, 240, 232, 0.28);
+  --panel: rgba(243, 240, 232, 0.06);
+  --glow-color: rgba(24, 183, 201, 0.20);
+  --accent-glow: rgba(24, 183, 201, 0.35);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 92px;
+  --fs-title-lg: 76px;
+  --fs-title-sm: 68px;
+  --fs-data: 64px;
+  --fs-data-sm: 34px;
+  --fs-lead: 54px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 28px;
+
+  --pad-frame: 84px;
+  --rule-width: 3px;
+  --radius: 8px;
+  --track-kicker: 0.16em;
+
+  /* 环境层：网格给结构感，光晕给焦点，颗粒给质感。透明度不得低于 0.1，否则等于没有。 */
+  --grid-size: 72px;
+  --grid-opacity: 0.55;
+  --glow-x: 78%;
+  --glow-y: 18%;
+  --glow-spread: 62%;
+  --glow-opacity: 0.9;
+  --grain-opacity: 0.16;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.32s;
+  --dur-ambient: 7s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+
+  /* 图表语义（C · 解释）：图表是主角，占主视区。
+     面积保留 0.16（解释要让人看见「一段区间」的体量），折线 6px 居中。
+     极值双标注各用自己的语义色：最高随强调色，最低用 down 色系。
+     焦点压暗最轻（0.62）：解释要把整条曲线都留在可读范围，观众读的是关系不是某一点。 */
+  --chart-line-width: 6px;
+  --chart-area-alpha: 0.16;
+  --chart-max-annot: #18b7c9;
+  --chart-min-annot: #e06c5a;
+  --chart-min-size: 24px;
+  --focus-dim: 0.62;
+  --focus-ring-width: 6px;
+  --focus-ring-dash: none;
+}
+/* 三维地球：画布、图例与 KPI。KPI 的排版与 chart.css 保持同一口径，
+   因为 globe 模板不带 chart.js，读不到那边的样式。 */
+#kpi { display: flex; align-items: baseline; gap: 14px; margin-top: 24px; }
+#kpi-value { font-size: var(--fs-data); font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
+#kpi-unit { font-size: var(--fs-label); color: var(--muted); }
+#kpi-change { font-size: 32px; font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+#focus-caption { margin: 12px 0 0; font-size: 28px; font-weight: 600; line-height: 1.4; color: var(--muted-2); }
+
+.globe-stage { position: relative; width: 100%; height: 100%; }
+#globe-fallback, #globe-canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+#globe-canvas { visibility: hidden; }
+.globe-stage.is-webgl #globe-canvas { visibility: visible; }
+.globe-stage.is-webgl #globe-fallback { visibility: hidden; }
+
+#globe-legend {
+  position: absolute;
+  left: var(--pad-frame);
+  right: var(--pad-frame);
+  bottom: 0;
+  display: flex;
+  gap: 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+#globe-legend li { flex: 1; display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 4px solid var(--accent); }
+.globe-legend-name { font-size: 26px; font-weight: 700; line-height: 1.3; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.globe-legend-value { font-size: 30px; font-weight: 800; line-height: 1.1; color: var(--accent); font-variant-numeric: tabular-nums; }
+/* 分镜：这一屏用什么画面、承担什么叙事节点、上屏写哪句话。
+   三套数据风格共用这一份规则——字号差异由令牌承担，版式差异由各自的 layout 负责。
+   变量落到 DOM 属性上的位置在 fill.js：只声明变量不写属性，这些变体就是死代码。 */
+
+/* 上屏文字与旁白解耦：屏幕文字节点同时带 lead 类，直接继承领句的排版，
+   这里只藏掉原来那条领句。三套版式的领句排版各不相同（flex / grid / 缩进），
+   另写一份屏幕文字样式等于把三套版式再抄一遍。 */
+.scene.has-screen-text .lead:not(.screen-text) { display: none; }
+
+/* headline：一屏一句话。领句顶到标题级，正文让位。 */
+.scene[data-scene-type="headline"] .lead {
+  font-size: var(--fs-title-sm);
+  max-height: 212px;
+}
+.scene[data-scene-type="headline"] .body { display: none; }
+
+/* number：这一屏就是一个数。正文让位，数字交给常驻的 KPI 头。 */
+.scene[data-scene-type="number"] .body { display: none; }
+
+/* compare：结论卡。正文垫一层面板，读起来是对照关系而不是流水句。
+   用面板而不是左边框：播报版式整屏本来就挂着一条强调竖条，再加一条会变成双线。 */
+.scene[data-scene-type="compare"] .body {
+  background: var(--panel);
+  padding: 18px 22px;
+  border-radius: var(--radius);
+}
+
+/* timeline：时间轴屏。屏次编号让位给刻度，记号更轻。 */
+.scene[data-scene-type="timeline"] .scene-no { letter-spacing: 0.06em; }
+/* news-data-3d-9x16 的版式：风格 C（动态数据解释）的三维变体。
+   纵向预算（1080×1920）：标题 0–500 / 地球 500–1120（球 520 + 图例 100）/ 场景 1140–1540 / 底栏 1600–1690。
+   与 2D 看板同一个风格令牌；差别只有「图位换成三维地球、图位更高」。 */
+#title-card { padding: 104px var(--pad-frame) 0 var(--pad-frame); }
+#kicker { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+#kicker-flag { width: 56px; height: 8px; background: var(--accent); }
+#kicker-text { font-size: var(--fs-note); font-weight: 700; letter-spacing: var(--track-kicker); color: var(--muted-2); }
+#title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 800;
+  line-height: 1.16;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+#rule { margin-top: 24px; width: 100%; height: var(--rule-width); background: var(--accent); transform-origin: left center; }
+
+#chart-slot { top: 500px; height: 620px; padding: 0 var(--pad-frame); }
+.globe-stage { height: 520px; }
+
+.scene {
+  top: 1140px;
+  bottom: 380px;
+  left: 0;
+  right: 0;
+  padding: 0 var(--pad-frame);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.scene-no { flex: none; color: var(--accent); margin-bottom: 12px; }
+.lead { flex: none; margin: 0 0 18px; font-size: var(--fs-lead); font-weight: 700; line-height: 1.5; color: var(--fg);
+        max-height: 164px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.body { flex: none; margin: 0; font-size: var(--fs-body); font-weight: 400; line-height: 1.7; color: var(--body);
+        max-height: 198px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+
+#closing-slot { top: 1140px; bottom: 380px; padding: 0 var(--pad-frame); display: flex; align-items: flex-start; }
+#closing { margin: 0; padding: 24px 28px; font-size: var(--fs-body); font-weight: 500; line-height: 1.7; color: var(--fg);
+           background: var(--panel); border-left: 10px solid var(--accent); border-radius: var(--radius);
+           display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 300px; padding: 0 var(--pad-frame); }
+#progress { display: block; height: 6px; border-radius: 3px; background: var(--accent);
+            transform-origin: left center; margin-bottom: 28px; }
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+#aigc-badge { font-size: var(--fs-label); padding: 12px 24px; border-radius: 999px; white-space: nowrap;
+              color: var(--bg); background: var(--fg); }
+#source-line { font-size: var(--fs-label); max-width: 560px; text-align: right; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-style="data-board" data-start="0" data-width="1080" data-height="1920" data-duration="45">
+
+      <div class="ambient" aria-hidden="true">
+        <div class="ambient-grid" data-ambient="drift"></div>
+        <div class="ambient-glow" data-ambient="pulse"></div>
+        <div class="ambient-grain" data-ambient="flicker"></div>
+      </div>
+
+      <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="45" data-track-index="9"></audio>
+
+      <header id="title-card" class="clip" data-start="0" data-duration="45" data-track-index="0">
+        <div id="kicker">
+          <span id="kicker-flag"></span>
+          <span id="kicker-text" data-var-text="kicker">空间数据</span>
+        </div>
+        <h1 id="title" data-var-text="title">八座城市的物流成本差多少</h1>
+        <div id="rule"></div>
+        <div id="kpi">
+          <span id="kpi-value"></span>
+          <span id="kpi-unit"></span>
+           <span id="kpi-change"></span>
+         </div>
+         <p id="focus-caption"></p>
+      </header>
+
+      <section id="chart-slot" class="clip" data-start="0" data-duration="45" data-track-index="1">
+        <div id="chart" class="globe-stage" role="img" aria-label="三维地球数据图">
+          <canvas id="globe-fallback" width="1080" height="520" aria-hidden="true"></canvas>
+          <canvas id="globe-canvas" width="1080" height="520" aria-hidden="true"></canvas>
+        </div>
+        <ul id="globe-legend"></ul>
+      </section>
+
+      <section id="scene-1" class="clip scene" data-start="0" data-duration="15" data-track-index="2" data-scene-index="1">
+        <span class="scene-no">01</span>
+        <p class="lead" data-var-text="scene1_lead">八座枢纽，成本差出一截</p>
+        <p class="body" data-var-text="scene1_body">示例数据里，八座城市的示例指数从 3.2 到 9.4 不等。</p>
+      </section>
+      <section id="scene-2" class="clip scene" data-start="15" data-duration="15" data-track-index="2" data-scene-index="2">
+        <span class="scene-no">02</span>
+        <p class="lead" data-var-text="scene2_lead">最高的那座在哪里</p>
+        <p class="body" data-var-text="scene2_body">上海在示例数据中最高，指数 9.4，比最低的城市高出两倍多。</p>
+      </section>
+      <section id="scene-3" class="clip scene" data-start="30" data-duration="9" data-track-index="2" data-scene-index="3">
+        <span class="scene-no">03</span>
+        <p class="lead" data-var-text="scene3_lead">差距落在谁身上</p>
+        <p class="body" data-var-text="scene3_body">同样的货走不同的枢纽，成本结构完全不同。</p>
+      </section>
+      <section id="scene-4" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="4">
+        <span class="scene-no">04</span>
+        <p class="lead" data-var-text="scene4_lead"></p>
+        <p class="body" data-var-text="scene4_body"></p>
+      </section>
+      <section id="scene-5" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="5">
+        <span class="scene-no">05</span>
+        <p class="lead" data-var-text="scene5_lead"></p>
+        <p class="body" data-var-text="scene5_body"></p>
+      </section>
+      <section id="scene-6" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="6">
+        <span class="scene-no">06</span>
+        <p class="lead" data-var-text="scene6_lead"></p>
+        <p class="body" data-var-text="scene6_body"></p>
+      </section>
+
+      <section id="closing-slot" class="clip" data-start="39" data-duration="6" data-track-index="2">
+        <p id="closing" data-var-text="closing">关注你所在城市在链条里的位置。</p>
+      </section>
+
+      <div id="bottom-bar">
+        <div id="progress"></div>
+        <div id="meta-row">
+          <span id="aigc-badge">内容由 AI 生成</span>
+          <span id="source-line" data-var-text="source_name">来源：示例数据集</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="gsap.min.js"></script><script src="three.min.js"></script>
+    <script>
+// 变量注入与通用填充。所有模板共用，必须最先执行。
+const declared = window.__hyperframes && window.__hyperframes.getVariables
+  ? window.__hyperframes.getVariables()
+  : {};
+const root = document.getElementById("root");
+const tl = gsap.timeline({ paused: true });
+const total = parseFloat(root.dataset.duration);
+
+// 模板里的尺寸一律来自令牌，避免 JS 和 CSS 各写一份而漂移
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// 标题按字数降档：92px → 76px → 68px
+const titleEl = document.getElementById("title");
+const titleLen = Array.from(declared.title || titleEl.textContent || "").length;
+if (titleLen > 11) titleEl.style.fontSize = cssVar("--fs-title-sm");
+else if (titleLen > 9) titleEl.style.fontSize = cssVar("--fs-title-lg");
+
+// 实际播几屏由稿件决定，模板只负责准备好槽位
+const sceneCount = Number.isFinite(Number(declared.scene_count)) ? Number(declared.scene_count) : 3;
+
+// 屏次编号与配图同理：槽位先备好，有没有编号和有没有图由稿件与模板能力决定。
+document.querySelectorAll(".scene").forEach((slot) => {
+  const index = slot.dataset.sceneIndex;
+  const no = slot.querySelector(".scene-no");
+  if (no) no.textContent = String(index).padStart(2, "0");
+  // 场景类型落到属性上：quote / rank 这类版式靠 [data-scene-type] 选择器换排版，
+  // 只声明变量不写属性，那些变体就是死代码。
+  const type = declared["scene" + index + "_type"];
+  if (type) slot.dataset.sceneType = type;
+  // 叙事节点给版式一条辅线
+  const beat = declared["scene" + index + "_beat"];
+  if (beat) slot.dataset.beat = beat;
+  // 上屏文字与旁白解耦：屏幕文字节点同时带 lead 类，继承三套版式各自的领句排版。
+  // 原来的领句由 .has-screen-text 藏掉，两条不会同时上屏。
+  const screen = declared["scene" + index + "_text"];
+  if (screen && String(screen).trim()) {
+    const text = document.createElement("p");
+    text.className = "lead screen-text";
+    text.textContent = screen;
+    const lead = slot.querySelector(".lead");
+    if (lead) lead.after(text);
+    else slot.appendChild(text);
+    slot.classList.add("has-screen-text");
+  }
+  const figure = slot.querySelector(".scene-figure");
+  const src = declared["scene" + index + "_image"];
+  if (!figure || !src) return;
+  // has-image 让版式知道这一屏真的有图：文稿线用它把图位展开、同时把正文压回两行
+  slot.classList.add("has-image");
+  // img 由脚本创建而不是写在 HTML 里：静态 <img> 会被版式闸判成同组重复媒体节点
+  const img = document.createElement("img");
+  img.alt = "";
+  img.src = src;
+  figure.appendChild(img);
+});
+
+// 三维地球：geo 数据（location, latitude, longitude, value）画成可旋转的地球与高度柱。
+// 画面只负责空间分布；数字与结论在旁白与正文里，不在画面上生成。
+// WebGL 不可用时退回 2D 投影（同一组数据、同一套令牌），画面不会空。
+(() => {
+  const stage = document.getElementById("chart");
+  const fallback = document.getElementById("globe-fallback");
+  const canvas = document.getElementById("globe-canvas");
+  const legend = document.getElementById("globe-legend");
+  if (!stage || !fallback) return;
+
+  const dataset = parse(declared.dataset_json);
+  const points = geoPoints(dataset);
+  const geo = dataset.shape === "geo" && points.length > 0;
+  const precision = number(dataset.metric && dataset.metric.precision, 0);
+  const unit = (dataset.metric && dataset.metric.unit) || "";
+
+  fillKpi(dataset, points, precision, unit);
+  const ctx = fallback.getContext("2d");
+  const W = fallback.width || 1080;
+  const H = fallback.height || 520;
+
+  if (!geo) {
+    placeholder(ctx, W, H);
+    if (legend) legend.innerHTML = "";
+    return;
+  }
+
+  const sorted = points.slice().sort((a, b) => b.value - a.value);
+  drawLegend(legend, sorted.slice(0, 3), precision);
+  if (legend) {
+    tl.from(legend.querySelectorAll("li"), {
+      y: 18, opacity: 0, duration: 0.5, stagger: 0.08, ease: "power3.out", immediateRender: true,
+    }, 0.5);
+  }
+
+  const state = { angle: initialAngle(sorted[0]) };
+  const renderThree = initThree(points, state, canvas, stage);
+  // 抓帧只认 GSAP 时间线：用 onUpdate 驱动绘制，不用墙钟计时——
+  // 墙钟与时间线不同步，抽帧会闪、会漏。
+  const draw = () => {
+    if (renderThree) renderThree(state.angle);
+    else if (ctx) drawFallback(ctx, W, H, points, state.angle);
+  };
+  draw();
+  tl.to(state, { angle: state.angle + 0.6, duration: total, ease: "none", onUpdate: draw }, 0);
+
+  // ---- 数据与文案 ----
+
+  function parse(raw) {
+    try {
+      return JSON.parse(raw || "{}") || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function number(value, fallbackValue) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallbackValue;
+  }
+
+  function geoPoints(source) {
+    const rows = Array.isArray(source.rows) ? source.rows : [];
+    return rows
+      .filter((row) => Array.isArray(row) && row.length >= 4)
+      .map((row) => ({ label: String(row[0]), lat: Number(row[1]), lon: Number(row[2]), value: Number(row[3]) }))
+      .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && Number.isFinite(p.value));
+  }
+
+  // 与 chart.js 的 KPI 同口径：geo 取最大值那条，没有经纬度就退回 facts 里的最后/最高值
+  function fillKpi(source, list, digits, unitText) {
+    const valueEl = document.getElementById("kpi-value");
+    if (!valueEl) return;
+    const unitEl = document.getElementById("kpi-unit");
+    const changeEl = document.getElementById("kpi-change");
+    const facts = source.facts || {};
+    let value = null;
+    let label = "";
+    if (list.length) {
+      const top = list.reduce((a, b) => (b.value > a.value ? b : a), list[0]);
+      value = top.value;
+      label = top.label;
+    } else if (facts.leader && typeof facts.leader.value === "number") {
+      value = facts.leader.value;
+      label = facts.leader.label || facts.leader.location || "";
+    } else if (facts.last && typeof facts.last.value === "number") {
+      value = facts.last.value;
+    }
+    if (value === null) return;
+    valueEl.textContent = Number(value).toFixed(digits);
+    if (unitEl) unitEl.textContent = unitText;
+    if (changeEl) changeEl.textContent = label;
+  }
+
+  function drawLegend(node, top, digits) {
+    if (!node) return;
+    node.innerHTML = top.map((p) => (
+      "<li><span class=\"globe-legend-name\">" + escape(p.label) + "</span>"
+      + "<span class=\"globe-legend-value\">" + p.value.toFixed(digits) + "</span></li>"
+    )).join("");
+  }
+
+  function escape(text) {
+    return String(text).replace(/[&<>"']/g, (ch) => (
+      { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
+    ));
+  }
+
+  // ---- 2D 兜底：正交投影，只画朝向镜头的一面 ----
+
+  function drawFallback(context, width, height, list, angle) {
+    context.clearRect(0, 0, width, height);
+    const R = Math.min(width * 0.28, height * 0.44);
+    const cx = width / 2;
+    const cy = height / 2;
+    const accent = cssVar("--accent") || "#18b7c9";
+    const muted = cssVar("--muted") || "#8aa0a8";
+    const fg = cssVar("--fg") || "#ffffff";
+    const disc = context.createRadialGradient(cx, cy - R * 0.3, R * 0.1, cx, cy, R);
+    disc.addColorStop(0, rgba(accent, 0.3));
+    disc.addColorStop(1, rgba(accent, 0.02));
+    context.fillStyle = disc;
+    context.beginPath();
+    context.arc(cx, cy, R, 0, Math.PI * 2);
+    context.fill();
+
+    context.strokeStyle = rgba(muted, 0.35);
+    context.lineWidth = 1.2;
+    for (let lat = -60; lat <= 60; lat += 30) {
+      strokeArc(context, sample((t) => project(lat, t, angle), -180, 180, 90), cx, cy, R);
+    }
+    for (let lon = -180; lon < 180; lon += 30) {
+      strokeArc(context, sample((t) => project(t, lon, angle), -90, 90, 60), cx, cy, R);
+    }
+    context.strokeStyle = rgba(accent, 0.5);
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(cx, cy, R, 0, Math.PI * 2);
+    context.stroke();
+
+    const max = Math.max(...list.map((p) => p.value));
+    const min = Math.min(...list.map((p) => p.value));
+    const span = max - min || 1;
+    const leader = list.reduce((a, b) => (b.value > a.value ? b : a), list[0]);
+    list.forEach((p) => {
+      const point = project(p.lat, p.lon, angle);
+      if (point.z <= 0.04) return;
+      const norm = (p.value - min) / span;
+      const x = cx + point.x * R;
+      const y = cy - point.y * R;
+      const len = 16 + norm * 54;
+      const dx = point.x / (Math.hypot(point.x, point.y) || 1);
+      const dy = -point.y / (Math.hypot(point.x, point.y) || 1);
+      context.strokeStyle = rgba(accent, 0.75);
+      context.lineWidth = 2.4;
+      context.beginPath();
+      context.moveTo(x, y);
+      context.lineTo(x + dx * len, y + dy * len);
+      context.stroke();
+      context.fillStyle = p === leader ? fg : accent;
+      context.beginPath();
+      context.arc(x + dx * len, y + dy * len, 4 + norm * 6, 0, Math.PI * 2);
+      context.fill();
+      if (p === leader) {
+        context.strokeStyle = rgba(accent, 0.9);
+        context.lineWidth = 2;
+        context.beginPath();
+        context.arc(x + dx * len, y + dy * len, 12 + norm * 6, 0, Math.PI * 2);
+        context.stroke();
+      }
+    });
+  }
+
+  function sample(pointAt, from, to, steps) {
+    const out = [];
+    for (let i = 0; i <= steps; i++) out.push(pointAt(from + ((to - from) * i) / steps));
+    return out;
+  }
+
+  function strokeArc(context, list, cx, cy, R) {
+    let open = false;
+    context.beginPath();
+    list.forEach((point) => {
+      if (point.z <= 0.04) {
+        open = false;
+        return;
+      }
+      const x = cx + point.x * R;
+      const y = cy - point.y * R;
+      if (!open) {
+        context.moveTo(x, y);
+        open = true;
+      } else {
+        context.lineTo(x, y);
+      }
+    });
+    context.stroke();
+  }
+
+  function project(lat, lon, angle) {
+    const phi = ((90 - lat) * Math.PI) / 180;
+    const theta = ((lon + 180) * Math.PI) / 180 + angle;
+    return {
+      x: -Math.sin(phi) * Math.cos(theta),
+      y: Math.cos(phi),
+      z: Math.sin(phi) * Math.sin(theta),
+    };
+  }
+
+  function initialAngle(leader) {
+    return Math.PI / 2 - ((leader.lon + 180) * Math.PI) / 180;
+  }
+
+  function rgba(color, alpha) {
+    const hex = /^#([0-9a-f]{6})$/i.exec(String(color).trim());
+    if (!hex) return color;
+    const value = parseInt(hex[1], 16);
+    return "rgba(" + ((value >> 16) & 255) + "," + ((value >> 8) & 255) + "," + (value & 255) + "," + alpha + ")";
+  }
+
+  // 非 geo 数据（人工误选这套版式）画一句说明，不拿别的数据硬凑三维
+  function placeholder(context, width, height) {
+    const accent = cssVar("--accent") || "#18b7c9";
+    const muted = cssVar("--muted") || "#8aa0a8";
+    context.clearRect(0, 0, width, height);
+    context.strokeStyle = rgba(muted, 0.5);
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(width / 2, height / 2, Math.min(width, height) * 0.3, 0, Math.PI * 2);
+    context.stroke();
+    context.fillStyle = accent;
+    context.font = "600 40px 'Noto Sans SC', sans-serif";
+    context.textAlign = "center";
+    context.fillText("此版式用于空间数据", width / 2, height / 2 + 14);
+  }
+
+  // ---- Three.js：WebGL 可用时接管，失败就保留 2D 兜底 ----
+
+  function initThree(list, state, target, host) {
+    if (!window.THREE || !target) return null;
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas: target, antialias: true, alpha: true, preserveDrawingBuffer: true });
+    } catch (e) {
+      return null;
+    }
+    if (!renderer) return null;
+    renderer.setPixelRatio(1);
+    renderer.setSize(target.width, target.height, false);
+    renderer.setClearColor(0x000000, 0);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(32, target.width / target.height, 0.1, 100);
+    camera.position.set(0, 0, 3.6);
+    camera.lookAt(0, 0, 0);
+    const group = new THREE.Group();
+    scene.add(group);
+
+    const accent = colorOf("--accent", 0x18b7c9);
+    const muted = colorOf("--muted", 0x8aa0a8);
+    const fg = colorOf("--fg", 0xffffff);
+
+    group.add(new THREE.Points(dots(), new THREE.PointsMaterial({
+      color: muted, size: 0.014, transparent: true, opacity: 0.7, sizeAttenuation: true,
+    })));
+    // 极淡的经纬线给球体一点结构，纯点阵会显得像平面散点
+    group.add(new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(1.001, 24, 16)),
+      new THREE.LineBasicMaterial({ color: muted, transparent: true, opacity: 0.08 })));
+
+    const max = Math.max(...list.map((p) => p.value));
+    const min = Math.min(...list.map((p) => p.value));
+    const span = max - min || 1;
+    const leader = list.reduce((a, b) => (b.value > a.value ? b : a), list[0]);
+    list.forEach((p) => {
+      const dir = vector(p.lat, p.lon);
+      const norm = (p.value - min) / span;
+      const tip = dir.clone().multiplyScalar(1.05 + norm * 0.35);
+      const line = new THREE.BufferGeometry().setFromPoints([dir.clone().multiplyScalar(1.005), tip]);
+      group.add(new THREE.Line(line, new THREE.LineBasicMaterial({
+        color: accent, transparent: true, opacity: 0.6,
+      })));
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.018 + norm * 0.016, 12, 12),
+        new THREE.MeshBasicMaterial({ color: p === leader ? fg : accent }));
+      dot.position.copy(tip);
+      group.add(dot);
+      if (p === leader) {
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.045, 0.058, 36),
+          new THREE.MeshBasicMaterial({ color: accent, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
+        ring.position.copy(dir.clone().multiplyScalar(1.06));
+        ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+        group.add(ring);
+      }
+    });
+    group.add(new THREE.Mesh(new THREE.SphereGeometry(1.03, 32, 24), new THREE.MeshBasicMaterial({
+      color: accent, transparent: true, opacity: 0.08, side: THREE.BackSide,
+    })));
+
+    group.rotation.y = state.angle;
+    renderer.render(scene, camera);
+    host.classList.add("is-webgl");
+    return (angle) => {
+      group.rotation.y = angle;
+      renderer.render(scene, camera);
+    };
+  }
+
+  function dots() {
+    const count = 900;
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const y = 1 - (i / (count - 1)) * 2;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = i * 2.399963229728653;
+      positions[i * 3] = Math.cos(theta) * r;
+      positions[i * 3 + 1] = y;
+      positions[i * 3 + 2] = Math.sin(theta) * r;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    return geometry;
+  }
+
+  function vector(lat, lon) {
+    const phi = ((90 - lat) * Math.PI) / 180;
+    const theta = ((lon + 180) * Math.PI) / 180;
+    return new THREE.Vector3(-Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta));
+  }
+
+  function colorOf(name, fallbackValue) {
+    const raw = String(cssVar(name) || "").trim();
+    const hex = /^#([0-9a-f]{6})$/i.exec(raw);
+    if (hex) return new THREE.Color(parseInt(hex[1], 16));
+    const short = /^#([0-9a-f]{3})$/i.exec(raw);
+    if (short) {
+      const h = short[1];
+      return new THREE.Color(parseInt(h[0] + h[0] + h[1] + h[1] + h[2] + h[2], 16));
+    }
+    try {
+      return new THREE.Color(raw);
+    } catch (e) {
+      return new THREE.Color(fallbackValue);
+    }
+  }
+})();
+
+// 全局时间线与场景进出。所有模板共用，必须在 chart 之后执行。
+// 只做三个动作：enter / ambient / swap。参数全部来自令牌，
+// 风格差异靠改令牌而不是另写一套动画——否则三套风格很快就会长成三份真相。
+// 数字滚动不在这里：KPI 的小数位与单位随数据集变化，由 chart.js 按 precision 驱动。
+const has = (selector) => document.querySelector(selector) !== null;
+const numberVar = (name, fallback) => {
+  const value = parseFloat(cssVar(name));
+  return Number.isFinite(value) ? value : fallback;
+};
+const EASE_OUT = cssVar("--ease-out") || "power3.out";
+const EASE_IN = cssVar("--ease-in") || "power2.in";
+const DUR = {
+  entrance: numberVar("--dur-entrance", 0.5),
+  swap: numberVar("--dur-swap", 0.3),
+  ambient: numberVar("--dur-ambient", 7),
+};
+const FROM = { up: { y: 30 }, down: { y: -30 }, left: { x: 46 }, right: { x: -46 }, none: {} };
+
+// immediateRender：动画排在中段时 GSAP 默认不提前写起始值，元素会先裸着露出来
+function enter(targets, { dir = "up", at = 0, stagger = 0 } = {}) {
+  if (!targets) return;
+  const list = typeof targets === "string" ? document.querySelectorAll(targets) : targets;
+  if (!list || (!list.nodeType && !list.length)) return;
+  tl.from(list, { ...FROM[dir], opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger, immediateRender: true }, at);
+}
+
+function ambient(scope = document) {
+  scope.querySelectorAll("[data-ambient]").forEach((el) => {
+    const base = parseFloat(getComputedStyle(el).opacity);
+    const dim = Number.isFinite(base) ? base : 1;
+    const kind = el.dataset.ambient;
+    const nominal = DUR.ambient * (kind === "pulse" ? 0.8 : kind === "flicker" ? 0.35 : 1);
+    const cycles = Math.max(1, Math.ceil(total / nominal));
+    const duration = total / cycles;
+    if (kind === "drift") {
+      tl.to(el, { x: 18, y: -14, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    } else if (kind === "pulse") {
+      tl.to(el, { opacity: dim * 0.55, scale: 1.06, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    } else if (kind === "flicker") {
+      tl.to(el, { opacity: dim * 0.7, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    }
+  });
+}
+
+function swap(slot, start, outAt) {
+  const parts = slot.querySelectorAll(".scene-no, .lead, .body");
+  if (!parts.length) return;
+  tl.from(parts, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, start);
+  // 短屏时退场不能排在入场之前
+  tl.to(parts, { y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, Math.max(start + DUR.entrance, outAt));
+}
+
+ambient();
+
+tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
+enter("#kicker", { dir: "left", at: 0.1 });
+enter("#title", { dir: "up", at: 0.2 });
+tl.from("#rule", { scaleX: 0, duration: DUR.entrance, ease: EASE_OUT, immediateRender: true }, 0.45);
+if (has("#kpi")) enter("#kpi", { dir: "up", at: 0.35 });
+enter("#aigc-badge", { dir: "none", at: 0.2 });
+// 数据图表常驻时保留选题标题，避免后半片只剩孤立数字；文稿线沿用原退场。
+if (!has("#chart")) tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
+
+// 版式自带的静态装饰（#plate / #rail / #tick）。它们不来自数据，
+// 但各自有动画：没有动画的装饰层等于死图层。
+if (has("#plate")) {
+  tl.fromTo("#plate", { scaleY: 0 }, { scaleY: 1, duration: 0.8, ease: "power3.inOut" }, 0.05);
+}
+if (has("#rail")) {
+  tl.fromTo("#rail", { scaleY: 0 }, { scaleY: 1, duration: total, ease: "none" }, 0);
+}
+const tick = document.getElementById("tick");
+if (tick) {
+  // 不能用 tl.call 逐屏写：按帧 seek 时回调会一次跑完，tick 停在最后一屏。
+  // 从时间线时间反推屏次，seek 到哪一帧都对。
+  const pad = (n) => String(n).padStart(2, "0");
+  const starts = [...document.querySelectorAll(".scene")]
+    .filter((slot) => Number(slot.dataset.sceneIndex) <= sceneCount)
+    .map((slot) => parseFloat(slot.dataset.start));
+  tl.to(tick, {
+    duration: total,
+    ease: "none",
+    onUpdate: () => {
+      const t = tl.time();
+      const hit = starts.filter((start) => start <= t).length;
+      tick.textContent = pad(Math.max(hit, 1)) + " / " + pad(sceneCount);
+    },
+  }, 0);
+}
+
+// 结尾口播独占片尾一段窗口（生成器已把最后一屏的窗口切短），这里只需按窗口起点进场
+const closingSlot = document.getElementById("closing-slot");
+const closingAt = closingSlot ? parseFloat(closingSlot.dataset.start) : NaN;
+const hasClosing = Number.isFinite(closingAt) && closingAt < total - 0.1;
+
+document.querySelectorAll(".scene").forEach((slot) => {
+  if (Number(slot.dataset.sceneIndex) > sceneCount) {
+    slot.hidden = true;
+    slot.style.display = "none";
+    return;
+  }
+  const start = parseFloat(slot.dataset.start);
+  const end = start + parseFloat(slot.dataset.duration);
+  swap(slot, start, end - DUR.swap);
+});
+
+if (hasClosing) {
+  enter(closingSlot.querySelector("#closing"), { dir: "up", at: closingAt });
+}
+
+window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

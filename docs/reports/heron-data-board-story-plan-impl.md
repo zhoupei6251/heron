@@ -143,7 +143,7 @@ mvn -o -q -pl ruoyi-modules/ruoyi-heron dependency:build-classpath \
 ## 5. 遗留与下一步
 
 - **生产链路没真跑过**：策划这一步要真模型（`heron.model.*`）与真实数据源，本机两者都没有，只跑通了单测与编译。真跑需要一份带模型密钥的环境。
-- **风格映射表还排不上期**：设计稿里「叙事类型 → 视觉风格」的映射表明确要求与 story/1 一起排期，story/1 落地后这条解锁了，但本报告不碰渲染。
+- **风格映射表已另案落地**：设计稿里「叙事类型 → 视觉风格」的映射表已随模板 `style.narratives`、`StoryStyleMap` 与 `NewsTemplatePicker` 的叙事收窄实现；本报告出具时尚未开始。
 - **故事的历史表现回填**没做（需播放数据回流，另立项）。
 - **人工编辑故事**没做（先只做「自动生成 + 自动拒绝」）。
 - 端到端验收还要等「真片是带策划结论跑出来的」——现在一条都还没有（见 `docs/2026-11-20-storyboard-and-visual-signal-report.md`）。

@@ -522,4 +522,5 @@ story 通过**三条不进 JSON 的通道**影响稿件：
 - 接入 `EditorialSelection`（story 组件）、`EditorialChoice`（storyRejects）、`EditorialLineEditor`（看板线最多试 3 条机会、全拒回退）、`NewsProductionDomain`（快照 story 节点 + `story` 闸）、`NewsProductionPipeline`（生产期 `storyGate`）、`DatasetTitleAuthor`（钩子按叙事收窄）、`DatasetScriptAuthor`（提示词加故事节 + 对位复核）、`EditorialReviewer`（审稿依据加故事）、`NewsAutoService`（拒绝码进槽位原因与决策轨迹）。
 - 11 条拒绝码、6 类叙事、6 类张力相容、6 类标题钩子相容表全部实现；`DatasetSignal` 拆出 `raw(...)` 以便给出「过期 / 幅度不可信」的具体拒绝码。
 - 验证：本次涉及的 9 个测试类 63 个测试全通过（新增 39 条）；heron 模块全量 847 个测试与 HEAD 基线的 184 个环境性失败逐条一致，**无回归**。
-- 尚未做的：生产链路真跑（需模型密钥与真实数据源）、风格映射表（story/1 落地后已解锁，另案）、故事的表现回填、人工编辑故事。
+- 尚未做的：生产链路真跑（需模型密钥与真实数据源）、故事的表现回填、人工编辑故事。
+- 风格映射表已另案落地：叙事类型登记在模板 `style.narratives` 上，`StoryStyleMap` 校验六类叙事各有承接且不重复，`NewsTemplatePicker` 按叙事收窄到一套画面（数据看板线不再让模型在几套画面间现挑）。

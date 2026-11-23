@@ -89,6 +89,27 @@ class DatasetAdaptersTest {
     }
 
     @Test
+    @DisplayName("USGS geo：地点经纬度震级四列，缺字段事件跳过，快照过契约闸")
+    void usgsGeoDistribution() {
+        String body = "{\"features\":["
+            + "{\"properties\":{\"place\":\"琉球群岛\",\"mag\":5.2},\"geometry\":{\"coordinates\":[128.5,26.3]}},"
+            + "{\"properties\":{\"place\":\"智利近海\",\"mag\":6.1},\"geometry\":{\"coordinates\":[-71.2,-30.4]}},"
+            + "{\"properties\":{\"place\":null,\"mag\":5.0},\"geometry\":{\"coordinates\":[1,2]}},"
+            + "{\"properties\":{\"place\":\"无坐标\",\"mag\":5.0},\"geometry\":{\"coordinates\":[]}}]}";
+        JsonNode node = JSON.readTree(UsgsQuakeGeoAdapter.build(body, "https://x.test/q", NOW));
+        assertEquals("geo", node.path("shape").asString());
+        assertEquals(2, node.path("rows").size());
+        assertEquals("琉球群岛", node.path("rows").get(0).get(0).asString());
+        assertEquals(26.3, node.path("rows").get(0).get(1).asDouble(), 0.001);
+        assertEquals(128.5, node.path("rows").get(0).get(2).asDouble(), 0.001);
+        assertEquals(5.2, node.path("rows").get(0).get(3).asDouble(), 0.001);
+        assertEquals("智利近海", node.path("facts").path("leader").path("location").asString());
+        assertTrue(node.path("time_range").isMissingNode(), "geo 没有时间轴");
+        assertEquals(List.of(), DatasetContract.violations(node,
+            java.util.Set.of(UsgsQuakeGeoAdapter.SOURCE_KEY)));
+    }
+
+    @Test
     @DisplayName("维基榜单：跳过首页，解码中文标题，输出 rows 形态")
     void wikimediaTop() {
         String body = "{\"items\":[{\"articles\":["
@@ -332,6 +353,8 @@ class DatasetAdaptersTest {
             MetNoAdapter.ALL.get(0), "{}", "https://x.test/w", NOW, 30));
         assertThrows(HeronBusinessException.class, () -> UsgsEarthquakeAdapter.build(
             UsgsEarthquakeAdapter.ALL.get(0), "{}", "https://x.test/q", NOW, 3));
+        assertThrows(HeronBusinessException.class, () -> UsgsQuakeGeoAdapter.build(
+            "{\"features\":[]}", "https://x.test/q", NOW));
         assertThrows(HeronBusinessException.class, () -> WikimediaTopAdapter.build(
             WikimediaTopAdapter.ALL.get(0), "{}", "https://x.test/w", NOW, 10));
         assertThrows(HeronBusinessException.class, () -> HackerNewsAdapter.build(

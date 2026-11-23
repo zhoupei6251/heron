@@ -80,7 +80,7 @@ public class HeronProductionConfiguration {
      */
     @Bean("newsProductionPipeline")
     @ConditionalOnProperty(prefix = "heron.news", name = "pipeline-enabled", havingValue = "true")
-    public NewsProductionPipeline newsProductionPipeline(NewsScriptAuthor author,
+    public NewsProductionPipeline newsProductionPipeline(@Qualifier("newsModelScriptAuthor") NewsScriptAuthor author,
                                                          KnowledgeScriptAuthor knowledgeAuthor,
                                                          ProductionProcessService processes,
                                                          ProductionArtifactService artifacts,

@@ -12,5 +12,5 @@ public record VideoTemplateVo(String key, String name, String description,
                               String templateVersion, String voiceKey, String assetManifestSha256,
                               List<String> supportedLines, List<String> supportedSceneTypes,
                               String aspectRatio, Integer minDuration, Integer maxDuration,
-                              VideoStyleVo style) implements Serializable {
+                              VideoStyleVo style, String visualMode) implements Serializable {
 }

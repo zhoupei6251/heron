@@ -274,4 +274,17 @@ class DatasetStoryContractTest {
             DatasetStoryContract.titleKinds("numeric_contrast"));
         assertTrue(DatasetStoryContract.titleKinds("not_a_narrative").isEmpty());
     }
+
+    @Test
+    @DisplayName("geo 只给 numeric_contrast：problem_evidence_reveal 没有 3D 画面，给了也出不了片")
+    void geoOffersOnlyThreeDCapableNarrative() {
+        JsonNode geo = JSON.readTree("""
+            {
+              "shape": "geo",
+              "facts": {"count": 8, "spread": 4.2}
+            }
+            """);
+        assertEquals(java.util.Set.of("numeric_contrast"),
+            DatasetStoryContract.availableNarratives(geo, null));
+    }
 }

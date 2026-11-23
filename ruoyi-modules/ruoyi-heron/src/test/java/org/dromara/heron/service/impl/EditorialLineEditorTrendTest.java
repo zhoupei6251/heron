@@ -78,6 +78,8 @@ class EditorialLineEditorTrendTest {
     private static NewsTemplatePicker templatePicker() {
         NewsTemplatePicker picker = mock(NewsTemplatePicker.class);
         when(picker.pick(any(), any(), anyString())).thenReturn("news-trend-9x16");
+        // 看板线带叙事选模板：叙事决定风格，风格决定模板
+        when(picker.pick(any(), any(), anyString(), any(), any())).thenReturn("news-data-9x16");
         return picker;
     }
 

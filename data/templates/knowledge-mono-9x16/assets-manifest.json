@@ -9,8 +9,8 @@
     },
     {
       "path": "index.html",
-      "sha256": "7d4de3a9ff8947853cb3236b5793c0af4ab172fe2f7f8c0688b7fe0d02301965",
-      "bytes": 23371
+      "sha256": "56f2193497985ce1259eaf9486a0d9f59f981ffc9e62edfb8ad77405522a2b74",
+      "bytes": 23313
     },
     {
       "path": "index.motion.json",
@@ -29,8 +29,8 @@
     },
     {
       "path": "template.json",
-      "sha256": "7b0b8b8e3f7c73981a3158468a5572bc5b6cfd11b65fd664f0a361b92b784ac8",
-      "bytes": 648
+      "sha256": "ad8b060b8a4d318c530f9b0f6d07d4fa2a21f978a6d3c988abafb9e64428e34d",
+      "bytes": 670
     }
   ]
 }

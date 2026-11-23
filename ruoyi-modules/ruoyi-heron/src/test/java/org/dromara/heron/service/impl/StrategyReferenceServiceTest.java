@@ -54,6 +54,11 @@ class StrategyReferenceServiceTest {
         public NewsPerformanceInsightVo performanceInsight(String dimension) {
             return insight;
         }
+
+        @Override
+        public List<org.dromara.heron.domain.vo.NewsSuggestionVo> suggestions(int limit) {
+            return List.of();
+        }
     }
 
     /** 桩：槽位表只回固定的几行。 */

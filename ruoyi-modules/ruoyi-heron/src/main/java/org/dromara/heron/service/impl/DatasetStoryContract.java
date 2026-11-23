@@ -254,10 +254,9 @@ public final class DatasetStoryContract {
         String shape = snapshot.path("shape").asString("");
         JsonNode facts = snapshot.path("facts");
         if ("geo".equals(shape)) {
-            // geo 没有时间轴也没有变化，只能讲分布反差或问题—证据
+            // geo 必须 3D，而 problem_evidence_reveal 只有 2D 调查风格承接——给了也出不了片
             if (facts.path("count").asInt(0) >= 2 && spread(facts) > 0) {
                 out.add("numeric_contrast");
-                out.add("problem_evidence_reveal");
             }
             return out;
         }

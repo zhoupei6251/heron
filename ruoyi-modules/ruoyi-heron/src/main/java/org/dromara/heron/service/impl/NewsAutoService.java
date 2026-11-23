@@ -525,14 +525,31 @@ public class NewsAutoService {
     /** 数据源候选：启用、探测 ok、7 天内没用过。取不到就当空，不让整个槽位失败。 */
     private List<HeronDataSource> datasets(LocalDateTime now) {
         try {
-            return datasetRouter.eligible(now).stream()
+            List<HeronDataSource> eligible = datasetRouter.eligible(now).stream()
                 .sorted(java.util.Comparator.comparing(HeronDataSource::getSourceKey))
-                .limit(DATASET_POOL_LIMIT)
                 .toList();
+            return datasetWindow(eligible, now.toLocalDate().getDayOfYear(), DATASET_POOL_LIMIT);
         } catch (RuntimeException e) {
             log.warn("数据源候选不可用，本期数据看板线为空: {}", e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * 按天轮换的取窗：字母序直接截断会让排在后面的源永远进不了池
+     * （94 个可用源只取前 20 时，usgs/worldbank 等整段被饿死）。
+     * 与 {@code DatasetRouter.digest} 的按天轮换同一口径：确定性、逐日公平。
+     */
+    static List<HeronDataSource> datasetWindow(List<HeronDataSource> sorted, int dayOfYear, int limit) {
+        if (sorted.size() <= limit) {
+            return sorted;
+        }
+        int start = Math.floorMod(dayOfYear * limit, sorted.size());
+        List<HeronDataSource> window = new java.util.ArrayList<>(limit);
+        for (int i = 0; i < limit; i++) {
+            window.add(sorted.get((start + i) % sorted.size()));
+        }
+        return window;
     }
 
     /**

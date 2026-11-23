@@ -6,6 +6,10 @@
     "name": "Data Investigation",
     "label": "数据调查",
     "role": "数据异常、产业变化、市场趋势、深度分析",
+    "narratives": [
+      "counter_intuitive",
+      "problem_evidence_reveal"
+    ],
     "bg": "#0e0d0b",
     "fg": "#f2ece1",
     "accent": "#d9a05b"

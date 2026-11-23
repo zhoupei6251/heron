@@ -79,7 +79,7 @@ public class EditorialLineEditor {
                 return Optional.of(new EditorialChoice(second.get(), line, true, "knowledge_empty", rejects));
             }
             DatasetPlan plan = planDatasetLine(EditorialDecisionService.DATA_BOARD,
-                pool.datasets(), pool.opportunities(), focusOpportunityId);
+                pool.datasets(), pool.opportunities(), focusOpportunityId, "");
             rejects.addAll(plan.rejects());
             return plan.selection()
                 .map(selection -> new EditorialChoice(selection, line, true, "knowledge_empty", rejects));
@@ -90,7 +90,7 @@ public class EditorialLineEditor {
         if (datasetLine) {
             DatasetPlan plan = planDatasetLine(trend ? EditorialDecisionService.TREND_INSIGHT
                     : EditorialDecisionService.DATA_BOARD,
-                pool.datasets(), pool.opportunities(), focusOpportunityId);
+                pool.datasets(), pool.opportunities(), focusOpportunityId, intent);
             rejects.addAll(plan.rejects());
             first = plan.selection();
         } else {
@@ -102,10 +102,11 @@ public class EditorialLineEditor {
         String reason = trend ? "trend_empty" : datasetLine ? "data_board_empty" : "explainer_empty";
         Optional<EditorialSelection> second;
         if (datasetLine) {
-            second = editExplainer(pool.articles(), intent, focusCandidateId);
+            // 跨线回退不带旧方向的角度：geo 意图塞进新闻片，写稿只会产出拧巴的片子
+            second = editExplainer(pool.articles(), "", focusCandidateId);
         } else {
             DatasetPlan plan = planDatasetLine(EditorialDecisionService.DATA_BOARD,
-                pool.datasets(), pool.opportunities(), focusOpportunityId);
+                pool.datasets(), pool.opportunities(), focusOpportunityId, intent);
             rejects.addAll(plan.rejects());
             second = plan.selection();
         }
@@ -201,7 +202,7 @@ public class EditorialLineEditor {
     public Optional<EditorialSelection> editDatasetLine(String line, List<HeronDataSource> datasets,
                                                         List<HeronDataOpportunity> opportunities,
                                                         Long focusOpportunityId) {
-        return planDatasetLine(line, datasets, opportunities, focusOpportunityId).selection();
+        return planDatasetLine(line, datasets, opportunities, focusOpportunityId, "").selection();
     }
 
     /**
@@ -226,7 +227,7 @@ public class EditorialLineEditor {
      */
     private DatasetPlan planDatasetLine(String line, List<HeronDataSource> datasets,
                                         List<HeronDataOpportunity> opportunities,
-                                        Long focusOpportunityId) {
+                                        Long focusOpportunityId, String intent) {
         boolean trend = EditorialDecisionService.TREND_INSIGHT.equals(line);
         List<String> rejects = new ArrayList<>();
         List<HeronDataOpportunity> usable = opportunities == null ? List.of()
@@ -255,12 +256,12 @@ public class EditorialLineEditor {
                 }
             }
             // 机会都不成立：退到选源器兜底，兜底也要有故事
-            return planDigest(line, datasets, rejects);
+            return planDigest(line, datasets, rejects, intent);
         }
         if (trend) {
             return new DatasetPlan(digestSelection(line, datasets), rejects);
         }
-        return planDigest(line, datasets, rejects);
+        return planDigest(line, datasets, rejects, intent);
     }
 
     /**
@@ -294,18 +295,22 @@ public class EditorialLineEditor {
             rejects.add(candidate.getSourceKey() + ":story_source_missing");
             return Optional.empty();
         }
-        String name = source.getName() == null ? candidate.getHeadline() : source.getName();
-        String template = templatePicker.pick(name, "数据看板", line);
-        if (template == null) {
-            rejects.add(candidate.getSourceKey() + ":story_template_missing");
-            return Optional.empty();
-        }
         int points = candidate.getWindowPoints() == null || candidate.getWindowPoints() <= 0
             ? DatasetStoryPlanner.DEFAULT_POINTS : candidate.getWindowPoints();
         DatasetStoryPlanner.Result result = storyPlanner.plan(decisionRun(), source, points,
             "opportunity", candidate.getOpportunityId(), candidate.getHeadline(), candidate.getSignals());
         if (!result.accepted()) {
             rejects.add(candidate.getSourceKey() + ":" + result.rejectCode());
+            return Optional.empty();
+        }
+        // 先有故事，才知道该用哪套画面：叙事决定视觉风格，风格决定模板。
+        // 顺序反了就是先挑皮再编故事——同一套画面被塞进不相干的故事里。
+        // 视觉模式也由故事定：geo 数据只能进 3D 模板，2D 模板画不出经纬度。
+        String name = source.getName() == null ? candidate.getHeadline() : source.getName();
+        String template = templatePicker.pick(name, "数据看板", line, result.story().narrative(),
+            VisualMode.of(result.story()));
+        if (template == null) {
+            rejects.add(candidate.getSourceKey() + ":story_template_missing");
             return Optional.empty();
         }
         return Optional.of(new EditorialSelection(line,
@@ -316,13 +321,14 @@ public class EditorialLineEditor {
     /**
      * 看板线走选源器兜底：速览也得有故事，否则这条线本轮就不出片。
      */
-    private DatasetPlan planDigest(String line, List<HeronDataSource> datasets, List<String> rejects) {
+    private DatasetPlan planDigest(String line, List<HeronDataSource> datasets, List<String> rejects,
+                                   String intent) {
         if (datasets == null || datasets.isEmpty()) {
             return DatasetPlan.empty(rejects);
         }
         DatasetRouter.Route route;
         try {
-            route = datasetRouter.pick(decisionRun(), decisionContext(), datasets);
+            route = datasetRouter.pick(decisionRun(), decisionContext(intent), datasets);
         } catch (RuntimeException e) {
             return DatasetPlan.empty(rejects);
         }
@@ -335,11 +341,6 @@ public class EditorialLineEditor {
             return DatasetPlan.empty(rejects);
         }
         String name = source.getName() == null ? route.sourceKey() : source.getName();
-        String template = templatePicker.pick(name, "数据看板", line);
-        if (template == null) {
-            rejects.add(route.sourceKey() + ":story_template_missing");
-            return DatasetPlan.empty(rejects);
-        }
         DatasetStoryPlanner.Result result = storyPlanner.plan(decisionRun(), source,
             DatasetStoryPlanner.DEFAULT_POINTS, "digest", null, null, null);
         if (!result.accepted()) {
@@ -347,6 +348,12 @@ public class EditorialLineEditor {
             return DatasetPlan.empty(rejects);
         }
         EditorialStory story = result.story();
+        // 速览也得按故事选画面：叙事定了风格，风格才是模板；geo 故事同样只能进 3D
+        String template = templatePicker.pick(name, "数据看板", line, story.narrative(), VisualMode.of(story));
+        if (template == null) {
+            rejects.add(route.sourceKey() + ":story_template_missing");
+            return DatasetPlan.empty(rejects);
+        }
         return new DatasetPlan(Optional.of(new EditorialSelection(line,
             null, route.sourceKey(), route.digest(), template, storyAngle(story), List.of(),
             null, null, story)), rejects);
@@ -492,6 +499,15 @@ public class EditorialLineEditor {
 
     /** 路由只需要 limit 与标题上下文。 */
     private static JsonNode decisionContext() {
-        return JSON.createObjectNode().put("limit", 30).put("title", "数据看板");
+        return decisionContext("");
+    }
+
+    /**
+     * 总编辑意图进选源上下文：不带它，选源器只看到「数据看板」四个字，
+     * 总编辑定的方向（如今日做 geo）在选源这一步就丢了——三步各选一次、结果互相不认识。
+     */
+    private static JsonNode decisionContext(String intent) {
+        String title = intent == null || intent.isBlank() ? "数据看板" : intent;
+        return JSON.createObjectNode().put("limit", 30).put("title", title);
     }
 }

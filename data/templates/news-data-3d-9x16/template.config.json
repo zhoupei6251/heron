@@ -1,0 +1,104 @@
+{
+  "key": "news-data-3d-9x16",
+  "name": "数据看板 · 三维地球",
+  "pageTitle": "Heron 数据看板三维地球竖版",
+  "line": "DATA_BOARD",
+  "style": "data-board",
+  "layout": "news-data-3d-9x16",
+  "visualMode": "3d",
+  "width": 1080,
+  "height": 1920,
+  "duration": 45,
+  "scenes": 6,
+  "activeScenes": 3,
+  "capabilities": [
+    "globe"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "text",
+    "chart",
+    "number",
+    "compare",
+    "timeline"
+  ],
+  "storyboard": true,
+  "description": "三维地球：经纬度分布、区域高亮与高度柱，1080×1920，数据由 dataset/1 的 geo 快照驱动；只服务有空间关系的选题",
+  "recommendedDuration": {
+    "min": 30,
+    "max": 60
+  },
+  "version": "1.0.0",
+  "defaults": {
+    "title": "八座城市的物流成本差多少",
+    "kicker": "空间数据",
+    "closing": "关注你所在城市在链条里的位置。",
+    "sourceName": "来源：示例数据集",
+    "accent": "#18b7c9",
+    "chart": "globe",
+    "scenes": [
+      [
+        "八座枢纽，成本差出一截",
+        "示例数据里，八座城市的示例指数从 3.2 到 9.4 不等。"
+      ],
+      [
+        "最高的那座在哪里",
+        "上海在示例数据中最高，指数 9.4，比最低的城市高出两倍多。"
+      ],
+      [
+        "差距落在谁身上",
+        "同样的货走不同的枢纽，成本结构完全不同。"
+      ]
+    ],
+    "dataset": {
+      "contract": "dataset/1",
+      "source_key": "sample-global-hubs",
+      "source_name": "示例数据集",
+      "source_url": "https://example.com/sample-global-hubs",
+      "retrieved_at": "2026-11-23T00:00:00Z",
+      "license": {
+        "name": "示例数据",
+        "commercial_ok": "true"
+      },
+      "cadence": "annual",
+      "shape": "geo",
+      "columns": [
+        "location",
+        "latitude",
+        "longitude",
+        "value"
+      ],
+      "metric": {
+        "key": "sample_index",
+        "label": "示例指数",
+        "unit": "（示例）",
+        "precision": 1
+      },
+      "rows": [
+        ["上海", 31.23, 121.47, 9.4],
+        ["东京", 35.68, 139.69, 8.1],
+        ["新加坡", 1.35, 103.82, 7.3],
+        ["迪拜", 25.2, 55.27, 6.4],
+        ["鹿特丹", 51.92, 4.48, 5.6],
+        ["孟买", 19.08, 72.88, 4.9],
+        ["洛杉矶", 34.05, -118.24, 4.1],
+        ["圣保罗", -23.55, -46.63, 3.2]
+      ],
+      "facts": {
+        "items": [
+          {"location": "上海", "value": 9.4},
+          {"location": "东京", "value": 8.1},
+          {"location": "新加坡", "value": 7.3},
+          {"location": "迪拜", "value": 6.4},
+          {"location": "鹿特丹", "value": 5.6},
+          {"location": "孟买", "value": 4.9},
+          {"location": "洛杉矶", "value": 4.1},
+          {"location": "圣保罗", "value": 3.2}
+        ],
+        "leader": {"location": "上海", "value": 9.4},
+        "spread": 6.2,
+        "count": 8
+      }
+    }
+  }
+}

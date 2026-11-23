@@ -6,6 +6,10 @@
     "name": "Dynamic Data Explainer",
     "label": "动态数据解释",
     "role": "数据看板解读、指标变化、排行与趋势",
+    "narratives": [
+      "trend_reversal",
+      "numeric_contrast"
+    ],
     "bg": "#0c1417",
     "fg": "#f3f0e8",
     "accent": "#18b7c9"
