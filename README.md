@@ -1,179 +1,253 @@
 # Heron
 
-基于 RuoYi-Vue-Plus 的业务管理系统。产品名称使用 Heron，若依基座模块、Maven 坐标与开源许可保持不变。
+> 单租户、自部署的内容生产与原型工作台。热榜进、成片出、人确认；需求进、可交付原型出。
 
-- 业务模块：`ruoyi-modules/ruoyi-heron`，包名 `org.dromara.heron`，由 `ruoyi-admin` 统一启动。
-- 主数据库：`heron`。先创建空库，再将 `script/sql/ry_vue.sql` 导入该库；按需导入原有工作流脚本。扩展服务的独立库保持原名。
-- 修改连接配置或 `MYSQL_DATABASE` 不会重命名、迁移已有数据库；已有 MySQL 数据目录也不会重新执行初始化。迁移前请备份，勿删除数据目录。
-- 后端构建：`mvn -pl ruoyi-admin -am package`，启动产物为 `ruoyi-admin/target/heron.jar`。
-- 主服务镜像：构建后执行 `docker build -t heron-server:6.0.0 ruoyi-admin`，再使用部署配置。该名称是本地构建标签，不是已发布镜像地址。
-- 运行口令：在启动工作目录的 `.env` 中设置 `HERON_PASSWORD`，或通过环境变量注入；主应用及扩展应用的数据源使用它，主应用的 Redis 同用该值。`.env` 已忽略，不会打入 JAR。
-- Redis 私密配置：在 `script/docker/dev/redis/conf/redis-local.conf` 写入 `requirepass "你的口令"`，与 `HERON_PASSWORD` 保持一致；部署时将该文件和 `redis.conf` 一起放到 `/docker/redis/conf/`。私密文件已忽略，缺少时 Redis 拒绝启动。
-- Compose 从仓库根目录执行：`docker compose --env-file .env -f script/docker/docker-compose.yml up -d`。已有 MySQL 账号、运行中 Redis 和已有 `admin` 不会因修改初始化配置而自动改密，须单独更新。
+Heron 基于 RuoYi-Vue-Plus 6.1.0 构建，保留若依的账号、角色、菜单、审计、存储和任务能力，把业务集中在 `ruoyi-modules/ruoyi-heron`。它不是一套后台 CRUD 模板，而是一条可追踪、可审核、可恢复的内容生产链路。
 
-## 若依基座简介
+本文以仓库当前代码和配置为准。产品边界、业务规则和验收口径见 [业务规格](docs/plans/2026-10-29-heron-business-spec.md)。
 
-[![码云Gitee](https://gitee.com/dromara/RuoYi-Vue-Plus/badge/star.svg?theme=blue)](https://gitee.com/dromara/RuoYi-Vue-Plus)
-[![GitHub](https://img.shields.io/github/stars/dromara/RuoYi-Vue-Plus?style=social&label=Github%20Stars)](https://github.com/dromara/RuoYi-Vue-Plus)
-[![Star](https://gitcode.com/dromara/RuoYi-Vue-Plus/star/badge.svg)](https://gitcode.com/dromara/RuoYi-Vue-Plus)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://gitee.com/dromara/RuoYi-Vue-Plus/blob/6.X/LICENSE)
-<br>
-[![RuoYi-Vue-Plus](https://img.shields.io/badge/RuoYi_Vue_Plus-6.1.0-success.svg)](https://gitee.com/dromara/RuoYi-Vue-Plus)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-blue.svg)]()
-[![JDK-21](https://img.shields.io/badge/JDK-21-green.svg)]()
-[![JDK-25](https://img.shields.io/badge/JDK-25-green.svg)]()
+## 业务地图
 
-> Dromara RuoYi-Vue-Plus 是重写 RuoYi-Vue 针对 `分布式集群` 场景全方位升级(不兼容原框架)
+### 新闻视频生产线
 
-> 项目代码、文档 均开源免费可商用 遵循开源协议在项目中保留开源协议文件即可<br>
-> 活到老写到老 为兴趣而开源 为学习而开源 为让大家真正可以学到技术而开源
+从热点采集到发布回执，系统把每一步的状态、输入、产物和失败原因落到数据库。制作人可以认领候选、修改稿件、触发生成和重跑；审片人可以查看成片、联络表、分镜和质量报告，再决定确认或驳回。
 
-> 系统演示: [传送门](https://plus-doc.dromara.org/#/common/demo_system)
+| 子线 | `kind` | 模板前缀 | 画面主体 | 生产链路 |
+| --- | --- | --- | --- | --- |
+| 文稿解说线 | `article` | `news-*` | 文字排版 | 热点 → 写稿 → 核查 → 套版渲染 |
+| 数据看板线 | `data_board` | `news-data-*` | 图表 | 热点 → 选源 → 数据集快照 → 写稿 → 出图渲染 |
 
-> 官方前端项目地址: 基于 Vue + ElementPlus 版本前端项目 [gitee](https://gitee.com/JavaLionLi/plus-ui) - [github](https://github.com/CrazyLionCat/plus-ui) - [gitcode](https://gitcode.com/dromara/plus-ui)<br>
-> 官方前端项目地址: 基于 React + Ant Design 版本前端项目 [plus-ui-react](https://gitee.com/JavaLionLi/plus-ui/tree/6.X-React/)
-> 成员前端项目地址: 基于vben5 [ruoyi-plus-vben5](https://github.com/imdap/ruoyi-plus-vben5)<br>
-> 成员前端项目地址: 基于soybean [ruoyi-plus-soybean](https://gitee.com/xlsea/ruoyi-plus-soybean)<br>
-> 成员项目地址: 删除多租户与工作流 [RuoYi-Vue-Plus-Single](https://gitee.com/ColorDreams/RuoYi-Vue-Plus-Single)<br>
+两条子线共用 `ProductionBizType.news_video`，由版本冻结输入里的 `kind` 区分。自动槽位默认使用数据看板模板 `news-data-9x16`；模板不存在时直接失败，不静默回退到其他模板。
 
-> 文档地址: [plus-doc](https://plus-doc.dromara.org) 国内加速: [plus-doc.top](https://plus-doc.top)
+核心对象包括新闻来源、候选、作品、视频版本、生产任务、发布尝试、质量报告和表现指标。每次重渲都会产生新版本，旧版本不会被覆盖。
 
-## 赞助商
+### 原型工坊
 
-MaxKey 业界领先单点登录产品 - https://gitee.com/dromara/MaxKey <br>
-CCFlow 驰聘低代码-流程-表单 - https://gitee.com/opencc/RuoYi-JFlow <br>
-数舵科技 软件定制开发APP小程序等 - https://www.shuduokeji.com/ <br>
-Mall4J 高质量Java商城系统 - https://www.mall4j.com/cn/?statId=11 <br>
-aizuda flowlong 工作流 - https://gitee.com/aizuda/flowlong <br>
-Ruoyi-Plus-Uniapp - https://ruoyi.plus <br>
-Topiam IAM/IDaaS身份管理平台 - https://www.topiam.cn/ <br>
-稳定低价的大模型中转站 - https://aicodelink.top/register?aff=pHeG <br>
+原型线把需求转成 RP/1 源码，再交给 `zee-rp` 做结构检查和原生 `.rp` 装配。流程是：
 
-[如何成为赞助商 加群联系作者详谈 每日PV2500-3000 IP1700-2500](https://plus-doc.dromara.org/#/common/add_group)
+```text
+需求 → RP/1 → check → compile → 预览与审计 → 人工审核 → Axure 原生验证 → 交付
+```
 
-# 本框架与RuoYi的功能差异
+每次生成保留独立版本，记录源码、引擎版本、模型用量、预览图、文件指纹和失败原因。系统不会伪造“已在 Axure 打开”的结论；未完成原生验证的版本会持续显示验证状态。
 
-| 功能          | 本框架                                                                                                               | RuoYi                                                                              |
-|-------------|-------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------|
-| 前端项目        | 采用 Vue3 + TS + ElementPlus 重写                                                                                     | 基于Vue2/Vue3 + JS                                                                   | 
-| 后端项目结构      | 采用插件化 + 扩展包形式 结构解耦 易于扩展                                                                                           | 模块相互注入耦合严重难以扩展                                                                     | 
-| 后端代码风格      | 参考 Alibaba 规范与项目统一配置的代码格式化                                                                                        | 代码书写与常规结构不同阅读障碍大                                                                   |
-| Web容器       | 采用 Jetty 基于 Netty 的高性能容器                                                                                          | 采用 Tomcat                                                                          |
-| 权限认证        | 采用 Sa-Token、Jwt 静态使用功能齐全 低耦合 高扩展                                                                                  | Spring Security 配置繁琐扩展性极差                                                          |
-| 权限注解        | 采用 Sa-Token 支持注解 登录校验、角色校验、权限校验、二级认证校验、HttpBasic校验、忽略校验<br/>角色与权限校验支持多种条件 如 `AND` `OR` 或 `权限 OR 角色` 等复杂表达式        | 只支持是否存在匹配                                                                          |
-| 三方鉴权        | 采用 JustAuth 第三方登录组件 支持微信、钉钉等数十种三方认证                                                                               | 无                                                                                  |
-| 关系数据库支持     | 原生支持 MySQL、Oracle、PostgreSQL、SQLServer<br/>可同时使用异构切换(支持其他 mybatis-plus 支持的所有数据库 只需要增加jdbc依赖即可使用 达梦金仓等均有成功案例)      | 支持 Mysql、Oracle 不支持同时使用、不支持异构切换                                                    |
-| 缓存数据库       | 支持 Redis >= 6 支持大部分新功能特性 如 分布式限流、分布式队列                                                                            | Redis 简单 get set 支持                                                                |
-| Redis客户端    | 采用 Redisson Redis官方推荐 基于Netty的客户端工具<br/>支持Redis 90%以上的命令 底层优化规避很多不正确的用法 例如: keys被转换为scan<br/>支持单机、哨兵、单主集群、多主集群等模式 | Lettuce + RedisTemplate 支持模式少 工具使用繁琐<br/>连接池采用 common-pool Bug多经常性出问题              |
-| 缓存注解        | 采用 Spring-Cache 注解 对其扩展了实现支持了更多功能<br/>例如 过期时间 最大空闲时间 组最大长度等 只需一个注解即可完成数据自动缓存                                      | 需手动编写Redis代码逻辑                                                                     |
-| ORM框架       | 采用 Mybatis-Plus 基于对象几乎不用写SQL全java操作 功能强大插件众多<br/>例如分页插件 乐观锁插件等等                                                   | 采用 Mybatis 基于XML需要手写SQL                                                            |
-| SQL监控       | 内置 MyBatis 完整 SQL 输出工具，可输出完整SQL、Mapper ID与执行时间监控                                                                  | log输出 需手动拼接sql与参数无法快速查看调试问题                                                        |
-| 数据分页        | 采用 Mybatis-Plus 分页插件<br/>框架对其进行了扩展 对象化分页对象 支持多种方式传参 支持前端多排序 复杂排序                                                  | 采用 PageHelper 仅支持单查询分页 参数只能从param传 只能单排序 功能扩展性差 体验不好                               |
-| 数据权限        | 采用 Mybatis-Plus 插件 自行分析拼接SQL 无感式过滤<br/>只需为Mapper设置好注解条件 支持多种自定义 不限于部门角色                                           | 采用 注解+aop 实现 基于部门角色 生成的sql兼容性差 不支持其他业务扩展<br/>生成sql后需手动拼接到具体业务sql上 对于多个Mapper查询不起作用 |
-| 数据脱敏        | 采用 注解 + jackson 序列化期间脱敏 支持不同模块不同的脱敏条件<br/>支持多种策略 如身份证、手机号、地址、邮箱、银行卡等 可自行扩展                                        | 无                                                                                  |
-| 数据加解密       | 采用 注解 + mybatis 拦截器 对存取数据期间自动加解密<br/>支持多种策略 如BASE64、AES、RSA、SM2、SM4等                                              | 无                                                                                  |
-| 接口传输加密      | 采用 动态 AES + RSA 加密请求 body 每一次请求秘钥都不同大幅度降低可破解性                                                                     | 无                                                                                  |
-| 数据翻译        | 采用 注解 + jackson 序列化期间动态修改数据 数据进行翻译<br/>支持多种模式: `映射翻译` `直接翻译` `其他扩展条件翻译` 接口化两步即可完成自定义扩展 内置多种翻译实现                   | 无                                                                                  |
-| 多数据源框架      | 采用 dynamic-datasource 支持市面大部分数据库<br/>通过yml配置即可动态管理异构不同种类的数据库 也可通过前端页面添加数据源<br/>支持spel表达式从请求头参数等条件切换数据源            | 基于 druid 手动编写代码配置数据源 配置繁琐 支持性差                                                     |
-| 多数据源事务      | 采用 dynamic-datasource 支持多数据源不同种类的数据库事务回滚                                                                          | 不支持                                                                                |
-| 数据库连接池      | 采用 HikariCP Spring官方内置连接池 配置简单 以性能与稳定性闻名天下                                                                        | 采用 druid bug众多 社区维护差 活跃度低 配置众多繁琐性能一般                                               |
-| 数据库主键       | 采用 雪花ID 基于时间戳的 有序增长 唯一ID 再也不用为分库分表 数据合并主键冲突重复而发愁                                                                  | 采用 数据库自增ID 支持数据量有限 不支持多数据源主键唯一                                                     |
-| WebSocket协议 | 基于 Spring 封装的 WebSocket 协议 扩展了Token鉴权与分布式会话同步 不再只是基于单机的废物                                                         | 无                                                                                  |
-| SSE推送       | 采用 Spring SSE 实现 扩展了Token鉴权与分布式会话同步                                                                               | 无                                                                                  |
-| 序列化         | 采用 Jackson Spring官方内置序列化 靠谱!!!                                                                                    | 采用 fastjson bugjson 远近闻名                                                           | 
-| 分布式幂等       | 参考美团GTIS防重系统简化实现(细节可看文档)                                                                                          | 手动编写注解基于aop实现                                                                      |
-| 分布式锁        | 采用 Lock4j 底层基于 Redisson                                                                                           | 无                                                                                  |
-| 分布式任务调度     | 采用 SnailJob 天生支持分布式 统一的管理中心 支持多种数据库 支持分片重试DAG任务流等                                                                 | 采用 Quartz 基于数据库锁性能差 集群需要做很多配置与改造                                                   | 
-| 文件存储        | 采用 Minio、RustFS 分布式文件存储 天生支持多机、多硬盘、多分片、多副本存储<br/>支持权限管理 安全可靠 文件可加密存储                                              | 采用 本机文件存储 文件裸漏 易丢失泄漏 不支持集群有单点效应                                                    |
-| 云存储         | 采用 AWS S3 协议客户端 支持 七牛、阿里、腾讯 等一切支持S3协议的厂家                                                                          | 不支持                                                                                |
-| 短信          | 采用 sms4j 短信融合包 支持数十种短信厂家 只需在yml配置好厂家密钥即可使用 可多厂家共用                                                                 | 不支持                                                                                |
-| 邮件          | 采用 mail-api 通用协议支持大部分邮件厂商                                                                                         | 不支持                                                                                |
-| 接口文档        | 采用 SpringDoc、javadoc 无注解零入侵基于java注释<br/>只需把注释写好 无需再写一大堆的文档注解了                                                     | 采用 Springfox 已停止维护 需要编写大量的注解来支持文档生成                                                | 
-| 校验框架        | 采用 Validation 支持注解与工具类校验 注解支持国际化                                                                                  | 仅支持注解 且注解不支持国际化                                                                    |
-| Excel框架     | 采用 Apache Fesod(原Alibaba EasyExcel) 基于插件化<br/>框架对其增加了很多功能 例如 自动合并相同内容 自动排列布局 字典翻译等                                | 基于 POI 手写实现 功能有限 复杂 扩展性差                                                           |
-| 工作流支持       | 采用 WarmFlow 支持各种复杂审批 转办 委派 加减签 会签 或签 票签 等功能                                                                       | 无                                                                                  |
-| 工具类框架       | 采用 Hutool、Lombok 上百种工具覆盖90%的使用需求 基于注解自动生成 get set 等简化框架大量代码                                                       | 手写工具稳定性差易出问题 工具数量有限 代码臃肿需自己手写 get set 等                                            | 
-| 监控框架        | 采用 SpringBoot-Admin 基于SpringBoot官方 actuator 探针机制<br/>实时监控服务状态 框架还为其扩展了在线日志查看监控                                    | 无                                                                                  | 
-| 链路追踪        | 采用 Apache SkyWalking 还在为请求不知道去哪了 到哪出了问题而烦恼吗<br/>用了它即可实时查看请求经过的每一处每一个节点                                            | 无                                                                                  |
-| 代码生成器       | 只需设计好表结构 一键生成所有crud代码与页面<br/>降低80%的开发量 把精力都投入到业务设计上<br/>框架为其适配MP、SpringDoc规范化代码 同时支持动态多数据源代码生成                    | 代码生成原生结构 只支持单数据源生成                                                                 |
-| 部署方式        | 支持 Docker 编排 一键搭建所有环境 让开发人员从此不再为搭建环境而烦恼                                                                           | 原生jar部署 其他环境需手动下载安装 自行搭建                                                           | 
-| 项目路径修改      | 提供详细的修改方案文档 并为其做了一些改动 非常简单即可修改成自己想要的                                                                              | 需要做很多改造 文档说明有限                                                                     |
-| 国际化         | 基于请求头动态返回不同语种的文本内容 开发难度低 有对应的工具类 支持大部分注解内容国际化                                                                     | 只提供基础功能 其他需自行编写扩展                                                                  |
-| 代码单例测试      | 提供单例测试 使用方式编写方法与maven多环境单测插件                                                                                      | 只提供基础功能 其他需自行编写扩展                                                                  |
-| Demo案例      | 提供框架功能的实际使用案例 单独一个模块提供了很多很全                                                                                       | 无                                                                                  |
+### 研究与决策支持
 
-## 本框架与RuoYi的业务差异
+Heron 还包含一层辅助能力：
 
-| 业务     | 功能说明                                                                 | 本框架 | RuoYi            |
-|--------|----------------------------------------------------------------------|-----|------------------|
-| 客户端管理  | 系统内对接的所有客户端管理 如: pc端、小程序端等<br>支持动态授权登录方式 如: 短信登录、密码登录等 支持动态控制token时效 | 支持  | 无                |
-| 用户管理   | 用户的管理配置 如:新增用户、分配用户所属部门、角色、岗位等                                       | 支持  | 支持               |
-| 部门管理   | 配置系统组织机构（公司、部门、小组） 树结构展现支持数据权限                                       | 支持  | 支持               |
-| 岗位管理   | 配置系统用户所属担任职务                                                         | 支持  | 支持               |
-| 菜单管理   | 配置系统菜单、操作权限、按钮权限标识等                                                  | 支持  | 支持               |
-| 角色管理   | 角色菜单权限分配、设置角色按机构进行数据范围权限划分                                           | 支持  | 支持               |
-| 字典管理   | 对系统中经常使用的一些较为固定的数据进行维护                                               | 支持  | 支持               |
-| 参数管理   | 对系统动态配置常用参数                                                          | 支持  | 支持               |
-| 通知公告   | 系统通知公告信息发布维护                                                         | 支持  | 支持               |
-| 操作日志   | 系统正常操作日志记录和查询 系统异常信息日志记录和查询                                          | 支持  | 支持               |
-| 登录日志   | 系统登录日志记录查询包含登录异常                                                     | 支持  | 支持               |
-| 文件管理   | 系统文件展示、上传、下载、删除等管理                                                   | 支持  | 无                |
-| 文件配置管理 | 系统文件上传、下载所需要的配置信息动态添加、修改、删除等管理                                       | 支持  | 无                |
-| 在线用户管理 | 已登录系统的在线用户信息监控与强制踢出操作                                                | 支持  | 支持               |
-| 定时任务   | 运行报表、任务管理(添加、修改、删除)、日志管理、执行器管理等                                      | 支持  | 仅支持任务与日志管理       |
-| 代码生成   | 多数据源前后端代码的生成（java、html、xml、sql）支持CRUD下载                              | 支持  | 仅支持单数据源          |
-| 系统接口   | 根据业务代码自动生成相关的api接口文档                                                 | 支持  | 支持               |
-| 服务监控   | 监视集群系统CPU、内存、磁盘、堆栈、在线日志、Spring相关配置等                                  | 支持  | 仅支持单机CPU、内存、磁盘监控 |
-| 缓存监控   | 对系统的缓存信息查询，命令统计等。                                                    | 支持  | 支持               |
-| 使用案例   | 系统的一些功能案例                                                            | 支持  | 不支持              |
+- AgentScope 研究任务与快照
+- 内容决策、策略假设和成本记录
+- 数据机会发现与数据集目录
+- 抖音热点采集与参考素材治理
+- 成片质量报告、表现反馈和创作建议
 
-## 参考文档
+这些能力服务于生产决策，不等于外部平台数据已经自动接通。
 
-使用框架前请仔细阅读文档重点注意事项
-<br>
->[初始化项目 必看](https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/init)
->> [https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/init](https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/init)
->
->[专栏与视频 入门必看](https://plus-doc.dromara.org/#/common/column)
->> [https://plus-doc.dromara.org/#/common/column](https://plus-doc.dromara.org/#/common/column)
->
->[部署项目 必看](https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/deploy)
->> [https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/deploy](https://plus-doc.dromara.org/#/ruoyi-vue-plus/quickstart/deploy)
->
->[如何加群](https://plus-doc.dromara.org/#/common/add_group)
->> [https://plus-doc.dromara.org/#/common/add_group](https://plus-doc.dromara.org/#/common/add_group)
->
->[参考文档 Wiki](https://plus-doc.dromara.org)
->> [https://plus-doc.dromara.org](https://plus-doc.dromara.org)
+## 生产原则
 
-## 软件架构图
+- **发布默认人确认。** 确认人、确认时间和联络表指纹绑定到同一视频版本；重渲后原确认失效。
+- **自动模式显式开启。** 自动模式只关闭人工闸，其余闸照常执行，并要求源级开关、灰度准入、槽位幂等和止损手段。
+- **失败必须可解释。** 错误至少回答哪条闸、哪段输入、为什么拒绝；不吞异常，不静默重试，不自动改写稿件。
+- **产物可追溯。** 任务租约、版本、文件哈希、发布回执和用量记录互相引用，重启后可以恢复在途任务。
+- **发布回执不伪装。** `sandbox://` 只证明链路跑通，不代表内容已发布到抖音。
 
-![Plus部署架构图](https://foruda.gitee.com/images/1678981882624240692/ae2a3f3e_1766278.png "Plus部署架构图.png")
+## 技术栈
 
-## 如何参与贡献
+| 领域 | 当前实现 |
+| --- | --- |
+| 应用基座 | RuoYi-Vue-Plus 6.1.0 |
+| 运行时 | JDK 21、Spring Boot 4.1.2、Jetty |
+| 数据访问 | MyBatis-Plus 3.5.18、MySQL 8.x、Flyway |
+| 认证与缓存 | Sa-Token 1.46.0、Redis、Redisson 4.8.0 |
+| 研究与模型 | AgentScope 2.1.0-BETA1、OpenAI 兼容协议 |
+| 新闻渲染 | Node.js 22+、HyperFrames、FFmpeg / FFprobe |
+| 原型装配 | zee-rp v0.2.1、Axure RP9 空白工程 |
+| 文件存储 | 本地产物盘或 S3 兼容 OSS，复用基座 `sys_oss_config` |
 
-[参与贡献的方式 https://plus-doc.dromara.org/#/common/contribution](https://plus-doc.dromara.org/#/common/contribution)
+## 架构
 
-## 捐献作者
+```mermaid
+flowchart LR
+    UI[Heron UI] --> API[ruoyi-admin]
+    API --> BIZ[ruoyi-heron]
+    BIZ --> DB[(MySQL)]
+    BIZ --> REDIS[(Redis)]
+    BIZ --> MODEL[OpenAI 兼容模型]
+    BIZ --> RENDER[HyperFrames / FFmpeg]
+    BIZ --> PROTO[zee-rp / Axure RP9]
+    BIZ --> OSS[S3 兼容 OSS]
+```
 
-作者为兼职做开源,平时还需要工作,如果帮到了您可以请作者吃个盒饭  
-<img src="https://foruda.gitee.com/images/1678975784848381069/d8661ed9_1766278.png" width="300px" height="450px" />
-<img src="https://foruda.gitee.com/images/1678975801230205215/6f96229d_1766278.png" width="300px" height="450px" />
+`ruoyi-admin` 是唯一启动入口。业务模块按 `domain` / `domain.bo` / `domain.vo` / `mapper` / `service` / `service.impl` / `controller` 分层，复杂生产流程由 pipeline 和 domain service 编排。
 
-## 演示图例
+```text
+heron/
+├── ruoyi-admin/                      # 启动入口、主配置、Flyway、Dockerfile
+├── ruoyi-modules/ruoyi-heron/        # Heron 业务模块
+│   ├── src/main/java/org/dromara/heron/
+│   │   ├── controller/               # REST 接口与权限边界
+│   │   ├── domain/                   # 实体、BO、VO、状态与契约
+│   │   ├── mapper/                   # MyBatis-Plus 数据访问
+│   │   ├── service/                  # 业务服务与生产流水线
+│   │   ├── agentscope/               # 研究 Agent 运行时
+│   │   └── config/                   # 业务配置与条件装配
+│   └── src/main/resources/heron-production.yml
+├── data/                             # 模板、字体、音效、知识包、渲染依赖清单
+├── script/sql/                       # 基线与历史 SQL
+├── script/docker/                    # 开发和生产编排参考
+└── docs/plans/                       # 业务规格与设计记录
+```
 
-|                                                                                            |                                                                                            |
-|--------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
-| ![输入图片说明](https://foruda.gitee.com/images/1780299033689126697/868ef1ea_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299052163404649/8d94165d_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299074949590692/27f5bfb5_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299108816841231/619a7c57_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299089818500856/862ba805_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299173744267947/95cb0cd3_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299193694706123/28257dc1_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299147525013883/ebcd9dfe_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299220007761523/dc7e27c9_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299235966983519/35b047e1_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299250884681522/e5731314_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299267028602229/230d5428_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299293149732467/19abcf6c_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299311267192779/e665c668_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299327888096947/283a177f_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299348897579356/caac864e_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299376680669014/452585fb_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299843158459866/ceebbb63_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299432356918392/07abdf6a_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299465584172180/a2b2be12_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299491233431530/d88bfa35_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299513358913413/f2f90032_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299527419238776/549cb852_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299553918371792/43bd3bff_1766278.png "屏幕截图") |
-| ![输入图片说明](https://foruda.gitee.com/images/1780299586662735625/1107a3ee_1766278.png "屏幕截图") | ![输入图片说明](https://foruda.gitee.com/images/1780299613342135530/526d7859_1766278.png "屏幕截图") |
+## 快速开始
+
+### 环境要求
+
+- JDK 21
+- Maven 3.9+
+- MySQL 8.x
+- Redis 6+
+- Node.js 22+、FFmpeg、FFprobe（新闻渲染需要）
+- 原型线另需 zee-rp v0.2.1 和 Axure RP9 空白工程
+
+### 1. 准备数据库与 Redis
+
+仓库提供了本机隔离栈，使用独立容器名和端口，不占用宿主机上已有的 MySQL / Redis：
+
+```bash
+docker compose -f script/docker/dev/docker-compose.dev-isolated.yml up -d
+```
+
+隔离栈初始化的库名是 `heron`，当前 `application-dev.yml` 默认连接 `heron_dev`。下面显式创建并导入开发库，避免两边库名不一致：
+
+```bash
+mysql -h 127.0.0.1 -P 3307 -uroot -p \
+  -e "CREATE DATABASE IF NOT EXISTS heron_dev CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
+mysql -h 127.0.0.1 -P 3307 -uroot -p heron_dev < script/sql/ry_vue.sql
+```
+
+如果使用自己的数据库，请同步修改数据源、库名和账号；已有数据不会因为修改初始化配置自动迁移或重建。
+
+### 2. 配置本地环境
+
+在仓库根目录创建 `.env`，该文件已被 Git 忽略。至少设置：
+
+```dotenv
+HERON_PASSWORD=<与本地 Redis 配置一致>
+SA_TOKEN_JWT_SECRET=<本地随机签名密钥>
+```
+
+开发 profile 提供了仅供本机使用的 JWT 兜底值；生产 profile 没有兜底值，未提供 `SA_TOKEN_JWT_SECRET` 会拒绝启动。模型参数沿用基座 `sys_config` 中的 `heron.model.*`，不要把真实密钥写进 README、SQL 或提交记录。
+
+### 3. 构建并启动
+
+```bash
+mvn -pl ruoyi-admin -am package
+java -jar ruoyi-admin/target/heron.jar
+```
+
+默认开发端口为 `8085`。启动后接口文档通常位于 `http://localhost:8085/api-docs`，实际路径受安全配置控制。
+
+新闻渲染依赖需要单独安装：
+
+```bash
+cd data/tools
+npm ci
+```
+
+模板、字体、音效和 BGM 已随仓库提供；`node_modules` 不入库，由 `package-lock.json` 还原。
+
+### 4. 启动前端
+
+前端是独立仓库 [Heron UI](https://github.com/zhoupei6251/heron-ui)。开发代理默认把 `/dev-api` 转发到 `http://localhost:8085`，两边接口加密开关和 RSA 密钥必须配套。
+
+## 配置入口
+
+| 文件 | 用途 |
+| --- | --- |
+| `.env` | 本地私密环境变量，不提交 |
+| `ruoyi-admin/src/main/resources/application.yml` | 端口、Sa-Token、Flyway、消息推送、接口文档等公共配置 |
+| `application-dev.yml` | 本机开发数据源、Redis、渲染路径和发布适配器 |
+| `application-prod.yml` | 生产数据源、Redis 和外部服务配置 |
+| `ruoyi-modules/ruoyi-heron/src/main/resources/heron-production.yml` | 新闻、原型、采集、自动槽位和产物保留规则 |
+| `sys_config` | 模型地址、模型名和密钥等运行参数 |
+
+常用覆盖项：
+
+| 环境变量 | 说明 |
+| --- | --- |
+| `HERON_PASSWORD` | Redis 与本地开发栈使用的口令；数据源配置以 `application-*.yml` 为准 |
+| `SA_TOKEN_JWT_SECRET` | JWT 签名密钥；生产必填，多实例必须一致 |
+| `HERON_NODE` | 固定 Node 可执行文件路径 |
+| `HERON_HYPERFRAMES` | HyperFrames 入口路径 |
+| `HERON_NEWS_TEMPLATE` | 新闻模板根目录 |
+| `HERON_ZEE_RP` | zee-rp 引擎根目录 |
+| `HERON_PUBLISH_COMMAND` | `douyin-cli` 发布命令路径 |
+
+## 数据库迁移
+
+- 基座库先导入 `script/sql/ry_vue.sql`。
+- 业务迁移由 Flyway 在启动时执行，记录写入 `flyway_schema_history`。
+- 当前基线版本为 `45`，`script/sql/heron/001~045` 只作历史查阅。
+- 已应用的迁移不能修改；校验和不一致会直接拒绝启动。
+- 新迁移写入 `ruoyi-admin/src/main/resources/db/migration/V{序号}__{描述}.sql`。
+
+## 部署
+
+生产镜像基于 `ruoyi-admin/Dockerfile`，工作目录为 `/heron/server`。构建命令：
+
+```bash
+mvn -Pprod -pl ruoyi-admin -am package
+docker build -t heron:prod -t heron-server:6.1.0 ruoyi-admin
+```
+
+生产编排参考位于 `script/docker/prod/docker-compose.yml`，环境变量模板位于 `script/docker/prod/.env.example`。使用前必须核对：
+
+- `application-prod.yml` 的数据源和 Redis 地址与 Compose 端口是否一致
+- 两个 Heron 服务的镜像标签是否都已构建
+- `/docker/mysql`、`/docker/redis`、`/docker/nginx`、`/docker/server1` 等宿主机挂载是否存在
+- Nginx、证书、OSS 和模型凭据是否已配置
+- 多实例是否使用同一个 `SA_TOKEN_JWT_SECRET` 和 Redis 数据库
+
+准备完成后可从仓库根目录启动指定服务：
+
+```bash
+docker compose --env-file script/docker/prod/.env \
+  -f script/docker/prod/docker-compose.yml up -d heron-server1 nginx-web
+```
+
+这是 Linux 主机上的参考编排，不是可直接套用的本地开发栈。修改 `MYSQL_DATABASE` 或初始化 SQL 不会重建已有数据目录；迁移前请先备份。
+
+## 验证
+
+业务模块默认执行单元测试，并排除需要外部环境的 `mysql`、`render` 标签：
+
+```bash
+mvn -pl ruoyi-modules/ruoyi-heron test
+```
+
+模板与渲染依赖检查：
+
+```bash
+cd data/tools
+npm ci
+npm run templates:check
+```
+
+需要运行 MySQL 集成测试或真实渲染测试时，先准备对应环境，再显式调整 Surefire 的 `heron.test.excludedGroups`。不要在全量构建中隐式连接生产数据库。
+
+## 当前边界
+
+- 产品是单租户自部署，不包含多租户、套餐、配额、计费、自助注册和第二套 RBAC。
+- 新闻自动产出和自动确认默认关闭；开启前必须完成源级准入、发布出口和止损配置。
+- 当前发布适配器为 `sandbox` 与 `douyin-cli`。抖音开放平台 `video.create` 尚未形成已装配的官方适配器。
+- 原型线依赖外部 zee-rp 引擎和 Axure RP9 空白工程；商业模板和 `.rp` 文件不入库。
+- 研究 Agent 受配置和模型凭据约束；Elasticsearch、MQTT、MCP 等可选能力默认未装配。
+- 页面存在、接口存在、配置打开是三件事，不能互相推导为生产验收通过。
+
+## 文档与许可
+
+- [业务规格](docs/plans/2026-10-29-heron-business-spec.md)
+- [项目开发约定](CLAUDE.md)
+- [RuoYi-Vue-Plus 官方文档](https://plus-doc.dromara.org/)
+
+Heron 沿用 MIT 开源许可。使用、修改或分发时请保留仓库中的许可文件与上游署名。
