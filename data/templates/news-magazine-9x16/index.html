@@ -29,6 +29,25 @@ body {
 }
 .clip { position: absolute; inset: 0; }
 
+/* 镜头层：整幅内容在这个容器里进推出画框，幅度由 --cam-push 控制（1 即镜头不动）。
+   下三分之一与进度条留在容器外——那是播出界面，不该跟着镜头晃。
+   画面被推出去的部分由 #root 的 overflow 裁掉，这正是推近该有的裁切。 */
+#camera { position: absolute; inset: 0; z-index: 1; }
+
+/* 屏间擦除：一块比画面更宽的斜切面板盖住硬切点。
+   左右各留 13% 出血量——6° 的倾斜在 1920 高上会横移约 100px，留少了边角会露出来。 */
+#wipe {
+  position: absolute;
+  top: 0;
+  left: -13%;
+  width: 126%;
+  height: 100%;
+  z-index: 2;
+  background: var(--wipe-color, var(--bg));
+  transform: translateX(-110%) skewX(-6deg);
+  pointer-events: none;
+}
+
 /* 纵深：环境层是最远的一层，永远在内容之下、永远在动。
    三层各自可开关（透明度为 0 即视为关闭），但网格与光晕是默认配置。 */
 .ambient { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
@@ -115,6 +134,13 @@ body {
   --dur-ambient: 8s;
   --ease-out: power3.out;
   --ease-in: power2.in;
+
+  /* 镜头与转场：文稿线一屏字多，推近压到 1.05 以免边缘的正文被裁掉。
+     擦除走常速——文稿换屏本就该干脆，拖长了读者会以为卡住。 */
+  --cam-push: 1.05;
+  --cam-origin: 50% 50%;
+  --wipe-dur: 0.3s;
+  --wipe-color: var(--bg);
 }
 :root {
   --fs-title: 92px; --fs-title-lg: 83px; --fs-title-sm: 74px;
@@ -210,6 +236,7 @@ body { margin: 0; background: #f6f4ef; color: #1c2226; font-family: "Noto Sans S
 
       <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="45" data-track-index="9"></audio>
 
+      <div id="camera">
       <header id="title-card" class="clip" data-start="0" data-duration="45" data-track-index="0">
         <div id="kicker">
           <span id="kicker-flag"></span>
@@ -254,6 +281,9 @@ body { margin: 0; background: #f6f4ef; color: #1c2226; font-family: "Noto Sans S
       <section id="closing-slot" class="clip" data-start="41" data-duration="4" data-track-index="2">
         <p id="closing" data-var-text="closing">更多机型对比与实测，我们会在后续持续跟进。</p>
       </section>
+      </div>
+
+      <div id="wipe" data-layout-ignore></div>
 
       <div id="bottom-bar">
         <div id="progress"></div>
@@ -323,7 +353,7 @@ document.querySelectorAll(".scene").forEach((slot) => {
 });
 
 // 全局时间线与场景进出。所有模板共用，必须在 chart 之后执行。
-// 只有四个动作：enter / enterChars / ambient / swap。参数全部来自令牌，
+// 只有六个动作：enter / enterChars / ambient / camera / wipe / swap。参数全部来自令牌，
 // 风格差异靠改令牌而不是另写一套动画——否则三套风格很快就会长成三份真相。
 // 数字滚动不在这里：KPI 的小数位与单位随数据集变化，由 chart.js 按 precision 驱动。
 const has = (selector) => document.querySelector(selector) !== null;
@@ -387,6 +417,39 @@ function ambient(scope = document) {
   });
 }
 
+// 镜头：全片一条补间——钩子段快推、中段几乎匀速、片尾回拉半格。
+// 三条独立补间会在同一个 scale 上互相抢值，所以用 keyframes 串成一条。
+// 推近的裁切交给 #root 的 overflow：推出去的部分本就该看不见。
+function camera() {
+  const el = document.getElementById("camera");
+  const push = numberVar("--cam-push", 1.05);
+  if (!el || push <= 1) return;
+  el.style.transformOrigin = cssVar("--cam-origin") || "50% 50%";
+  const hook = Math.min(2.2, total * 0.2);
+  const tail = Math.min(2.4, total * 0.16);
+  const mid = Math.max(0.1, total - hook - tail);
+  tl.to(el, {
+    keyframes: [
+      { scale: 1 + (push - 1) * 0.6, duration: hook, ease: "power2.out" },
+      { scale: push, duration: mid, ease: "none" },
+      { scale: 1 + (push - 1) * 0.4, duration: tail, ease: "power2.inOut" },
+    ],
+  }, 0);
+}
+
+// 屏与屏之间是硬切：同轨的 clip 时间窗不重叠，没有可以交叉淡入的两帧。
+// 于是用一块整帧面板盖住切点：进场 power2.in 收拢、切点正落在面板盖满的那一帧、
+// 再 power2.out 让开，露出一屏。观感是擦除，不是闪一下。
+function wipe(at, index) {
+  const el = document.getElementById("wipe");
+  const dur = numberVar("--wipe-dur", 0.3);
+  if (!el || dur <= 0) return;
+  // 逐屏换向：同一个方向连擦五次就变成噪音
+  const dir = index % 2 ? 1 : -1;
+  tl.fromTo(el, { xPercent: -100 * dir }, { xPercent: 0, duration: dur / 2, ease: "power2.in" }, Math.max(0, at - dur / 2));
+  tl.to(el, { xPercent: 100 * dir, duration: dur / 2, ease: "power2.out" }, at);
+}
+
 function swap(slot, start, outAt) {
   const parts = slot.querySelectorAll(".scene-no, .lead, .body");
   if (!parts.length) return;
@@ -401,6 +464,7 @@ function swap(slot, start, outAt) {
 }
 
 ambient();
+camera();
 
 tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
 enter("#kicker", { dir: "left", at: 0.1 });
@@ -452,6 +516,8 @@ document.querySelectorAll(".scene").forEach((slot) => {
   const start = parseFloat(slot.dataset.start);
   const end = start + parseFloat(slot.dataset.duration);
   swap(slot, start, end - DUR.swap);
+  // 第一屏之前是标题卡，靠淡入衔接，不需要擦除
+  if (Number(slot.dataset.sceneIndex) > 1) wipe(start, Number(slot.dataset.sceneIndex));
 });
 
 if (hasClosing) {

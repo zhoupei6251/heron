@@ -1,5 +1,5 @@
 // 全局时间线与场景进出。所有模板共用，必须在 chart 之后执行。
-// 只有四个动作：enter / enterChars / ambient / swap。参数全部来自令牌，
+// 只有六个动作：enter / enterChars / ambient / camera / wipe / swap。参数全部来自令牌，
 // 风格差异靠改令牌而不是另写一套动画——否则三套风格很快就会长成三份真相。
 // 数字滚动不在这里：KPI 的小数位与单位随数据集变化，由 chart.js 按 precision 驱动。
 const has = (selector) => document.querySelector(selector) !== null;
@@ -63,6 +63,39 @@ function ambient(scope = document) {
   });
 }
 
+// 镜头：全片一条补间——钩子段快推、中段几乎匀速、片尾回拉半格。
+// 三条独立补间会在同一个 scale 上互相抢值，所以用 keyframes 串成一条。
+// 推近的裁切交给 #root 的 overflow：推出去的部分本就该看不见。
+function camera() {
+  const el = document.getElementById("camera");
+  const push = numberVar("--cam-push", 1.05);
+  if (!el || push <= 1) return;
+  el.style.transformOrigin = cssVar("--cam-origin") || "50% 50%";
+  const hook = Math.min(2.2, total * 0.2);
+  const tail = Math.min(2.4, total * 0.16);
+  const mid = Math.max(0.1, total - hook - tail);
+  tl.to(el, {
+    keyframes: [
+      { scale: 1 + (push - 1) * 0.6, duration: hook, ease: "power2.out" },
+      { scale: push, duration: mid, ease: "none" },
+      { scale: 1 + (push - 1) * 0.4, duration: tail, ease: "power2.inOut" },
+    ],
+  }, 0);
+}
+
+// 屏与屏之间是硬切：同轨的 clip 时间窗不重叠，没有可以交叉淡入的两帧。
+// 于是用一块整帧面板盖住切点：进场 power2.in 收拢、切点正落在面板盖满的那一帧、
+// 再 power2.out 让开，露出一屏。观感是擦除，不是闪一下。
+function wipe(at, index) {
+  const el = document.getElementById("wipe");
+  const dur = numberVar("--wipe-dur", 0.3);
+  if (!el || dur <= 0) return;
+  // 逐屏换向：同一个方向连擦五次就变成噪音
+  const dir = index % 2 ? 1 : -1;
+  tl.fromTo(el, { xPercent: -100 * dir }, { xPercent: 0, duration: dur / 2, ease: "power2.in" }, Math.max(0, at - dur / 2));
+  tl.to(el, { xPercent: 100 * dir, duration: dur / 2, ease: "power2.out" }, at);
+}
+
 function swap(slot, start, outAt) {
   const parts = slot.querySelectorAll(".scene-no, .lead, .body");
   if (!parts.length) return;
@@ -77,6 +110,7 @@ function swap(slot, start, outAt) {
 }
 
 ambient();
+camera();
 
 tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
 enter("#kicker", { dir: "left", at: 0.1 });
@@ -128,6 +162,8 @@ document.querySelectorAll(".scene").forEach((slot) => {
   const start = parseFloat(slot.dataset.start);
   const end = start + parseFloat(slot.dataset.duration);
   swap(slot, start, end - DUR.swap);
+  // 第一屏之前是标题卡，靠淡入衔接，不需要擦除
+  if (Number(slot.dataset.sceneIndex) > 1) wipe(start, Number(slot.dataset.sceneIndex));
 });
 
 if (hasClosing) {

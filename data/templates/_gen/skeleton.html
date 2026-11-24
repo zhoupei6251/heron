@@ -13,6 +13,7 @@
 {{AMBIENT_BLOCK}}{{DECOR_BLOCK}}
       <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="{{DURATION}}" data-track-index="9"></audio>
 
+      <div id="camera">
       <header id="title-card" class="clip" data-start="0" data-duration="{{DURATION}}" data-track-index="0">
         <div id="kicker">
           <span id="kicker-flag"></span>
@@ -28,6 +29,9 @@
       <section id="closing-slot" class="clip" data-start="{{CLOSING_START}}" data-duration="{{CLOSING_DURATION}}" data-track-index="2">
         <p id="closing" data-var-text="closing">{{DEFAULT_CLOSING}}</p>
       </section>
+      </div>
+
+      <div id="wipe" data-layout-ignore></div>
 
       <div id="bottom-bar">
         <div id="progress"></div>

@@ -52,7 +52,6 @@
       const introDrawStart = 0.35;
       const introDrawDuration = Math.max(0.7, Math.min(8, openingEnd - 0.8));
       const introDrawEnd = introDrawStart + introDrawDuration;
-      tl.fromTo("#chart", { scale: 1 }, { scale: 1.04, duration: total, ease: "none", transformOrigin: "center center" }, 0);
       const clip = (text) => {
         const list = Array.from(text);
         const max = /[一-鿿]/.test(text) ? 10 : 22;
