@@ -20,6 +20,8 @@ public class HeronAutoSlot implements Serializable {
     /** produced 已产出 / skipped 已跳过（含原因）/ failed 失败。 */
     private String status;
     private String detail;
+    /** 已补跑次数：只对 failed 生效，额度用完就不再重试。 */
+    private Integer retryCount;
     /** 总编辑选定的线：DATA_BOARD / NEWS_EXPLAINER / NO_PUBLISH。 */
     private String selectedLine;
     /** 总编辑给出的选题意图，进入生产输入而不是只当备注。 */

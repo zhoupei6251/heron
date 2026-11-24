@@ -63,6 +63,15 @@ public class NewsAutoService {
     private static final int RESEARCH_POOL_LIMIT = 10;
     /** 一个槽位最多改写一次策划结论：改写是定点修，一次改不动说明问题不在故事上。 */
     private static final int MAX_STORY_REWRITES = 1;
+    /**
+     * 失败槽位最多补跑次数。
+     *
+     * <p>补跑不是重试同一件事：中间隔着补跑间隔，候选池会重新建，失败原因可能已经变了。
+     * 一次就够——两次连着补还是同一种失败，只是多烧模型调用。
+     */
+    private static final int MAX_SLOT_RETRIES = 1;
+    /** 补跑间隔：刚失败就重跑等于原地重试，原因没变。 */
+    private static final int RETRY_DELAY_MINUTES = 30;
     /** RuoYi 的开关约定：'0' 是允许。 */
     private static final String AUTO_ALLOWED = "0";
     private static final String PROBE_OK = "ok";
@@ -177,8 +186,10 @@ public class NewsAutoService {
         try {
             slotMapper.insert(slot);
         } catch (DuplicateKeyException e) {
-            // 同一槽位重复触发：以第一次为准
-            return;
+            // 同一槽位重复触发：产出过的以第一次为准；失败过的允许补跑，额度用完就停
+            if (!resumeFailed(slot, now)) {
+                return;
+            }
         }
         if (!manual && !news.isAutoEnabled()) {
             finish(slot, "skipped", "auto_disabled", null);
@@ -667,6 +678,66 @@ public class NewsAutoService {
 
     private static String datasetLabel(HeronDataSource source) {
         return source.getName() + "（" + source.getCadence() + "，" + source.getShapes() + "）";
+    }
+
+    /**
+     * 失败槽位补跑扫描：调度器每分钟调一次，这里按间隔挑出来重跑。
+     *
+     * <p>只认 failed 且额度没用完、且已经过了补跑间隔的槽位。间隔是必要的——
+     * 刚失败就重跑等于原地重试，失败原因没变，只会多烧模型调用。
+     */
+    public void retryFailedSlots() {
+        if (!news.isAutoEnabled() || paused()) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now(clock);
+        List<HeronAutoSlot> failed = slotMapper.selectList(QueryBuilder.lambda(HeronAutoSlot.class)
+            .eq(HeronAutoSlot::getSlotDate, LocalDate.now(clock))
+            .eq(HeronAutoSlot::getStatus, "failed")
+            .lt(HeronAutoSlot::getRetryCount, MAX_SLOT_RETRIES)
+            .le(HeronAutoSlot::getUpdateTime, now.minusMinutes(RETRY_DELAY_MINUTES))
+            .orderByAsc(HeronAutoSlot::getUpdateTime)
+            .last("LIMIT " + SWEEP_LIMIT).build());
+        for (HeronAutoSlot slot : failed) {
+            try {
+                tick(slot.getSlotTime(), false);
+            } catch (RuntimeException e) {
+                // 槽位体自己会把结果写进槽位表，这里只兜住扫描线程不被取消
+                log.warn("失败槽位补跑异常 slot={}: {}", slot.getSlotTime(), e.getMessage());
+            }
+        }
+    }
+
+    /** 失败槽位可不可以再跑一次：只有 failed 且额度没用完才算。 */
+    static boolean retryable(String status, Integer retryCount) {
+        return "failed".equals(status) && (retryCount == null ? 0 : retryCount) < MAX_SLOT_RETRIES;
+    }
+
+    /**
+     * 把同一槽位重新置为 running 并记一次补跑；不能补就跑原来的幂等语义。
+     *
+     * <p>只动失败槽位：produced 重跑会重复产出，skipped 是有意的空槽（没素材、今天不发、
+     * 自动没开），把它们改成 running 等于把「有意的决定」当成故障。
+     */
+    private boolean resumeFailed(HeronAutoSlot slot, LocalDateTime now) {
+        HeronAutoSlot existing = slotMapper.lambda()
+            .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
+            .eq(HeronAutoSlot::getSlotTime, slot.getSlotTime())
+            .one();
+        if (existing == null || !retryable(existing.getStatus(), existing.getRetryCount())) {
+            return false;
+        }
+        int retries = (existing.getRetryCount() == null ? 0 : existing.getRetryCount()) + 1;
+        slot.setRetryCount(retries);
+        slotMapper.lambda()
+            .set(HeronAutoSlot::getStatus, "running")
+            .set(HeronAutoSlot::getRetryCount, retries)
+            .set(HeronAutoSlot::getUpdateTime, now)
+            .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
+            .eq(HeronAutoSlot::getSlotTime, slot.getSlotTime())
+            .update();
+        log.info("槽位失败后补跑 slot={} retry={}", slot.getSlotTime(), retries);
+        return true;
     }
 
     private List<HeronNewsWork> recentWorks() {

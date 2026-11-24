@@ -82,5 +82,10 @@ public class NewsAutoRunner {
         } catch (RuntimeException e) {
             log.warn("自动确认扫描异常", e);
         }
+        try {
+            auto.retryFailedSlots();
+        } catch (RuntimeException e) {
+            log.warn("失败槽位补跑扫描异常", e);
+        }
     }
 }
