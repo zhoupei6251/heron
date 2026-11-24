@@ -27,20 +27,6 @@ body {
    画面被推出去的部分由 #root 的 overflow 裁掉，这正是推近该有的裁切。 */
 #camera { position: absolute; inset: 0; z-index: 1; }
 
-/* 屏间擦除：一块比画面更宽的斜切面板盖住硬切点。
-   左右各留 13% 出血量——6° 的倾斜在 1920 高上会横移约 100px，留少了边角会露出来。 */
-#wipe {
-  position: absolute;
-  top: 0;
-  left: -13%;
-  width: 126%;
-  height: 100%;
-  z-index: 2;
-  background: var(--wipe-color, var(--bg));
-  transform: translateX(-110%) skewX(-6deg);
-  pointer-events: none;
-}
-
 /* 纵深：环境层是最远的一层，永远在内容之下、永远在动。
    三层各自可开关（透明度为 0 即视为关闭），但网格与光晕是默认配置。 */
 .ambient { position: absolute; inset: 0; pointer-events: none; z-index: 0; }

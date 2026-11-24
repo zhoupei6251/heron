@@ -1,5 +1,5 @@
 // 全局时间线与场景进出。所有模板共用，必须在 chart 之后执行。
-// 只有六个动作：enter / enterChars / ambient / camera / wipe / swap。参数全部来自令牌，
+// 只有五个动作：enter / enterChars / ambient / camera / swap。参数全部来自令牌，
 // 风格差异靠改令牌而不是另写一套动画——否则三套风格很快就会长成三份真相。
 // 数字滚动不在这里：KPI 的小数位与单位随数据集变化，由 chart.js 按 precision 驱动。
 const has = (selector) => document.querySelector(selector) !== null;
@@ -15,6 +15,8 @@ const DUR = {
   ambient: numberVar("--dur-ambient", 7),
 };
 const FROM = { up: { y: 30 }, down: { y: -30 }, left: { x: 46 }, right: { x: -46 }, none: {} };
+// 屏间位移的距离。太小读不出方向，太大等于把画面甩出去。
+const SHIFT = numberVar("--slide-shift", 130);
 
 // immediateRender：动画排在中段时 GSAP 默认不提前写起始值，元素会先裸着露出来
 function enter(targets, { dir = "up", at = 0, stagger = 0 } = {}) {
@@ -83,22 +85,16 @@ function camera() {
   }, 0);
 }
 
-// 屏与屏之间是硬切：同轨的 clip 时间窗不重叠，没有可以交叉淡入的两帧。
-// 于是用一块整帧面板盖住切点：进场 power2.in 收拢、切点正落在面板盖满的那一帧、
-// 再 power2.out 让开，露出一屏。观感是擦除，不是闪一下。
-function wipe(at, index) {
-  const el = document.getElementById("wipe");
-  const dur = numberVar("--wipe-dur", 0.3);
-  if (!el || dur <= 0) return;
-  // 逐屏换向：同一个方向连擦五次就变成噪音
-  const dir = index % 2 ? 1 : -1;
-  tl.fromTo(el, { xPercent: -100 * dir }, { xPercent: 0, duration: dur / 2, ease: "power2.in" }, Math.max(0, at - dur / 2));
-  tl.to(el, { xPercent: 100 * dir, duration: dur / 2, ease: "power2.out" }, at);
-}
-
 function swap(slot, start, outAt) {
   const parts = slot.querySelectorAll(".scene-no, .lead, .body");
   if (!parts.length) return;
+  // 屏与屏之间是硬切：同轨 clip 的时间窗不重叠，没有可以交叉淡入的两帧。
+  // 改成整屏内容位移——逐屏换向地推进、向另一侧退出，切点因此读作一次移镜。
+  // 位移必须落在子元素上：带 data-start 的 clip 元素由引擎接管 transform，
+  // 对 section 本身 set x 会被忽略（实测 tl.set(section,{x:300}) 不动，子元素能动能）。
+  // 不用全帧遮罩：浅色纸面的版式各自刷底色，幕布要么盖错颜色，要么被审计判成遮挡文字。
+  const dir = Number(slot.dataset.sceneIndex) % 2 ? 1 : -1;
+  tl.fromTo(parts, { x: SHIFT * dir }, { x: 0, duration: DUR.entrance, ease: EASE_OUT }, start);
   // 屏头编号与引句逐字，正文整段：正文是给人读的，拆成字只会读得更慢
   enterChars(slot.querySelectorAll(".scene-no, .lead"), { at: start });
   const body = slot.querySelectorAll(".body");
@@ -106,7 +102,8 @@ function swap(slot, start, outAt) {
     tl.from(body, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, start + 0.12);
   }
   // 短屏时退场不能排在入场之前
-  tl.to(parts, { y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, Math.max(start + DUR.entrance, outAt));
+  const outStart = Math.max(start + DUR.entrance, outAt);
+  tl.to(parts, { x: -SHIFT * 0.6 * dir, y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, outStart);
 }
 
 ambient();
@@ -162,8 +159,6 @@ document.querySelectorAll(".scene").forEach((slot) => {
   const start = parseFloat(slot.dataset.start);
   const end = start + parseFloat(slot.dataset.duration);
   swap(slot, start, end - DUR.swap);
-  // 第一屏之前是标题卡，靠淡入衔接，不需要擦除
-  if (Number(slot.dataset.sceneIndex) > 1) wipe(start, Number(slot.dataset.sceneIndex));
 });
 
 if (hasClosing) {
