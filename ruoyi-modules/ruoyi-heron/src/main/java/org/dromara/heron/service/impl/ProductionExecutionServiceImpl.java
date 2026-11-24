@@ -232,6 +232,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
         for (ProductionArtifactVo artifact : result.artifacts()) {
             artifacts.verify(artifact);
         }
+        artifacts.register(run, result.artifacts());
 
         LocalDateTime now = now();
         int affected = taskMapper.lambda()

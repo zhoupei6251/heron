@@ -36,7 +36,7 @@ class ProductionArtifactTest {
         properties = new HeronProductionProperties();
         properties.setDataRoot(tempDir);
         properties.setPrototypeMaxBytes(4);
-        service = new ProductionArtifactService(properties);
+        service = new ProductionArtifactService(properties, null);
     }
 
     @Test

@@ -44,6 +44,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class NewsWorkServiceImpl implements INewsWorkService {
     private static final ProductionBizType TYPE = ProductionBizType.news_video;
+    private static final int RETENTION_DAYS = 90;
     /** 自动发布只认这些审稿级别；白名单之外的拼写一律当非法，不猜风险高低。 */
     private static final java.util.Set<String> REVIEW_SEVERITIES = java.util.Set.of("BLOCKER", "MAJOR", "MINOR");
     /** 当前审稿记录契约版本；历史记录没有版本号的一律不能自动发布。 */
@@ -940,7 +941,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     /** 仅内部显式调用；无默认调度、无 HTTP 删除接口。每项失败返回安全原因，审核事实不变。 */
     public List<NewsCleanupVo> cleanupExpired(boolean dryRun) {
         List<HeronVideoVersion> candidates = versionMapper.selectList(QueryBuilder.lambda(HeronVideoVersion.class)
-            .le(HeronVideoVersion::getCreateTime, now().minusDays(30)).isNull(HeronVideoVersion::getCleanedAt)
+            .le(HeronVideoVersion::getCreateTime, now().minusDays(RETENTION_DAYS)).isNull(HeronVideoVersion::getCleanedAt)
             .isNotNull(HeronVideoVersion::getArtifactManifest).orderByAsc(HeronVideoVersion::getVersionId).build());
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
         tx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
@@ -968,7 +969,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
                     // Partial previous deletion is resumable; existing files must still pass the core verification.
                     for (ProductionArtifactVo file : parseManifest(version)) {
                         domain.safePath(file);
-                        if (artifacts.exists(file)) artifacts.removeFile(file);
+                        artifacts.cleanupFile(file);
                     }
                     if (versionMapper.lambda().set(HeronVideoVersion::getCleanedAt, now()).set(HeronVideoVersion::getUpdateTime, now())
                         .eq(HeronVideoVersion::getVersionId, version.getVersionId()).isNotNull(HeronVideoVersion::getCleanupStartedAt)
@@ -986,7 +987,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     }
 
     private boolean cleanupEligible(HeronVideoVersion version) {
-        if (version == null || version.getCleanedAt() != null || version.getCreateTime().isAfter(now().minusDays(30))) return false;
+        if (version == null || version.getCleanedAt() != null || version.getCreateTime().isAfter(now().minusDays(RETENTION_DAYS))) return false;
         HeronNewsWork work = workMapper.selectById(version.getWorkId());
         HeronNewsCandidate candidate = candidateMapper.selectById(work.getCandidateId());
         if (work.getActiveTaskId() != null || candidate.getActiveTaskId() != null) return false;

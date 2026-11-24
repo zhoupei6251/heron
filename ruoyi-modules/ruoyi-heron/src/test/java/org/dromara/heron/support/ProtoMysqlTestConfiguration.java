@@ -57,7 +57,7 @@ public class ProtoMysqlTestConfiguration {
         return properties;
     }
     @Bean ProductionArtifactService artifacts(HeronProductionProperties properties) {
-        return new ProductionArtifactService(properties);
+        return new ProductionArtifactService(properties, null);
     }
     @Bean IProductionService productionService(HeronProductionTaskMapper tasks, HeronProductionLaneMapper lanes,
             HeronTaskStepMapper steps, HeronUsageRecordMapper usage, ApplicationContext context,

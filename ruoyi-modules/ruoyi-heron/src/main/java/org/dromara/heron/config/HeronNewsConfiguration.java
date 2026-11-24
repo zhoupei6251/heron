@@ -52,7 +52,7 @@ public class HeronNewsConfiguration {
         return new DataOpportunityRunner(opportunities, news, scheduler);
     }
 
-    /** 成片本地副本保留 30 天，到期定时清理；清理自带发布保护与 .keep，无需额外开关。 */
+    /** 成片本地副本保留 90 天，到期定时清理；清理自带发布保护与 .keep，无需额外开关。 */
     @Bean
     public NewsCleanupRunner newsCleanupRunner(NewsWorkServiceImpl maintenance,
                                                @Qualifier("scheduledExecutorService") ScheduledExecutorService scheduler) {

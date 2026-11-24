@@ -73,7 +73,7 @@ class ProtoEnginePipelineTest {
         properties.setDataRoot(tempDir);
         properties.setZeeRp(tempDir.resolve("zee-rp").toString());
         properties.setPrototypeTemplate(write("blank-rp9.rp", "blank"));
-        artifacts = new ProductionArtifactService(properties);
+        artifacts = new ProductionArtifactService(properties, null);
         processes = new RecordingProcesses(properties, artifacts);
         stageLog.clear();
         pipeline = new ProtoProductionPipeline(run -> RP1, processes, artifacts, properties,

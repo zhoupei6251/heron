@@ -40,7 +40,7 @@ class ProductionProcessTest {
     void setUp() {
         HeronProductionProperties properties = new HeronProductionProperties();
         properties.setDataRoot(tempDir);
-        artifacts = new ProductionArtifactService(properties);
+        artifacts = new ProductionArtifactService(properties, null);
         service = new ProductionProcessService(properties, artifacts);
     }
 
@@ -159,7 +159,7 @@ class ProductionProcessTest {
         properties.setNode(Path.of(System.getProperty("java.home"), "bin",
             System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java").toString());
         ProductionProcessService unguarded = new ProductionProcessService(properties,
-            new ProductionArtifactService(properties));
+            new ProductionArtifactService(properties, null));
 
         ProductionRunVo run = run();
         ProductionProcessVo result = unguarded.run(run, new ProductionProcessBo(

@@ -41,6 +41,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -187,6 +188,20 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         ossMapper.delete(new LambdaQueryWrapper<SysOss>()
             .eq(SysOss::getService, service)
             .eq(SysOss::getFileName, fileName));
+    }
+
+    @Override
+    public List<String> listUploadedKeysBefore(String service, String source, LocalDateTime cutoff, int limit) {
+        if (StringUtils.isBlank(service) || StringUtils.isBlank(source) || cutoff == null || limit <= 0) {
+            throw new ServiceException("过期对象查询参数不完整");
+        }
+        return ossMapper.selectList(new LambdaQueryWrapper<SysOss>()
+            .select(SysOss::getFileName)
+            .eq(SysOss::getService, service)
+            .lt(SysOss::getCreateTime, cutoff)
+            .apply("CASE WHEN JSON_VALID(ext1) THEN JSON_UNQUOTE(JSON_EXTRACT(ext1, '$.source')) END = {0}", source)
+            .orderByAsc(SysOss::getOssId)
+            .last("limit " + limit)).stream().map(SysOss::getFileName).toList();
     }
 
     /**

@@ -73,7 +73,7 @@ class NewsProductionPipelineRenderTest {
         properties.setNode(System.getenv().getOrDefault("HERON_TEST_NODE", "node"));
         NewsProductionPipeline pipeline = new NewsProductionPipeline(
             fixedAuthor(SCRIPT), null, new ProductionProcessService(properties,
-            new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties,
+            new ProductionArtifactService(properties, null)), new ProductionArtifactService(properties, null), properties,
             (run, stage, progress) -> true, null, null, null, passingReview(), null,
             new NewsSourceFetcher(null, null, new HeronNewsProperties()),
             org.mockito.Mockito.mock(FrozenContextService.class));
@@ -153,7 +153,7 @@ class NewsProductionPipelineRenderTest {
         };
         NewsProductionPipeline pipeline = new NewsProductionPipeline(
             fixedAuthor(script), null, new ProductionProcessService(properties,
-            new ProductionArtifactService(properties)), new ProductionArtifactService(properties), properties,
+            new ProductionArtifactService(properties, null)), new ProductionArtifactService(properties, null), properties,
             (run, stage, progress) -> true, null, null, null, passingReview(), null, stubFetcher,
             org.mockito.Mockito.mock(FrozenContextService.class));
 

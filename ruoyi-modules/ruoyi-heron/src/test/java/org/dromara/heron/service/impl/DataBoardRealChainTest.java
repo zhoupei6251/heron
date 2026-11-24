@@ -155,8 +155,8 @@ class DataBoardRealChainTest {
                 }
             },
             null,
-            new ProductionProcessService(properties, new ProductionArtifactService(properties)),
-            new ProductionArtifactService(properties), properties, (run, stage, progress) -> true,
+            new ProductionProcessService(properties, new ProductionArtifactService(properties, null)),
+            new ProductionArtifactService(properties, null), properties, (run, stage, progress) -> true,
             router, fetch, author, passingReview(), null, new NewsSourceFetcher(null, null, new HeronNewsProperties()),
             org.mockito.Mockito.mock(FrozenContextService.class));
 

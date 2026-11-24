@@ -86,7 +86,7 @@ class DataBoardPipelineRenderTest {
         dataset.put("source_name", "示例快照 · 功能验收");
         String datasetJson = JSON.writeValueAsString(dataset);
         Files.createDirectories(dataRoot);
-        ProductionArtifactService artifactService = new ProductionArtifactService(properties);
+        ProductionArtifactService artifactService = new ProductionArtifactService(properties, null);
 
         DatasetRouter router = new DatasetRouter(null, null, null) {
             @Override

@@ -2,6 +2,7 @@ package org.dromara.system.api;
 
 import org.dromara.system.api.domain.OssDTO;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -36,4 +37,9 @@ public interface OssService {
      * 按存储配置与对象键注销元数据，不删除桶对象。
      */
     void unregisterUploaded(String service, String fileName);
+
+    /**
+     * 查询指定来源在截止时间前登记的对象键，供保留策略清理使用。
+     */
+    List<String> listUploadedKeysBefore(String service, String source, LocalDateTime cutoff, int limit);
 }

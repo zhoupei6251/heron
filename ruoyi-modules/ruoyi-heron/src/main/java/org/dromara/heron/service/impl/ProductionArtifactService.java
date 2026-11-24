@@ -6,6 +6,7 @@ import org.dromara.common.oss.exception.S3StorageException;
 import org.dromara.common.oss.factory.OssFactory;
 import org.dromara.common.oss.model.GetObjectResult;
 import org.dromara.common.oss.model.Options;
+import org.dromara.common.oss.model.PutObjectResult;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import org.dromara.heron.config.HeronProductionProperties;
@@ -13,7 +14,11 @@ import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.vo.ProductionArtifactVo;
 import org.dromara.heron.domain.vo.ProductionRunVo;
+import org.dromara.system.api.OssService;
+import org.dromara.system.api.domain.OssDTO;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,11 +28,15 @@ import java.nio.channels.FileChannel;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HexFormat;
@@ -48,13 +57,25 @@ public class ProductionArtifactService {
     private static final Pattern SAFE_KIND = Pattern.compile("[a-z0-9][a-z0-9_-]{0,31}");
     private static final Pattern SAFE_EXTENSION = Pattern.compile("[a-z0-9]{1,8}");
     private static final Pattern SAFE_MEDIA_TYPE = Pattern.compile("[a-z]+/[a-z0-9.+-]{1,64}");
+    private static final int CLEANUP_BATCH = 200;
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     /** 本次尝试已定稿的存储键：任务没落库时按它回收，否则桶和磁盘都会留下无人引用的产物。 */
     private final Map<String, List<String>> finalized = new ConcurrentHashMap<>();
+    private final Map<String, OssDTO> uploaded = new ConcurrentHashMap<>();
     private final HeronProductionProperties properties;
+    private final OssService ossService;
+    private final Clock clock;
 
-    public ProductionArtifactService(HeronProductionProperties properties) {
+    @Autowired
+    public ProductionArtifactService(HeronProductionProperties properties, OssService ossService) {
+        this(properties, ossService, Clock.systemUTC());
+    }
+
+    public ProductionArtifactService(HeronProductionProperties properties, OssService ossService, Clock clock) {
         this.properties = properties;
+        this.ossService = ossService;
+        this.clock = clock;
     }
 
     public Path prepareWorkDirectory(ProductionRunVo run) {
@@ -109,13 +130,15 @@ public class ProductionArtifactService {
                 throw new HeronBusinessException(409, "production_file_invalid", "产物已存在");
             }
             Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-            uploadIfConfigured(target, mediaType, sha256);
+            ProductionArtifactVo artifact = new ProductionArtifactVo(artifactId, kind, storageKey(target), size, sha256, mediaType);
+            record(artifact, run);
+            uploadIfConfigured(run, target, mediaType, sha256, size);
+            return artifact;
         } catch (AtomicMoveNotSupportedException e) {
             throw new HeronBusinessException(409, "production_atomic_move_required", "不支持同卷原子定稿");
         } catch (IOException e) {
             throw new IllegalStateException("产物定稿失败", e);
         }
-        return record(new ProductionArtifactVo(artifactId, kind, storageKey(target), size, sha256, mediaType), run);
     }
 
     private ProductionArtifactVo record(ProductionArtifactVo artifact, ProductionRunVo run) {
@@ -226,6 +249,8 @@ public class ProductionArtifactService {
         OssClient oss = oss();
         if (oss != null) {
             oss.delete(artifact.storageKey());
+            deleteLocalIfExists(artifact.storageKey());
+            removeRegistration(artifact);
             return;
         }
         try {
@@ -235,24 +260,99 @@ public class ProductionArtifactService {
         }
     }
 
+    /** 清理可续跑：桶对象已消失时仍补删元数据与本地副本，本地缺失则视为已清理。 */
+    public void cleanupFile(ProductionArtifactVo artifact) {
+        if (exists(artifact)) {
+            removeFile(artifact);
+        } else {
+            deleteLocalIfExists(artifact.storageKey());
+            removeRegistration(artifact);
+        }
+    }
+
+    /** 按登记时间清理 90 天前的云端对象与元数据；单键失败留到下一轮。 */
+    public int cleanupExpiredUploads(Duration retention) {
+        String configKey = properties.getOssConfigKey();
+        if (configKey == null || configKey.isBlank()) {
+            return 0;
+        }
+        List<String> keys = ossService.listUploadedKeysBefore(configKey, "heron",
+            LocalDateTime.now(clock).minus(retention), CLEANUP_BATCH);
+        int cleaned = 0;
+        for (String key : keys) {
+            try {
+                cleanupUploaded(configKey, key);
+                cleaned++;
+            } catch (RuntimeException e) {
+                log.warn("过期云端产物清理未成功: key={}, cause={}", key, e.getClass().getSimpleName());
+            }
+        }
+        return cleaned;
+    }
+
+    private void cleanupUploaded(String configKey, String storageKey) {
+        storageCandidate(storageKey);
+        if (!storageKey.startsWith("videos/") && !storageKey.startsWith("protos/")) {
+            throw new HeronBusinessException(409, "production_invalid_artifact", "云端产物路径不合法");
+        }
+        OssClient oss = oss();
+        if (oss != null && head(oss, storageKey) != null) {
+            oss.delete(storageKey);
+        }
+        ossService.unregisterUploaded(configKey, storageKey);
+    }
+
+    private void removeRegistration(ProductionArtifactVo artifact) {
+        String configKey = properties.getOssConfigKey();
+        if (configKey == null || configKey.isBlank()) {
+            return;
+        }
+        storageCandidate(artifact.storageKey());
+        ossService.unregisterUploaded(configKey, artifact.storageKey());
+    }
+
     /** 配置了 oss-config-key 才走对象存储；留空即本地产物盘，测试与未接桶的部署行为完全不变。 */
     private OssClient oss() {
         String configKey = properties.getOssConfigKey();
         return configKey == null || configKey.isBlank() ? null : OssFactory.instance(configKey);
     }
 
-    /** 定稿即上传；本地副本保留到版本清理（30 天），供发布与抽帧直接用，不即时删。 */
-    private void uploadIfConfigured(Path target, String mediaType, String sha256) {
+    /** 定稿即上传；本地副本保留到版本清理（90 天），供发布与抽帧直接用，不即时删。 */
+    private void uploadIfConfigured(ProductionRunVo run, Path target, String mediaType, String sha256, long size) {
         OssClient oss = oss();
         if (oss == null) {
             return;
         }
         try {
-            oss.upload(storageKey(target), target, Options.create()
+            PutObjectResult result = oss.upload(storageKey(target), target, Options.create()
                 .setContentType(mediaType).setMetadata(Map.of("sha256", sha256)));
+            OssDTO row = new OssDTO();
+            row.setService(properties.getOssConfigKey());
+            row.setFileName(result.key());
+            row.setOriginalName(target.getFileName().toString());
+            row.setFileSuffix("." + extensionOf(target));
+            row.setUrl(result.url());
+            row.setExt1(JSON.writeValueAsString(Map.of("bizType", run.bizType().name(), "fileSize", size,
+                "contentType", mediaType, "source", "heron", "refId", Long.toString(run.bizId()),
+                "refType", run.bizType().name(), "isTemp", false)));
+            uploaded.put(uploadKey(run, result.key()), row);
         } catch (RuntimeException e) {
             throw new HeronBusinessException(503, "production_object_store_failed",
                 "产物上传对象存储失败: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** 必须与版本清单同一事务登记；失败尝试由 releaseAttempt 回收，不产生 sys_oss 行。 */
+    public void register(ProductionRunVo run, List<ProductionArtifactVo> artifacts) {
+        if (oss() == null) {
+            return;
+        }
+        for (ProductionArtifactVo artifact : artifacts) {
+            OssDTO row = uploaded.get(uploadKey(run, artifact.storageKey()));
+            if (row == null) {
+                throw new HeronBusinessException(503, "production_object_store_failed", "产物对象存储登记信息缺失");
+            }
+            ossService.registerUploaded(row);
         }
     }
 
@@ -345,21 +445,70 @@ public class ProductionArtifactService {
      */
     public void releaseAttempt(ProductionRunVo run, boolean landed) {
         List<String> keys = finalized.remove(run.taskId() + ":" + run.attemptNo());
-        if (landed || keys == null || keys.isEmpty()) {
+        if (keys == null || keys.isEmpty()) {
+            return;
+        }
+        List<OssDTO> pending = keys.stream().map(key -> uploaded.remove(uploadKey(run, key))).toList();
+        if (landed) {
             return;
         }
         OssClient oss = oss();
-        for (String key : keys) {
-            try {
-                if (oss != null) {
-                    oss.delete(key);
-                } else {
-                    Files.deleteIfExists(resolveStorageKey(key));
+        for (int i = 0; i < keys.size(); i++) {
+            String key = keys.get(i);
+            OssDTO row = pending.get(i);
+            boolean deleted = false;
+            if (oss != null && row != null) {
+                markTemporary(row);
+                try {
+                    ossService.registerUploaded(row);
+                } catch (RuntimeException e) {
+                    log.warn("失败尝试待清理元数据登记未成功: key={}, cause={}",
+                        key, e.getClass().getSimpleName());
                 }
-            } catch (RuntimeException | IOException e) {
-                log.warn("回收失败尝试产物未成功: key={}, cause={}", key, e.getClass().getSimpleName());
+                try {
+                    oss.delete(key);
+                    deleted = true;
+                } catch (RuntimeException e) {
+                    log.warn("回收失败尝试桶对象未成功: key={}, cause={}",
+                        key, e.getClass().getSimpleName());
+                }
+                if (deleted) {
+                    try {
+                        ossService.unregisterUploaded(properties.getOssConfigKey(), key);
+                    } catch (RuntimeException e) {
+                        log.warn("失败尝试元数据注销未成功: key={}, cause={}",
+                            key, e.getClass().getSimpleName());
+                    }
+                }
+            } else if (oss != null) {
+                try {
+                    oss.delete(key);
+                } catch (RuntimeException e) {
+                    log.warn("回收失败尝试桶对象未成功: key={}, cause={}",
+                        key, e.getClass().getSimpleName());
+                }
+            }
+            try {
+                deleteLocalIfExists(key);
+            } catch (RuntimeException e) {
+                log.warn("回收失败尝试本地产物未成功: key={}, cause={}",
+                    key, e.getClass().getSimpleName());
             }
         }
+    }
+
+    private static void markTemporary(OssDTO row) {
+        try {
+            Map<String, Object> ext = JSON.readValue(row.getExt1(), Map.class);
+            ext.put("isTemp", true);
+            row.setExt1(JSON.writeValueAsString(ext));
+        } catch (RuntimeException e) {
+            log.warn("失败尝试扩展标记失败: key={}, cause={}", row.getFileName(), e.getClass().getSimpleName());
+        }
+    }
+
+    private static String uploadKey(ProductionRunVo run, String storageKey) {
+        return run.taskId() + ":" + run.attemptNo() + ":" + storageKey;
     }
 
     private Path finalDirectory(ProductionRunVo run, Long versionNo) {
@@ -410,6 +559,21 @@ public class ProductionArtifactService {
             throw new HeronBusinessException(409, "production_file_missing", "产物路径越界");
         }
         return candidate;
+    }
+
+    private void deleteLocalIfExists(String storageKey) {
+        Path candidate = storageCandidate(storageKey);
+        try {
+            Path parent = candidate.getParent().toRealPath();
+            if (!parent.startsWith(dataRoot().toRealPath())) {
+                throw new HeronBusinessException(409, "production_file_missing", "产物路径越界");
+            }
+            Files.deleteIfExists(candidate);
+        } catch (NoSuchFileException e) {
+            return;
+        } catch (IOException e) {
+            throw new IllegalStateException("删除本地产物失败", e);
+        }
     }
 
     private Path realFile(Path file) {

@@ -33,5 +33,5 @@
 - **compare 真两栏**（本轮做的）：`docs/plans/2026-11-23-compare-two-column-design.md`。
 - **黑场闸与渲染耗时**（本轮做的）：`docs/plans/2026-11-23-video-signal-gate-design.md`。
 - **字体可变字重**：`data/fonts/NotoSansSC-Regular.otf` 带 fvar/gvar 真可变表，文档里「单字重」的说法与代码不符。
-- **成片保留 30 天**：`NewsCleanupRunner` 已在跑。
+- **成片保留 90 天**：`NewsCleanupRunner` 与 `ProductionArtifactCleanupRunner` 已在跑，分别覆盖业务版本和 `sys_oss` 登记的云端对象。
 - **geo 数据源接入**：`UsgsQuakeGeoAdapter` + 迁移 `V52__data_source_geo.sql`。

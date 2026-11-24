@@ -163,7 +163,7 @@ public class HeronMysqlTestConfiguration {
 
     @Bean
     public ProductionArtifactService productionArtifactService(HeronProductionProperties properties) {
-        return new ProductionArtifactService(properties);
+        return new ProductionArtifactService(properties, null);
     }
 
     @Bean

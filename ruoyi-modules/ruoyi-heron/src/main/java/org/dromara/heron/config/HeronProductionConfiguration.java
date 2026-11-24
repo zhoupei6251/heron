@@ -16,6 +16,7 @@ import org.dromara.heron.service.impl.NewsProductionPipeline;
 import org.dromara.heron.service.impl.OpenAiModelClient;
 import org.dromara.heron.service.impl.ProtoProductionDomain;
 import org.dromara.heron.service.impl.ProtoProductionPipeline;
+import org.dromara.heron.service.impl.ProductionArtifactCleanupRunner;
 import org.dromara.heron.service.impl.ProductionArtifactService;
 import org.dromara.heron.service.impl.ProductionProcessService;
 import org.dromara.heron.service.impl.ProductionRecoveryService;
@@ -48,6 +49,13 @@ import java.util.concurrent.ScheduledExecutorService;
 @EnableConfigurationProperties(HeronProductionProperties.class)
 @PropertySource(value = "classpath:heron-production.yml", factory = YmlPropertySourceFactory.class)
 public class HeronProductionConfiguration {
+
+    @Bean
+    public ProductionArtifactCleanupRunner productionArtifactCleanupRunner(ProductionArtifactService artifacts,
+                                                                             @Qualifier("scheduledExecutorService")
+                                                                             ScheduledExecutorService scheduler) {
+        return new ProductionArtifactCleanupRunner(artifacts, scheduler);
+    }
 
     @Bean
     @ConditionalOnProperty(prefix = "heron.production", name = "worker-enabled", havingValue = "true")
