@@ -36,6 +36,8 @@ public class EditorialDecisionService {
     private static final Set<String> LINES = Set.of(DATA_BOARD, TREND_INSIGHT, NEWS_EXPLAINER, KNOWLEDGE_EXPLAINER);
 
     private final OpenAiModelClient model;
+    /** SHADOW 对照：只落库，不参与任何分支，失败也不影响本次决策。 */
+    private final JevShadowRecorder shadow;
 
     /** 候选摘要：id 是给校验用的，label 是给模型看的。 */
     public record CandidateRef(long candidateId, String label) { }
@@ -106,7 +108,9 @@ public class EditorialDecisionService {
 
     public Decision decide(Pools pools) {
         // 决策发生在任何 run 之前，用量记录挂不上 run；这里走不带用量的调用
-        return plan(model.chatWithoutUsage(SYSTEM, prompt(pools)), pools);
+        Decision decision = plan(model.chatWithoutUsage(SYSTEM, prompt(pools)), pools);
+        shadow.record(pools, decision);
+        return decision;
     }
 
     /** 纯决策：没素材的线不许选，这是边界不是权重。 */

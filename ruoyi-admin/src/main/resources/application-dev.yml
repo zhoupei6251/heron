@@ -102,7 +102,7 @@ spring:
           driverClassName: com.mysql.cj.jdbc.Driver
           # jdbc 所有参数配置参考 https://lionli.blog.csdn.net/article/details/122018562
           # rewriteBatchedStatements=true 批处理优化 大幅提升批量插入更新删除性能(对数据库有性能损耗 使用批量操作应考虑性能问题)
-          url: jdbc:mysql://localhost:3307/heron?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8&autoReconnect=true&rewriteBatchedStatements=true&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true
+          url: jdbc:mysql://localhost:3307/heron_dev?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8&autoReconnect=true&rewriteBatchedStatements=true&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true
           username: root
           password: heron!2026
 #        # 从库数据源
@@ -326,6 +326,10 @@ justauth:
 
 --- # Heron 本机开发覆盖（Windows 直跑渲染，见 docs/plans/2026-11-03-heron-implementation-design.md §4）
 heron:
+  jev:
+    # SHADOW 对照开关：只记差异，不进任何分支（见 docs/plans/2026-11-23-jev-assembly-design.md）。
+    # 打开后缺 key 会在启动时直接报 jev_not_configured，不会静默降级。
+    enabled: true
   production:
     # PATH 上没有 python3.exe；监护脚本只在 Linux 生效，开发机显式关闭而不是自动降级
     python: python

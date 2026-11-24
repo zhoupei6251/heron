@@ -64,6 +64,12 @@
             <artifactId>agentscope-extensions-mysql</artifactId>
             <version>2.1.0-BETA1</version>
         </dependency>
+        <!-- JEV 外部判断客户端：只回答结构化判断，不进授权路径，默认开关关闭 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-jev</artifactId>
+            <version>2.1.0-BETA1</version>
+        </dependency>
         <!-- 定稿产物落对象存储：复用基座 sys_oss_config 与 S3 客户端，不自建第二套存储配置 -->
         <dependency>
             <groupId>org.dromara</groupId>
