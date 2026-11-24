@@ -94,6 +94,23 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         return selection.dataBoard() ? "data_board" : "article";
     }
 
+    /**
+     * 人工编辑路径只有节点没有对象：线名在节点里，照同样的口径推生产线。
+     *
+     * <p>推不出来就按解说线走：解说线是唯一不依赖数据源的线，猜错也比按数据线取空数据强。
+     */
+    static String kindOfLine(Map<String, Object> node) {
+        Object line = node == null ? null : node.get("line");
+        String value = line == null ? "" : String.valueOf(line);
+        if (EditorialSelection.TREND_INSIGHT.equals(value)) {
+            return "trend";
+        }
+        if (EditorialSelection.KNOWLEDGE_EXPLAINER.equals(value)) {
+            return "knowledge_explainer";
+        }
+        return EditorialSelection.DATA_BOARD.equals(value) ? "data_board" : "article";
+    }
+
     /** 总编辑判断：线、意图、理由，以及提示词版本，便于回溯「当时为什么这么选」。 */
     static Map<String, Object> editorialNode(HeronNewsWork work, ProductionSubmitBo command) {
         Map<String, Object> editorial = new LinkedHashMap<>();
@@ -208,8 +225,14 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         // 生产线由线内编辑显式给定，不再从模板名前缀反推：
         // 反推等于让命名决定业务，改模板名就会改出片逻辑。
         EditorialSelection selection = command.selection();
-        snapshot.put("kind", kindOf(selection));
-        if (command.editorial() != null && selection != null) {
+        EditorialOverride override = command.override();
+        snapshot.put("kind", override == null ? kindOf(selection) : kindOfLine(override.selectionNode()));
+        if (override != null) {
+            // 人工编辑策划结论：沿用上一版冻结的节点，只换 story 一个键。
+            // 逐字沿用是有意的——重建节点要还原取数口径，还原错一个字段就是按另一条口径取数。
+            snapshot.put("editorial", override.editorialNode());
+            snapshot.put("selection", override.selectionNode());
+        } else if (command.editorial() != null && selection != null) {
             snapshot.put("editorial", editorialNode(work, command));
             snapshot.put("selection", selectionNode(selection));
         }

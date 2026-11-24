@@ -17,6 +17,10 @@ public interface INewsWorkService {
     NewsWorkVo queryById(long workId);
     NewsWorkVo saveDraft(long workId, NewsDraftBo bo);
     ProductionReceiptVo generate(long workId, NewsGenerateBo bo);
+    /** 当前版本的策划结论与可编辑范围：只有数据看板线与趋势洞察线带策划结论。 */
+    NewsStoryVo story(long workId);
+    /** 按人工编辑后的策划结论重出片：沿用上一版选材，只换策划结论。 */
+    ProductionReceiptVo reproduceWithStory(long workId, NewsStoryBo bo);
     PageResult<NewsVideoVersionVo> versions(long workId, PageQuery page);
     /** 审片队列：跨作品的待审版本，供审片中心一屏处理。 */
     PageResult<NewsVideoVersionVo> reviewQueue(PageQuery page);

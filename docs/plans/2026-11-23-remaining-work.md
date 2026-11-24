@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | 1 | **compare 做成真正两栏对照** | 已做（2026-11-23）：`docs/plans/2026-11-23-compare-two-column-design.md` | 原来只有「正文垫一层面板」，对照关系只在句子里 |
 | 2 | **黑场/冻结帧从「只记」变成「拦」** | 黑场已拦（2026-11-23）：`VideoSignalCheck.blockingBlack()` 给出致命黑场，`NewsProductionPipeline.videoSignalGate` 抛 `news_video_black_frame`（409）；冻结仍只记 | 冻结阈值还没定。报告 `docs/2026-11-20-storyboard-and-visual-signal-report.md:216` 建议先收一个月量再定 |
-| 3 | **人工编辑故事 + 故事历史表现回填** | story 由 `DatasetStoryPlanner` 生成；`controller/` 下没有任何 story 写接口，前端 `api/heron/editorial/index.ts` 只有 2 个 GET | 表现数据挂在版本上不挂故事：`NewsMetricBo.java:15-22` 按 versionId/platform/plays/completionRate；消费方 `NewsCandidateScreener.java:61,93-97` |
+| 3 | **人工编辑故事 + 故事历史表现回填** | 后端已做（2026-11-24）：`GET /{id}/story` 与 `POST /{id}/story/reproduce`，只换 story 一个键、basis 沿用、契约不过当场 409。按零人工定位**不再做人工页面**，改成 Agent 纠错通道：审稿证据失败先让 `StoryRewriter` 改写再重出片，改不动才换选题（`NewsAutoService` 重试循环）。见 `docs/plans/2026-11-23-manual-story-edit-design.md` | 表现数据挂在版本上不挂故事：`NewsMetricBo.java:15-22` 按 versionId/platform/plays/completionRate；消费方 `NewsCandidateScreener.java:61,93-97` |
 | 4 | **3D 资产库只有 1 个模板** | `data/templates` 下只有 `news-data-3d-9x16` 声明 globe；`data/templates/_gen/behaviors/globe.js:13` 只认 `dataset.shape === "geo"` | 要第二个空间模板（terrain / 剖面 / 柱阵），先定做哪种 |
 | 5 | **渲染成本与预算观测** | 耗时已记（2026-11-23）：`renderGate` 增加 `renderMs` / `videoSeconds` / `msPerVideoSecond`；本地渲一条 57.8s 成片 hyperframes 自报 3m8s（≈3.3× 实时） | 还没有显存/WebGL 指标，也没有预算线。`docs/plans/2026-11-23-data-visual-mode-3d-design.md` §6 #3 |
 | 6 | **2D vs 3D 对照实验** | 没有实验脚本与对照报告 | 3D 线已有真片（`docs/acceptance-2026-11-23/geo-acceptance-summary.md`），但留存/完播/成本没记录，跑不出结论 |

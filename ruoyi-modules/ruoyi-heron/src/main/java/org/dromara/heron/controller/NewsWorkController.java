@@ -51,6 +51,19 @@ public class NewsWorkController extends BaseController {
     @PostMapping("/{id}/generate")
     public R<ProductionReceiptVo> generate(@PathVariable long id, @RequestBody NewsGenerateBo bo) { return R.ok(news.generate(id, bo)); }
 
+    /** 策划结论与可编辑范围：只有数据看板线与趋势洞察线带策划结论。 */
+    @SaCheckPermission("heron:newsWork:query")
+    @GetMapping("/{id}/story")
+    public R<NewsStoryVo> story(@PathVariable long id) { return R.ok(news.story(id)); }
+
+    /** 按人工编辑后的策划结论重出片：改故事不改选材，故事不落到片子上等于没改。 */
+    @SaCheckPermission("heron:newsWork:generate")
+    @Log(title = "编辑策划结论出片", businessType = BusinessType.INSERT, isSaveRequestData = false, isSaveResponseData = false)
+    @PostMapping("/{id}/story/reproduce")
+    public R<ProductionReceiptVo> reproduceWithStory(@PathVariable long id, @RequestBody NewsStoryBo bo) {
+        return R.ok(news.reproduceWithStory(id, bo));
+    }
+
     @GetMapping("/{id}/versions")
     public R<PageResult<NewsVideoVersionVo>> versions(@PathVariable long id, PageQuery page) { return R.ok(news.versions(id, page)); }
 

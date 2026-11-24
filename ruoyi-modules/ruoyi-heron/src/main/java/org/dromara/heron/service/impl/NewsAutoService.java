@@ -14,6 +14,7 @@ import org.dromara.heron.domain.HeronNewsCandidate;
 import org.dromara.heron.domain.HeronNewsSource;
 import org.dromara.heron.domain.HeronNewsWork;
 import org.dromara.heron.domain.HeronVideoVersion;
+import org.dromara.heron.domain.bo.NewsStoryBo;
 import org.dromara.heron.domain.vo.NewsWorkVo;
 import org.dromara.heron.mapper.HeronAutoSlotMapper;
 import org.dromara.heron.mapper.HeronDataOpportunityMapper;
@@ -36,6 +37,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -59,6 +61,8 @@ public class NewsAutoService {
     private static final int UNVERIFIABLE_STREAK_LIMIT = 2;
     /** 研究候选单独取：它们的 heat_score 恒为 1，混进按热度排序的 LIMIT 里几乎永不上榜。 */
     private static final int RESEARCH_POOL_LIMIT = 10;
+    /** 一个槽位最多改写一次策划结论：改写是定点修，一次改不动说明问题不在故事上。 */
+    private static final int MAX_STORY_REWRITES = 1;
     /** RuoYi 的开关约定：'0' 是允许。 */
     private static final String AUTO_ALLOWED = "0";
     private static final String PROBE_OK = "ok";
@@ -87,6 +91,8 @@ public class NewsAutoService {
     private final DatasetRouter datasetRouter;
     private final StrategyReferenceService references;
     private final KnowledgeCandidateCollector knowledgeCollector;
+    /** 审稿没过时按意见改写策划结论：比换选题更接近问题本身。 */
+    private final StoryRewriter storyRewriter;
     private final Clock clock;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -98,11 +104,11 @@ public class NewsAutoService {
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
                            EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
                            DatasetRouter datasetRouter, StrategyReferenceService references,
-                           KnowledgeCandidateCollector knowledgeCollector) {
+                           KnowledgeCandidateCollector knowledgeCollector, StoryRewriter storyRewriter) {
         this(news, sourceMapper, candidateMapper, workMapper, versionMapper, slotMapper, opportunityMapper,
             dataSourceMapper, newsWork,
             pauseStore, screener, editorial, domain, lineEditor, datasetRouter, references, knowledgeCollector,
-            Clock.systemUTC());
+            storyRewriter, Clock.systemUTC());
     }
 
     public NewsAutoService(HeronNewsProperties news, HeronNewsSourceMapper sourceMapper,
@@ -113,7 +119,7 @@ public class NewsAutoService {
                            NewsWorkServiceImpl newsWork, AutoPauseStore pauseStore, NewsCandidateScreener screener,
                            EditorialDecisionService editorial, NewsProductionDomain domain, EditorialLineEditor lineEditor,
                            DatasetRouter datasetRouter, StrategyReferenceService references,
-                           KnowledgeCandidateCollector knowledgeCollector, Clock clock) {
+                           KnowledgeCandidateCollector knowledgeCollector, StoryRewriter storyRewriter, Clock clock) {
         this.news = news;
         this.sourceMapper = sourceMapper;
         this.candidateMapper = candidateMapper;
@@ -131,6 +137,7 @@ public class NewsAutoService {
         this.datasetRouter = datasetRouter;
         this.references = references;
         this.knowledgeCollector = knowledgeCollector;
+        this.storyRewriter = storyRewriter;
         this.clock = clock;
     }
 
@@ -213,6 +220,7 @@ public class NewsAutoService {
         Set<Long> triedCandidates = new HashSet<>();
         Set<String> triedSources = new HashSet<>();
         int unverifiableStreak = 0;
+        int storyRewrites = 0;
         String lastReason = null;
         for (int attempt = 0; attempt <= MAX_REVIEW_RETRIES; attempt++) {
             Optional<EditorialChoice> choice;
@@ -254,6 +262,25 @@ public class NewsAutoService {
             } catch (RuntimeException e) {
                 log.warn("自动产出槽位失败 slot={} attempt={} {}: {}",
                     slotTime, attempt, e.getClass().getSimpleName(), e.getMessage());
+                // 证据问题先给故事一次机会：按审稿意见改写策划结论再出片，比换选题更接近问题本身。
+                // 改写失败不抛，直接落到下面的换选题路径——两条路都走完才算这个选题不行。
+                if (work != null && storyRewrites < MAX_STORY_REWRITES
+                    && isEvidenceReviewFailure(e) && supportsStory(picked.finalLine())) {
+                    storyRewrites++;
+                    try {
+                        Map<String, Object> rewritten = storyRewriter.rewrite(work.getWorkId(), e.getMessage());
+                        org.dromara.heron.domain.vo.ProductionReceiptVo receipt =
+                            newsWork.reproduceWithStoryForAuto(work.getWorkId(),
+                                new NewsStoryBo("auto-rewrite:" + today + ":" + slotTime + ":" + storyRewrites,
+                                    work.getRevision(), rewritten),
+                                news.getAutoActorId());
+                        markOpportunityUsed(picked.selection(), receipt);
+                        finish(slot, "produced", "story_rewritten：" + decision.editorialIntent(), work.getWorkId());
+                        return;
+                    } catch (RuntimeException rewriteFailure) {
+                        log.warn("改写策划结论后仍没过 workId={}: {}", work.getWorkId(), rewriteFailure.getMessage());
+                    }
+                }
                 // 认领已经落库，提交失败必须把候选放回池子：不释放就再也不会被选中，且不报错
                 if (work != null) {
                     try {
@@ -292,6 +319,12 @@ public class NewsAutoService {
     static boolean isEvidenceReviewFailure(RuntimeException e) {
         String code = businessCode(e);
         return "editorial_review_unverifiable".equals(code) || "editorial_review_unsupported".equals(code);
+    }
+
+    /** 只有数据看板线与趋势洞察线带策划结论，其余线改写无从谈起。 */
+    static boolean supportsStory(String line) {
+        return EditorialDecisionService.DATA_BOARD.equals(line)
+            || EditorialDecisionService.TREND_INSIGHT.equals(line);
     }
 
     static String businessCode(RuntimeException e) {

@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -47,6 +48,8 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private static final java.util.Set<String> REVIEW_SEVERITIES = java.util.Set.of("BLOCKER", "MAJOR", "MINOR");
     /** 当前审稿记录契约版本；历史记录没有版本号的一律不能自动发布。 */
     private static final java.util.Set<String> REVIEW_SCHEMAS = java.util.Set.of("1.0");
+    /** 读冻结快照用本地 mapper：不引 Spring 上下文，快照形状是已冻结的 JSON，不需要多态类型。 */
+    private static final JsonMapper JSON = JsonMapper.builder().build();
     private final HeronNewsCandidateMapper candidateMapper;
     private final HeronNewsWorkMapper workMapper;
     private final HeronVideoVersionMapper versionMapper;
@@ -63,6 +66,8 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private final HeronNewsProperties news;
     private final NewsPublishAttempts publishAttempts;
     private final QualityFrameService frameExtractor;
+    /** 校验编辑后的策划结论要用生产同一条口径的数据：这里只取数，不落产物。 */
+    private final DatasetFetchService datasets;
 
     @Override
     public PageResult<NewsCandidateVo> candidates(NewsCandidateQuery query) {
@@ -354,6 +359,125 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         if (requestKey == null || !requestKey.matches("[a-zA-Z0-9._:-]{1,64}")) throw invalid("生成请求不合法");
         return production.submit(new ProductionSubmitBo(TYPE, workId, requestKey, work.getRevision(),
             decision, selection));
+    }
+
+    /**
+     * 当前版本的策划结论：人要在页面上改的就是它。
+     *
+     * <p>取的是当前版本冻结快照里的 selection.story，不是另存的一份：策划结论随冻结输入落盘，
+     * 页面看到的必须与写稿时读的是同一份，否则人改的与片子讲的不是一回事。
+     */
+    @Override
+    public NewsStoryVo story(long workId) {
+        HeronNewsWork work = requireWork(workId, "query");
+        HeronVideoVersion version = currentVersionOf(work);
+        if (version == null) {
+            throw new HeronBusinessException(404, "news_story_not_found", "这条作品还没有可编辑的策划结论");
+        }
+        JsonNode snapshot = JSON.readTree(version.getInputSnapshot());
+        JsonNode selection = snapshot.path("selection");
+        JsonNode story = selection.path("story");
+        if (!story.isObject()) {
+            throw new HeronBusinessException(400, "news_story_not_found",
+                "这条片子没有策划结论：只有数据看板线与趋势洞察线带策划结论");
+        }
+        NewsStoryVo vo = new NewsStoryVo();
+        vo.setWorkId(work.getWorkId());
+        vo.setVersionId(version.getVersionId());
+        vo.setVersionNo(version.getVersionNo());
+        vo.setLine(selection.path("line").asString(""));
+        vo.setDataSourceKey(selection.path("dataSourceKey").asString(""));
+        vo.setPoints(DatasetWindowContract.pointsOf(snapshot));
+        vo.setStory(JSON.convertValue(story, Map.class));
+        vo.setNarratives(sorted(DatasetStoryContract.NARRATIVES));
+        Map<String, List<String>> tensionKinds = new LinkedHashMap<>();
+        DatasetStoryContract.TENSION_KINDS.forEach((narrative, kinds) -> tensionKinds.put(narrative, sorted(kinds)));
+        vo.setTensionKinds(tensionKinds);
+        vo.setProtagonistKinds(sorted(DatasetStoryContract.PROTAGONIST_KINDS));
+        vo.setClaimKinds(sorted(DatasetStoryContract.CLAIM_KINDS));
+        return vo;
+    }
+
+    /** 枚举给页面当下拉框：排序一次，Set.of 的迭代顺序每次 JVM 启动都不一样。 */
+    private static List<String> sorted(Set<String> values) {
+        List<String> list = new ArrayList<>(values);
+        list.sort(String::compareTo);
+        return list;
+    }
+
+    /**
+     * 按人工编辑后的策划结论重出片。
+     *
+     * <p>沿用上一版的选材与取数口径，只换 story 一个键：改故事是改「这条片子讲什么事」，
+     * 不是改「拿哪份数据」。编辑不产片等于没编辑，所以这个接口直接出片。
+     */
+    @Override
+    public ProductionReceiptVo reproduceWithStory(long workId, NewsStoryBo bo) {
+        return reproduce(requireWork(workId, "generate"), bo, access.requireActor());
+    }
+
+    /**
+     * 自动纠错路径：后台线程没有会话，跳过对象级权限，编辑者记自动演员。
+     *
+     * <p>与人工路径走同一套校验——自动改故事不是绕过契约闸的口子。
+     */
+    public ProductionReceiptVo reproduceWithStoryForAuto(long workId, NewsStoryBo bo, long actor) {
+        HeronNewsWork work = workMapper.selectById(workId);
+        if (work == null) throw new HeronAccessException();
+        return reproduce(work, bo, actor);
+    }
+
+    private ProductionReceiptVo reproduce(HeronNewsWork work, NewsStoryBo bo, long actor) {
+        if (bo == null || bo.expectedRevision() == null || bo.expectedRevision() < 1) throw invalid("策划结论的 revision 不合法");
+        if (bo.requestKey() == null || !bo.requestKey().matches("[a-zA-Z0-9._:-]{1,64}")) throw invalid("生成请求不合法");
+        if (bo.story() == null || bo.story().isEmpty()) throw invalid("策划结论为空");
+        HeronVideoVersion version = currentVersionOf(work);
+        if (version == null) {
+            throw new HeronBusinessException(404, "news_story_not_found", "这条作品还没有可编辑的策划结论");
+        }
+        JsonNode snapshot = JSON.readTree(version.getInputSnapshot());
+        JsonNode selection = snapshot.path("selection");
+        if (!selection.isObject() || !selection.path("story").isObject()) {
+            throw new HeronBusinessException(400, "news_story_not_found",
+                "这条片子没有策划结论：只有数据看板线与趋势洞察线带策划结论");
+        }
+        EditorialStory original = EditorialStory.fromJson(selection.path("story"));
+        EditorialStory edited = EditorialStory.fromJson(JSON.valueToTree(bo.story()));
+        if (edited == null) throw invalid("策划结论不是对象");
+        if (!EditorialStory.SCHEMA_VERSION.equals(edited.schemaVersion())) {
+            throw new HeronBusinessException(400, "news_story_invalid",
+                "策划结论的版本不是 " + EditorialStory.SCHEMA_VERSION);
+        }
+        // 策划依据是机器按数据算出来的，人不改：沿用上一版的。
+        edited = edited.withBasis(original.basis());
+        // 校验必须用生产同一条口径的数据：口径不同，这里过了生产那边照样解析不到引用。
+        String sourceKey = selection.path("dataSourceKey").asString("");
+        JsonNode dataset;
+        try {
+            dataset = datasets.snapshot(sourceKey, DatasetWindowContract.pointsOf(snapshot));
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(503, "news_story_dataset_unavailable",
+                "取数失败，没法校验策划结论：" + e.getMessage());
+        }
+        List<String> problems = new ArrayList<>(DatasetStoryContract.violations(edited, dataset));
+        problems.addAll(DatasetStoryContract.evidenceViolations(edited, dataset));
+        if (!problems.isEmpty()) {
+            throw new HeronBusinessException(409, "news_story_invalid", "策划结论不成立：" + String.join("；", problems));
+        }
+        Map<String, Object> newSelection = new LinkedHashMap<>(JSON.convertValue(selection, Map.class));
+        newSelection.put("story", edited.toMap());
+        Map<String, Object> newEditorial = new LinkedHashMap<>(JSON.convertValue(snapshot.path("editorial"), Map.class));
+        // 改过的策划结论要能查出是谁改的。
+        newEditorial.put("storyEditedBy", actor);
+        newEditorial.put("storyEditedAt", now().toString());
+        return production.submit(new ProductionSubmitBo(TYPE, work.getWorkId(), bo.requestKey(), bo.expectedRevision(),
+            null, null, new EditorialOverride(newSelection, newEditorial)));
+    }
+
+    /** 当前版本的冻结快照版本；没有当前版本就是还没出片。 */
+    private HeronVideoVersion currentVersionOf(HeronNewsWork work) {
+        Long versionId = work.getCurrentVersionId();
+        return versionId == null ? null : versionMapper.selectById(versionId);
     }
 
     @Override
