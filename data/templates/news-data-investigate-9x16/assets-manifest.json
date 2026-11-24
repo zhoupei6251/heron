@@ -3,14 +3,19 @@
   "templateVersion": "1",
   "files": [
     {
+      "path": "SplitText.min.js",
+      "sha256": "3c38c97c364b3048ed6f7756388d2aa32580b81cf42932ea251b77fc626b3831",
+      "bytes": 7779
+    },
+    {
       "path": "gsap.min.js",
       "sha256": "c174bfce53a729418d57a8ad8625e7247c793a22fef8e2851e3cfa3de9cd8280",
       "bytes": 72779
     },
     {
       "path": "index.html",
-      "sha256": "dc3f34b2dc50f4e9b6ada1b4ff54a39daf1d3ee9e0de85eb30a7d1ded71360ad",
-      "bytes": 84338
+      "sha256": "5d3b01a32a907399089fc6dc47c63ae3db0a1d2c82d365131fcbd9880f9f8d59",
+      "bytes": 85612
     },
     {
       "path": "index.motion.json",

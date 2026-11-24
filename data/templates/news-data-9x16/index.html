@@ -433,7 +433,7 @@ body {
       </div>
     </div>
 
-    <script src="gsap.min.js"></script>
+    <script src="gsap.min.js"></script><script src="SplitText.min.js"></script>
     <script>
 // 变量注入与通用填充。所有模板共用，必须最先执行。
 const declared = window.__hyperframes && window.__hyperframes.getVariables
@@ -1260,7 +1260,7 @@ const focusClock = { time: 0 };
 tl.to(focusClock, { time: total, duration: total, ease: "none", onUpdate: paintFocus }, 0);
 
 // 全局时间线与场景进出。所有模板共用，必须在 chart 之后执行。
-// 只做三个动作：enter / ambient / swap。参数全部来自令牌，
+// 只有四个动作：enter / enterChars / ambient / swap。参数全部来自令牌，
 // 风格差异靠改令牌而不是另写一套动画——否则三套风格很快就会长成三份真相。
 // 数字滚动不在这里：KPI 的小数位与单位随数据集变化，由 chart.js 按 precision 驱动。
 const has = (selector) => document.querySelector(selector) !== null;
@@ -1279,10 +1279,31 @@ const FROM = { up: { y: 30 }, down: { y: -30 }, left: { x: 46 }, right: { x: -46
 
 // immediateRender：动画排在中段时 GSAP 默认不提前写起始值，元素会先裸着露出来
 function enter(targets, { dir = "up", at = 0, stagger = 0 } = {}) {
-  if (!targets) return;
-  const list = typeof targets === "string" ? document.querySelectorAll(targets) : targets;
-  if (!list || (!list.nodeType && !list.length)) return;
+  const list = queryList(targets);
+  if (!list) return;
   tl.from(list, { ...FROM[dir], opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger, immediateRender: true }, at);
+}
+
+function queryList(targets) {
+  if (!targets) return null;
+  const list = typeof targets === "string" ? document.querySelectorAll(targets) : targets;
+  return list && (list.nodeType || list.length) ? list : null;
+}
+
+// 逐字入场：只给「标题型」文字用——主标题、屏头编号、引句、片尾口播。
+// 正文不拆：一段话逐字进场会拖长入场时间，也把该一眼扫过的句子打散成一串字。
+// 拆字之后每个字符是绝对定位的 span，autoSplit 让它在宽度变化时重新分行，
+// 而不是按拆字那一刻的排版钉死。
+function enterChars(targets, { at = 0, stagger = 0.025, duration = DUR.entrance } = {}) {
+  const list = queryList(targets);
+  if (!list) return;
+  // 插件没加载时退回整段淡入：少一个文件不该让模板白屏
+  if (typeof SplitText === "undefined") {
+    enter(targets, { at });
+    return;
+  }
+  const split = SplitText.create(list, { type: "chars,lines", mask: "lines", autoSplit: true });
+  tl.from(split.chars, { yPercent: 55, opacity: 0, duration, ease: EASE_OUT, stagger }, at);
 }
 
 function ambient(scope = document) {
@@ -1306,7 +1327,12 @@ function ambient(scope = document) {
 function swap(slot, start, outAt) {
   const parts = slot.querySelectorAll(".scene-no, .lead, .body");
   if (!parts.length) return;
-  tl.from(parts, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, start);
+  // 屏头编号与引句逐字，正文整段：正文是给人读的，拆成字只会读得更慢
+  enterChars(slot.querySelectorAll(".scene-no, .lead"), { at: start });
+  const body = slot.querySelectorAll(".body");
+  if (body.length) {
+    tl.from(body, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, start + 0.12);
+  }
   // 短屏时退场不能排在入场之前
   tl.to(parts, { y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, Math.max(start + DUR.entrance, outAt));
 }
@@ -1315,7 +1341,7 @@ ambient();
 
 tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
 enter("#kicker", { dir: "left", at: 0.1 });
-enter("#title", { dir: "up", at: 0.2 });
+enterChars("#title", { at: 0.2 });
 tl.from("#rule", { scaleX: 0, duration: DUR.entrance, ease: EASE_OUT, immediateRender: true }, 0.45);
 if (has("#kpi")) enter("#kpi", { dir: "up", at: 0.35 });
 enter("#aigc-badge", { dir: "none", at: 0.2 });
@@ -1366,7 +1392,7 @@ document.querySelectorAll(".scene").forEach((slot) => {
 });
 
 if (hasClosing) {
-  enter(closingSlot.querySelector("#closing"), { dir: "up", at: closingAt });
+  enterChars(closingSlot.querySelector("#closing"), { at: closingAt });
 }
 
 window.__timelines["main"] = tl;

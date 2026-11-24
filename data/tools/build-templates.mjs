@@ -37,6 +37,11 @@ const STAGE_OUT = value('--out');
 const CAPABILITIES = new Set(['chart', 'image', 'globe']);
 // globe 模板自带的渲染库：与 gsap 一样随模板一起提交，渲染时不需要联网。
 const THREE_SOURCE = path.resolve(import.meta.dirname, 'node_modules', 'three', 'build', 'three.min.js');
+// 只装 SplitText 一个插件。图表的描边生长 chart.js 已经用 strokeDashoffset 自己做掉了，
+// 再引 DrawSVG 等于同一件事的第二份实现；MorphSVG / MotionPath 要模板里有对应图形才有意义。
+// 缺的是文字：现在每块文字整体淡入，看不出「在讲」。
+const SPLIT_TEXT_FILE = 'SplitText.min.js';
+const SPLIT_TEXT_SOURCE = path.resolve(import.meta.dirname, 'node_modules', 'gsap', 'dist', SPLIT_TEXT_FILE);
 // 版式自带的静态装饰节点。迁移前它们写在各模板的 HTML 里，迁移后由配置声明，
 // 否则 layouts/article 里的 #plate / #rail / #tick 规则会指向不存在的元素。
 const DECOR = {
@@ -332,7 +337,7 @@ function render(cfg) {
     DEFAULT_KICKER: escapeHtml(cfg.defaults.kicker ?? ''),
     DEFAULT_CLOSING: escapeHtml(cfg.defaults.closing),
     DEFAULT_SOURCE: escapeHtml(cfg.defaults.sourceName),
-    EXTRA_LIB: cfg.capabilities.includes('globe') ? '<script src="three.min.js"></script>' : '',
+    EXTRA_LIB: extraLib(cfg),
     SCRIPT: script(cfg),
   };
   return normalizeEol(skeleton.replace(/\{\{([A-Z_]+)\}\}/g, (match, name) => {
@@ -605,9 +610,39 @@ function vendorThree(dir) {
   return true;
 }
 
+/**
+ * SplitText 与 three 同一套规矩：渲染不联网，所以随模板提交；--check 比哈希，
+ * 否则依赖升级了而模板里的副本还是旧的，谁都不会发现。
+ */
+function vendorSplitText(dir) {
+  const key = path.basename(dir);
+  if (!fs.existsSync(SPLIT_TEXT_SOURCE)) {
+    fail(`${key}: 找不到 SplitText 构建产物 ${SPLIT_TEXT_SOURCE}（先在 data/tools 安装依赖）`);
+  }
+  const target = path.join(dir, SPLIT_TEXT_FILE);
+  const same = fs.existsSync(target) && sha256(target) === sha256(SPLIT_TEXT_SOURCE);
+  if (same) return true;
+  if (CHECK_ONLY) {
+    console.log(`✗ ${key}: ${SPLIT_TEXT_FILE} 与依赖里的版本不一致（运行不带 --check 以重新拷贝）`);
+    return false;
+  }
+  fs.copyFileSync(SPLIT_TEXT_SOURCE, target);
+  return true;
+}
+
+/**
+ * 附加库都排在骨架里的 gsap.min.js 之后——插件必须在 gsap 之后加载。
+ */
+function extraLib(cfg) {
+  const libs = [`<script src="${SPLIT_TEXT_FILE}"></script>`];
+  if (cfg.capabilities.includes('globe')) libs.push('<script src="three.min.js"></script>');
+  return libs.join('');
+}
+
 function build(dir) {
   const cfg = loadConfig(dir);
   checkStyleContract(cfg);
+  if (!vendorSplitText(dir)) return false;
   if (cfg.capabilities.includes('globe') && !vendorThree(dir)) {
     return false;
   }
