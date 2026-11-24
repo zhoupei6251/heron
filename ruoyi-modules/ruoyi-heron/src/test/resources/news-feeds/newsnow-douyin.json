@@ -1,0 +1,27 @@
+{
+  "status": "cache",
+  "id": "douyin",
+  "updatedTime": 1795490046918,
+  "items": [
+    {
+      "id": "2760838",
+      "title": "草莓桶蛋糕一吃一个不吱声",
+      "url": "https://www.douyin.com/hot/2760838"
+    },
+    {
+      "id": "2760873",
+      "title": "东北的洗浴已经这么卷了吗",
+      "url": "https://www.douyin.com/hot/2760873"
+    },
+    {
+      "id": "2760953",
+      "title": "各地优化住房公积金政策",
+      "url": "https://www.douyin.com/hot/2760953"
+    }
+  ],
+  "info": {
+    "LICENCE": "MIT",
+    "Github": "https://github.com/ourongxing/newsnow",
+    "Sponsorship": "If you rely on this service, sponsorship is welcome to help it run for the long term. Scan the QR code https://raw.githubusercontent.com/ourongxing/newsnow/main/screenshots/reward.gif"
+  }
+}

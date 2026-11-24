@@ -1,0 +1,48 @@
+{
+  "status": "success",
+  "id": "weibo",
+  "updatedTime": 1795491005729,
+  "items": [
+    {
+      "id": "白小纯 我赚够了",
+      "title": "白小纯 我赚够了",
+      "url": "https://s.weibo.com/weibo?q=%E7%99%BD%E5%B0%8F%E7%BA%AF%20%E6%88%91%E8%B5%9A%E5%A4%9F%E4%BA%86&t=31&band_rank=1&Refer=top",
+      "mobileUrl": "https://s.weibo.com/weibo?q=%E7%99%BD%E5%B0%8F%E7%BA%AF%20%E6%88%91%E8%B5%9A%E5%A4%9F%E4%BA%86&t=31&band_rank=1&Refer=top",
+      "extra": {
+        "icon": {
+          "url": "https://simg.s.weibo.com/moter/flags/1_0.png",
+          "scale": 1.5
+        }
+      }
+    },
+    {
+      "id": "巴基斯坦航天员普通话自我介绍",
+      "title": "巴基斯坦航天员普通话自我介绍",
+      "url": "https://s.weibo.com/weibo?q=%E5%B7%B4%E5%9F%BA%E6%96%AF%E5%9D%A6%E8%88%AA%E5%A4%A9%E5%91%98%E6%99%AE%E9%80%9A%E8%AF%9D%E8%87%AA%E6%88%91%E4%BB%8B%E7%BB%8D&t=31&band_rank=2&Refer=top",
+      "mobileUrl": "https://s.weibo.com/weibo?q=%E5%B7%B4%E5%9F%BA%E6%96%AF%E5%9D%A6%E8%88%AA%E5%A4%A9%E5%91%98%E6%99%AE%E9%80%9A%E8%AF%9D%E8%87%AA%E6%88%91%E4%BB%8B%E7%BB%8D&t=31&band_rank=2&Refer=top",
+      "extra": {
+        "icon": {
+          "url": "https://simg.s.weibo.com/moter/flags/1_0.png",
+          "scale": 1.5
+        }
+      }
+    },
+    {
+      "id": "智能穿戴打开消费新空间",
+      "title": "智能穿戴打开消费新空间",
+      "url": "https://s.weibo.com/weibo?q=%23%E6%99%BA%E8%83%BD%E7%A9%BF%E6%88%B4%E6%89%93%E5%BC%80%E6%B6%88%E8%B4%B9%E6%96%B0%E7%A9%BA%E9%97%B4%23&t=31&band_rank=3&Refer=top",
+      "mobileUrl": "https://s.weibo.com/weibo?q=%23%E6%99%BA%E8%83%BD%E7%A9%BF%E6%88%B4%E6%89%93%E5%BC%80%E6%B6%88%E8%B4%B9%E6%96%B0%E7%A9%BA%E9%97%B4%23&t=31&band_rank=3&Refer=top",
+      "extra": {
+        "icon": {
+          "url": "https://simg.s.weibo.com/moter/flags/1_0.png",
+          "scale": 1.5
+        }
+      }
+    }
+  ],
+  "info": {
+    "LICENCE": "MIT",
+    "Github": "https://github.com/ourongxing/newsnow",
+    "Sponsorship": "If you rely on this service, sponsorship is welcome to help it run for the long term. Scan the QR code https://raw.githubusercontent.com/ourongxing/newsnow/main/screenshots/reward.gif"
+  }
+}

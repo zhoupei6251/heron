@@ -38,8 +38,10 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 自动产出：每个 cron 槽位最多产出一条，槽位幂等键是日期+时刻。
@@ -392,6 +394,8 @@ public class NewsAutoService {
         if (sources.isEmpty()) {
             log.warn("自动源白名单为空：本期没有新闻候选");
         }
+        Set<Long> autoSourceIds = sources.stream().map(HeronNewsSource::getSourceId)
+            .filter(Objects::nonNull).collect(Collectors.toSet());
         Set<String> autoHosts = hosts(sources);
         List<HeronNewsCandidate> allowed = new ArrayList<>();
         if (!sources.isEmpty()) {
@@ -410,9 +414,10 @@ public class NewsAutoService {
                 if (HeronNewsCandidate.SOURCE_RESEARCH.equals(candidate.getSourceKind())) {
                     continue;
                 }
-                String host = firstHost(candidate.getEvidence());
-                // 没开自动的来源不进池：这是「可下架」的边界，不是权重
-                if (host != null && autoHosts.contains(host)) {
+                // 准入按采集时的 sourceId 判：entries 的 sourceUrl 指向原站（s.weibo.com），
+                // 和源自身地址（newsnow.busiyi.world）本来就不同域，按 host 比永远不相等。
+                // 老数据没写 sourceId 的退回 host 比，避免升级后已采到的候选全部掉出池。
+                if (fromAutoSource(candidate, autoSourceIds, autoHosts)) {
                     allowed.add(candidate);
                 }
             }
@@ -789,12 +794,70 @@ public class NewsAutoService {
     }
 
 
+    /**
+     * 候选是否由「开了自动的源」采到。
+     *
+     * <p>主判据是 evidence 里的 sourceId：采集时写进去的是采集这条候选的来源主键，
+     * 和 sources 是同一种标识。host 只作兼容兜底——旧候选没写 sourceId，
+     * 纯按 sourceId 判会让它们全部掉出自动池。
+     *
+     * <p>合并过的候选带多个 items，任一条命中就准入：同一话题被多个源采到是常态，
+     * 只认第一条会让「先被没开自动的源采到」的候选永远进不来。
+     */
+    static boolean fromAutoSource(HeronNewsCandidate candidate, Set<Long> sourceIds, Set<String> hosts) {
+        String evidence = candidate.getEvidence();
+        if (evidence == null || evidence.isBlank()) {
+            return false;
+        }
+        JsonNode root;
+        try {
+            // 用本地 mapper 而不是 JsonUtils：准入判断要能在纯单测里验，不该依赖 Spring 上下文
+            root = JSON.readTree(evidence);
+        } catch (RuntimeException e) {
+            return false;
+        }
+        boolean sawSourceId = false;
+        for (JsonNode item : root.path("items")) {
+            if (item.path("sourceId").isNumber()) {
+                sawSourceId = true;
+                if (sourceIds.contains(item.path("sourceId").asLong())) {
+                    return true;
+                }
+            }
+            // 老条目没写 sourceId 时逐条退回 host 比，避免升级后已采到的候选全部掉出池
+            if (!item.path("sourceId").isNumber()) {
+                String host = hostOf(item.path("sourceUrl").asString(""));
+                if (host != null && hosts.contains(host)) {
+                    return true;
+                }
+            }
+        }
+        // 早期结构把 sourceId 放在顶层
+        JsonNode top = root.path("sourceId");
+        if (!sawSourceId && top.isNumber() && sourceIds.contains(top.asLong())) {
+            return true;
+        }
+        return false;
+    }
+
+    private static String hostOf(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        try {
+            return URI.create(url).getHost();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+
     private static String firstHost(String evidence) {
         if (evidence == null || evidence.isBlank()) {
             return null;
         }
         try {
-            JsonNode node = JsonUtils.getJsonMapper().readTree(evidence);
+            JsonNode node = JSON.readTree(evidence);
             for (JsonNode item : node.path("items")) {
                 String url = item.path("sourceUrl").asString("");
                 if (!url.isBlank()) {
