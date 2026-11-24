@@ -127,7 +127,7 @@ class HeronResearchToolsTest {
     @DisplayName("机会存在时带上判断所需的字段，信号过长被截断")
     void returnsOpportunityFields() {
         HeronDataOpportunity row = new HeronDataOpportunity();
-        row.setOpportunityId(7L);
+        row.setId(7L);
         row.setSourceKey("frankfurter-audcny");
         row.setEntity("AUD/CNY");
         row.setMetric("rate");
@@ -159,7 +159,7 @@ class HeronResearchToolsTest {
     @DisplayName("机会带快照时，详情里能拿到当时看到的数据")
     void returnsStoredSnapshot() {
         HeronDataOpportunity row = new HeronDataOpportunity();
-        row.setOpportunityId(8L);
+        row.setId(8L);
         row.setStatus("new");
         row.setSnapshotJson("""
             {"contract":"dataset/1","shape":"wide","cadence":"daily","retrieved_at":"2026-11-13T00:00:00Z",
@@ -357,7 +357,7 @@ class HeronResearchToolsTest {
     @DisplayName("最近产出：id 转成字符串，避免 Long 精度问题")
     void listsRecentProductions() {
         HeronVideoVersion version = new HeronVideoVersion();
-        version.setVersionId(2121151796750819328L);
+        version.setId(2121151796750819328L);
         version.setWorkId(2121151796750819900L);
         version.setVersionNo(2);
         version.setReviewStatus("approved");

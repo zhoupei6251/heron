@@ -28,7 +28,7 @@ class NewsReviewAccessTest extends NewsMysqlTestSupport {
     void objectPermissionAndAssociationFailuresAreReal404() throws Exception {
         var f = completed();
         var another = work();
-        mvc.perform(get("/heron/newsWork/{w}/versions/{v}", another.getWorkId(), f.versionId())).andExpect(status().isNotFound());
+        mvc.perform(get("/heron/newsWork/{w}/versions/{v}", another.getId(), f.versionId())).andExpect(status().isNotFound());
         mvc.perform(get("/heron/newsWork/{w}/versions/{v}/preview/{a}", f.workId(), f.versionId(), UUID.randomUUID())).andExpect(status().isNotFound());
         loginAs(OTHER);
         mvc.perform(get("/heron/newsWork/{w}", f.workId())).andExpect(status().isNotFound());
@@ -91,7 +91,7 @@ class NewsReviewAccessTest extends NewsMysqlTestSupport {
     @Test
     void missingPipelineIs503AndMalformedManualIs400() throws Exception {
         var w = work();
-        mvc.perform(post("/heron/newsWork/{w}/generate", w.getWorkId()).contentType("application/json")
+        mvc.perform(post("/heron/newsWork/{w}/generate", w.getId()).contentType("application/json")
             .content("{\"requestKey\":\"missing\",\"expectedRevision\":1}")).andExpect(status().isServiceUnavailable());
         mvc.perform(post("/heron/newsCandidate/manual").contentType("application/json")
             .content("{\"title\":\"   \",\"summary\":\"事实\"}")).andExpect(status().isBadRequest());

@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 @Data
 @AutoMapper(target = HeronDatasetUsage.class)
 public class HeronDatasetUsageVo implements Serializable {
-    private Long usageId;
+    private Long id;
     private String sourceKey;
     private String entity;
     private String metric;

@@ -122,7 +122,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             .last("LIMIT 1")
             .build());
         if (existing != null) {
-            return existing.getResearchId();
+            return existing.getId();
         }
         // 同一天的去重键之外，再看有没有跨天的未处理/已采纳决策：
         // 昨天研究过并留了待处理判断的机会，今天再花一次钱重查没有意义
@@ -131,8 +131,8 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             // 只有那条决策挂的研究还在时才复用：它可能已被清理，指回去等于返回一个不存在的任务
             HeronResearchTask reusable = researchTaskMapper.selectById(repeated.getResearchId());
             if (reusable != null) {
-                log.info("机会 {} 已有待处理或已采纳的决策，复用研究 {}", opportunityId, reusable.getResearchId());
-                return reusable.getResearchId();
+                log.info("机会 {} 已有待处理或已采纳的决策，复用研究 {}", opportunityId, reusable.getId());
+                return reusable.getId();
             }
             log.info("机会 {} 的旧决策仍在但研究 {} 已不存在，按新任务处理",
                 opportunityId, repeated.getResearchId());
@@ -144,7 +144,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
         // 定档看机会评分：L1 覆盖大多数、L3 只给真正突出的。没评分的按最低档处理
         ResearchGrade grade = ResearchGrade.of(opportunityScore(opportunityId));
         HeronResearchTask row = new HeronResearchTask();
-        row.setResearchId(researchId);
+        row.setId(researchId);
         row.setResearchNo("R" + researchId);
         row.setOpportunityId(opportunityId);
         row.setOwnerId(actor);
@@ -172,7 +172,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             if (raced == null) {
                 throw e;
             }
-            return raced.getResearchId();
+            return raced.getId();
         }
         return researchId;
     }
@@ -195,7 +195,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             .set(HeronResearchTask::getLeaseUntil, now.plus(LEASE))
             .set(HeronResearchTask::getHeartbeatAt, now)
             .set(HeronResearchTask::getUpdateTime, now)
-            .eq(HeronResearchTask::getResearchId, researchId)
+            .eq(HeronResearchTask::getId, researchId)
             .and(where -> where
                 .eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_QUEUED)
                 .or(stale -> stale
@@ -255,7 +255,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
                 .set(HeronResearchTask::getErrorReason, null)
                 .set(HeronResearchTask::getLeaseUntil, null)
                 .set(HeronResearchTask::getUpdateTime, now())
-                .eq(HeronResearchTask::getResearchId, researchId)
+                .eq(HeronResearchTask::getId, researchId)
                 .eq(HeronResearchTask::getAttemptNo, attempt)
                 .eq(HeronResearchTask::getRunToken, runToken)
                 .updateCount();
@@ -318,7 +318,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             .set(HeronResearchTask::getErrorReason, null)
             .set(HeronResearchTask::getRunToken, null)
             .set(HeronResearchTask::getUpdateTime, now)
-            .eq(HeronResearchTask::getResearchId, researchId)
+            .eq(HeronResearchTask::getId, researchId)
             .and(where -> where
                 .in(HeronResearchTask::getStatus, List.of(
                     HeronResearchTask.STATUS_SUCCEEDED,
@@ -344,7 +344,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
         int cancelled = researchTaskMapper.lambda()
             .set(HeronResearchTask::getStatus, HeronResearchTask.STATUS_CANCELLED)
             .set(HeronResearchTask::getUpdateTime, now)
-            .eq(HeronResearchTask::getResearchId, researchId)
+            .eq(HeronResearchTask::getId, researchId)
             .eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_QUEUED)
             .updateCount();
         if (cancelled == 0) {
@@ -353,7 +353,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             researchTaskMapper.lambda()
                 .set(HeronResearchTask::getStatus, HeronResearchTask.STATUS_CANCELLING)
                 .set(HeronResearchTask::getUpdateTime, now)
-                .eq(HeronResearchTask::getResearchId, researchId)
+                .eq(HeronResearchTask::getId, researchId)
                 .eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_RUNNING)
                 .updateCount();
         }
@@ -375,7 +375,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             .last("LIMIT " + limit)
             .list()
             .stream()
-            .map(HeronResearchTask::getResearchId)
+            .map(HeronResearchTask::getId)
             .toList();
     }
 
@@ -443,7 +443,7 @@ public class ResearchTaskServiceImpl implements IResearchTaskService {
             .set(HeronResearchTask::getErrorReason, stopping ? null : truncate(e.getMessage()))
             .set(HeronResearchTask::getLeaseUntil, null)
             .set(HeronResearchTask::getUpdateTime, now())
-            .eq(HeronResearchTask::getResearchId, researchId)
+            .eq(HeronResearchTask::getId, researchId)
             .eq(HeronResearchTask::getAttemptNo, attempt)
             .eq(HeronResearchTask::getRunToken, runToken)
             .updateCount();

@@ -156,14 +156,14 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
     }
 
     protected NewsWorkVo work() {
-        return news.claim(news.addManual(manual("测试新闻" + UUID.randomUUID(), "来源事实与授权待人工核对")).getCandidateId());
+        return news.claim(news.addManual(manual("测试新闻" + UUID.randomUUID(), "来源事实与授权待人工核对")).getId());
     }
 
     protected Completed completed() throws Exception { return completed(work()); }
 
     protected Completed completed(NewsWorkVo work) throws Exception {
         allowProduction();
-        ProductionReceiptVo receipt = news.generate(work.getWorkId(), new NewsGenerateBo(UUID.randomUUID().toString(), work.getRevision()));
+        ProductionReceiptVo receipt = news.generate(work.getId(), new NewsGenerateBo(UUID.randomUUID().toString(), work.getRevision()));
         ProductionRunVo run = execution.claim(ProductionBizType.news_video).orElseThrow();
         List<ProductionArtifactVo> files = fixtureFiles(run);
         String checks = checksJson();
@@ -189,7 +189,7 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
             "contentProfile", JsonUtils.parseObject(contentProfile, Object.class),
             "durationMs", 1000));
         org.junit.jupiter.api.Assertions.assertTrue(execution.succeed(run, new ProductionResultVo(files, result)));
-        return new Completed(work.getWorkId(), receipt.versionId(), files);
+        return new Completed(work.getId(), receipt.versionId(), files);
     }
 
     protected List<ProductionArtifactVo> fixtureFiles(ProductionRunVo run) throws Exception {

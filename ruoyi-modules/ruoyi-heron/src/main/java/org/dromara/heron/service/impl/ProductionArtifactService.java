@@ -39,8 +39,10 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Set;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -270,22 +272,36 @@ public class ProductionArtifactService {
         }
     }
 
-    /** 按登记时间清理 90 天前的云端对象与元数据；单键失败留到下一轮。 */
+    /** 按登记时间清理 15 天前的孤儿元数据；仍存在的对象必须走带发布保护的版本清理。 */
     public int cleanupExpiredUploads(Duration retention) {
         String configKey = properties.getOssConfigKey();
         if (configKey == null || configKey.isBlank()) {
             return 0;
         }
-        List<String> keys = ossService.listUploadedKeysBefore(configKey, "heron",
-            LocalDateTime.now(clock).minus(retention), CLEANUP_BATCH);
+        LocalDateTime cutoff = LocalDateTime.now(clock).minus(retention);
+        Set<String> scanned = new HashSet<>();
         int cleaned = 0;
-        for (String key : keys) {
-            try {
-                cleanupUploaded(configKey, key);
-                cleaned++;
-            } catch (RuntimeException e) {
-                log.warn("过期云端产物清理未成功: key={}, cause={}", key, e.getClass().getSimpleName());
+        int limit = CLEANUP_BATCH;
+        // shortcut: sys_oss 查询只有前缀 limit，没有 ossId 游标；递增批次直到没有新键，数据量上来后再换游标分页。
+        while (true) {
+            List<String> keys = ossService.listUploadedKeysBefore(configKey, "heron", cutoff, limit);
+            List<String> fresh = keys.stream().filter(scanned::add).toList();
+            for (String key : fresh) {
+                try {
+                    cleanupUploaded(configKey, key);
+                    cleaned++;
+                } catch (RuntimeException e) {
+                    log.warn("过期云端产物清理未成功: key={}, cause={}", key, e.getClass().getSimpleName());
+                }
             }
+            if (keys.size() < limit) {
+                break;
+            }
+            if (limit >= 100_000) {
+                log.warn("云端孤儿元数据超过单轮扫描上限，剩余记录留到下一轮");
+                break;
+            }
+            limit = Math.min(limit * 2, 100_000);
         }
         return cleaned;
     }
@@ -297,7 +313,8 @@ public class ProductionArtifactService {
         }
         OssClient oss = oss();
         if (oss != null && head(oss, storageKey) != null) {
-            oss.delete(storageKey);
+            throw new HeronBusinessException(409, "production_artifact_still_present",
+                "云端对象仍存在，必须由带发布保护的版本清理删除");
         }
         ossService.unregisterUploaded(configKey, storageKey);
     }
@@ -317,7 +334,7 @@ public class ProductionArtifactService {
         return configKey == null || configKey.isBlank() ? null : OssFactory.instance(configKey);
     }
 
-    /** 定稿即上传；本地副本保留到版本清理（90 天），供发布与抽帧直接用，不即时删。 */
+    /** 定稿即上传；本地副本保留到版本清理（15 天），供发布与抽帧直接用，不即时删。 */
     private void uploadIfConfigured(ProductionRunVo run, Path target, String mediaType, String sha256, long size) {
         OssClient oss = oss();
         if (oss == null) {

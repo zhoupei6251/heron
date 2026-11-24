@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 @Data
 @AutoMapper(target = HeronNewsCandidate.class)
 public class NewsCandidateVo implements Serializable {
-    private Long candidateId;
+    private Long id;
     private String title;
     private String summary;
     private String evidence;

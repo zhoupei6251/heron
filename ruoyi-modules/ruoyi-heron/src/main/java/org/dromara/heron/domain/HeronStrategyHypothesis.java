@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 public class HeronStrategyHypothesis implements Serializable {
 
     @TableId
-    private Long hypothesisId;
+    private Long id;
     private String schemaVersion;
     private String claim;
     private String dimension;

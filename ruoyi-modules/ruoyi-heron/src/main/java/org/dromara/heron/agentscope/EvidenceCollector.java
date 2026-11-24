@@ -58,7 +58,7 @@ public final class EvidenceCollector {
             calls = mapper.lambda()
                 .eq(HeronAgentToolCall::getResearchId, researchId)
                 .eq(HeronAgentToolCall::getAttemptNo, attemptNo)
-                .orderByAsc(HeronAgentToolCall::getCallId)
+                .orderByAsc(HeronAgentToolCall::getId)
                 .last("LIMIT " + MAX_EVIDENCE)
                 .list();
         } catch (RuntimeException e) {
@@ -72,7 +72,7 @@ public final class EvidenceCollector {
 
         for (HeronAgentToolCall call : calls) {
             ObjectNode item = JSON.createObjectNode();
-            item.put("callId", String.valueOf(call.getCallId()));
+            item.put("callId", String.valueOf(call.getId()));
             item.put("round", call.getRoundNo());
             item.put("tool", call.getToolName());
             item.put("status", call.getStatus());

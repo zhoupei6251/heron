@@ -43,7 +43,7 @@ class EditorialLineEditorTrendTest {
 
     private static HeronNewsCandidate article(long id, String title) {
         HeronNewsCandidate item = new HeronNewsCandidate();
-        item.setCandidateId(id);
+        item.setId(id);
         item.setTitle(title);
         item.setSummary("摘要");
         item.setEvidence("{\"items\":[{\"sourceItemId\":\"s" + id + "\",\"sourceUrl\":\"https://example.com/" + id + "\"}]}");
@@ -62,7 +62,7 @@ class EditorialLineEditorTrendTest {
     private static HeronDataOpportunity opportunity(long id, String sourceKey, String shape, int windowPoints,
                                                    String cadence) {
         HeronDataOpportunity item = new HeronDataOpportunity();
-        item.setOpportunityId(id);
+        item.setId(id);
         item.setSourceKey(sourceKey);
         item.setHeadline("金价连涨三月");
         item.setMetric("gold_close");

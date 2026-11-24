@@ -35,10 +35,34 @@ def parse_word_list(payload):
         words.append({
             "word": word,
             "hotValue": item.get("hot_value"),
+            # 页面请求本来就带 detail_list=1&source=6，响应里有 view_count 与 video_count；
+            # 只挑 word/hot_value 会把它丢掉，而这两个字段别的口径拿不到。
+            # 注意别取成 discuss_video_count——那个恒为 1，没有信息量。
+            "viewCount": item.get("view_count"),
+            "videoCount": item.get("video_count"),
             "sentenceId": item.get("sentence_id"),
             "position": item.get("position"),
         })
     return words
+
+
+def pick_download(url_list):
+    """从 download_addr.url_list 里挑一条无水印地址。
+
+    抖音的 url_list 不保证顺序：多数时候 [0] 是 CDN 直链，偶尔会落到
+    aweme/v1/play?watermark=1 这种带水印的接口形式。带水印的片子拆解时
+    字幕区域被遮挡，所以优先取非 aweme/v1 的；一条都没有才退回 [0]。
+
+    退回时拿到的地址带 watermark=1，下载环节能直接从 URL 上看出来——
+    个别作品整条 url_list 里就没有 CDN 直链，这不是挑选失败，是源头没有。
+    """
+    urls = [u for u in (url_list or []) if u]
+    if not urls:
+        return None
+    for url in urls:
+        if "aweme/v1" not in url:
+            return url
+    return urls[0]
 
 
 def parse_aweme(item):
@@ -52,7 +76,7 @@ def parse_aweme(item):
         "desc": (item.get("desc") or "").strip(),
         "durationMs": video.get("duration") or item.get("duration"),
         "createTime": item.get("create_time"),
-        "downloadUrl": download[0] if download else None,
+        "downloadUrl": pick_download(download),
         "coverUrl": cover[0] if cover else None,
         "author": {
             "nickname": author.get("nickname"),
@@ -130,12 +154,52 @@ def run(scrolls, timeout_ms):
     }
 
 
+def self_check():
+    """不联网校验解析与挑选：这些都是只在真跑时才暴露的形状问题，等它复现太被动。"""
+    cdn = "https://v26-web.douyinvod.com/abc/video.mp4"
+    api = "https://www.douyin.com/aweme/v1/play/?video_id=x&watermark=1"
+    picks = [
+        ([cdn, api], cdn, "中间夹着带水印的，取无水印"),
+        ([api, cdn], cdn, "[0] 是带水印的，要跳过"),
+        ([api], api, "只有带水印的，退回它而不是给 None"),
+        ([], None, "空列表给 None"),
+        (None, None, "字段缺失不炸"),
+        (["", cdn], cdn, "跳过空串"),
+    ]
+    for url_list, want, why in picks:
+        got = pick_download(url_list)
+        assert got == want, f"{why}: 期望 {want}，实际 {got}"
+
+    # detail_list=1&source=6 的响应形状：view_count / video_count 必须留下来。
+    # 同时锁住不要取成 discuss_video_count——那个恒为 1，取了等于没取。
+    payload = {"data": {"word_list": [
+        {"word": "话题一", "hot_value": 11587881, "view_count": 63229373,
+         "video_count": 14, "discuss_video_count": 1, "sentence_id": "1", "position": 1},
+        {"word": "", "hot_value": 1},
+        {"hot_value": 2},
+    ]}}
+    words = parse_word_list(payload)
+    assert len(words) == 1, f"空词与缺词应被跳过，实际留下 {len(words)} 条"
+    assert words[0]["viewCount"] == 63229373, "viewCount 被丢了"
+    assert words[0]["videoCount"] == 14, "videoCount 被丢了"
+    assert words[0]["hotValue"] == 11587881, "hotValue 被丢了"
+    assert parse_word_list({}) == [], "缺 data 应给空列表"
+
+    print(f"[self-check] pick_download {len(picks)} 例、parse_word_list 3 例通过")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scrolls", type=int, default=6)
     ap.add_argument("--timeout-ms", type=int, default=45000)
     ap.add_argument("--out", default=None, help="写文件；缺省打到 stdout")
+    ap.add_argument("--self-check", action="store_true",
+                    help="只跑不联网的地址挑选校验")
     args = ap.parse_args()
+
+    if args.self_check:
+        return self_check()
 
     started = time.time()
     result = run(args.scrolls, args.timeout_ms)

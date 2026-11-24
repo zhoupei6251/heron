@@ -26,7 +26,7 @@ public record FrozenContext(long contextId, long workId, long versionId, long ta
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     public static FrozenContext of(HeronProductionContext row) {
-        return new FrozenContext(row.getContextId(), row.getWorkId(), row.getVersionId(), row.getTaskId(),
+        return new FrozenContext(row.getId(), row.getWorkId(), row.getVersionId(), row.getTaskId(),
             row.getContextNo() == null ? 0 : row.getContextNo(), row.getParentContextId(),
             row.getRevisionReason(), row.getSchemaVersion(), row.getContentHash(), row.getContentJson());
     }

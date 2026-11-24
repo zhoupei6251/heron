@@ -38,7 +38,7 @@ public class ProductionUsageService {
             throw new IllegalArgumentException("用量记录参数不合法");
         }
         HeronUsageRecord record = new HeronUsageRecord();
-        record.setUsageId(IdUtil.getSnowflakeNextId());
+        record.setId(IdUtil.getSnowflakeNextId());
         record.setTaskId(run.taskId());
         record.setAttemptNo(run.attemptNo());
         record.setCallId(callId);
@@ -69,7 +69,7 @@ public class ProductionUsageService {
             .eq(HeronUsageRecord::getAttemptNo, run.attemptNo())
             .eq(HeronUsageRecord::getCallId, callId)
             .eq(HeronUsageRecord::getStatus, STARTED)
-            .exists("SELECT 1 FROM heron_production_task WHERE task_id = {0} AND run_token = {1} "
+            .exists("SELECT 1 FROM heron_production_task WHERE id = {0} AND run_token = {1} "
                 + "AND attempt_no = {2} AND status = 'running'",
                 run.taskId(), run.runToken(), run.attemptNo())
             .updateCount() == 1;
@@ -87,7 +87,7 @@ public class ProductionUsageService {
             .eq(HeronUsageRecord::getAttemptNo, run.attemptNo())
             .eq(HeronUsageRecord::getCallId, callId)
             .eq(HeronUsageRecord::getStatus, STARTED)
-            .exists("SELECT 1 FROM heron_production_task WHERE task_id = {0} AND run_token = {1} "
+            .exists("SELECT 1 FROM heron_production_task WHERE id = {0} AND run_token = {1} "
                 + "AND attempt_no = {2} AND status = 'running'",
                 run.taskId(), run.runToken(), run.attemptNo())
             .updateCount() == 1;
@@ -107,7 +107,7 @@ public class ProductionUsageService {
             .eq(HeronUsageRecord::getTaskId, run.taskId())
             .eq(HeronUsageRecord::getAttemptNo, run.attemptNo())
             .eq(HeronUsageRecord::getStatus, STARTED)
-            .exists("SELECT 1 FROM heron_production_task WHERE task_id = {0} AND run_token = {1} "
+            .exists("SELECT 1 FROM heron_production_task WHERE id = {0} AND run_token = {1} "
                 + "AND attempt_no = {2} AND status = {3}",
                 run.taskId(), run.runToken(), run.attemptNo(), taskStatus)
             .updateCount();

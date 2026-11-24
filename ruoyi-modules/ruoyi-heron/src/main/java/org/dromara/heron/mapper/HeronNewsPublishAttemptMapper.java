@@ -14,13 +14,13 @@ public interface HeronNewsPublishAttemptMapper extends BaseMapperPlus<HeronNewsP
     @Select("SELECT * FROM heron_news_publish_attempt WHERE active_candidate_id = #{candidateId} FOR UPDATE")
     HeronNewsPublishAttempt lockActive(@Param("candidateId") long candidateId);
 
-    @Select("SELECT * FROM heron_news_publish_attempt WHERE attempt_id = #{id} FOR UPDATE")
+    @Select("SELECT * FROM heron_news_publish_attempt WHERE id = #{id} FOR UPDATE")
     HeronNewsPublishAttempt lockById(@Param("id") long id);
 
     @Select("""
         <script>
         SELECT a.* FROM heron_news_publish_attempt a
-        JOIN (SELECT version_id,MAX(attempt_id) AS id FROM heron_news_publish_attempt
+        JOIN (SELECT version_id,MAX(id) AS id FROM heron_news_publish_attempt
           WHERE version_id IN
           <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
           GROUP BY version_id) latest ON latest.id = a.attempt_id
@@ -32,7 +32,7 @@ public interface HeronNewsPublishAttemptMapper extends BaseMapperPlus<HeronNewsP
         UPDATE heron_news_publish_attempt SET status=#{next},account=COALESCE(#{account},account),
           failure_code=#{failureCode},updated_at=#{now},resolved_by=#{resolvedBy},resolved_at=#{resolvedAt},
           resolution_reason=#{reason}
-        WHERE attempt_id=#{id} AND status=#{expected}
+        WHERE id=#{id} AND status=#{expected}
         """)
     int transition(@Param("id") long id, @Param("expected") String expected, @Param("next") String next,
                    @Param("account") String account, @Param("failureCode") String failureCode,

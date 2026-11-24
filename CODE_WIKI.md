@@ -456,7 +456,7 @@ profile 由 Maven 过滤 `@profiles.active@` 决定。
 | `heron.production.news-max-bytes` | `209715200` | 新闻任务产物上限（200 MB） |
 | `heron.production.prototype-max-bytes` | `52428800` | 原型任务产物上限（50 MB） |
 | `heron.production.worker-enabled` | `false` | **生产执行线程总开关** |
-| `heron.production.cleanup-retention-days` | `7` | 清理候选的保留天数（不自动删） |
+| `heron.production.cleanup-retention-days` | `15` | 清理候选的保留天数（不自动删） |
 | `heron.production.python/node/ffmpeg/ffprobe` | `python3/node/ffmpeg/ffprobe` | 外部命令 |
 | `heron.production.zee-rp` | `zee-rp` | 原型引擎根目录（内含 `scripts/proto.mjs`） |
 | `heron.production.hyperframes` | `null` | 新闻渲染入口 `.mjs` |

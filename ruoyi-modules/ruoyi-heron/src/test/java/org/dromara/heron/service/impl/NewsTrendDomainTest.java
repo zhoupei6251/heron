@@ -55,7 +55,7 @@ class NewsTrendDomainTest {
 
     private static HeronVideoVersion version(String kind) {
         HeronVideoVersion version = new HeronVideoVersion();
-        version.setVersionId(11L);
+        version.setId(11L);
         version.setWorkId(22L);
         version.setTaskId(33L);
         version.setOwnerId(44L);
@@ -65,7 +65,7 @@ class NewsTrendDomainTest {
 
     private static HeronProductionTask task() {
         HeronProductionTask task = new HeronProductionTask();
-        task.setTaskId(33L);
+        task.setId(33L);
         task.setVersionId(11L);
         task.setBizId(22L);
         task.setOwnerId(44L);

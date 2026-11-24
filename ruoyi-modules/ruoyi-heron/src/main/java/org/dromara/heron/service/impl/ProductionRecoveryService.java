@@ -65,11 +65,11 @@ public class ProductionRecoveryService {
         int transitioned = 0;
         for (HeronProductionTask candidate : candidates) {
             try {
-                if (recoverOne(candidate.getTaskId())) {
+                if (recoverOne(candidate.getId())) {
                     transitioned++;
                 }
             } catch (RuntimeException e) {
-                log.warn("恢复中止态任务失败，保留现状态: taskId={}", candidate.getTaskId(), e);
+                log.warn("恢复中止态任务失败，保留现状态: taskId={}", candidate.getId(), e);
             }
         }
         return transitioned;
@@ -109,7 +109,7 @@ public class ProductionRecoveryService {
             return false;
         }
         ProductionBizType type = ProductionBizType.valueOf(task.getBizType());
-        ProductionRunVo run = new ProductionRunVo(task.getTaskId(), type, task.getBizId(), task.getVersionId(),
+        ProductionRunVo run = new ProductionRunVo(task.getId(), type, task.getBizId(), task.getVersionId(),
             task.getAttemptNo(), task.getRunToken(), task.getInputSnapshot(), null);
         // 无运行身份说明监护进程从未登记成功；启动阶段已保证这种情况不留下子进程。
         String identity = identities.latest(taskId, task.getAttemptNo());

@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 @Data
 public class NewsMetricVo implements Serializable {
-    private Long metricId;
+    private Long id;
     private Long versionId;
     private String platform;
     private Long plays;

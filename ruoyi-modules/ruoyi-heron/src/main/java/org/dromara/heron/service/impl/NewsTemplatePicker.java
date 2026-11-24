@@ -141,7 +141,7 @@ public class NewsTemplatePicker {
 
     private List<String> recentKeys() {
         List<HeronNewsWork> works = workMapper.selectList(QueryBuilder.lambda(HeronNewsWork.class)
-            .orderByDesc(HeronNewsWork::getCreateTime, HeronNewsWork::getWorkId).last("LIMIT " + SCAN_LIMIT).build());
+            .orderByDesc(HeronNewsWork::getCreateTime, HeronNewsWork::getId).last("LIMIT " + SCAN_LIMIT).build());
         LinkedHashSet<String> keys = new LinkedHashSet<>();
         for (HeronNewsWork work : works) {
             String key = work.getTemplateKey();

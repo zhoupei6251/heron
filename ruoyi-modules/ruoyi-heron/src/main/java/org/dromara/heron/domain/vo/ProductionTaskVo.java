@@ -21,7 +21,7 @@ public class ProductionTaskVo implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private Long taskId;
+    private Long id;
 
     private ProductionBizType bizType;
 

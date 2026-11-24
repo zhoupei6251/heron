@@ -40,7 +40,7 @@ public class NewsCandidateScreener {
             return Optional.empty();
         }
         if (candidates.size() == 1) {
-            return Optional.of(candidates.get(0).getCandidateId());
+            return Optional.of(candidates.get(0).getId());
         }
         OpenAiModelClient model = modelProvider.getIfAvailable();
         if (model == null) {
@@ -48,7 +48,7 @@ public class NewsCandidateScreener {
         }
         List<HeronNewsCandidate> pool = candidates.stream().limit(SCREEN_LIMIT).toList();
         try {
-            Long picked = choose(pool.stream().map(HeronNewsCandidate::getCandidateId).toList(),
+            Long picked = choose(pool.stream().map(HeronNewsCandidate::getId).toList(),
                 model.chatWithoutUsage(SYSTEM, prompt(pool, recentPerformance())));
             return Optional.ofNullable(picked);
         } catch (RuntimeException e) {
@@ -105,7 +105,7 @@ public class NewsCandidateScreener {
         }
         text.append("候选列表：\n");
         for (HeronNewsCandidate candidate : pool) {
-            text.append("- id=").append(candidate.getCandidateId())
+            text.append("- id=").append(candidate.getId())
                 .append(" 热度=").append(candidate.getHeatScore() == null ? 0 : candidate.getHeatScore())
                 .append(" 标题：").append(candidate.getTitle()).append('\n')
                 .append("  摘要：").append(trim(candidate.getSummary())).append('\n');

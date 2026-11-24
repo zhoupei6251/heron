@@ -10,24 +10,24 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@DisplayName("云端产物清理调度：90 天到期清理被驱动，失败不取消调度")
+@DisplayName("云端孤儿元数据清理调度：15 天到期清理被驱动，失败不取消调度")
 class ProductionArtifactCleanupRunnerTest {
 
     @Test
-    @DisplayName("tick 驱动 90 天云端清理")
+    @DisplayName("tick 驱动 15 天云端孤儿元数据清理")
     void tickRunsCloudCleanup() {
         ProductionArtifactService artifacts = mock(ProductionArtifactService.class);
 
         new ProductionArtifactCleanupRunner(artifacts, null).tick();
 
-        verify(artifacts).cleanupExpiredUploads(Duration.ofDays(90));
+        verify(artifacts).cleanupExpiredUploads(Duration.ofDays(15));
     }
 
     @Test
     @DisplayName("清理抛异常时 tick 吞掉，固定延时调度不会被取消")
     void tickSwallowsFailure() {
         ProductionArtifactService artifacts = mock(ProductionArtifactService.class);
-        when(artifacts.cleanupExpiredUploads(Duration.ofDays(90))).thenThrow(new IllegalStateException("db down"));
+        when(artifacts.cleanupExpiredUploads(Duration.ofDays(15))).thenThrow(new IllegalStateException("db down"));
 
         assertDoesNotThrow(() -> new ProductionArtifactCleanupRunner(artifacts, null).tick());
     }

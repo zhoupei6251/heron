@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 @Data
 @TableName("heron_news_publish_attempt")
 public class HeronNewsPublishAttempt {
-    @TableId private Long attemptId;
+    @TableId private Long id;
     private Long candidateId;
     private Long workId;
     private Long versionId;

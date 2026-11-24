@@ -210,12 +210,12 @@ public class DataOpportunityService {
                 .set(HeronDataOpportunity::getSnapshotJson, lead.snapshotJson())
                 .set(HeronDataOpportunity::getObservedAt, now)
                 .set(HeronDataOpportunity::getUpdateTime, now)
-                .eq(HeronDataOpportunity::getOpportunityId, existing.getOpportunityId())
+                .eq(HeronDataOpportunity::getId, existing.getId())
                 .updateCount();
             return false;
         }
         HeronDataOpportunity row = new HeronDataOpportunity();
-        row.setOpportunityId(IdUtil.getSnowflakeNextId());
+        row.setId(IdUtil.getSnowflakeNextId());
         row.setSourceKey(lead.sourceKey());
         row.setEntity(signal.entity());
         row.setMetric(signal.metric());
@@ -324,7 +324,7 @@ public class DataOpportunityService {
             .set(HeronDataOpportunity::getStatus, STATUS_REJECTED)
             .set(HeronDataOpportunity::getRejectReason, reason == null ? "" : reason)
             .set(HeronDataOpportunity::getUpdateTime, now())
-            .eq(HeronDataOpportunity::getOpportunityId, opportunityId)
+            .eq(HeronDataOpportunity::getId, opportunityId)
             .updateCount();
         if (changed != 1) {
             throw new org.dromara.heron.domain.HeronBusinessException(404, "opportunity_missing",

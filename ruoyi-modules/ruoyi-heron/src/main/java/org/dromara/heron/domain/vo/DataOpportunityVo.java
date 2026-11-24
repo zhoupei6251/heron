@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Data
 @AutoMapper(target = HeronDataOpportunity.class)
 public class DataOpportunityVo implements Serializable {
-    private Long opportunityId;
+    private Long id;
     private String sourceKey;
     private String entity;
     private String metric;

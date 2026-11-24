@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 @TableName("heron_dataset_usage")
 public class HeronDatasetUsage extends BaseEntity {
-    @TableId private Long usageId;
+    @TableId private Long id;
     private String sourceKey;
     private String entity;
     private String metric;

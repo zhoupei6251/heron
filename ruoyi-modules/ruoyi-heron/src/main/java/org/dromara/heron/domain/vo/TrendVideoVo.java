@@ -18,7 +18,7 @@ public class TrendVideoVo implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private Long trendId;
+    private Long id;
     private String platform;
     private String awemeId;
     private Integer rankNo;

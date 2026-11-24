@@ -62,14 +62,14 @@ public final class PoolDigest {
             return List.of();
         }
         return items.stream()
-            .sorted(Comparator.comparing(HeronDataOpportunity::getOpportunityId,
+            .sorted(Comparator.comparing(HeronDataOpportunity::getId,
                 Comparator.nullsLast(Comparator.naturalOrder())))
             .map(item -> {
                 Map<String, Object> node = new TreeMap<>();
                 node.put("entity", text(item.getEntity()));
                 node.put("headline", text(item.getHeadline()));
                 node.put("observedAt", epoch(item.getObservedAt()));
-                node.put("opportunityId", item.getOpportunityId());
+                node.put("opportunityId", item.getId());
                 node.put("score", item.getScore() == null ? null : item.getScore().doubleValue());
                 node.put("signals", text(item.getSignals()));
                 node.put("sourceKey", text(item.getSourceKey()));
@@ -83,7 +83,7 @@ public final class PoolDigest {
             return List.of();
         }
         return items.stream()
-            .sorted(Comparator.comparing(HeronNewsCandidate::getCandidateId,
+            .sorted(Comparator.comparing(HeronNewsCandidate::getId,
                 Comparator.nullsLast(Comparator.naturalOrder())))
             .map(PoolDigest::candidate)
             .toList();
@@ -92,7 +92,7 @@ public final class PoolDigest {
     private static Map<String, Object> candidate(HeronNewsCandidate item) {
         Map<String, Object> node = new TreeMap<>();
         node.put("bestRank", item.getBestRank());
-        node.put("candidateId", item.getCandidateId());
+        node.put("candidateId", item.getId());
         node.put("evidence", evidence(item.getEvidence()));
         node.put("heatScore", item.getHeatScore());
         node.put("lastSeenAt", epoch(item.getLastSeenAt()));
@@ -145,13 +145,13 @@ public final class PoolDigest {
             return List.of();
         }
         return items.stream()
-            .sorted(Comparator.comparing(HeronNewsSource::getSourceId,
+            .sorted(Comparator.comparing(HeronNewsSource::getId,
                 Comparator.nullsLast(Comparator.naturalOrder())))
             .map(source -> {
                 Map<String, Object> node = new TreeMap<>();
                 node.put("host", host(source.getUrl()));
                 node.put("name", text(source.getName()));
-                node.put("sourceId", source.getSourceId());
+                node.put("sourceId", source.getId());
                 return node;
             })
             .toList();

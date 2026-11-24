@@ -84,14 +84,14 @@ public class ProtoProductionDomain implements IProductionDomain, IProductionObje
         if (!Set.of("web", "mobile").contains(project.getCanvas()) || !"default".equals(project.getThemeKey())) {
             throw new HeronBusinessException(400, "proto_invalid_input", "草稿画布或主题不受支持");
         }
-        var input = new InputSnapshot(project.getProjectId(), project.getNextVersion(), project.getRevision(),
+        var input = new InputSnapshot(project.getId(), project.getNextVersion(), project.getRevision(),
             requirement, project.getCanvas(), project.getThemeKey(), ready.engineCommit(),
             new TreeMap<>(ready.templateManifest()), List.copyOf(ready.supportedWidgets()), ready.modelConfigId());
         String inputJson = JSON.writeValueAsString(input);
         requireJsonSize(inputJson);
         var version = new HeronProtoVersion();
-        version.setVersionId(IdUtil.getSnowflakeNextId());
-        version.setProjectId(project.getProjectId());
+        version.setId(IdUtil.getSnowflakeNextId());
+        version.setProjectId(project.getId());
         version.setOwnerId(project.getOwnerId());
         version.setVersionNo(project.getNextVersion());
         version.setTaskId(taskId);
@@ -107,18 +107,18 @@ public class ProtoProductionDomain implements IProductionDomain, IProductionObje
             .set(HeronProtoProject::getActiveTaskId, taskId)
             .set(HeronProtoProject::getUpdateBy, actorId)
             .set(HeronProtoProject::getUpdateTime, version.getCreateTime())
-            .eq(HeronProtoProject::getProjectId, project.getProjectId())
+            .eq(HeronProtoProject::getId, project.getId())
             .eq(HeronProtoProject::getRevision, command.expectedRevision())
             .isNull(HeronProtoProject::getActiveTaskId).updateCount();
         if (changed != 1) conflict("项目预留状态已变更");
-        return new ProductionReservationVo(version.getVersionId(), project.getOwnerId(), inputJson);
+        return new ProductionReservationVo(version.getId(), project.getOwnerId(), inputJson);
     }
 
     @Override
     public void complete(HeronProductionTask task, ProductionResultVo result) {
         requireTransaction();
         var project = projectMapper.selectById(task.getBizId());
-        if (project == null || !Objects.equals(project.getActiveTaskId(), task.getTaskId())
+        if (project == null || !Objects.equals(project.getActiveTaskId(), task.getId())
             || !ProductionStatus.running.name().equals(task.getStatus()) || task.getRunToken() == null) {
             conflict("生产任务不再拥有当前版本");
         }
@@ -139,15 +139,15 @@ public class ProtoProductionDomain implements IProductionDomain, IProductionObje
             .set(HeronProtoVersion::getAuditResult, auditJson)
             .set(HeronProtoVersion::getUpdateBy, task.getActorId())
             .set(HeronProtoVersion::getUpdateTime, now)
-            .eq(HeronProtoVersion::getVersionId, version.getVersionId())
+            .eq(HeronProtoVersion::getId, version.getId())
             .isNull(HeronProtoVersion::getArtifactManifest).isNull(HeronProtoVersion::getAuditResult).updateCount();
         if (changed != 1) conflict("版本产物已变更");
         if (projectMapper.lambda()
-            .set(HeronProtoProject::getCurrentVersionId, version.getVersionId())
+            .set(HeronProtoProject::getCurrentVersionId, version.getId())
             .set(HeronProtoProject::getUpdateBy, task.getActorId())
             .set(HeronProtoProject::getUpdateTime, now)
-            .eq(HeronProtoProject::getProjectId, project.getProjectId())
-            .eq(HeronProtoProject::getActiveTaskId, task.getTaskId()).updateCount() != 1) {
+            .eq(HeronProtoProject::getId, project.getId())
+            .eq(HeronProtoProject::getActiveTaskId, task.getId()).updateCount() != 1) {
             conflict("项目在途任务已变更");
         }
     }
@@ -159,8 +159,8 @@ public class ProtoProductionDomain implements IProductionDomain, IProductionObje
         projectMapper.lambda().set(HeronProtoProject::getActiveTaskId, null)
             .set(HeronProtoProject::getUpdateBy, task.getActorId())
             .set(HeronProtoProject::getUpdateTime, LocalDateTime.now(ZoneOffset.UTC))
-            .eq(HeronProtoProject::getProjectId, task.getBizId())
-            .eq(HeronProtoProject::getActiveTaskId, task.getTaskId()).updateCount();
+            .eq(HeronProtoProject::getId, task.getBizId())
+            .eq(HeronProtoProject::getActiveTaskId, task.getId()).updateCount();
     }
 
     /** 审核/交付时重新验证全部文件，不能只相信之前的成功状态。 */
@@ -248,8 +248,8 @@ public class ProtoProductionDomain implements IProductionDomain, IProductionObje
     private static void requireAssociation(HeronProtoVersion version, HeronProductionTask task) {
         if (version == null || task == null || !ProductionBizType.prototype.name().equals(task.getBizType())
             || !Objects.equals(version.getProjectId(), task.getBizId())
-            || !Objects.equals(version.getVersionId(), task.getVersionId())
-            || !Objects.equals(version.getTaskId(), task.getTaskId())
+            || !Objects.equals(version.getId(), task.getVersionId())
+            || !Objects.equals(version.getTaskId(), task.getId())
             || !Objects.equals(version.getOwnerId(), task.getOwnerId())) throw new HeronAccessException();
         if (task.getInputSnapshot() == null || version.getInputSnapshot() == null
             || !JSON.readTree(task.getInputSnapshot()).equals(JSON.readTree(version.getInputSnapshot()))) invalidManifest();

@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 @TableName("heron_data_opportunity")
 public class HeronDataOpportunity extends BaseEntity {
-    @TableId private Long opportunityId;
+    @TableId private Long id;
     private String sourceKey;
     private String entity;
     private String metric;

@@ -21,7 +21,7 @@ class NewsWorkTransactionTest extends NewsMysqlTestSupport {
     @Test
     void claimRaceHasOneOwnerAndSameActorReplayReturnsSameWork() throws Exception {
         for (int round = 0; round < 20; round++) {
-            long candidate = news.addManual(manual("认领竞争" + UUID.randomUUID(), "来源")).getCandidateId();
+            long candidate = news.addManual(manual("认领竞争" + UUID.randomUUID(), "来源")).getId();
             CyclicBarrier start = new CyclicBarrier(2);
             try (var pool = Executors.newFixedThreadPool(2)) {
                 var a = pool.submit(() -> claim(start, candidate, OWNER));
@@ -32,7 +32,7 @@ class NewsWorkTransactionTest extends NewsMysqlTestSupport {
                 NewsWorkVo winner = (NewsWorkVo) (first instanceof NewsWorkVo ? first : second);
                 assertEquals(409, ((HeronBusinessException) (first instanceof HeronBusinessException ? first : second)).getStatus());
                 loginAs(winner.getOwnerId());
-                assertEquals(winner.getWorkId(), news.claim(candidate).getWorkId());
+                assertEquals(winner.getId(), news.claim(candidate).getId());
                 assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM heron_news_work WHERE candidate_id=?", Integer.class, candidate));
             }
         }
@@ -48,11 +48,11 @@ class NewsWorkTransactionTest extends NewsMysqlTestSupport {
     void manualDedupNormalizesPunctuationButPreservesNumericAnchorsAndPollingHeat() {
         var first = news.addManual(manual("某地发布２０２６年 新规！", "事实"));
         var repeated = news.addManual(manual("某地发布2026年新规", "事实"));
-        assertEquals(first.getCandidateId(), repeated.getCandidateId());
+        assertEquals(first.getId(), repeated.getId());
         assertEquals(1L, repeated.getHitCount());
-        assertNotEquals(first.getCandidateId(), news.addManual(manual("某地发布2027年新规", "事实")).getCandidateId());
+        assertNotEquals(first.getId(), news.addManual(manual("某地发布2027年新规", "事实")).getId());
         var decimal = news.addManual(manual("某市产值增长1.2亿元", "事实"));
-        assertNotEquals(decimal.getCandidateId(), news.addManual(manual("某市产值增长12亿元", "事实")).getCandidateId());
+        assertNotEquals(decimal.getId(), news.addManual(manual("某市产值增长12亿元", "事实")).getId());
         var merged = news.addManual(manual("某地发布2026年新规", "另一份证据"));
         assertEquals(2L, merged.getHitCount());
     }
@@ -61,34 +61,34 @@ class NewsWorkTransactionTest extends NewsMysqlTestSupport {
     void revisionAndMissingPipelineLeaveNoReservationAndReplayKeepsFrozenSnapshot() {
         NewsWorkVo work = work();
         assertEquals(409, assertThrows(HeronBusinessException.class,
-            () -> news.generate(work.getWorkId(), new NewsGenerateBo("stale", 0L))).getStatus());
+            () -> news.generate(work.getId(), new NewsGenerateBo("stale", 0L))).getStatus());
         assertEquals(503, assertThrows(HeronBusinessException.class,
-            () -> news.generate(work.getWorkId(), new NewsGenerateBo("missing", 1L))).getStatus());
+            () -> news.generate(work.getId(), new NewsGenerateBo("missing", 1L))).getStatus());
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM heron_video_version", Integer.class));
-        assertNull(jdbc.queryForObject("SELECT active_task_id FROM heron_news_work WHERE work_id=?", Long.class, work.getWorkId()));
+        assertNull(jdbc.queryForObject("SELECT active_task_id FROM heron_news_work WHERE work_id=?", Long.class, work.getId()));
         allowProduction();
-        var first = news.generate(work.getWorkId(), new NewsGenerateBo("one", 1L));
+        var first = news.generate(work.getId(), new NewsGenerateBo("one", 1L));
         String snapshot = jdbc.queryForObject("SELECT input_snapshot FROM heron_video_version WHERE version_id=?", String.class, first.versionId());
-        var edited = news.saveDraft(work.getWorkId(), new NewsDraftBo(1L, "新草稿", "编辑后的正文", "default", "default"));
+        var edited = news.saveDraft(work.getId(), new NewsDraftBo(1L, "新草稿", "编辑后的正文", "default", "default"));
         assertEquals(2L, edited.getRevision());
-        assertEquals(first.taskId(), news.generate(work.getWorkId(), new NewsGenerateBo("one", 1L)).taskId());
+        assertEquals(first.taskId(), news.generate(work.getId(), new NewsGenerateBo("one", 1L)).taskId());
         assertEquals(snapshot, jdbc.queryForObject("SELECT input_snapshot FROM heron_video_version WHERE version_id=?", String.class, first.versionId()));
         assertEquals(409, assertThrows(HeronBusinessException.class,
-            () -> news.generate(work.getWorkId(), new NewsGenerateBo("two", 2L))).getStatus());
+            () -> news.generate(work.getId(), new NewsGenerateBo("two", 2L))).getStatus());
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM heron_video_version", Integer.class));
         assertEquals(409, assertThrows(HeronBusinessException.class,
-            () -> news.saveDraft(work.getWorkId(), new NewsDraftBo(1L, "旧", "正文", "default", "default"))).getStatus());
+            () -> news.saveDraft(work.getId(), new NewsDraftBo(1L, "旧", "正文", "default", "default"))).getStatus());
     }
 
     @Test
     void publishedCandidateCannotProduceAndCompleteRejectsIncompleteManifest() throws Exception {
         var work = work();
         allowProduction();
-        jdbc.update("UPDATE heron_news_candidate SET published_at=UTC_TIMESTAMP(3) WHERE candidate_id=?", work.getCandidateId());
+        jdbc.update("UPDATE heron_news_candidate SET published_at=UTC_TIMESTAMP(3) WHERE candidate_id=?", work.getId());
         assertEquals(409, assertThrows(HeronBusinessException.class,
-            () -> news.generate(work.getWorkId(), new NewsGenerateBo("published", 1L))).getStatus());
-        jdbc.update("UPDATE heron_news_candidate SET published_at=NULL WHERE candidate_id=?", work.getCandidateId());
-        var receipt = news.generate(work.getWorkId(), new NewsGenerateBo("valid", 1L));
+            () -> news.generate(work.getId(), new NewsGenerateBo("published", 1L))).getStatus());
+        jdbc.update("UPDATE heron_news_candidate SET published_at=NULL WHERE candidate_id=?", work.getId());
+        var receipt = news.generate(work.getId(), new NewsGenerateBo("valid", 1L));
         var run = execution.claim(ProductionBizType.news_video).orElseThrow();
         var files = fixtureFiles(run);
         assertThrows(HeronBusinessException.class,
@@ -136,7 +136,7 @@ class NewsWorkTransactionTest extends NewsMysqlTestSupport {
     @Test
     void evidenceIsBoundedAndPreservesFirstAndLatest() {
         Long id = null;
-        for (int i = 0; i < 110; i++) id = news.addManual(manual("有界证据候选", "证据" + i)).getCandidateId();
+        for (int i = 0; i < 110; i++) id = news.addManual(manual("有界证据候选", "证据" + i)).getId();
         var candidate = news.candidate(id);
         var evidence = org.dromara.common.json.utils.JsonUtils.getJsonMapper().readTree(candidate.getEvidence());
         assertEquals(100, evidence.path("items").size());
@@ -152,7 +152,7 @@ class NewsWorkTransactionTest extends NewsMysqlTestSupport {
         String original = jdbc.queryForObject("SELECT artifact_manifest FROM heron_video_version WHERE version_id=?", String.class, f.versionId());
         var task = context.getBean(org.dromara.heron.mapper.HeronProductionTaskMapper.class)
             .selectById(news.version(f.workId(), f.versionId()).getTaskId());
-        var late = new ProductionRunVo(task.getTaskId(), ProductionBizType.news_video, task.getBizId(), task.getVersionId(),
+        var late = new ProductionRunVo(task.getId(), ProductionBizType.news_video, task.getBizId(), task.getVersionId(),
             task.getAttemptNo(), task.getRunToken(), task.getInputSnapshot(), null);
         assertFalse(execution.succeed(late, new ProductionResultVo(List.of(), "{}")));
         assertEquals(original, jdbc.queryForObject("SELECT artifact_manifest FROM heron_video_version WHERE version_id=?", String.class, f.versionId()));
@@ -167,18 +167,18 @@ class NewsWorkTransactionTest extends NewsMysqlTestSupport {
     void staleReleaseDoesNotClearNewerTaskPointers() {
         var work = work();
         allowProduction();
-        var receipt = news.generate(work.getWorkId(), new NewsGenerateBo("active", 1L));
+        var receipt = news.generate(work.getId(), new NewsGenerateBo("active", 1L));
         var stale = context.getBean(org.dromara.heron.mapper.HeronProductionTaskMapper.class).selectById(receipt.taskId());
-        stale.setTaskId(receipt.taskId() - 1);
+        stale.setId(receipt.taskId() - 1);
         var tx = new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
         tx.executeWithoutResult(status -> {
             context.getBean(org.dromara.heron.mapper.HeronProductionLaneMapper.class).lockByType(ProductionBizType.news_video);
             var domain = context.getBean("newsProductionDomain", IProductionDomain.class);
-            domain.lockObject(work.getWorkId());
+            domain.lockObject(work.getId());
             domain.release(stale);
         });
-        assertEquals(receipt.taskId(), jdbc.queryForObject("SELECT active_task_id FROM heron_news_work WHERE work_id=?", Long.class, work.getWorkId()));
-        assertEquals(receipt.taskId(), jdbc.queryForObject("SELECT active_task_id FROM heron_news_candidate WHERE candidate_id=?", Long.class, work.getCandidateId()));
+        assertEquals(receipt.taskId(), jdbc.queryForObject("SELECT active_task_id FROM heron_news_work WHERE work_id=?", Long.class, work.getId()));
+        assertEquals(receipt.taskId(), jdbc.queryForObject("SELECT active_task_id FROM heron_news_candidate WHERE candidate_id=?", Long.class, work.getId()));
     }
 
     private boolean review(CyclicBarrier start, Completed f, String decision) throws Exception {

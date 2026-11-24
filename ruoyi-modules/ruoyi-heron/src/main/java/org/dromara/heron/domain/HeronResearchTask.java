@@ -41,7 +41,7 @@ public class HeronResearchTask extends BaseEntity {
     /** 取消：执行方已确认退出。 */
     public static final String STATUS_CANCELLED = "cancelled";
 
-    @TableId private Long researchId;
+    @TableId private Long id;
     private String researchNo;
     private Long opportunityId;
     private Long ownerId;

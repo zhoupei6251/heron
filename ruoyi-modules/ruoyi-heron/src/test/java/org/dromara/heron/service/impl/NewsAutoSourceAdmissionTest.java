@@ -27,7 +27,7 @@ class NewsAutoSourceAdmissionTest {
 
     private static HeronNewsCandidate candidate(String evidence) {
         HeronNewsCandidate entity = new HeronNewsCandidate();
-        entity.setCandidateId(1L);
+        entity.setId(1L);
         entity.setEvidence(evidence);
         return entity;
     }

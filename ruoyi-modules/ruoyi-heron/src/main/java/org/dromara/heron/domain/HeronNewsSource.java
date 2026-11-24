@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 @TableName("heron_news_source")
 public class HeronNewsSource extends BaseEntity {
-    @TableId private Long sourceId;
+    @TableId private Long id;
     private String name;
     private String sourceType;
     private String url;

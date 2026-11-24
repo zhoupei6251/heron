@@ -59,7 +59,7 @@ public class NewsSourceServiceImpl implements INewsSourceService {
             .likeIfText(HeronNewsSource::getName, query.getName())
             .eqIfText(HeronNewsSource::getSourceType, query.getSourceType())
             .eqIfText(HeronNewsSource::getEnabled, query.getEnabled())
-            .orderByDesc(HeronNewsSource::getSourceId).build();
+            .orderByDesc(HeronNewsSource::getId).build();
         Page<NewsSourceVo> page = sources.selectVoPage(query.build(), wrapper);
         return PageResult.build(page.getRecords(), page.getTotal());
     }
@@ -79,7 +79,7 @@ public class NewsSourceServiceImpl implements INewsSourceService {
         LocalDateTime now = now();
         long actor = access.requireActor();
         HeronNewsSource source = MapstructUtils.convert(bo, HeronNewsSource.class);
-        source.setSourceId(IdUtil.getSnowflakeNextId());
+        source.setId(IdUtil.getSnowflakeNextId());
         source.setUrl(url);
         source.setFailureCount(0);
         if (source.getAuto() == null) {
@@ -97,7 +97,7 @@ public class NewsSourceServiceImpl implements INewsSourceService {
     public void edit(NewsSourceBo bo) {
         access.requirePermission("heron:newsSource:edit");
         String url = validatedUrl(bo.getUrl(), bo.getSourceType());
-        HeronNewsSource source = required(bo.getSourceId());
+        HeronNewsSource source = required(bo.getId());
         source.setName(bo.getName());
         source.setSourceType(bo.getSourceType());
         source.setUrl(url);
@@ -145,8 +145,8 @@ public class NewsSourceServiceImpl implements INewsSourceService {
     private boolean attempt(HeronNewsSource source) {
         String token = UUID.randomUUID().toString();
         LocalDateTime now = now();
-        if (sources.claim(source.getSourceId(), token, now, now.plus(LEASE)) != 1) {
-            HeronNewsSource current = required(source.getSourceId());
+        if (sources.claim(source.getId(), token, now, now.plus(LEASE)) != 1) {
+            HeronNewsSource current = required(source.getId());
             if (current.getFetchToken() != null && (current.getFetchLeaseUntil() == null
                 || current.getFetchLeaseUntil().isAfter(now))) {
                 throw new HeronBusinessException(409, "news_fetch_running", "该来源正在采集");
@@ -154,11 +154,11 @@ public class NewsSourceServiceImpl implements INewsSourceService {
             throw new HeronBusinessException(409, "news_source_disabled", "来源已停用，不能采集");
         }
         try {
-            collector.collect(source.getSourceId(), token, fetcher.fetch(source));
+            collector.collect(source.getId(), token, fetcher.fetch(source));
             return true;
         } catch (RuntimeException e) {
             int failures = (source.getFailureCount() == null ? 0 : source.getFailureCount()) + 1;
-            sources.recordFailure(source.getSourceId(), token, code(e), reason(e), now, nextRetryAt(source, failures, now));
+            sources.recordFailure(source.getId(), token, code(e), reason(e), now, nextRetryAt(source, failures, now));
             throw e;
         }
     }
@@ -211,7 +211,7 @@ public class NewsSourceServiceImpl implements INewsSourceService {
                 .orElseThrow(() -> new HeronBusinessException(400, "news_source_platform", "未知的 NewsNow 平台: " + platformId));
             if (enabled.contains(platformId)) continue;
             HeronNewsSource source = new HeronNewsSource();
-            source.setSourceId(IdUtil.getSnowflakeNextId());
+            source.setId(IdUtil.getSnowflakeNextId());
             source.setName(platform.name());
             source.setSourceType("newsnow");
             source.setUrl(NewsNowCatalog.feedUrl(properties.getNewsnowBaseUrl(), platformId));

@@ -113,7 +113,7 @@ public class TestProductionDomain implements IProductionDomain, IProductionObjec
                 SET current_version_id=?,active_task=NULL
                 WHERE object_id=? AND active_task=?
                 """,
-            task.getVersionId(), task.getBizId(), task.getTaskId());
+            task.getVersionId(), task.getBizId(), task.getId());
         if (failOnComplete) {
             throw new IllegalStateException("测试注入：完成阶段失败");
         }
@@ -122,7 +122,7 @@ public class TestProductionDomain implements IProductionDomain, IProductionObjec
     @Override
     public void release(HeronProductionTask task) {
         jdbc.update("UPDATE heron_test_object SET active_task=NULL WHERE object_id=? AND active_task=?",
-            task.getBizId(), task.getTaskId());
+            task.getBizId(), task.getId());
     }
 
     private Map<String, Object> selectObject(long bizId) {

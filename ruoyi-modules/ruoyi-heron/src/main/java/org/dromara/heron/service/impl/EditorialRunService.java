@@ -78,12 +78,12 @@ public class EditorialRunService {
             return rows;
         }
         Map<Long, HeronNewsWork> works = workMapper.selectByIds(workIds).stream()
-            .collect(Collectors.toMap(HeronNewsWork::getWorkId, Function.identity()));
+            .collect(Collectors.toMap(HeronNewsWork::getId, Function.identity()));
         List<Long> versionIds = works.values().stream().map(HeronNewsWork::getCurrentVersionId)
             .filter(java.util.Objects::nonNull).distinct().toList();
         Map<Long, HeronVideoVersion> versions = versionIds.isEmpty() ? Map.of()
             : versionMapper.selectByIds(versionIds).stream()
-            .collect(Collectors.toMap(HeronVideoVersion::getVersionId, Function.identity()));
+            .collect(Collectors.toMap(HeronVideoVersion::getId, Function.identity()));
         for (EditorialRunVo row : rows) {
             HeronNewsWork work = row.getWorkId() == null ? null : works.get(row.getWorkId());
             if (work == null) {

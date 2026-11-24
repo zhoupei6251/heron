@@ -46,7 +46,7 @@ public class NewsPublishAttempts {
         HeronNewsPublishAttempt existing = active(candidateId);
         if (existing != null) throw conflict("同一选题已有未处置的发布尝试");
         var attempt = new HeronNewsPublishAttempt();
-        attempt.setAttemptId(IdUtil.getSnowflakeNextId());
+        attempt.setId(IdUtil.getSnowflakeNextId());
         attempt.setCandidateId(candidateId);
         attempt.setWorkId(workId);
         attempt.setVersionId(versionId);
@@ -100,7 +100,7 @@ public class NewsPublishAttempts {
 
     private void change(HeronNewsPublishAttempt attempt, String next, String account, String failureCode,
                         LocalDateTime now, Long actor, String reason) {
-        if (mapper.transition(attempt.getAttemptId(), attempt.getStatus(), next, account, failureCode,
+        if (mapper.transition(attempt.getId(), attempt.getStatus(), next, account, failureCode,
             now, actor, actor == null ? null : now, reason) != 1) throw conflict("发布尝试状态已变化");
     }
 

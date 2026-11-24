@@ -9,6 +9,6 @@ import org.dromara.heron.domain.vo.NewsVideoVersionVo;
 public interface HeronVideoVersionMapper extends BaseMapperPlus<HeronVideoVersion, NewsVideoVersionVo> {
     default HeronVideoVersion lockById(long id) {
         return selectOne(QueryBuilder.lambda(HeronVideoVersion.class)
-            .eq(HeronVideoVersion::getVersionId, id).last("FOR UPDATE").build());
+            .eq(HeronVideoVersion::getId, id).last("FOR UPDATE").build());
     }
 }

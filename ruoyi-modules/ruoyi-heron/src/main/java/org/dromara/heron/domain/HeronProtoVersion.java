@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 @TableName("heron_proto_version")
 public class HeronProtoVersion extends BaseEntity {
     @TableId
-    private Long versionId;
+    private Long id;
     private Long projectId;
     private Long ownerId;
     private Integer versionNo;

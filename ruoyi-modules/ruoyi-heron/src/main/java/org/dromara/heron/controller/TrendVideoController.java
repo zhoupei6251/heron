@@ -10,8 +10,11 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.heron.config.HeronNewsProperties;
+import org.dromara.heron.domain.HeronTrendHotword;
 import org.dromara.heron.domain.HeronTrendVideo;
+import org.dromara.heron.domain.vo.TrendHotwordVo;
 import org.dromara.heron.domain.vo.TrendVideoVo;
+import org.dromara.heron.mapper.HeronTrendHotwordMapper;
 import org.dromara.heron.mapper.HeronTrendVideoMapper;
 import org.dromara.heron.service.impl.TrendCollectService;
 import org.springframework.validation.annotation.Validated;
@@ -33,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class TrendVideoController extends BaseController {
 
     private final HeronTrendVideoMapper videos;
+    private final HeronTrendHotwordMapper hotwords;
     private final TrendCollectService collect;
     private final HeronNewsProperties news;
 
@@ -50,6 +54,17 @@ public class TrendVideoController extends BaseController {
         var rows = videos.selectVoPage(pageQuery.build(), lqw.build());
         rows.getRecords().forEach(vo -> vo.setShortEnough(
             maxDuration <= 0 || vo.getDurationMs() == null || vo.getDurationMs() <= maxDuration));
+        return R.ok(PageResult.build(rows.getRecords(), rows.getTotal()));
+    }
+
+    /** 热词分页：按最近一次采到的位次排，位次空的（置顶条）排最后。 */
+    @SaCheckPermission("heron:newsWork:query")
+    @GetMapping("/hotwords")
+    public R<PageResult<TrendHotwordVo>> hotwords(PageQuery pageQuery) {
+        var lqw = QueryBuilder.lambda(HeronTrendHotword.class);
+        lqw.orderByDesc(HeronTrendHotword::getLastSeenAt);
+        lqw.orderByAsc(HeronTrendHotword::getRankNo);
+        var rows = hotwords.selectVoPage(pageQuery.build(), lqw.build());
         return R.ok(PageResult.build(rows.getRecords(), rows.getTotal()));
     }
 

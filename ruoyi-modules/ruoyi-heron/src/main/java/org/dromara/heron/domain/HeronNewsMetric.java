@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @TableName("heron_news_metric")
 public class HeronNewsMetric implements Serializable {
     @TableId
-    private Long metricId;
+    private Long id;
     private Long versionId;
     private String platform;
     private Long plays;

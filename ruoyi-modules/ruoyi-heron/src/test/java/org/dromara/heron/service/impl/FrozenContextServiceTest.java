@@ -22,7 +22,7 @@ class FrozenContextServiceTest {
 
     private static HeronProductionContext row(String content, String schema) {
         HeronProductionContext row = new HeronProductionContext();
-        row.setContextId(1L);
+        row.setId(1L);
         row.setWorkId(10L);
         row.setVersionId(20L);
         row.setTaskId(30L);

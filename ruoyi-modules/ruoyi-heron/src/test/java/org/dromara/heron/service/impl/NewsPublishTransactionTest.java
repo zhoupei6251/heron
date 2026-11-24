@@ -53,7 +53,7 @@ class NewsPublishTransactionTest {
         final NewsWorkServiceImpl service;
 
         Fixture() {
-            view.setVersionId(4L);
+            view.setId(4L);
             when(access.requireActor()).thenReturn(101L);
             when(attempts.latest(anyList())).thenReturn(Map.of());
             var clock = Clock.fixed(Instant.parse("2026-11-18T08:10:00Z"), ZoneOffset.UTC);

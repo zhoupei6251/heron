@@ -100,12 +100,12 @@ public record EditorialCandidatePool(String poolId, String poolHash,
             return this;
         }
         return build(
-            hot.stream().filter(item -> !candidateIds.contains(item.getCandidateId())).toList(),
-            articles.stream().filter(item -> !candidateIds.contains(item.getCandidateId())).toList(),
+            hot.stream().filter(item -> !candidateIds.contains(item.getId())).toList(),
+            articles.stream().filter(item -> !candidateIds.contains(item.getId())).toList(),
             datasets.stream().filter(item -> !sourceKeys.contains(item.getSourceKey())).toList(),
             sources, recent,
             opportunities.stream().filter(item -> !sourceKeys.contains(item.getSourceKey())).toList(),
-            knowledge.stream().filter(item -> !candidateIds.contains(item.getCandidateId())).toList());
+            knowledge.stream().filter(item -> !candidateIds.contains(item.getId())).toList());
     }
 
     private static EditorialCandidatePool build(List<HeronNewsCandidate> hot, List<HeronNewsCandidate> articles,

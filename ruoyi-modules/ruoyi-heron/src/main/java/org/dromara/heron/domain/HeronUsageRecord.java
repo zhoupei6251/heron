@@ -1,5 +1,6 @@
 package org.dromara.heron.domain;
 
+import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -14,8 +15,8 @@ import org.dromara.common.mybatis.core.domain.BaseEntity;
 @TableName("heron_usage_record")
 public class HeronUsageRecord extends BaseEntity {
 
-    @TableId(value = "usage_id")
-    private Long usageId;
+    @TableId(value = "id", type = IdType.INPUT)
+    private Long id;
 
     private Long taskId;
 

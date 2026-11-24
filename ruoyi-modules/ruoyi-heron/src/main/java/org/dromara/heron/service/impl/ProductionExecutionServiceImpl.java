@@ -100,7 +100,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
         }
         IProductionDomain domain = domain(type);
         domain.lockObject(candidate.getBizId());
-        HeronProductionTask task = taskMapper.lockById(candidate.getTaskId());
+        HeronProductionTask task = taskMapper.lockById(candidate.getId());
         if (task == null || !ProductionStatus.queued.name().equals(task.getStatus())) {
             return Optional.empty();
         }
@@ -118,7 +118,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
             .set(HeronProductionTask::getStage, null)
             .set(HeronProductionTask::getProgress, 0)
             .set(HeronProductionTask::getUpdateTime, now)
-            .eq(HeronProductionTask::getTaskId, task.getTaskId())
+            .eq(HeronProductionTask::getId, task.getId())
             .eq(HeronProductionTask::getStatus, ProductionStatus.queued.name())
             .updateCount();
         if (affected != 1) {
@@ -127,10 +127,10 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
 
         String checkpoint = null;
         if (attempt > 1) {
-            HeronTaskStep previous = stepMapper.selectLatestCheckpoint(task.getTaskId(), attempt - 1);
+            HeronTaskStep previous = stepMapper.selectLatestCheckpoint(task.getId(), attempt - 1);
             checkpoint = previous == null ? null : previous.getCheckpoint();
         }
-        return Optional.of(new ProductionRunVo(task.getTaskId(), type, task.getBizId(), task.getVersionId(),
+        return Optional.of(new ProductionRunVo(task.getId(), type, task.getBizId(), task.getVersionId(),
             attempt, token, task.getInputSnapshot(), checkpoint));
     }
 
@@ -142,7 +142,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
             .set(HeronProductionTask::getLeaseUntil, now.plusSeconds(LEASE_SECONDS))
             .set(HeronProductionTask::getHeartbeatAt, now)
             .set(HeronProductionTask::getUpdateTime, now)
-            .eq(HeronProductionTask::getTaskId, taskId)
+            .eq(HeronProductionTask::getId, taskId)
             .eq(HeronProductionTask::getRunToken, runToken)
             .eq(HeronProductionTask::getStatus, ProductionStatus.running.name())
             .updateCount() == 1;
@@ -159,7 +159,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
             .set(HeronProductionTask::getStage, stage)
             .set(HeronProductionTask::getProgress, progress)
             .set(HeronProductionTask::getUpdateTime, now)
-            .eq(HeronProductionTask::getTaskId, run.taskId())
+            .eq(HeronProductionTask::getId, run.taskId())
             .eq(HeronProductionTask::getRunToken, run.runToken())
             .eq(HeronProductionTask::getAttemptNo, run.attemptNo())
             .eq(HeronProductionTask::getStatus, ProductionStatus.running.name())
@@ -171,7 +171,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
             throw new HeronBusinessException(409, "production_step_exists", "阶段已开始");
         }
         HeronTaskStep step = new HeronTaskStep();
-        step.setStepId(IdUtil.getSnowflakeNextId());
+        step.setId(IdUtil.getSnowflakeNextId());
         step.setTaskId(run.taskId());
         step.setAttemptNo(run.attemptNo());
         step.setStage(stage);
@@ -191,7 +191,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
         LocalDateTime now = now();
         int guard = taskMapper.lambda()
             .set(HeronProductionTask::getUpdateTime, now)
-            .eq(HeronProductionTask::getTaskId, run.taskId())
+            .eq(HeronProductionTask::getId, run.taskId())
             .eq(HeronProductionTask::getRunToken, run.runToken())
             .eq(HeronProductionTask::getAttemptNo, run.attemptNo())
             .eq(HeronProductionTask::getStatus, ProductionStatus.running.name())
@@ -243,7 +243,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
             .set(HeronProductionTask::getErrorCode, null)
             .set(HeronProductionTask::getErrorReason, null)
             .set(HeronProductionTask::getUpdateTime, now)
-            .eq(HeronProductionTask::getTaskId, run.taskId())
+            .eq(HeronProductionTask::getId, run.taskId())
             .eq(HeronProductionTask::getRunToken, run.runToken())
             .eq(HeronProductionTask::getAttemptNo, run.attemptNo())
             .eq(HeronProductionTask::getStatus, ProductionStatus.running.name())
@@ -254,7 +254,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
         domain.complete(task, result);
         finishRunningSteps(run, ProductionStatus.succeeded, now);
         domain.release(task);
-        notifications.terminal(task.getTaskId(), run.bizType(), task.getActorId(), task.getOwnerId(),
+        notifications.terminal(task.getId(), run.bizType(), task.getActorId(), task.getOwnerId(),
             ProductionStatus.succeeded);
         return true;
     }
@@ -286,7 +286,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
             .set(HeronProductionTask::getFinishedAt, now)
             .set(HeronProductionTask::getLeaseUntil, null)
             .set(HeronProductionTask::getUpdateTime, now)
-            .eq(HeronProductionTask::getTaskId, run.taskId())
+            .eq(HeronProductionTask::getId, run.taskId())
             .eq(HeronProductionTask::getRunToken, run.runToken())
             .eq(HeronProductionTask::getAttemptNo, run.attemptNo())
             .eq(HeronProductionTask::getStatus, ProductionStatus.running.name())
@@ -309,7 +309,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
         }
         finishRunningSteps(run, ProductionStatus.failed, now);
         domain.release(task);
-        notifications.terminal(task.getTaskId(), run.bizType(), task.getActorId(), task.getOwnerId(),
+        notifications.terminal(task.getId(), run.bizType(), task.getActorId(), task.getOwnerId(),
             ProductionStatus.failed);
         return true;
     }
@@ -343,7 +343,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
             .set(HeronProductionTask::getFinishedAt, now)
             .set(HeronProductionTask::getLeaseUntil, null)
             .set(HeronProductionTask::getUpdateTime, now)
-            .eq(HeronProductionTask::getTaskId, run.taskId())
+            .eq(HeronProductionTask::getId, run.taskId())
             .eq(HeronProductionTask::getRunToken, run.runToken())
             .eq(HeronProductionTask::getAttemptNo, run.attemptNo())
             .eq(HeronProductionTask::getStatus, ProductionStatus.cancelling.name())
@@ -353,7 +353,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
         }
         finishRunningSteps(run, terminal, now);
         domain.release(task);
-        notifications.terminal(task.getTaskId(), run.bizType(), task.getActorId(), task.getOwnerId(), terminal);
+        notifications.terminal(task.getId(), run.bizType(), task.getActorId(), task.getOwnerId(), terminal);
         return true;
     }
 
@@ -371,7 +371,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
             .set(HeronProductionTask::getLeaseUntil, null)
             .set(HeronProductionTask::getHeartbeatAt, null)
             .set(HeronProductionTask::getUpdateTime, now)
-            .eq(HeronProductionTask::getTaskId, run.taskId())
+            .eq(HeronProductionTask::getId, run.taskId())
             .eq(HeronProductionTask::getRunToken, run.runToken())
             .eq(HeronProductionTask::getAttemptNo, run.attemptNo())
             .eq(HeronProductionTask::getStatus, ProductionStatus.cancelling.name())
@@ -401,7 +401,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
             .set(HeronProductionTask::getFinishedAt, now)
             .set(HeronProductionTask::getLeaseUntil, null)
             .set(HeronProductionTask::getUpdateTime, now)
-            .eq(HeronProductionTask::getTaskId, run.taskId())
+            .eq(HeronProductionTask::getId, run.taskId())
             .eq(HeronProductionTask::getRunToken, run.runToken())
             .eq(HeronProductionTask::getAttemptNo, run.attemptNo())
             .eq(HeronProductionTask::getStatus, ProductionStatus.cancelling.name())
@@ -411,7 +411,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
         }
         finishRunningSteps(run, ProductionStatus.failed, now);
         domain(run.bizType()).release(task);
-        notifications.terminal(task.getTaskId(), run.bizType(), task.getActorId(), task.getOwnerId(),
+        notifications.terminal(task.getId(), run.bizType(), task.getActorId(), task.getOwnerId(),
             ProductionStatus.failed);
         return true;
     }
@@ -451,9 +451,9 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
         List<HeronProductionTask> expired = taskMapper.selectExpiredRunning(now(), RECOVERY_BATCH);
         for (HeronProductionTask task : expired) {
             try {
-                recoveryTemplate.executeWithoutResult(status -> recoverOne(task.getTaskId()));
+                recoveryTemplate.executeWithoutResult(status -> recoverOne(task.getId()));
             } catch (RuntimeException e) {
-                log.warn("回收过期任务失败，跳过继续扫描: taskId={}", task.getTaskId(), e);
+                log.warn("回收过期任务失败，跳过继续扫描: taskId={}", task.getId(), e);
             }
         }
     }
@@ -479,7 +479,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
             .set(HeronProductionTask::getStatus, ProductionStatus.cancelling.name())
             .set(HeronProductionTask::getRunToken, UUID.randomUUID().toString())
             .set(HeronProductionTask::getUpdateTime, now)
-            .eq(HeronProductionTask::getTaskId, taskId)
+            .eq(HeronProductionTask::getId, taskId)
             .eq(HeronProductionTask::getRunToken, task.getRunToken())
             .eq(HeronProductionTask::getStatus, ProductionStatus.running.name())
             .updateCount();

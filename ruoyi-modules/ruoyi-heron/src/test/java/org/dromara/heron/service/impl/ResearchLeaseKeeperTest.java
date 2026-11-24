@@ -49,7 +49,7 @@ class ResearchLeaseKeeperTest {
 
     private static HeronResearchTask row(String status) {
         HeronResearchTask task = new HeronResearchTask();
-        task.setResearchId(RESEARCH_ID);
+        task.setId(RESEARCH_ID);
         task.setStatus(status);
         task.setAttemptNo(ATTEMPT);
         task.setRunToken(TOKEN);

@@ -39,7 +39,7 @@ class StoryRewriterTest {
     /** 当前版本：冻结快照里有选材与故事，取数口径也在里面。 */
     private void givenCurrentVersion(boolean withStory) {
         HeronNewsWork work = new HeronNewsWork();
-        work.setWorkId(1L);
+        work.setId(1L);
         work.setCurrentVersionId(2L);
         when(works.selectById(1L)).thenReturn(work);
         HeronVideoVersion version = new HeronVideoVersion();

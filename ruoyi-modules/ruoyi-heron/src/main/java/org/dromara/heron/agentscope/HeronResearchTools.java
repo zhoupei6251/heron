@@ -211,7 +211,7 @@ public class HeronResearchTools {
         List<Map<String, Object>> items = new ArrayList<>();
         for (HeronDataOpportunity row : rows) {
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("opportunityId", row.getOpportunityId());
+            item.put("opportunityId", row.getId());
             item.put("headline", row.getHeadline());
             item.put("sourceKey", row.getSourceKey());
             item.put("entity", row.getEntity());
@@ -244,7 +244,7 @@ public class HeronResearchTools {
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("found", true);
-        result.put("opportunityId", row.getOpportunityId());
+        result.put("opportunityId", row.getId());
         result.put("headline", row.getHeadline());
         result.put("sourceKey", row.getSourceKey());
         result.put("entity", row.getEntity());
@@ -481,7 +481,7 @@ public class HeronResearchTools {
         List<Map<String, Object>> items = new ArrayList<>();
         for (HeronVideoVersion row : rows) {
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("versionId", row.getVersionId() == null ? null : String.valueOf(row.getVersionId()));
+            item.put("versionId", row.getId() == null ? null : String.valueOf(row.getId()));
             item.put("workId", row.getWorkId() == null ? null : String.valueOf(row.getWorkId()));
             item.put("versionNo", row.getVersionNo());
             item.put("reviewStatus", row.getReviewStatus());

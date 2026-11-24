@@ -29,7 +29,7 @@ public class ProductionRuntimeIdentityService {
             .eq(HeronTaskStep::getTaskId, run.taskId())
             .eq(HeronTaskStep::getAttemptNo, run.attemptNo())
             .eq(HeronTaskStep::getStatus, ProductionStatus.running.name())
-            .exists("SELECT 1 FROM heron_production_task WHERE task_id = {0} AND run_token = {1} "
+            .exists("SELECT 1 FROM heron_production_task WHERE id = {0} AND run_token = {1} "
                 + "AND attempt_no = {2} AND status = 'running'",
                 run.taskId(), run.runToken(), run.attemptNo())
             .updateCount() > 0;

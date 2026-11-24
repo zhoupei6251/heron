@@ -9,13 +9,13 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 云端产物保留 90 天；按 sys_oss 登记时间清理，单键失败留到下一轮。
+ * 云端孤儿元数据保留 15 天；仍存在的对象必须走带发布保护的版本清理。
  */
 @Slf4j
 public class ProductionArtifactCleanupRunner {
 
     private static final int POLL_SECONDS = 3600;
-    private static final Duration RETENTION = Duration.ofDays(90);
+    private static final Duration RETENTION = Duration.ofDays(15);
     private final ProductionArtifactService artifacts;
     private final ScheduledExecutorService scheduler;
 
@@ -28,7 +28,7 @@ public class ProductionArtifactCleanupRunner {
     @PostConstruct
     public void start() {
         scheduler.scheduleWithFixedDelay(this::tick, POLL_SECONDS, POLL_SECONDS, TimeUnit.SECONDS);
-        log.info("Heron 云端产物 90 天保留清理调度已启用");
+        log.info("Heron 云端孤儿元数据 15 天保留清理调度已启用");
     }
 
     void tick() {

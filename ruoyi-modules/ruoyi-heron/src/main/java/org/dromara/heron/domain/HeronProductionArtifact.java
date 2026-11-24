@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 @TableName("heron_production_artifact")
 public class HeronProductionArtifact extends BaseEntity {
-    @TableId private Long artifactId;
+    @TableId private Long id;
     private Long taskId;
     /** article / dataset / …；同一任务同一 kind 唯一。 */
     private String kind;

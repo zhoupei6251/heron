@@ -268,9 +268,9 @@ public class NewsAutoService {
             try {
                 work = newsWork.claimForAuto(picked.selection(), news.getAutoActorId());
                 org.dromara.heron.domain.vo.ProductionReceiptVo receipt = newsWork.generateForAuto(
-                    work.getWorkId(), "auto:" + today + ":" + slotTime, decision, picked.selection());
+                    work.getId(), "auto:" + today + ":" + slotTime, decision, picked.selection());
                 markOpportunityUsed(picked.selection(), receipt);
-                finish(slot, "produced", picked.finalLine() + "：" + decision.editorialIntent(), work.getWorkId());
+                finish(slot, "produced", picked.finalLine() + "：" + decision.editorialIntent(), work.getId());
                 return;
             } catch (RuntimeException e) {
                 log.warn("自动产出槽位失败 slot={} attempt={} {}: {}",
@@ -281,25 +281,25 @@ public class NewsAutoService {
                     && isEvidenceReviewFailure(e) && supportsStory(picked.finalLine())) {
                     storyRewrites++;
                     try {
-                        Map<String, Object> rewritten = storyRewriter.rewrite(work.getWorkId(), e.getMessage());
+                        Map<String, Object> rewritten = storyRewriter.rewrite(work.getId(), e.getMessage());
                         org.dromara.heron.domain.vo.ProductionReceiptVo receipt =
-                            newsWork.reproduceWithStoryForAuto(work.getWorkId(),
+                            newsWork.reproduceWithStoryForAuto(work.getId(),
                                 new NewsStoryBo("auto-rewrite:" + today + ":" + slotTime + ":" + storyRewrites,
                                     work.getRevision(), rewritten),
                                 news.getAutoActorId());
                         markOpportunityUsed(picked.selection(), receipt);
-                        finish(slot, "produced", "story_rewritten：" + decision.editorialIntent(), work.getWorkId());
+                        finish(slot, "produced", "story_rewritten：" + decision.editorialIntent(), work.getId());
                         return;
                     } catch (RuntimeException rewriteFailure) {
-                        log.warn("改写策划结论后仍没过 workId={}: {}", work.getWorkId(), rewriteFailure.getMessage());
+                        log.warn("改写策划结论后仍没过 workId={}: {}", work.getId(), rewriteFailure.getMessage());
                     }
                 }
                 // 认领已经落库，提交失败必须把候选放回池子：不释放就再也不会被选中，且不报错
                 if (work != null) {
                     try {
-                        newsWork.abandonAuto(work.getWorkId());
+                        newsWork.abandonAuto(work.getId());
                     } catch (RuntimeException compensation) {
-                        log.warn("自动产出补偿失败 workId={}: {}", work.getWorkId(), compensation.getMessage());
+                        log.warn("自动产出补偿失败 workId={}: {}", work.getId(), compensation.getMessage());
                     }
                 }
                 if (!isEvidenceReviewFailure(e)) {
@@ -394,7 +394,7 @@ public class NewsAutoService {
         if (sources.isEmpty()) {
             log.warn("自动源白名单为空：本期没有新闻候选");
         }
-        Set<Long> autoSourceIds = sources.stream().map(HeronNewsSource::getSourceId)
+        Set<Long> autoSourceIds = sources.stream().map(HeronNewsSource::getId)
             .filter(Objects::nonNull).collect(Collectors.toSet());
         Set<String> autoHosts = hosts(sources);
         List<HeronNewsCandidate> allowed = new ArrayList<>();
@@ -617,17 +617,17 @@ public class NewsAutoService {
     static EditorialDecisionService.Pools pools(EditorialCandidatePool pool,
                                                 List<EditorialDecisionService.LockedScope> lockedScopes) {
         List<EditorialDecisionService.CandidateRef> hot = pool.hot().stream()
-            .map(item -> new EditorialDecisionService.CandidateRef(item.getCandidateId(), item.getTitle())).toList();
+            .map(item -> new EditorialDecisionService.CandidateRef(item.getId(), item.getTitle())).toList();
         List<EditorialDecisionService.CandidateRef> articles = pool.articles().stream()
-            .map(item -> new EditorialDecisionService.CandidateRef(item.getCandidateId(), item.getTitle())).toList();
+            .map(item -> new EditorialDecisionService.CandidateRef(item.getId(), item.getTitle())).toList();
         List<EditorialDecisionService.DatasetRef> datasets = pool.datasets().stream()
             .map(source -> new EditorialDecisionService.DatasetRef(source.getSourceKey(), datasetLabel(source))).toList();
         // 机会的 label 必须带分数与变化：只给标题，总编辑没有依据判断值不值得做
         List<EditorialDecisionService.OpportunityRef> opportunities = pool.opportunities().stream()
-            .map(item -> new EditorialDecisionService.OpportunityRef(item.getOpportunityId(), opportunityLabel(item))).toList();
+            .map(item -> new EditorialDecisionService.OpportunityRef(item.getId(), opportunityLabel(item))).toList();
         // 知识候选的 label 带钩子：总编辑要判断这个主题能不能抓人
         List<EditorialDecisionService.CandidateRef> knowledge = pool.knowledge().stream()
-            .map(item -> new EditorialDecisionService.CandidateRef(item.getCandidateId(), knowledgeLabel(item))).toList();
+            .map(item -> new EditorialDecisionService.CandidateRef(item.getId(), knowledgeLabel(item))).toList();
         List<String> recent = pool.recent().stream().map(HeronNewsWork::getTitle)
             .filter(title -> title != null && !title.isBlank()).toList();
         return new EditorialDecisionService.Pools(pool.poolId(), pool.poolHash(), hot, articles, datasets,
@@ -765,10 +765,10 @@ public class NewsAutoService {
                 continue;
             }
             try {
-                newsWork.confirmForAuto(work.getWorkId(), version.getVersionId(), news.getAutoActorId());
+                newsWork.confirmForAuto(work.getId(), version.getId(), news.getAutoActorId());
             } catch (RuntimeException e) {
                 // 留在待确认状态，工作台可见；不重试、不改稿
-                log.warn("自动确认失败 workId={} versionId={}: {}", work.getWorkId(), version.getVersionId(), e.getMessage());
+                log.warn("自动确认失败 workId={} versionId={}: {}", work.getId(), version.getId(), e.getMessage());
             }
         }
     }
@@ -786,7 +786,7 @@ public class NewsAutoService {
                 hosts.add(URI.create(source.getUrl()).getHost());
             } catch (RuntimeException e) {
                 // 来源 URL 在保存时已校验；这里读不出主机名就当它不参与自动
-                log.warn("来源 {} 的 URL 无法解析主机名", source.getSourceId());
+                log.warn("来源 {} 的 URL 无法解析主机名", source.getId());
             }
         }
         hosts.remove(null);

@@ -18,8 +18,8 @@ import java.time.LocalDateTime;
 @TableName("heron_trend_video")
 public class HeronTrendVideo implements Serializable {
 
-    @TableId(value = "trend_id", type = IdType.INPUT)
-    private Long trendId;
+    @TableId(value = "id", type = IdType.INPUT)
+    private Long id;
 
     private String platform;
 

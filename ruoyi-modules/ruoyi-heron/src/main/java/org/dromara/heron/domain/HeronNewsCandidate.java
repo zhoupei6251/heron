@@ -20,7 +20,7 @@ public class HeronNewsCandidate extends BaseEntity {
     /** 数据看板线的占位候选；不写就会被列语义（空=热榜）错归因成热榜。 */
     public static final String SOURCE_DATA_BOARD = "data_board";
 
-    @TableId private Long candidateId;
+    @TableId private Long id;
     private String title;
     private String summary;
     /** 有界证据 JSON：items 与 evidenceTruncated。 */

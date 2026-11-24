@@ -53,7 +53,7 @@ class AgentResearchRealRunTest {
 
     private static HeronDataOpportunity opportunity() {
         HeronDataOpportunity row = new HeronDataOpportunity();
-        row.setOpportunityId(900L);
+        row.setId(900L);
         row.setSourceKey("frankfurter-audcny");
         row.setEntity("AUD/CNY");
         row.setMetric("rate");

@@ -76,7 +76,7 @@ public abstract class ProtoMysqlTestSupport extends HeronMysqlTestSupport {
         bo.setThemeKey("default");
         return bo;
     }
-    protected long createProject() { return proto.insertByBo(draft("两页原型需求")).getProjectId(); }
+    protected long createProject() { return proto.insertByBo(draft("两页原型需求")).getId(); }
 
     protected List<Object> race(Callable<?> a, Callable<?> b) throws Exception {
         var barrier = new CyclicBarrier(2);

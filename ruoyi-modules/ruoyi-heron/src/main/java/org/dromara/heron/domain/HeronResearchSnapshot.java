@@ -18,7 +18,7 @@ import org.dromara.common.mybatis.core.domain.BaseEntity;
 @TableName("heron_research_snapshot")
 public class HeronResearchSnapshot extends BaseEntity {
 
-    @TableId private Long snapshotId;
+    @TableId private Long id;
     private Long researchId;
     private Integer attemptNo;
     private String sourceKey;

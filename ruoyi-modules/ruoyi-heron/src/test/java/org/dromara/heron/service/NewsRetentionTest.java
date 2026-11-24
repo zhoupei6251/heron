@@ -13,7 +13,7 @@ class NewsRetentionTest extends NewsMysqlTestSupport {
     @Test
     void dryRunKeepAndInflightDoNotDelete() throws Exception {
         var f = completed();
-        expire(f.versionId(), 91);
+        expire(f.versionId(), 16);
         var file = properties.getDataRoot().resolve(f.file("mp4").storageKey());
         assertEquals(1, maintenance.cleanupExpired(true).size());
         assertTrue(Files.exists(file));
@@ -27,9 +27,9 @@ class NewsRetentionTest extends NewsMysqlTestSupport {
     }
 
     @Test
-    void versionsYoungerThanNinetyDaysAreRetained() throws Exception {
+    void versionsYoungerThanFifteenDaysAreRetained() throws Exception {
         var f = completed();
-        expire(f.versionId(), 31);
+        expire(f.versionId(), 14);
         assertTrue(maintenance.cleanupExpired(false).isEmpty());
         assertTrue(Files.exists(properties.getDataRoot().resolve(f.file("mp4").storageKey())));
     }
@@ -38,7 +38,7 @@ class NewsRetentionTest extends NewsMysqlTestSupport {
     void cleanupPreservesReviewAndBlocksDownloads() throws Exception {
         var f = completed();
         var approved = news.review(f.workId(), f.versionId(), f.approve());
-        expire(f.versionId(), 91);
+        expire(f.versionId(), 16);
         assertEquals(1, maintenance.cleanupExpired(false).size());
         assertFalse(Files.exists(properties.getDataRoot().resolve(f.file("mp4").storageKey())));
         var version = news.version(f.workId(), f.versionId());
@@ -54,7 +54,7 @@ class NewsRetentionTest extends NewsMysqlTestSupport {
     @Test
     void partialDeletionFailureIsNotCleanedAndCanResume() throws Exception {
         var f = completed();
-        expire(f.versionId(), 91);
+        expire(f.versionId(), 16);
         var corrupt = properties.getDataRoot().resolve(f.file("asset_manifest").storageKey());
         byte[] original = Files.readAllBytes(corrupt);
         Files.writeString(corrupt, "corrupt");
@@ -72,7 +72,7 @@ class NewsRetentionTest extends NewsMysqlTestSupport {
     @Test
     void failureEvidenceKeepAlsoProtectsCompletedVersion() throws Exception {
         var f = completed();
-        expire(f.versionId(), 91);
+        expire(f.versionId(), 16);
         Long taskId = jdbc.queryForObject("SELECT task_id FROM heron_video_version WHERE version_id=?", Long.class, f.versionId());
         var keep = properties.getDataRoot().resolve("work/news_video/" + taskId + "/a1-fixture/.keep");
         Files.createDirectories(keep);

@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 @TableName("heron_video_version")
 public class HeronVideoVersion extends BaseEntity {
-    @TableId private Long versionId;
+    @TableId private Long id;
     private Long workId;
     private Long ownerId;
     private Integer versionNo;

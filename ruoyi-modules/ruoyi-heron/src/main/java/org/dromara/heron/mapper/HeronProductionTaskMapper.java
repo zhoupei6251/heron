@@ -14,7 +14,7 @@ public interface HeronProductionTaskMapper extends BaseMapperPlus<HeronProductio
 
     default HeronProductionTask lockById(long taskId) {
         return selectOne(QueryBuilder.lambda(HeronProductionTask.class)
-            .eq(HeronProductionTask::getTaskId, taskId)
+            .eq(HeronProductionTask::getId, taskId)
             .last("FOR UPDATE")
             .build());
     }
@@ -33,7 +33,7 @@ public interface HeronProductionTaskMapper extends BaseMapperPlus<HeronProductio
         return selectOne(QueryBuilder.lambda(HeronProductionTask.class)
             .eq(HeronProductionTask::getBizType, bizType.name())
             .eq(HeronProductionTask::getStatus, ProductionStatus.queued.name())
-            .orderByAsc(HeronProductionTask::getCreateTime, HeronProductionTask::getTaskId)
+            .orderByAsc(HeronProductionTask::getCreateTime, HeronProductionTask::getId)
             .last("LIMIT 1")
             .build());
     }

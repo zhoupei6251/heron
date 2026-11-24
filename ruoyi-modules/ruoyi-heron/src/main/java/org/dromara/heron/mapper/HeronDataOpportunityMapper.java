@@ -18,13 +18,13 @@ public interface HeronDataOpportunityMapper extends BaseMapperPlus<HeronDataOppo
         lambda().set(HeronDataOpportunity::getStatus, "used")
             .set(HeronDataOpportunity::getUsedVersionId, versionId)
             .set(HeronDataOpportunity::getUpdateTime, now)
-            .eq(HeronDataOpportunity::getOpportunityId, opportunityId)
+            .eq(HeronDataOpportunity::getId, opportunityId)
             .update();
     }
 
     /** 落选时也要能查回来：按 id 取一条。 */
     default HeronDataOpportunity selectById(long opportunityId) {
         return selectOne(QueryBuilder.lambda(HeronDataOpportunity.class)
-            .eq(HeronDataOpportunity::getOpportunityId, opportunityId).build());
+            .eq(HeronDataOpportunity::getId, opportunityId).build());
     }
 }

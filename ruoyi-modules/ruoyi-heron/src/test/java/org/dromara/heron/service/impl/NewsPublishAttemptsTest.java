@@ -17,7 +17,7 @@ class NewsPublishAttemptsTest {
 
     private static HeronNewsPublishAttempt attempt(String status) {
         var row = new HeronNewsPublishAttempt();
-        row.setAttemptId(1L);
+        row.setId(1L);
         row.setCandidateId(2L);
         row.setWorkId(3L);
         row.setVersionId(4L);
@@ -47,7 +47,7 @@ class NewsPublishAttemptsTest {
         assertEquals(4L, row.getVersionId());
         assertEquals("a".repeat(64), row.getVideoSha());
         assertEquals("heron", row.getAccount());
-        assertNotNull(row.getAttemptId());
+        assertNotNull(row.getId());
         assertEquals(NOW, row.getStartedAt());
     }
 

@@ -154,7 +154,7 @@ public class KnowledgeCandidateCollector {
             return false;
         }
         HeronNewsCandidate candidate = new HeronNewsCandidate();
-        candidate.setCandidateId(IdUtil.getSnowflakeNextId());
+        candidate.setId(IdUtil.getSnowflakeNextId());
         candidate.setTitle(title);
         candidate.setSummary(hook);
         candidate.setNormalizedTitle(NewsDedup.normalizedTitle(title));

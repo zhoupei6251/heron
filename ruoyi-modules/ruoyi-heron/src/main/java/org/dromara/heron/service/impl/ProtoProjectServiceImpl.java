@@ -85,7 +85,7 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
         }
         HeronProductionTask task = taskMapper.selectById(vo.getActiveTaskId());
         if (task == null || !ProductionBizType.prototype.name().equals(task.getBizType())
-            || !Objects.equals(task.getBizId(), vo.getProjectId()) || !Objects.equals(task.getOwnerId(), vo.getOwnerId())) {
+            || !Objects.equals(task.getBizId(), vo.getId()) || !Objects.equals(task.getOwnerId(), vo.getOwnerId())) {
             throw new HeronAccessException();
         }
         vo.setActiveTask(MapstructUtils.convert(task, ProductionTaskVo.class));
@@ -103,7 +103,7 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
             .eq(HeronProtoProject::getArchived, query.getArchived())
             .eq(!access.hasAllScope(ProductionBizType.prototype), HeronProtoProject::getOwnerId, access.requireActor())
             .betweenParams(HeronProtoProject::getUpdateTime, query.getParams(), "beginUpdateTime", "endUpdateTime")
-            .orderByDesc(HeronProtoProject::getUpdateTime, HeronProtoProject::getProjectId).build();
+            .orderByDesc(HeronProtoProject::getUpdateTime, HeronProtoProject::getId).build();
         Page<ProtoProjectVo> page = projectMapper.selectVoPage(pageQuery.build(), wrapper);
         page.getRecords().forEach(this::enrichCurrentVersion);
         return PageResult.build(page.getRecords(), page.getTotal());
@@ -114,7 +114,7 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
     public ProtoProjectVo insertByBo(ProtoProjectBo bo) {
         access.requirePermission("heron:proto:add");
         var project = normalizedDraft(bo);
-        project.setProjectId(IdUtil.getSnowflakeNextId());
+        project.setId(IdUtil.getSnowflakeNextId());
         project.setOwnerId(access.requireActor());
         project.setRevision(1L);
         project.setNextVersion(1);
@@ -145,7 +145,7 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
             .set(HeronProtoProject::getRevision, old.getRevision() + 1)
             .set(HeronProtoProject::getUpdateBy, access.requireActor())
             .set(HeronProtoProject::getUpdateTime, now())
-            .eq(HeronProtoProject::getProjectId, projectId)
+            .eq(HeronProtoProject::getId, projectId)
             .eq(HeronProtoProject::getRevision, bo.getExpectedRevision()).updateCount();
         if (changed != 1) conflict("草稿已变更，请刷新后保存");
         return MapstructUtils.convert(projectMapper.selectById(projectId), ProtoProjectVo.class);
@@ -160,7 +160,7 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
             if (projectMapper.lambda().set(HeronProtoProject::getArchived, "1")
                 .set(HeronProtoProject::getUpdateBy, access.requireActor())
                 .set(HeronProtoProject::getUpdateTime, now())
-                .eq(HeronProtoProject::getProjectId, projectId).isNull(HeronProtoProject::getActiveTaskId)
+                .eq(HeronProtoProject::getId, projectId).isNull(HeronProtoProject::getActiveTaskId)
                 .updateCount() != 1) conflict("项目状态已变化");
         }
         return MapstructUtils.convert(projectMapper.selectById(projectId), ProtoProjectVo.class);
@@ -219,7 +219,7 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
             .set(HeronProtoVersion::getReviewPreviewSha, bo.previewSha256())
             .set(HeronProtoVersion::getUpdateBy, access.requireActor())
             .set(HeronProtoVersion::getUpdateTime, now())
-            .eq(HeronProtoVersion::getVersionId, versionId)
+            .eq(HeronProtoVersion::getId, versionId)
             .eq(HeronProtoVersion::getReviewStatus, "pending").updateCount() != 1) conflict("审核状态已变更");
         return toVersionVo(versionMapper.selectById(versionId));
     }
@@ -255,7 +255,7 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
         if (versionMapper.lambda().set(HeronProtoVersion::getNativeVerificationJson, json)
             .set(HeronProtoVersion::getUpdateBy, access.requireActor())
             .set(HeronProtoVersion::getUpdateTime, now())
-            .eq(HeronProtoVersion::getVersionId, versionId).updateCount() != 1) conflict("版本已变更");
+            .eq(HeronProtoVersion::getId, versionId).updateCount() != 1) conflict("版本已变更");
         return fact;
     }
 
@@ -290,7 +290,7 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
             .set(HeronProtoVersion::getDeliveryVerificationId, verified == null ? null : verified.verificationId())
             .set(HeronProtoVersion::getUpdateBy, actor)
             .set(HeronProtoVersion::getUpdateTime, deliveredAt)
-            .eq(HeronProtoVersion::getVersionId, versionId).isNull(HeronProtoVersion::getDeliveryAt)
+            .eq(HeronProtoVersion::getId, versionId).isNull(HeronProtoVersion::getDeliveryAt)
             .updateCount() != 1) conflict("交付事实已存在");
         return deliveryVo(versionMapper.selectById(versionId));
     }
@@ -349,7 +349,7 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
             return;
         }
         var version = versionMapper.selectById(vo.getCurrentVersionId());
-        if (version == null || !Objects.equals(version.getProjectId(), vo.getProjectId())
+        if (version == null || !Objects.equals(version.getProjectId(), vo.getId())
             || !Objects.equals(version.getOwnerId(), vo.getOwnerId())) {
             throw new HeronAccessException();
         }
@@ -365,7 +365,7 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
 
     private HeronProtoVersion requireVersion(HeronProtoProject project, long versionId, boolean lock) {
         var version = lock ? versionMapper.lockById(versionId) : versionMapper.selectById(versionId);
-        if (version == null || !version.getProjectId().equals(project.getProjectId())
+        if (version == null || !version.getProjectId().equals(project.getId())
             || !version.getOwnerId().equals(project.getOwnerId())) throw new HeronAccessException();
         return version;
     }
@@ -398,8 +398,8 @@ public class ProtoProjectServiceImpl implements IProtoProjectService {
 
     private static void requireTask(HeronProtoVersion version, HeronProductionTask task) {
         if (task == null || !ProductionBizType.prototype.name().equals(task.getBizType())
-            || !version.getTaskId().equals(task.getTaskId()) || !version.getProjectId().equals(task.getBizId())
-            || !version.getVersionId().equals(task.getVersionId()) || !version.getOwnerId().equals(task.getOwnerId())) {
+            || !version.getTaskId().equals(task.getId()) || !version.getProjectId().equals(task.getBizId())
+            || !version.getId().equals(task.getVersionId()) || !version.getOwnerId().equals(task.getOwnerId())) {
             throw new HeronAccessException();
         }
     }

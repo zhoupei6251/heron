@@ -40,7 +40,7 @@ public class FrozenContextService {
     public FrozenContext freeze(long workId, long versionId, long taskId, int contextNo,
                                 long actorId, String contentJson) {
         HeronProductionContext row = new HeronProductionContext();
-        row.setContextId(IdUtil.getSnowflakeNextId());
+        row.setId(IdUtil.getSnowflakeNextId());
         row.setWorkId(workId);
         row.setVersionId(versionId);
         row.setTaskId(taskId);
@@ -103,7 +103,7 @@ public class FrozenContextService {
             .lt(HeronProductionContext::getContextNo, contextNo)
             .orderByDesc(HeronProductionContext::getContextNo)
             .last("LIMIT 1").build());
-        return previous == null ? null : previous.getContextId();
+        return previous == null ? null : previous.getId();
     }
 
     private LocalDateTime now() {

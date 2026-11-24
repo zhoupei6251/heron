@@ -16,7 +16,7 @@ public interface HeronNewsSourceMapper extends BaseMapperPlus<HeronNewsSource, N
 
     default HeronNewsSource lockById(long sourceId) {
         return selectOne(QueryBuilder.lambda(HeronNewsSource.class)
-            .eq(HeronNewsSource::getSourceId, sourceId).last("FOR UPDATE").build());
+            .eq(HeronNewsSource::getId, sourceId).last("FOR UPDATE").build());
     }
 
     /** 领取采集租约：停用来源不领取，租约未过期时只有持有者能续。 */
@@ -24,7 +24,7 @@ public interface HeronNewsSourceMapper extends BaseMapperPlus<HeronNewsSource, N
         return lambda().set(HeronNewsSource::getFetchToken, token)
             .set(HeronNewsSource::getFetchLeaseUntil, leaseUntil)
             .set(HeronNewsSource::getLastAttemptAt, now).set(HeronNewsSource::getUpdateTime, now)
-            .eq(HeronNewsSource::getSourceId, sourceId).eq(HeronNewsSource::getEnabled, "0")
+            .eq(HeronNewsSource::getId, sourceId).eq(HeronNewsSource::getEnabled, "0")
             .and(w -> w.isNull(HeronNewsSource::getFetchToken).or().le(HeronNewsSource::getFetchLeaseUntil, now))
             .updateCount();
     }
@@ -37,7 +37,7 @@ public interface HeronNewsSourceMapper extends BaseMapperPlus<HeronNewsSource, N
             .set(HeronNewsSource::getNextFetchAt, nextFetchAt)
             .set(HeronNewsSource::getFailureCount, 0)
             .set(HeronNewsSource::getUpdateTime, succeededAt)
-            .eq(HeronNewsSource::getSourceId, sourceId).eq(HeronNewsSource::getFetchToken, token).updateCount();
+            .eq(HeronNewsSource::getId, sourceId).eq(HeronNewsSource::getFetchToken, token).updateCount();
     }
 
     /** 失败记账：同样释放令牌，错误原因如实入库供页面排查。 */
@@ -47,15 +47,15 @@ public interface HeronNewsSourceMapper extends BaseMapperPlus<HeronNewsSource, N
             .setSql("failure_count = failure_count + 1")
             .set(HeronNewsSource::getErrorCode, errorCode).set(HeronNewsSource::getErrorReason, errorReason)
             .set(HeronNewsSource::getNextFetchAt, nextFetchAt).set(HeronNewsSource::getUpdateTime, failedAt)
-            .eq(HeronNewsSource::getSourceId, sourceId).eq(HeronNewsSource::getFetchToken, token).updateCount();
+            .eq(HeronNewsSource::getId, sourceId).eq(HeronNewsSource::getFetchToken, token).updateCount();
     }
 
     /** 到期清单：停用来源永不入列，从未采集过的排最前。 */
     default List<Long> dueSourceIds(LocalDateTime now, int limit) {
         return selectList(QueryBuilder.lambda(HeronNewsSource.class).eq(HeronNewsSource::getEnabled, "0")
             .and(w -> w.isNull(HeronNewsSource::getNextFetchAt).or().le(HeronNewsSource::getNextFetchAt, now))
-            .orderByAsc(HeronNewsSource::getNextFetchAt, HeronNewsSource::getSourceId)
+            .orderByAsc(HeronNewsSource::getNextFetchAt, HeronNewsSource::getId)
             .last("LIMIT " + limit).build())
-            .stream().map(HeronNewsSource::getSourceId).toList();
+            .stream().map(HeronNewsSource::getId).toList();
     }
 }

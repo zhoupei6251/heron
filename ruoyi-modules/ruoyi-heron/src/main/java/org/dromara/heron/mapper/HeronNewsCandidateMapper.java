@@ -9,6 +9,6 @@ import org.dromara.heron.domain.vo.NewsCandidateVo;
 public interface HeronNewsCandidateMapper extends BaseMapperPlus<HeronNewsCandidate, NewsCandidateVo> {
     default HeronNewsCandidate lockById(long id) {
         return selectOne(QueryBuilder.lambda(HeronNewsCandidate.class)
-            .eq(HeronNewsCandidate::getCandidateId, id).last("FOR UPDATE").build());
+            .eq(HeronNewsCandidate::getId, id).last("FOR UPDATE").build());
     }
 }

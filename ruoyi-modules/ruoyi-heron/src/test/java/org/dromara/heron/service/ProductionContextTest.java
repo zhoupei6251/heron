@@ -31,7 +31,7 @@ class ProductionContextTest extends NewsMysqlTestSupport {
     void reserveFreezesContext() {
         NewsWorkVo work = work();
         allowProduction();
-        ProductionReceiptVo receipt = news.generate(work.getWorkId(),
+        ProductionReceiptVo receipt = news.generate(work.getId(),
             new NewsGenerateBo("ctx-first", work.getRevision()));
 
         Map<String, Object> row = jdbc.queryForMap(
@@ -57,9 +57,9 @@ class ProductionContextTest extends NewsMysqlTestSupport {
         TransactionTemplate tx = new TransactionTemplate(txManager);
 
         FrozenContext first = tx.execute(status ->
-            contexts.freeze(work.getWorkId(), 9001L, 8001L, 1, OWNER, "{\"kind\":\"data_board\",\"v\":1}"));
+            contexts.freeze(work.getId(), 9001L, 8001L, 1, OWNER, "{\"kind\":\"data_board\",\"v\":1}"));
         FrozenContext second = tx.execute(status ->
-            contexts.freeze(work.getWorkId(), 9002L, 8002L, 2, OWNER, "{\"kind\":\"data_board\",\"v\":2}"));
+            contexts.freeze(work.getId(), 9002L, 8002L, 2, OWNER, "{\"kind\":\"data_board\",\"v\":2}"));
 
         assertNotNull(first);
         assertNotNull(second);
@@ -77,7 +77,7 @@ class ProductionContextTest extends NewsMysqlTestSupport {
     void verificationCatchesTamperedSnapshot() {
         NewsWorkVo work = work();
         allowProduction();
-        ProductionReceiptVo receipt = news.generate(work.getWorkId(),
+        ProductionReceiptVo receipt = news.generate(work.getId(),
             new NewsGenerateBo("ctx-verify", work.getRevision()));
         String snapshot = jdbc.queryForObject(
             "SELECT input_snapshot FROM heron_production_task WHERE task_id=?", String.class, receipt.taskId());

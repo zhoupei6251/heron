@@ -9,6 +9,6 @@ import org.dromara.heron.domain.vo.ProtoProjectVo;
 public interface HeronProtoProjectMapper extends BaseMapperPlus<HeronProtoProject, ProtoProjectVo> {
     default HeronProtoProject lockById(long projectId) {
         return selectOne(QueryBuilder.lambda(HeronProtoProject.class)
-            .eq(HeronProtoProject::getProjectId, projectId).last("FOR UPDATE").build());
+            .eq(HeronProtoProject::getId, projectId).last("FOR UPDATE").build());
     }
 }

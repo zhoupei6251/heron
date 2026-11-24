@@ -16,7 +16,7 @@ class EditorialCandidatePoolTest {
 
     private static HeronNewsCandidate candidate(String title) {
         HeronNewsCandidate item = new HeronNewsCandidate();
-        item.setCandidateId((long) title.hashCode());
+        item.setId((long) title.hashCode());
         item.setTitle(title);
         return item;
     }
@@ -100,7 +100,7 @@ class EditorialCandidatePoolTest {
             List.of(tried, fresh), item -> true, List.of(triedSource, freshSource), List.of(), List.of());
 
         EditorialCandidatePool after = before.excluding(
-            java.util.Set.of(tried.getCandidateId()), java.util.Set.of("tried-source"));
+            java.util.Set.of(tried.getId()), java.util.Set.of("tried-source"));
 
         assertEquals(List.of(fresh), after.articles());
         assertTrue(after.datasets().stream().noneMatch(item -> "tried-source".equals(item.getSourceKey())));

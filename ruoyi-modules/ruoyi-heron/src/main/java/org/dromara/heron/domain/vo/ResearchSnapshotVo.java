@@ -21,7 +21,7 @@ public class ResearchSnapshotVo implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private Long snapshotId;
+    private Long id;
     private Long researchId;
     private Integer attemptNo;
     private String sourceKey;

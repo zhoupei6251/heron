@@ -16,7 +16,7 @@ import org.dromara.common.mybatis.core.domain.BaseEntity;
 @EqualsAndHashCode(callSuper = true)
 @TableName("heron_production_context")
 public class HeronProductionContext extends BaseEntity {
-    @TableId private Long contextId;
+    @TableId private Long id;
     private Long workId;
     private Long versionId;
     private Long taskId;

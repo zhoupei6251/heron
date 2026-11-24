@@ -62,7 +62,7 @@ public class ContentDecisionServiceImpl implements IContentDecisionService {
             .last("LIMIT 1")
             .build());
         if (existing != null) {
-            return existing.getDecisionId();
+            return existing.getId();
         }
 
         JsonNode report = task.getReportJson() == null ? null : JSON.readTree(task.getReportJson());
@@ -73,7 +73,7 @@ public class ContentDecisionServiceImpl implements IContentDecisionService {
         }
 
         HeronContentDecision row = new HeronContentDecision();
-        row.setDecisionId(IdUtil.getSnowflakeNextId());
+        row.setId(IdUtil.getSnowflakeNextId());
         row.setResearchId(researchId);
         row.setAttemptNo(attemptNo);
         row.setOpportunityId(task.getOpportunityId());
@@ -89,7 +89,7 @@ public class ContentDecisionServiceImpl implements IContentDecisionService {
         row.setUpdateTime(now());
         try {
             decisionMapper.insert(row);
-            return row.getDecisionId();
+            return row.getId();
         } catch (DuplicateKeyException e) {
             // 并发触发时后到者不重复落，回读已存在的那条
             HeronContentDecision raced = decisionMapper.selectOne(QueryBuilder
@@ -98,7 +98,7 @@ public class ContentDecisionServiceImpl implements IContentDecisionService {
                 .eq(HeronContentDecision::getAttemptNo, attemptNo)
                 .last("LIMIT 1")
                 .build());
-            return raced == null ? null : raced.getDecisionId();
+            return raced == null ? null : raced.getId();
         }
     }
 
@@ -144,7 +144,7 @@ public class ContentDecisionServiceImpl implements IContentDecisionService {
             .set(HeronContentDecision::getDecidedAt, now)
             .set(HeronContentDecision::getDecisionNote, truncate(reason, MAX_NOTE))
             .set(HeronContentDecision::getUpdateTime, now)
-            .eq(HeronContentDecision::getDecisionId, decisionId)
+            .eq(HeronContentDecision::getId, decisionId)
             .eq(HeronContentDecision::getStatus, HeronContentDecision.STATUS_PROPOSED)
             .updateCount();
         if (updated == 0) {
@@ -176,7 +176,7 @@ public class ContentDecisionServiceImpl implements IContentDecisionService {
             .set(HeronContentDecision::getVerificationReason, truncate(reason, MAX_REASON))
             .set(HeronContentDecision::getVerificationConflicts, conflictsJson)
             .set(HeronContentDecision::getUpdateTime, now())
-            .eq(HeronContentDecision::getDecisionId, decisionId)
+            .eq(HeronContentDecision::getId, decisionId)
             .update();
     }
 

@@ -23,7 +23,7 @@ class ProductionJsonContractTest {
     @DisplayName("大整数 ID 输出字符串且不下发内部字段")
     void taskJsonUsesStringIdAndHidesInternalFields() {
         ProductionTaskVo task = new ProductionTaskVo();
-        task.setTaskId(9007199254740993L);
+        task.setId(9007199254740993L);
         task.setBizType(ProductionBizType.prototype);
         task.setStatus(ProductionStatus.queued);
         task.setArtifacts(List.of(new ProductionFileVo(
@@ -31,7 +31,9 @@ class ProductionJsonContractTest {
 
         String json = mapper.writeValueAsString(task);
 
-        assertTrue(json.contains("\"taskId\":\"9007199254740993\""));
+        // 主键统一叫 id（见 V61 迁移）：超出 JS 安全整数范围时仍要输出字符串，
+        // 否则前端拿到的是被截断的浮点数，按 id 查回来会查不到。
+        assertTrue(json.contains("\"id\":\"9007199254740993\""), json);
         assertFalse(json.contains("runToken"));
         assertFalse(json.contains("inputSnapshot"));
         assertFalse(json.contains("storageKey"));

@@ -28,7 +28,7 @@ class NewsAutoDecisionTrailTest {
 
     private static HeronNewsCandidate candidate(long id, String title) {
         HeronNewsCandidate item = new HeronNewsCandidate();
-        item.setCandidateId(id);
+        item.setId(id);
         item.setTitle(title);
         return item;
     }

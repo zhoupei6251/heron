@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AutoClaimReleaseTest extends NewsMysqlTestSupport {
 
     private long candidateId() {
-        return news.addManual(manual("补偿候选" + UUID.randomUUID(), "来源")).getCandidateId();
+        return news.addManual(manual("补偿候选" + UUID.randomUUID(), "来源")).getId();
     }
 
     @Test
@@ -29,14 +29,14 @@ class AutoClaimReleaseTest extends NewsMysqlTestSupport {
         assertEquals(OWNER, jdbc.queryForObject(
             "SELECT claimed_by FROM heron_news_candidate WHERE candidate_id=?", Long.class, candidate));
 
-        maintenance.abandonAuto(work.getWorkId());
+        maintenance.abandonAuto(work.getId());
 
         assertNull(jdbc.queryForObject(
             "SELECT claimed_by FROM heron_news_candidate WHERE candidate_id=?", Long.class, candidate));
         assertNull(jdbc.queryForObject(
             "SELECT claimed_at FROM heron_news_candidate WHERE candidate_id=?", java.time.LocalDateTime.class, candidate));
         assertNull(jdbc.queryForObject(
-            "SELECT active_task_id FROM heron_news_work WHERE work_id=?", Long.class, work.getWorkId()));
+            "SELECT active_task_id FROM heron_news_work WHERE work_id=?", Long.class, work.getId()));
     }
 
     @Test
@@ -44,9 +44,9 @@ class AutoClaimReleaseTest extends NewsMysqlTestSupport {
     void keepsClaimOnceVersionExists() {
         long candidate = candidateId();
         NewsWorkVo work = news.claim(candidate);
-        jdbc.update("UPDATE heron_news_work SET current_version_id=999 WHERE work_id=?", work.getWorkId());
+        jdbc.update("UPDATE heron_news_work SET current_version_id=999 WHERE work_id=?", work.getId());
 
-        maintenance.abandonAuto(work.getWorkId());
+        maintenance.abandonAuto(work.getId());
 
         assertEquals(OWNER, jdbc.queryForObject(
             "SELECT claimed_by FROM heron_news_candidate WHERE candidate_id=?", Long.class, candidate));

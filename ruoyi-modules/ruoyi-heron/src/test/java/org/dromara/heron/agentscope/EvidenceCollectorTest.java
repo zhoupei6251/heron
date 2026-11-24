@@ -34,7 +34,7 @@ class EvidenceCollectorTest {
 
     private static HeronAgentToolCall call(long id, int round, String tool, String request, String response) {
         HeronAgentToolCall row = new HeronAgentToolCall();
-        row.setCallId(id);
+        row.setId(id);
         row.setResearchId(9L);
         row.setAttemptNo(1);
         row.setRoundNo(round);

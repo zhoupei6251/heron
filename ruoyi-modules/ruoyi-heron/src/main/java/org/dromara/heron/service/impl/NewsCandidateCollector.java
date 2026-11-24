@@ -81,7 +81,7 @@ public class NewsCandidateCollector {
                 .findFirst().orElse(null);
         }
         Map<String, Object> evidence = new LinkedHashMap<>();
-        evidence.put("sourceId", source.getSourceId());
+        evidence.put("sourceId", source.getId());
         evidence.put("sourceUrl", canonical);
         evidence.put("manual", false);
         evidence.put("fetchedAt", now.toString());
@@ -92,7 +92,7 @@ public class NewsCandidateCollector {
         evidence.put("topicOnly", item.topicOnly());
         if (matched == null) {
             HeronNewsCandidate created = new HeronNewsCandidate();
-            created.setCandidateId(IdUtil.getSnowflakeNextId());
+            created.setId(IdUtil.getSnowflakeNextId());
             created.setTitle(title);
             created.setSummary(summary);
             created.setNormalizedTitle(normalized);
@@ -113,7 +113,7 @@ public class NewsCandidateCollector {
             recent.add(created);
             return;
         }
-        matched = candidateMapper.lockById(matched.getCandidateId());
+        matched = candidateMapper.lockById(matched.getId());
         // 已发布候选是只读事实：同一链接再来一次也不复活、不刷热度。
         if (matched.getPublishedAt() != null) return;
         var merged = NewsDedup.merge(matched.getEvidence(), evidence, (stored, incoming) ->
@@ -129,14 +129,14 @@ public class NewsCandidateCollector {
             .set(best != null, HeronNewsCandidate::getBestRank, best)
             .set(HeronNewsCandidate::getLastSeenAt, now).set(HeronNewsCandidate::getUpdateTime, now)
             .set(editor != null, HeronNewsCandidate::getUpdateBy, editor)
-            .eq(HeronNewsCandidate::getCandidateId, matched.getCandidateId()).update();
+            .eq(HeronNewsCandidate::getId, matched.getId()).update();
     }
 
     /** 48 小时窗口内的近期候选，一批条目共用一次扫描。 */
     private List<HeronNewsCandidate> recentCandidates(LocalDateTime since) {
         return new ArrayList<>(candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
             .ge(HeronNewsCandidate::getLastSeenAt, since)
-            .orderByDesc(HeronNewsCandidate::getLastSeenAt, HeronNewsCandidate::getCandidateId)
+            .orderByDesc(HeronNewsCandidate::getLastSeenAt, HeronNewsCandidate::getId)
             .last("LIMIT 5000").build()));
     }
 

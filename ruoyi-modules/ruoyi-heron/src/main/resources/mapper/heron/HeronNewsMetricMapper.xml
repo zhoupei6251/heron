@@ -6,9 +6,9 @@
     <select id="recentPerformance" resultType="org.dromara.heron.mapper.HeronNewsMetricMapper$Performance">
         select c.title as title, m.plays as plays, m.completion_rate as completionRate
         from heron_news_metric m
-        join heron_video_version v on v.version_id = m.version_id
-        join heron_news_work w on w.work_id = v.work_id
-        join heron_news_candidate c on c.candidate_id = w.candidate_id
+        join heron_video_version v on v.id = m.version_id
+        join heron_news_work w on w.id = v.work_id
+        join heron_news_candidate c on c.id = w.candidate_id
         where m.fetched_at = (
             select max(m2.fetched_at) from heron_news_metric m2 where m2.version_id = m.version_id)
         order by m.fetched_at desc
@@ -24,7 +24,7 @@
     -->
     <select id="performanceSamples" resultType="org.dromara.heron.mapper.HeronNewsMetricMapper$PerformanceSample">
         select
-            v.version_id as versionId,
+            v.id as versionId,
             m.plays as plays,
             m.completion_rate as completionRate,
             m.likes as likes,
@@ -37,12 +37,12 @@
             v.script as script,
             v.content_profile as contentProfile,
             c.source_kind as sourceKind,
-            c.candidate_id as candidateId
+            c.id as candidateId
         from heron_news_metric m
-        join heron_video_version v on v.version_id = m.version_id
+        join heron_video_version v on v.id = m.version_id
         <!-- 左连：来源归因要候选证据，断链的老数据不该把整行弄丢 -->
-        left join heron_news_work w on w.work_id = v.work_id
-        left join heron_news_candidate c on c.candidate_id = w.candidate_id
+        left join heron_news_work w on w.id = v.work_id
+        left join heron_news_candidate c on c.id = w.candidate_id
         where m.fetched_at = (
             select max(m2.fetched_at) from heron_news_metric m2 where m2.version_id = m.version_id)
         and m.plays is not null

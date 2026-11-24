@@ -103,7 +103,7 @@ public class ResearchPromotionServiceImpl implements IResearchPromotionService {
             .last("LIMIT 1")
             .build());
         if (existing != null) {
-            return existing.getCandidateId();
+            return existing.getId();
         }
 
         // 证据链自己都说不上完整：它声称查过的引用在本次 attempt 的账本里找不到。
@@ -130,7 +130,7 @@ public class ResearchPromotionServiceImpl implements IResearchPromotionService {
         String title = title(decision, opportunity);
 
         HeronNewsCandidate candidate = new HeronNewsCandidate();
-        candidate.setCandidateId(IdUtil.getSnowflakeNextId());
+        candidate.setId(IdUtil.getSnowflakeNextId());
         candidate.setTitle(title);
         candidate.setSummary(truncate(decision.getDecisionReason(), 500));
         candidate.setNormalizedTitle(title == null ? "" : title.trim().toLowerCase());
@@ -149,9 +149,9 @@ public class ResearchPromotionServiceImpl implements IResearchPromotionService {
         if (candidateMapper.insert(candidate) != 1) {
             throw new HeronBusinessException(409, "candidate_write", "候选保存失败");
         }
-        log.info("决策 {} 已提升为候选 {}（机会 {}）", decisionId, candidate.getCandidateId(),
+        log.info("决策 {} 已提升为候选 {}（机会 {}）", decisionId, candidate.getId(),
             decision.getOpportunityId());
-        return candidate.getCandidateId();
+        return candidate.getId();
     }
 
     /**
@@ -180,7 +180,7 @@ public class ResearchPromotionServiceImpl implements IResearchPromotionService {
         int recorded = decisionMapper.lambda()
             .set(column, truncate(reason.trim(), MAX_OVERRIDE))
             .set(HeronContentDecision::getUpdateTime, now())
-            .eq(HeronContentDecision::getDecisionId, decisionId)
+            .eq(HeronContentDecision::getId, decisionId)
             .updateCount();
         if (recorded == 0) {
             // 留痕写不进去就不放行：放行了却查不到是谁为什么放的，等于没有门禁
@@ -207,7 +207,7 @@ public class ResearchPromotionServiceImpl implements IResearchPromotionService {
                                    HeronDataOpportunity opportunity) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("kind", SOURCE_KIND);
-        item.put("decisionId", String.valueOf(decision.getDecisionId()));
+        item.put("decisionId", String.valueOf(decision.getId()));
         item.put("researchId", String.valueOf(decision.getResearchId()));
         item.put("attemptNo", decision.getAttemptNo());
         item.put("decisionType", decision.getDecisionType());

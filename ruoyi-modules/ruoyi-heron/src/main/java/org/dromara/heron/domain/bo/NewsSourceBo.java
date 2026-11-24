@@ -11,7 +11,7 @@ import java.io.Serializable;
 @Data
 @AutoMapper(target = HeronNewsSource.class, reverseConvertGenerate = false)
 public class NewsSourceBo implements Serializable {
-    @NotNull(groups = EditGroup.class) private Long sourceId;
+    @NotNull(groups = EditGroup.class) private Long id;
     @NotBlank @Size(max = 100) private String name;
     @NotBlank
     @Pattern(regexp = "rss|atom|text|weibo|baidu|toutiao|bilibili|thepaper|zhihu|newsnow")

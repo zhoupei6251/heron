@@ -31,8 +31,8 @@ class NewsDouyinCliPublishTest extends NewsMysqlTestSupport {
         assertNull(vo.getPublishAt());
         assertEquals("submitted", vo.getPublishAttempt().getStatus());
         assertEquals("heron", vo.getPublishAttempt().getAccount());
-        assertEquals(vo.getPublishAttempt().getAttemptId(),
-            news.confirm(version.workId(), version.versionId(), version.approve()).getPublishAttempt().getAttemptId());
+        assertEquals(vo.getPublishAttempt().getId(),
+            news.confirm(version.workId(), version.versionId(), version.approve()).getPublishAttempt().getId());
     }
 
     @Test
@@ -46,23 +46,23 @@ class NewsDouyinCliPublishTest extends NewsMysqlTestSupport {
         var resolution = new NewsPublishResolveBo("published", receipt.videoSha256(), "已在平台核对视频和实际发布时间", false, receipt);
         var wrongAccount = new NewsPublishBo(receipt.workUrl(), "other-account", receipt.publishedAt(), receipt.videoSha256());
         assertThrows(HeronBusinessException.class, () -> news.resolvePublishAttempt(version.workId(), version.versionId(),
-            submitted.getPublishAttempt().getAttemptId(), new NewsPublishResolveBo("published", receipt.videoSha256(), "核对", false, wrongAccount)));
+            submitted.getPublishAttempt().getId(), new NewsPublishResolveBo("published", receipt.videoSha256(), "核对", false, wrongAccount)));
         NewsVideoVersionVo filled = news.resolvePublishAttempt(version.workId(), version.versionId(),
-            submitted.getPublishAttempt().getAttemptId(), resolution);
+            submitted.getPublishAttempt().getId(), resolution);
 
         assertEquals("https://www.douyin.com/video/7400000000000000000", filled.getPublishUrl());
         assertEquals(receipt.publishedAt(), filled.getPublishAt());
         assertEquals(receipt.videoSha256(), filled.getPublishVideoSha());
         assertEquals("published", filled.getPublishAttempt().getStatus());
         assertEquals(filled.getPublishUrl(), news.resolvePublishAttempt(version.workId(), version.versionId(),
-            submitted.getPublishAttempt().getAttemptId(), resolution).getPublishUrl());
+            submitted.getPublishAttempt().getId(), resolution).getPublishUrl());
     }
 
     @Test
     void onlyExplicitStoppedAndNotPublishedResolutionReleasesTheCandidate() throws Exception {
         var version = completed();
         var submitted = news.confirm(version.workId(), version.versionId(), version.approve());
-        long attempt = submitted.getPublishAttempt().getAttemptId();
+        long attempt = submitted.getPublishAttempt().getId();
         String sha = version.file("mp4").sha256();
         assertThrows(HeronBusinessException.class, () -> news.resolvePublishAttempt(version.workId(), version.versionId(),
             attempt, new NewsPublishResolveBo("not_published", sha, "已检查平台", false, null)));
@@ -71,7 +71,7 @@ class NewsDouyinCliPublishTest extends NewsMysqlTestSupport {
         assertEquals("not_published", resolved.getPublishAttempt().getStatus());
         assertNull(resolved.getPublishAt());
         var retried = news.confirm(version.workId(), version.versionId(), version.approve());
-        assertNotEquals(attempt, retried.getPublishAttempt().getAttemptId());
+        assertNotEquals(attempt, retried.getPublishAttempt().getId());
     }
 
     @Test

@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Data
 @AutoMapper(target = HeronProtoProject.class)
 public class ProtoProjectVo implements Serializable {
-    private Long projectId;
+    private Long id;
     private Long ownerId;
     private String name;
     private String requirement;

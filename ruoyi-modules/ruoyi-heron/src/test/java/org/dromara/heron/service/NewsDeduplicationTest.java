@@ -49,7 +49,7 @@ class NewsDeduplicationTest extends NewsMysqlTestSupport {
 
     private long newSource(String name, String host) {
         HeronNewsSource source = new HeronNewsSource();
-        source.setSourceId(IdUtil.getSnowflakeNextId());
+        source.setId(IdUtil.getSnowflakeNextId());
         source.setName(name);
         source.setSourceType("rss");
         source.setUrl("https://" + host + "/feed?utm_source=x&keep=1");
@@ -59,7 +59,7 @@ class NewsDeduplicationTest extends NewsMysqlTestSupport {
         source.setCreateBy(OWNER);
         source.setUpdateBy(OWNER);
         assertEquals(1, sources.insert(source));
-        return source.getSourceId();
+        return source.getId();
     }
 
     private String claim(long sourceId) {
@@ -79,7 +79,7 @@ class NewsDeduplicationTest extends NewsMysqlTestSupport {
     private List<HeronNewsCandidate> rows(String normalizedPrefix) {
         return candidates.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
             .like(HeronNewsCandidate::getNormalizedTitle, normalizedPrefix)
-            .orderByAsc(HeronNewsCandidate::getCandidateId).build());
+            .orderByAsc(HeronNewsCandidate::getId).build());
     }
 
     private int evidenceCount(long candidateId) {
@@ -132,7 +132,7 @@ class NewsDeduplicationTest extends NewsMysqlTestSupport {
         assertEquals(2L, candidate.getHitCount());
         assertEquals(2L, candidate.getHeatScore());
         assertEquals(1, candidate.getBestRank(), "热度取更好的排名");
-        assertEquals(2, evidenceCount(candidate.getCandidateId()), "两个来源的证据都要保留");
+        assertEquals(2, evidenceCount(candidate.getId()), "两个来源的证据都要保留");
     }
 
     @Test
@@ -153,10 +153,10 @@ class NewsDeduplicationTest extends NewsMysqlTestSupport {
         HeronNewsCandidate first = rows("稳定标题测试新闻").get(0);
         collector.collect(a, claim(a), batch);
         HeronNewsCandidate second = rows("稳定标题测试新闻").get(0);
-        assertEquals(first.getCandidateId(), second.getCandidateId());
+        assertEquals(first.getId(), second.getId());
         assertEquals(1L, second.getHitCount(), "重复轮询同一 sourceItemId 不增命中");
         assertEquals(1L, second.getHeatScore(), "重复轮询同一 sourceItemId 不增热度");
-        assertEquals(1, evidenceCount(second.getCandidateId()), "重复轮询不重复追加证据");
+        assertEquals(1, evidenceCount(second.getId()), "重复轮询不重复追加证据");
     }
 
     @Test
@@ -204,7 +204,7 @@ class NewsDeduplicationTest extends NewsMysqlTestSupport {
             "https://feed.example.test/p1", "p1", 1)));
         HeronNewsCandidate candidate = rows("已发布新闻不再生产").get(0);
         jdbc.update("UPDATE heron_news_candidate SET published_at = ? WHERE candidate_id = ?",
-            now().minusDays(1), candidate.getCandidateId());
+            now().minusDays(1), candidate.getId());
 
         collector.collect(a, claim(a), List.of(item("已发布新闻不再生产", "同一链接换了内容",
             "https://feed.example.test/p1", "p1b", 3)));
@@ -212,7 +212,7 @@ class NewsDeduplicationTest extends NewsMysqlTestSupport {
         List<HeronNewsCandidate> after = rows("已发布新闻不再生产");
         assertEquals(1, after.size(), "精确键命中已发布候选时不得新增候选");
         assertEquals(1L, after.get(0).getHitCount(), "已发布候选不得被重新累计热度");
-        assertEquals(1, evidenceCount(after.get(0).getCandidateId()), "已发布候选不得追加证据");
+        assertEquals(1, evidenceCount(after.get(0).getId()), "已发布候选不得追加证据");
     }
 
     @Test

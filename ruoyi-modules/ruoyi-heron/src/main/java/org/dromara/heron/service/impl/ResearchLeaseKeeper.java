@@ -86,7 +86,7 @@ final class ResearchLeaseKeeper implements AutoCloseable {
                 .set(HeronResearchTask::getHeartbeatAt, now)
                 .set(HeronResearchTask::getLeaseUntil, now.plus(lease))
                 .set(HeronResearchTask::getUpdateTime, now)
-                .eq(HeronResearchTask::getResearchId, researchId)
+                .eq(HeronResearchTask::getId, researchId)
                 .eq(HeronResearchTask::getStatus, HeronResearchTask.STATUS_RUNNING)
                 .eq(HeronResearchTask::getAttemptNo, attemptNo)
                 .eq(HeronResearchTask::getRunToken, runToken)

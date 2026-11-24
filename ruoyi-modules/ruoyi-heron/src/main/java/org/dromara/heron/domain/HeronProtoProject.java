@@ -12,7 +12,7 @@ import org.dromara.common.mybatis.core.domain.BaseEntity;
 @TableName("heron_proto_project")
 public class HeronProtoProject extends BaseEntity {
     @TableId
-    private Long projectId;
+    private Long id;
     private Long ownerId;
     private String name;
     private String requirement;

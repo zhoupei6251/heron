@@ -57,7 +57,7 @@ public class NewsMetricServiceImpl implements INewsMetricService {
         }
         LocalDateTime now = LocalDateTime.now();
         HeronNewsMetric metric = new HeronNewsMetric();
-        metric.setMetricId(IdUtil.getSnowflakeNextId());
+        metric.setId(IdUtil.getSnowflakeNextId());
         metric.setVersionId(bo.versionId());
         metric.setPlatform(bo.platform().strip());
         metric.setPlays(bo.plays());
@@ -71,7 +71,7 @@ public class NewsMetricServiceImpl implements INewsMetricService {
             throw new HeronBusinessException(409, "metric_write", "表现记录保存失败");
         }
         NewsMetricVo vo = new NewsMetricVo();
-        vo.setMetricId(metric.getMetricId());
+        vo.setId(metric.getId());
         vo.setVersionId(metric.getVersionId());
         vo.setPlatform(metric.getPlatform());
         vo.setPlays(metric.getPlays());
@@ -132,7 +132,7 @@ public class NewsMetricServiceImpl implements INewsMetricService {
                 .build()).getRecords();
         List<NewsSuggestionVo> out = new ArrayList<>();
         for (HeronVideoVersion row : rows) {
-            JsonNode report = readTree(row.getQualityReport(), row.getVersionId());
+            JsonNode report = readTree(row.getQualityReport(), row.getId());
             String promptVersion = report.path("promptVersion").asString("");
             String modelId = report.path("modelId").asString("");
             String source = "L3 质量审稿"
@@ -147,7 +147,7 @@ public class NewsMetricServiceImpl implements INewsMetricService {
                     continue;
                 }
                 String criterionId = item.path("id").asString("");
-                out.add(new NewsSuggestionVo(row.getVersionId() + ":" + criterionId, row.getVersionId(),
+                out.add(new NewsSuggestionVo(row.getId() + ":" + criterionId, row.getId(),
                     criterionId, reason, source, "hypothesis".equals(criterionClass), criterionClass,
                     item.path("confidence").asString("")));
                 if (out.size() >= size) {
@@ -274,7 +274,7 @@ public class NewsMetricServiceImpl implements INewsMetricService {
 
     private NewsMetricVo toVo(HeronNewsMetric metric) {
         NewsMetricVo vo = new NewsMetricVo();
-        vo.setMetricId(metric.getMetricId());
+        vo.setId(metric.getId());
         vo.setVersionId(metric.getVersionId());
         vo.setPlatform(metric.getPlatform());
         vo.setPlays(metric.getPlays());

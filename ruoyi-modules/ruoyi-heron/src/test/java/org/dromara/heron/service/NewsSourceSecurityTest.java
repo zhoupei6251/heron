@@ -49,7 +49,7 @@ class NewsSourceSecurityTest {
 
     private HeronNewsSource source(String url, String type) {
         HeronNewsSource source = new HeronNewsSource();
-        source.setSourceId(7L);
+        source.setId(7L);
         source.setName("测试来源");
         source.setUrl(url);
         source.setSourceType(type);

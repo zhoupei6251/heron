@@ -23,7 +23,7 @@ public class HeronProductionProperties {
     /** 文章新闻路径开关；关闭后只允许数据看板模板，文章模板与文章分支一律拒绝。 */
     private boolean articleEnabled = true;
 
-    private int cleanupRetentionDays = 7;
+    private int cleanupRetentionDays = 15;
 
     private String python = "python3";
 

@@ -13,7 +13,7 @@ import java.util.Map;
 @Data
 @AutoMapper(target = HeronProtoVersion.class)
 public class ProtoVersionVo implements Serializable {
-    private Long versionId;
+    private Long id;
     private Long projectId;
     private Long ownerId;
     private Integer versionNo;

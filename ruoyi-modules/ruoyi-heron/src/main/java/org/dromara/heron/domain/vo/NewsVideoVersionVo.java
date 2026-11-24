@@ -11,7 +11,7 @@ import java.util.List;
 @Data
 @AutoMapper(target = HeronVideoVersion.class)
 public class NewsVideoVersionVo implements Serializable {
-    private Long versionId;
+    private Long id;
     private Long workId;
     private Long ownerId;
     private Integer versionNo;

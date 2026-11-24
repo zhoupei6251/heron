@@ -104,4 +104,22 @@ public class HeronNewsProperties {
      * 拆解一条要好几分钟，第一版先只处理短视频。0 表示不过滤。
      */
     private long trendMaxDurationMs = 90_000L;
+
+    /** 单条参考视频上限；超限在读取前或流式写入时拒绝。 */
+    private long referenceMaxBytes = 50L * 1024 * 1024;
+
+    /** 参考素材总容量上限；ACQUIRING 按单文件上限预留，避免并发突破。 */
+    private long referenceMaxTotalBytes = 512L * 1024 * 1024;
+
+    /** 单实例并发下载数；数据库租约仍然阻止同一素材重复领取。 */
+    private int referenceMaxConcurrent = 2;
+
+    private int referenceConnectTimeoutSeconds = 10;
+
+    private int referenceReadTimeoutSeconds = 120;
+
+    private int referenceMaxRedirects = 3;
+
+    /** 下载租约时长；超时后其他 worker 可以接管。 */
+    private int referenceLeaseSeconds = 180;
 }

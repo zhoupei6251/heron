@@ -33,7 +33,7 @@ public class HeronContentDecision extends BaseEntity {
     /** 核验员与研究员结论冲突：默认阻断提升，人要推翻必须留理由。 */
     public static final String VERDICT_DISAGREE = "DISAGREE";
 
-    @TableId private Long decisionId;
+    @TableId private Long id;
     private Long researchId;
     private Integer attemptNo;
     private Long opportunityId;

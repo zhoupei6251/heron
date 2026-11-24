@@ -59,7 +59,7 @@ public final class ResearchSnapshots {
             return;
         }
         HeronResearchSnapshot row = new HeronResearchSnapshot();
-        row.setSnapshotId(IdUtil.getSnowflakeNextId());
+        row.setId(IdUtil.getSnowflakeNextId());
         row.setResearchId(researchId);
         row.setAttemptNo(attemptNo);
         row.setSourceKey(sourceKey);

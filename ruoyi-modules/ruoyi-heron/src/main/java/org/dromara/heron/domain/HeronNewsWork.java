@@ -12,7 +12,7 @@ import org.dromara.common.mybatis.core.domain.BaseEntity;
 @EqualsAndHashCode(callSuper = true)
 @TableName("heron_news_work")
 public class HeronNewsWork extends BaseEntity {
-    @TableId private Long workId;
+    @TableId private Long id;
     private Long candidateId;
     private Long ownerId;
     private String title;

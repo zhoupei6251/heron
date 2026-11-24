@@ -120,12 +120,12 @@ class NewsStoryEditTest {
 
         Fixture(boolean withStory) {
             HeronNewsWork work = new HeronNewsWork();
-            work.setWorkId(1L);
+            work.setId(1L);
             work.setOwnerId(101L);
             work.setCurrentVersionId(2L);
             frozenSelection = selection(withStory);
             HeronVideoVersion version = new HeronVideoVersion();
-            version.setVersionId(2L);
+            version.setId(2L);
             version.setWorkId(1L);
             version.setOwnerId(101L);
             version.setVersionNo(1);

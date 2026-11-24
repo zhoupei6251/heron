@@ -19,7 +19,7 @@ public class HeronAgentToolCall extends BaseEntity {
     public static final String STATUS_OK = "ok";
     public static final String STATUS_FAILED = "failed";
 
-    @TableId private Long callId;
+    @TableId private Long id;
     private Long researchId;
     private Integer attemptNo;
     private Integer roundNo;

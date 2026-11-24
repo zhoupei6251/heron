@@ -55,7 +55,7 @@ class ResearchPromotionServiceImplTest {
 
     private static HeronContentDecision decision(String status, String sha) {
         HeronContentDecision row = new HeronContentDecision();
-        row.setDecisionId(1L);
+        row.setId(1L);
         row.setResearchId(9L);
         row.setAttemptNo(1);
         row.setOpportunityId(900L);
@@ -120,7 +120,7 @@ class ResearchPromotionServiceImplTest {
         HeronContentDecisionMapper decisions = mock(HeronContentDecisionMapper.class);
         when(decisions.selectById(1L)).thenReturn(decision("accepted", "sha-abc"));
         HeronNewsCandidate existing = new HeronNewsCandidate();
-        existing.setCandidateId(77L);
+        existing.setId(77L);
         HeronNewsCandidateMapper candidates = mock(HeronNewsCandidateMapper.class);
         when(candidates.selectOne(any())).thenReturn(existing);
 
@@ -222,7 +222,7 @@ class ResearchPromotionServiceImplTest {
 
     private static org.dromara.heron.domain.HeronResearchTask researchWithEvidence(String evidenceJson) {
         var row = new org.dromara.heron.domain.HeronResearchTask();
-        row.setResearchId(9L);
+        row.setId(9L);
         row.setEvidenceJson(evidenceJson);
         return row;
     }

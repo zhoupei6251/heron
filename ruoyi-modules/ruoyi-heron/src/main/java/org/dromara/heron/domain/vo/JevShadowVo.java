@@ -18,7 +18,7 @@ public class JevShadowVo implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private Long shadowId;
+    private Long id;
     private String poolId;
     private String poolHash;
     private String localLine;

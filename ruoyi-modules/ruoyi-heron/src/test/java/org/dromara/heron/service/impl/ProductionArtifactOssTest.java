@@ -46,6 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -183,21 +184,39 @@ class ProductionArtifactOssTest {
     }
 
     @Test
-    void cloudRetentionDeletesExpiredObjectAndMetadata() throws IOException {
+    void cloudRetentionDoesNotDeletePresentObjectWithoutProtectedVersionCleanup() throws IOException {
         ProductionRunVo run = run();
         ProductionArtifactVo artifact = finalize(run);
         service.register(run, List.of(artifact));
         registry.expired.add(artifact.storageKey());
         stubHead(artifact);
 
-        assertEquals(1, service.cleanupExpiredUploads(Duration.ofDays(90)));
+        assertEquals(0, service.cleanupExpiredUploads(Duration.ofDays(15)));
 
-        verify(client).delete(artifact.storageKey());
-        assertEquals(List.of(artifact.storageKey()), registry.unregistered);
+        verify(client, never()).delete(anyString());
+        assertTrue(registry.registered.containsKey(artifact.storageKey()));
+        assertTrue(registry.unregistered.isEmpty());
         assertEquals("qiniu", registry.expiredService);
         assertEquals("heron", registry.expiredSource);
-        assertEquals(LocalDateTime.of(2026, 8, 26, 0, 0), registry.expiredCutoff);
+        assertEquals(LocalDateTime.of(2026, 11, 9, 0, 0), registry.expiredCutoff);
         assertEquals(200, registry.expiredLimit);
+    }
+
+    @Test
+    void cloudRetentionScansPastProtectedPrefixToReachLaterOrphans() {
+        for (int i = 0; i < 200; i++) {
+            registry.expired.add("videos/protected/" + i);
+        }
+        registry.expired.add("videos/orphan");
+        doAnswer(invocation -> {
+            String key = invocation.getArgument(0);
+            return "videos/orphan".equals(key) ? null : mock(GetObjectResult.class);
+        }).when(client).download(anyString(),
+            org.mockito.ArgumentMatchers.<BiFunction<GetObjectResult, InputStream, GetObjectResult>>any());
+
+        assertEquals(1, service.cleanupExpiredUploads(Duration.ofDays(15)));
+
+        assertEquals(List.of("videos/orphan"), registry.unregistered);
     }
 
     @Test
@@ -209,29 +228,9 @@ class ProductionArtifactOssTest {
         doReturn(null).when(client).download(anyString(),
             org.mockito.ArgumentMatchers.<BiFunction<GetObjectResult, InputStream, GetObjectResult>>any());
 
-        assertEquals(1, service.cleanupExpiredUploads(Duration.ofDays(90)));
+        assertEquals(1, service.cleanupExpiredUploads(Duration.ofDays(15)));
 
         verify(client, never()).delete(anyString());
-        assertEquals(List.of(artifact.storageKey()), registry.unregistered);
-    }
-
-    @Test
-    void cloudRetentionKeepsMetadataWhenDeleteFailsAndRetriesNextRun() throws IOException {
-        ProductionRunVo run = run();
-        ProductionArtifactVo artifact = finalize(run);
-        service.register(run, List.of(artifact));
-        registry.expired.add(artifact.storageKey());
-        stubHead(artifact);
-        when(client.delete(artifact.storageKey()))
-            .thenThrow(new S3StorageException("bucket down"))
-            .thenReturn(true);
-
-        assertEquals(0, service.cleanupExpiredUploads(Duration.ofDays(90)));
-        assertTrue(registry.registered.containsKey(artifact.storageKey()));
-        assertTrue(registry.unregistered.isEmpty());
-
-        assertEquals(1, service.cleanupExpiredUploads(Duration.ofDays(90)));
-        assertFalse(registry.registered.containsKey(artifact.storageKey()));
         assertEquals(List.of(artifact.storageKey()), registry.unregistered);
     }
 
@@ -331,7 +330,7 @@ class ProductionArtifactOssTest {
             expiredSource = source;
             expiredCutoff = cutoff;
             expiredLimit = limit;
-            return expired;
+            return expired.stream().limit(limit).toList();
         }
     }
 }

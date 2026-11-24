@@ -19,7 +19,7 @@ public class ResearchTaskVo implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private Long researchId;
+    private Long id;
     private String researchNo;
     private Long opportunityId;
     private String goal;

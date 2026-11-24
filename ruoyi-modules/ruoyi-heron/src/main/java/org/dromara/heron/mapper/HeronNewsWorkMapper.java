@@ -9,7 +9,7 @@ import org.dromara.heron.domain.vo.NewsWorkVo;
 public interface HeronNewsWorkMapper extends BaseMapperPlus<HeronNewsWork, NewsWorkVo> {
     default HeronNewsWork lockById(long id) {
         return selectOne(QueryBuilder.lambda(HeronNewsWork.class)
-            .eq(HeronNewsWork::getWorkId, id).last("FOR UPDATE").build());
+            .eq(HeronNewsWork::getId, id).last("FOR UPDATE").build());
     }
     default HeronNewsWork byCandidate(long candidateId) {
         return selectOne(QueryBuilder.lambda(HeronNewsWork.class)

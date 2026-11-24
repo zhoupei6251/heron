@@ -130,12 +130,12 @@ public class EditorialLineEditor {
             return Optional.empty();
         }
         HeronNewsCandidate candidate = focusCandidateId == null ? null : usable.stream()
-            .filter(item -> focusCandidateId.equals(item.getCandidateId())).findFirst().orElse(null);
+            .filter(item -> focusCandidateId.equals(item.getId())).findFirst().orElse(null);
         if (candidate == null) {
-            Long candidateId = screener.screen(usable).orElse(usable.get(0).getCandidateId());
+            Long candidateId = screener.screen(usable).orElse(usable.get(0).getId());
             Long picked = candidateId;
             candidate = usable.stream()
-                .filter(item -> picked.equals(item.getCandidateId())).findFirst().orElse(usable.get(0));
+                .filter(item -> picked.equals(item.getId())).findFirst().orElse(usable.get(0));
         }
         HeronNewsCandidate chosen = candidate;
         String template = templatePicker.pick(chosen.getTitle(), chosen.getSummary(),
@@ -144,7 +144,7 @@ public class EditorialLineEditor {
             return Optional.empty();
         }
         return Optional.of(new EditorialSelection(EditorialDecisionService.KNOWLEDGE_EXPLAINER,
-            chosen.getCandidateId(), chosen.getSourceKey(), false, template, intent, evidenceIds(chosen)));
+            chosen.getId(), chosen.getSourceKey(), false, template, intent, evidenceIds(chosen)));
     }
 
     /**
@@ -160,12 +160,12 @@ public class EditorialLineEditor {
             return Optional.empty();
         }
         HeronNewsCandidate candidate = focusCandidateId == null ? null : withBody.stream()
-            .filter(item -> focusCandidateId.equals(item.getCandidateId())).findFirst().orElse(null);
+            .filter(item -> focusCandidateId.equals(item.getId())).findFirst().orElse(null);
         if (candidate == null) {
-            Long candidateId = screener.screen(withBody).orElse(withBody.get(0).getCandidateId());
+            Long candidateId = screener.screen(withBody).orElse(withBody.get(0).getId());
             Long picked = candidateId;
             candidate = withBody.stream()
-                .filter(item -> picked.equals(item.getCandidateId())).findFirst().orElse(withBody.get(0));
+                .filter(item -> picked.equals(item.getId())).findFirst().orElse(withBody.get(0));
         }
         HeronNewsCandidate chosen = candidate;
         String template = templatePicker.pick(chosen.getTitle(), chosen.getSummary(),
@@ -175,7 +175,7 @@ public class EditorialLineEditor {
             return Optional.empty();
         }
         return Optional.of(new EditorialSelection(EditorialDecisionService.NEWS_EXPLAINER,
-            chosen.getCandidateId(), null, false, template, intent, evidenceIds(chosen)));
+            chosen.getId(), null, false, template, intent, evidenceIds(chosen)));
     }
 
     /**
@@ -235,7 +235,7 @@ public class EditorialLineEditor {
             : opportunities;
         HeronDataOpportunity focused = focusOpportunityId == null ? null
             : usable.stream()
-                .filter(item -> focusOpportunityId.equals(item.getOpportunityId()))
+                .filter(item -> focusOpportunityId.equals(item.getId()))
                 .findFirst().orElse(null);
         if (focused == null && !usable.isEmpty()) {
             // 没锁定就用分数最高的那条：选源器拿到的是写死的题材，不可能比算出来的机会更懂今天
@@ -281,7 +281,7 @@ public class EditorialLineEditor {
         // digest=false：这是被机会明确选中的源，不是「没题材时的速览」
         return Optional.of(new EditorialSelection(line,
             null, chosen.getSourceKey(), false, template, text(angle, true), List.of(),
-            chosen.getOpportunityId(), opportunityOf(chosen)));
+            chosen.getId(), opportunityOf(chosen)));
     }
 
     /**
@@ -298,7 +298,7 @@ public class EditorialLineEditor {
         int points = candidate.getWindowPoints() == null || candidate.getWindowPoints() <= 0
             ? DatasetStoryPlanner.DEFAULT_POINTS : candidate.getWindowPoints();
         DatasetStoryPlanner.Result result = storyPlanner.plan(decisionRun(), source, points,
-            "opportunity", candidate.getOpportunityId(), candidate.getHeadline(), candidate.getSignals());
+            "opportunity", candidate.getId(), candidate.getHeadline(), candidate.getSignals());
         if (!result.accepted()) {
             rejects.add(candidate.getSourceKey() + ":" + result.rejectCode());
             return Optional.empty();
@@ -315,7 +315,7 @@ public class EditorialLineEditor {
         }
         return Optional.of(new EditorialSelection(line,
             null, candidate.getSourceKey(), false, template, storyAngle(result.story(), candidate),
-            List.of(), candidate.getOpportunityId(), opportunityOf(candidate), result.story()));
+            List.of(), candidate.getId(), opportunityOf(candidate), result.story()));
     }
 
     /**
@@ -445,7 +445,7 @@ public class EditorialLineEditor {
      */
     private static EditorialSelection.Opportunity opportunityOf(HeronDataOpportunity opportunity) {
         return new EditorialSelection.Opportunity(
-            opportunity.getOpportunityId(),
+            opportunity.getId(),
             opportunity.getSourceKey(),
             opportunity.getHeadline(),
             opportunity.getSignals(),

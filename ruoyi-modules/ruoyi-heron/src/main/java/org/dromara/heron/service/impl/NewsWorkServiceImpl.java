@@ -44,7 +44,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class NewsWorkServiceImpl implements INewsWorkService {
     private static final ProductionBizType TYPE = ProductionBizType.news_video;
-    private static final int RETENTION_DAYS = 90;
+    private static final int RETENTION_DAYS = 15;
     /** 自动发布只认这些审稿级别；白名单之外的拼写一律当非法，不猜风险高低。 */
     private static final java.util.Set<String> REVIEW_SEVERITIES = java.util.Set.of("BLOCKER", "MAJOR", "MINOR");
     /** 当前审稿记录契约版本；历史记录没有版本号的一律不能自动发布。 */
@@ -75,7 +75,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         access.requirePermission("heron:newsCandidate:list");
         var wrapper = QueryBuilder.lambda(HeronNewsCandidate.class).likeIfText(HeronNewsCandidate::getTitle, query.getTitle())
             .betweenParams(HeronNewsCandidate::getLastSeenAt, query.getParams(), "beginLastSeenAt", "endLastSeenAt")
-            .orderByDesc(HeronNewsCandidate::getLastSeenAt, HeronNewsCandidate::getCandidateId).build();
+            .orderByDesc(HeronNewsCandidate::getLastSeenAt, HeronNewsCandidate::getId).build();
         if (query.getClaimed() != null) {
             if (query.getClaimed()) wrapper.isNotNull(HeronNewsCandidate::getClaimedBy);
             else wrapper.isNull(HeronNewsCandidate::getClaimedBy);
@@ -111,7 +111,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         if (candidate == null) {
             var recent = candidateMapper.selectList(QueryBuilder.lambda(HeronNewsCandidate.class)
                 .ge(HeronNewsCandidate::getLastSeenAt, now().minusHours(48))
-                .orderByDesc(HeronNewsCandidate::getLastSeenAt, HeronNewsCandidate::getCandidateId).last("LIMIT 5000").build());
+                .orderByDesc(HeronNewsCandidate::getLastSeenAt, HeronNewsCandidate::getId).last("LIMIT 5000").build());
             candidate = recent.stream().filter(c -> NewsDedup.sameNews(normalized, c.getNormalizedTitle()))
                 .findFirst().orElse(null);
         }
@@ -126,7 +126,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         evidence.put("contentSha256", contentHash);
         if (candidate == null) {
             candidate = MapstructUtils.convert(bo, HeronNewsCandidate.class);
-            candidate.setCandidateId(IdUtil.getSnowflakeNextId());
+            candidate.setId(IdUtil.getSnowflakeNextId());
             candidate.setTitle(title);
             candidate.setSummary(summary);
             candidate.setNormalizedTitle(normalized);
@@ -142,7 +142,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             candidate.setUpdateTime(now());
             if (candidateMapper.insert(candidate) != 1) throw conflict("candidate_write", "候选保存失败");
         } else {
-            candidate = candidateMapper.lockById(candidate.getCandidateId());
+            candidate = candidateMapper.lockById(candidate.getId());
             var merged = NewsDedup.merge(candidate.getEvidence(), evidence,
                 (stored, incoming) -> contentHash.equals(stored.get("contentSha256")) && Boolean.TRUE.equals(stored.get("manual")));
             candidateMapper.lambda().set(HeronNewsCandidate::getEvidence, merged.evidence())
@@ -151,9 +151,9 @@ public class NewsWorkServiceImpl implements INewsWorkService {
                 .set(HeronNewsCandidate::getHeatScore,
                     merged.repeated() ? candidate.getHeatScore() : Math.addExact(candidate.getHeatScore(), 1L))
                 .set(HeronNewsCandidate::getLastSeenAt, now()).set(HeronNewsCandidate::getUpdateBy, access.requireActor())
-                .set(HeronNewsCandidate::getUpdateTime, now()).eq(HeronNewsCandidate::getCandidateId, candidate.getCandidateId()).update();
+                .set(HeronNewsCandidate::getUpdateTime, now()).eq(HeronNewsCandidate::getId, candidate.getId()).update();
         }
-        return candidateMapper.selectVoById(candidate.getCandidateId());
+        return candidateMapper.selectVoById(candidate.getId());
     }
 
     @Override
@@ -199,7 +199,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         workMapper.lambda().set(HeronNewsWork::getActiveTaskId, null)
             .set(HeronNewsWork::getUpdateBy, work.getOwnerId())
             .set(HeronNewsWork::getUpdateTime, now())
-            .eq(HeronNewsWork::getWorkId, workId)
+            .eq(HeronNewsWork::getId, workId)
             .isNull(HeronNewsWork::getCurrentVersionId).update();
         if (candidateId == null) {
             return;
@@ -209,7 +209,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             .set(HeronNewsCandidate::getActiveTaskId, null)
             .set(HeronNewsCandidate::getUpdateBy, work.getOwnerId())
             .set(HeronNewsCandidate::getUpdateTime, now())
-            .eq(HeronNewsCandidate::getCandidateId, candidateId)
+            .eq(HeronNewsCandidate::getId, candidateId)
             .eq(HeronNewsCandidate::getClaimedBy, work.getOwnerId())
             .isNull(HeronNewsCandidate::getPublishedAt).update();
     }
@@ -221,12 +221,12 @@ public class NewsWorkServiceImpl implements INewsWorkService {
      */
     private long placeholderCandidate(EditorialSelection selection, long actor) {
         HeronNewsCandidate placeholder = new HeronNewsCandidate();
-        placeholder.setCandidateId(IdUtil.getSnowflakeNextId());
+        placeholder.setId(IdUtil.getSnowflakeNextId());
         String title = "数据看板 · " + selection.dataSourceKey();
         placeholder.setTitle(title);
         // 占位候选同样要满足候选表的 NOT NULL 契约：dedup_key 唯一、normalized_title 非空。
         // dedup_key 由候选 ID 派生，保证每次占位互不覆盖——占位候选不进热榜池，不参与去重。
-        placeholder.setDedupKey(DigestUtil.sha256Hex("data-board:" + placeholder.getCandidateId()));
+        placeholder.setDedupKey(DigestUtil.sha256Hex("data-board:" + placeholder.getId()));
         placeholder.setNormalizedTitle(NewsDedup.normalizedTitle(title));
         placeholder.setSourceKind(HeronNewsCandidate.SOURCE_DATA_BOARD);
         placeholder.setSummary("数据看板线由数据集驱动，非新闻候选");
@@ -240,7 +240,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         placeholder.setCreateTime(now());
         placeholder.setUpdateTime(now());
         if (candidateMapper.insert(placeholder) != 1) throw conflict("claim_failed", "数据看板候选创建失败");
-        return placeholder.getCandidateId();
+        return placeholder.getId();
     }
 
     /** 总编辑已定线时由调用方给死模板，覆盖配置里的默认模板。 */
@@ -264,7 +264,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         }
         if (candidate.getClaimedBy() != null) throw conflict("already_claimed", "候选已被认领");
         HeronNewsWork work = new HeronNewsWork();
-        work.setWorkId(IdUtil.getSnowflakeNextId());
+        work.setId(IdUtil.getSnowflakeNextId());
         work.setCandidateId(candidateId);
         work.setOwnerId(actor);
         work.setTitle(candidate.getTitle());
@@ -300,7 +300,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         if (workMapper.insert(work) != 1) throw conflict("claim_failed", "作品创建失败");
         if (candidateMapper.lambda().set(HeronNewsCandidate::getClaimedBy, actor).set(HeronNewsCandidate::getClaimedAt, now())
             .set(HeronNewsCandidate::getUpdateBy, actor).set(HeronNewsCandidate::getUpdateTime, now())
-            .eq(HeronNewsCandidate::getCandidateId, candidateId).isNull(HeronNewsCandidate::getClaimedBy).updateCount() != 1) {
+            .eq(HeronNewsCandidate::getId, candidateId).isNull(HeronNewsCandidate::getClaimedBy).updateCount() != 1) {
             throw conflict("already_claimed", "候选已被认领");
         }
         return workView(work);
@@ -313,7 +313,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             .eqIfPresent(HeronNewsWork::getCandidateId, query.getCandidateId())
             .eq(!access.hasAllScope(TYPE), HeronNewsWork::getOwnerId, access.requireActor())
             .betweenParams(HeronNewsWork::getUpdateTime, query.getParams(), "beginUpdateTime", "endUpdateTime")
-            .orderByDesc(HeronNewsWork::getUpdateTime, HeronNewsWork::getWorkId).build();
+            .orderByDesc(HeronNewsWork::getUpdateTime, HeronNewsWork::getId).build();
         Page<NewsWorkVo> page = workMapper.selectVoPage(query.build(), wrapper);
         page.getRecords().forEach(this::enrichWork);
         return PageResult.build(page.getRecords(), page.getTotal());
@@ -338,7 +338,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             .set(HeronNewsWork::getDraft, updated.getDraft().replace("\r\n", "\n").replace('\r', '\n'))
             .set(HeronNewsWork::getTemplateKey, updated.getTemplateKey()).set(HeronNewsWork::getVoiceKey, updated.getVoiceKey())
             .set(HeronNewsWork::getRevision, bo.expectedRevision() + 1).set(HeronNewsWork::getUpdateBy, access.requireActor())
-            .set(HeronNewsWork::getUpdateTime, now()).eq(HeronNewsWork::getWorkId, workId)
+            .set(HeronNewsWork::getUpdateTime, now()).eq(HeronNewsWork::getId, workId)
             .eq(HeronNewsWork::getRevision, bo.expectedRevision()).updateCount();
         if (changed != 1) throw conflict("revision_conflict", "草稿已被其他操作更新");
         return workView(workMapper.selectById(workId));
@@ -383,8 +383,8 @@ public class NewsWorkServiceImpl implements INewsWorkService {
                 "这条片子没有策划结论：只有数据看板线与趋势洞察线带策划结论");
         }
         NewsStoryVo vo = new NewsStoryVo();
-        vo.setWorkId(work.getWorkId());
-        vo.setVersionId(version.getVersionId());
+        vo.setWorkId(work.getId());
+        vo.setVersionId(version.getId());
         vo.setVersionNo(version.getVersionNo());
         vo.setLine(selection.path("line").asString(""));
         vo.setDataSourceKey(selection.path("dataSourceKey").asString(""));
@@ -471,7 +471,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         // 改过的策划结论要能查出是谁改的。
         newEditorial.put("storyEditedBy", actor);
         newEditorial.put("storyEditedAt", now().toString());
-        return production.submit(new ProductionSubmitBo(TYPE, work.getWorkId(), bo.requestKey(), bo.expectedRevision(),
+        return production.submit(new ProductionSubmitBo(TYPE, work.getId(), bo.requestKey(), bo.expectedRevision(),
             null, null, new EditorialOverride(newSelection, newEditorial)));
     }
 
@@ -488,7 +488,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             .eq(HeronVideoVersion::getWorkId, workId).eq(HeronVideoVersion::getOwnerId, work.getOwnerId())
             .orderByDesc(HeronVideoVersion::getVersionNo).build());
         return PageResult.build(withPublishAttempts(page.getRecords().stream()
-            .map(vo -> versionView(versionMapper.selectById(vo.getVersionId()))).toList()), page.getTotal());
+            .map(vo -> versionView(versionMapper.selectById(vo.getId()))).toList()), page.getTotal());
     }
 
     @Override
@@ -509,7 +509,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             .orderByAsc(HeronVideoVersion::getCreateTime).build());
         List<Long> workIds = page.getRecords().stream().map(HeronVideoVersion::getWorkId).distinct().toList();
         Map<Long, String> titles = workIds.isEmpty() ? Map.of() : workMapper.selectByIds(workIds).stream()
-            .collect(java.util.stream.Collectors.toMap(HeronNewsWork::getWorkId, HeronNewsWork::getTitle));
+            .collect(java.util.stream.Collectors.toMap(HeronNewsWork::getId, HeronNewsWork::getTitle));
         List<NewsVideoVersionVo> rows = page.getRecords().stream().map(version -> {
             NewsVideoVersionVo vo = listVersionView(version);
             vo.setWorkTitle(titles.get(version.getWorkId()));
@@ -525,12 +525,12 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         var query = QueryBuilder.lambda(HeronVideoVersion.class)
             .eq(!access.hasAllScope(TYPE), HeronVideoVersion::getOwnerId, access.requireActor())
             .orderByDesc(HeronVideoVersion::getUpdateTime).build();
-        query.and(q -> q.isNotNull(HeronVideoVersion::getPublishAt).or().inSql(HeronVideoVersion::getVersionId,
+        query.and(q -> q.isNotNull(HeronVideoVersion::getPublishAt).or().inSql(HeronVideoVersion::getId,
             "SELECT version_id FROM heron_news_publish_attempt WHERE status IN ('started','unknown','submitted')"));
         Page<HeronVideoVersion> page = versionMapper.selectPage(pageQuery.build(), query);
         List<Long> workIds = page.getRecords().stream().map(HeronVideoVersion::getWorkId).distinct().toList();
         Map<Long, String> titles = workIds.isEmpty() ? Map.of() : workMapper.selectByIds(workIds).stream()
-            .collect(java.util.stream.Collectors.toMap(HeronNewsWork::getWorkId, HeronNewsWork::getTitle));
+            .collect(java.util.stream.Collectors.toMap(HeronNewsWork::getId, HeronNewsWork::getTitle));
         List<NewsVideoVersionVo> rows = page.getRecords().stream().map(version -> {
             NewsVideoVersionVo vo = listVersionView(version);
             vo.setWorkTitle(titles.get(version.getWorkId()));
@@ -548,7 +548,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         try {
             vo = versionView(version);
         } catch (RuntimeException e) {
-            log.debug("版本 {} 的任务不可读，退回基础视图: {}", version.getVersionId(), e.getMessage());
+            log.debug("版本 {} 的任务不可读，退回基础视图: {}", version.getId(), e.getMessage());
             vo = MapstructUtils.convert(version, NewsVideoVersionVo.class);
         }
         // 列表不展示正文：一条 inputSnapshot 含整篇正文与证据，一页十行就是几百 KB，打开队列要等好几秒
@@ -581,7 +581,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             .set(HeronVideoVersion::getReviewReason, bo.reason() == null ? null : bo.reason().strip())
             .set(HeronVideoVersion::getReviewContactSha, bo.contactSha256()).set(HeronVideoVersion::getReviewVideoSha, bo.videoSha256())
             .set(HeronVideoVersion::getUpdateBy, actor).set(HeronVideoVersion::getUpdateTime, now())
-            .eq(HeronVideoVersion::getVersionId, versionId).eq(HeronVideoVersion::getReviewStatus, "pending")
+            .eq(HeronVideoVersion::getId, versionId).eq(HeronVideoVersion::getReviewStatus, "pending")
             .isNull(HeronVideoVersion::getReviewContactSha).isNull(HeronVideoVersion::getReviewVideoSha)
             .isNull(HeronVideoVersion::getCleanupStartedAt).updateCount() != 1) throw conflict("review_conflict", "审核状态已变化");
         return versionView(versionMapper.selectById(versionId));
@@ -615,7 +615,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         }
         if (versionMapper.lambda().set(HeronVideoVersion::getPublishUrl, url)
             .set(HeronVideoVersion::getUpdateBy, access.requireActor()).set(HeronVideoVersion::getUpdateTime, now())
-            .eq(HeronVideoVersion::getVersionId, versionId).isNull(HeronVideoVersion::getPublishUrl)
+            .eq(HeronVideoVersion::getId, versionId).isNull(HeronVideoVersion::getPublishUrl)
             .updateCount() != 1) throw conflict("publish_conflict", "作品链接已变化");
         return versionView(versionMapper.selectById(versionId));
     }
@@ -752,7 +752,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         if (candidate.getPublishedAt() != null) throw conflict("publish_conflict", "该候选已有发布记录，不能再次上传");
         HeronNewsPublishAttempt active = publishAttempts.active(work.getCandidateId());
         if (active != null) {
-            if (Objects.equals(active.getVersionId(), versionId)) return new PreparedPublish(reviewed, null, active.getAttemptId());
+            if (Objects.equals(active.getVersionId(), versionId)) return new PreparedPublish(reviewed, null, active.getId());
             throw conflict("publish_unknown", "该选题的另一版本已有发布尝试，请先核对结果");
         }
         Path file = artifacts.localPath(byKind(readyFiles(version), "mp4"));
@@ -767,7 +767,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         PublishRequest request = new PublishRequest(version.getTaskId(), versionId,
             publishTitle, version.getReviewVideoSha(), now(),
             file, account);
-        return new PreparedPublish(reviewed, request, attempt.getAttemptId());
+        return new PreparedPublish(reviewed, request, attempt.getId());
     }
 
     NewsVideoVersionVo finishConfirm(long workId, long versionId, long attemptId, PublishReceipt receipt,
@@ -840,7 +840,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
 
     private void requireAttempt(HeronVideoVersion version, HeronNewsPublishAttempt attempt) {
         HeronNewsWork work = workMapper.selectById(version.getWorkId());
-        if (!Objects.equals(attempt.getVersionId(), version.getVersionId()) || !Objects.equals(attempt.getWorkId(), version.getWorkId())
+        if (!Objects.equals(attempt.getVersionId(), version.getId()) || !Objects.equals(attempt.getWorkId(), version.getWorkId())
             || work == null || !Objects.equals(attempt.getCandidateId(), work.getCandidateId())
             || !Objects.equals(attempt.getVideoSha(), version.getReviewVideoSha())) throw new HeronAccessException();
     }
@@ -890,13 +890,13 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             .set(HeronVideoVersion::getPublishAccount, account.strip()).set(HeronVideoVersion::getPublishAt, published)
             .set(HeronVideoVersion::getPublishBy, actor).set(HeronVideoVersion::getPublishVideoSha, videoSha256)
             .set(HeronVideoVersion::getUpdateBy, actor).set(HeronVideoVersion::getUpdateTime, now())
-            .eq(HeronVideoVersion::getVersionId, versionId).eq(HeronVideoVersion::getReviewStatus, "approved")
+            .eq(HeronVideoVersion::getId, versionId).eq(HeronVideoVersion::getReviewStatus, "approved")
             .isNull(HeronVideoVersion::getPublishAt).isNull(HeronVideoVersion::getCleanupStartedAt).updateCount() != 1) {
             throw conflict("publish_conflict", "发布回执已变化");
         }
         if (candidateMapper.lambda().set(HeronNewsCandidate::getPublishedAt, published)
             .set(HeronNewsCandidate::getUpdateBy, actor).set(HeronNewsCandidate::getUpdateTime, now())
-            .eq(HeronNewsCandidate::getCandidateId, work.getCandidateId()).isNull(HeronNewsCandidate::getPublishedAt).updateCount() != 1) {
+            .eq(HeronNewsCandidate::getId, work.getCandidateId()).isNull(HeronNewsCandidate::getPublishedAt).updateCount() != 1) {
             throw conflict("publish_conflict", "候选发布状态已变化");
         }
         return versionView(versionMapper.selectById(versionId));
@@ -942,7 +942,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     public List<NewsCleanupVo> cleanupExpired(boolean dryRun) {
         List<HeronVideoVersion> candidates = versionMapper.selectList(QueryBuilder.lambda(HeronVideoVersion.class)
             .le(HeronVideoVersion::getCreateTime, now().minusDays(RETENTION_DAYS)).isNull(HeronVideoVersion::getCleanedAt)
-            .isNotNull(HeronVideoVersion::getArtifactManifest).orderByAsc(HeronVideoVersion::getVersionId).build());
+            .isNotNull(HeronVideoVersion::getArtifactManifest).orderByAsc(HeronVideoVersion::getId).build());
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
         tx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
         tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -950,11 +950,11 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         for (HeronVideoVersion candidate : candidates) {
             try {
                 Boolean eligible = tx.execute(status -> {
-                    HeronVideoVersion version = lockMaintenanceVersion(candidate.getWorkId(), candidate.getVersionId());
+                    HeronVideoVersion version = lockMaintenanceVersion(candidate.getWorkId(), candidate.getId());
                     if (!cleanupEligible(version)) return false;
                     if (!dryRun && version.getCleanupStartedAt() == null) {
                         if (versionMapper.lambda().set(HeronVideoVersion::getCleanupStartedAt, now())
-                            .set(HeronVideoVersion::getUpdateTime, now()).eq(HeronVideoVersion::getVersionId, version.getVersionId())
+                            .set(HeronVideoVersion::getUpdateTime, now()).eq(HeronVideoVersion::getId, version.getId())
                             .isNull(HeronVideoVersion::getCleanupStartedAt).isNull(HeronVideoVersion::getCleanedAt).updateCount() != 1) {
                             throw conflict("cleanup_conflict", "清理状态已变化");
                         }
@@ -962,9 +962,9 @@ public class NewsWorkServiceImpl implements INewsWorkService {
                     return true;
                 });
                 if (!Boolean.TRUE.equals(eligible)) continue;
-                if (dryRun) { result.add(new NewsCleanupVo(candidate.getVersionId(), false, null)); continue; }
+                if (dryRun) { result.add(new NewsCleanupVo(candidate.getId(), false, null)); continue; }
                 Boolean cleaned = tx.execute(status -> {
-                    HeronVideoVersion version = lockMaintenanceVersion(candidate.getWorkId(), candidate.getVersionId());
+                    HeronVideoVersion version = lockMaintenanceVersion(candidate.getWorkId(), candidate.getId());
                     if (!cleanupEligible(version) || version.getCleanupStartedAt() == null) return false;
                     // Partial previous deletion is resumable; existing files must still pass the core verification.
                     for (ProductionArtifactVo file : parseManifest(version)) {
@@ -972,15 +972,15 @@ public class NewsWorkServiceImpl implements INewsWorkService {
                         artifacts.cleanupFile(file);
                     }
                     if (versionMapper.lambda().set(HeronVideoVersion::getCleanedAt, now()).set(HeronVideoVersion::getUpdateTime, now())
-                        .eq(HeronVideoVersion::getVersionId, version.getVersionId()).isNotNull(HeronVideoVersion::getCleanupStartedAt)
+                        .eq(HeronVideoVersion::getId, version.getId()).isNotNull(HeronVideoVersion::getCleanupStartedAt)
                         .isNull(HeronVideoVersion::getCleanedAt).updateCount() != 1) throw conflict("cleanup_conflict", "清理状态已变化");
                     return true;
                 });
-                result.add(new NewsCleanupVo(candidate.getVersionId(), Boolean.TRUE.equals(cleaned), null));
+                result.add(new NewsCleanupVo(candidate.getId(), Boolean.TRUE.equals(cleaned), null));
             } catch (RuntimeException e) {
                 String code = e instanceof HeronBusinessException business ? business.getCode() : "news_cleanup_failed";
-                log.warn("News cleanup did not finish: versionId={}, code={}", candidate.getVersionId(), code);
-                result.add(new NewsCleanupVo(candidate.getVersionId(), false, code));
+                log.warn("News cleanup did not finish: versionId={}, code={}", candidate.getId(), code);
+                result.add(new NewsCleanupVo(candidate.getId(), false, code));
             }
         }
         return List.copyOf(result);
@@ -994,7 +994,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         HeronNewsPublishAttempt publishing = publishAttempts.active(work.getCandidateId());
         if (publishing != null && !"published".equals(publishing.getStatus())) return false;
         if (taskMapper.selectCount(QueryBuilder.lambda(HeronProductionTask.class).eq(HeronProductionTask::getBizType, TYPE.name())
-            .eq(HeronProductionTask::getBizId, work.getWorkId()).in(HeronProductionTask::getStatus, List.of("queued", "running", "cancelling")).build()) > 0) return false;
+            .eq(HeronProductionTask::getBizId, work.getId()).in(HeronProductionTask::getStatus, List.of("queued", "running", "cancelling")).build()) > 0) return false;
         HeronProductionTask task = taskMapper.selectById(version.getTaskId());
         domain.validateManifest(version, task, parseManifest(version), false);
         return !domain.hasKeep(task, parseManifest(version));
@@ -1034,7 +1034,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
 
     private HeronVideoVersion requireVersion(HeronNewsWork work, long id) {
         HeronVideoVersion version = versionMapper.selectById(id);
-        if (version == null || !Objects.equals(version.getWorkId(), work.getWorkId())
+        if (version == null || !Objects.equals(version.getWorkId(), work.getId())
             || !Objects.equals(version.getOwnerId(), work.getOwnerId())) throw new HeronAccessException();
         domain.requireTask(version, taskMapper.selectById(version.getTaskId()));
         return version;
@@ -1069,12 +1069,12 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private void enrichWork(NewsWorkVo vo) {
         if (vo.getCurrentVersionId() != null) {
             HeronVideoVersion version = versionMapper.selectById(vo.getCurrentVersionId());
-            if (version == null || !Objects.equals(version.getWorkId(), vo.getWorkId()) || !Objects.equals(version.getOwnerId(), vo.getOwnerId())) throw new HeronAccessException();
+            if (version == null || !Objects.equals(version.getWorkId(), vo.getId()) || !Objects.equals(version.getOwnerId(), vo.getOwnerId())) throw new HeronAccessException();
             vo.setCurrentVersion(versionView(version));
         }
         if (vo.getActiveTaskId() != null) {
             HeronProductionTask task = taskMapper.selectById(vo.getActiveTaskId());
-            if (task == null || !TYPE.name().equals(task.getBizType()) || !Objects.equals(task.getBizId(), vo.getWorkId())
+            if (task == null || !TYPE.name().equals(task.getBizType()) || !Objects.equals(task.getBizId(), vo.getId())
                 || !Objects.equals(task.getOwnerId(), vo.getOwnerId())) throw new HeronAccessException();
             vo.setActiveTask(MapstructUtils.convert(task, ProductionTaskVo.class));
         }
@@ -1112,8 +1112,8 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     }
 
     private List<NewsVideoVersionVo> withPublishAttempts(List<NewsVideoVersionVo> views) {
-        Map<Long, NewsPublishAttemptVo> attempts = publishAttempts.latest(views.stream().map(NewsVideoVersionVo::getVersionId).toList());
-        views.forEach(view -> view.setPublishAttempt(attempts.get(view.getVersionId())));
+        Map<Long, NewsPublishAttemptVo> attempts = publishAttempts.latest(views.stream().map(NewsVideoVersionVo::getId).toList());
+        views.forEach(view -> view.setPublishAttempt(attempts.get(view.getId())));
         return views;
     }
     private ProductionArtifactVo byKind(List<ProductionArtifactVo> files, String kind) {

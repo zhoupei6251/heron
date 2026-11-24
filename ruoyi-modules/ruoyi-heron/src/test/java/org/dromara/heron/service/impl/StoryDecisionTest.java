@@ -58,7 +58,7 @@ class StoryDecisionTest {
 
     private static HeronDataOpportunity opportunity(long id, String sourceKey) {
         HeronDataOpportunity item = new HeronDataOpportunity();
-        item.setOpportunityId(id);
+        item.setId(id);
         item.setSourceKey(sourceKey);
         item.setHeadline("选题 " + id);
         item.setSignals("{\"signal_type\":\"zscore\"}");

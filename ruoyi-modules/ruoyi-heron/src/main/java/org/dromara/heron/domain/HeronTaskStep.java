@@ -1,5 +1,6 @@
 package org.dromara.heron.domain;
 
+import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -16,8 +17,8 @@ import java.time.LocalDateTime;
 @TableName("heron_task_step")
 public class HeronTaskStep extends BaseEntity {
 
-    @TableId(value = "step_id")
-    private Long stepId;
+    @TableId(value = "id", type = IdType.INPUT)
+    private Long id;
 
     private Long taskId;
 

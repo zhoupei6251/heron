@@ -9,6 +9,6 @@ import org.dromara.heron.domain.vo.ProtoVersionVo;
 public interface HeronProtoVersionMapper extends BaseMapperPlus<HeronProtoVersion, ProtoVersionVo> {
     default HeronProtoVersion lockById(long versionId) {
         return selectOne(QueryBuilder.lambda(HeronProtoVersion.class)
-            .eq(HeronProtoVersion::getVersionId, versionId).last("FOR UPDATE").build());
+            .eq(HeronProtoVersion::getId, versionId).last("FOR UPDATE").build());
     }
 }

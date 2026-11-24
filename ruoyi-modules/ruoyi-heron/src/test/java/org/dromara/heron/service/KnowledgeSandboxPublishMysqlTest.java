@@ -59,12 +59,12 @@ class KnowledgeSandboxPublishMysqlTest extends NewsMysqlTestSupport {
             EditorialSelection.KNOWLEDGE_EXPLAINER, "知识线备用槽位", "按合同、付款、补贴的顺序讲", candidateId);
 
         var work = maintenance.claimForAuto(selection, OWNER);
-        ProductionReceiptVo receipt = maintenance.generateForAuto(work.getWorkId(),
+        ProductionReceiptVo receipt = maintenance.generateForAuto(work.getId(),
             "auto:knowledge:" + UUID.randomUUID(), decision, selection);
         ProductionRunVo run = execution.claim(ProductionBizType.news_video).orElseThrow();
         execution.succeed(run, new ProductionResultVo(knowledgeFiles(run), knowledgeResult(run)));
 
-        NewsVideoVersionVo published = maintenance.confirmForAuto(work.getWorkId(), receipt.versionId(), OWNER);
+        NewsVideoVersionVo published = maintenance.confirmForAuto(work.getId(), receipt.versionId(), OWNER);
 
         assertEquals("sandbox", published.getPublishSource());
         assertNotNull(published.getPublishAt());
@@ -73,16 +73,16 @@ class KnowledgeSandboxPublishMysqlTest extends NewsMysqlTestSupport {
         assertNotNull(jdbc.queryForObject(
             "SELECT published_at FROM heron_news_candidate WHERE candidate_id=?", LocalDateTime.class, candidateId));
         assertEquals("0", jdbc.queryForObject(
-            "SELECT auto_publish FROM heron_news_work WHERE work_id=?", String.class, work.getWorkId()));
+            "SELECT auto_publish FROM heron_news_work WHERE work_id=?", String.class, work.getId()));
     }
 
     private long knowledgeCandidate() {
         HeronNewsCandidate candidate = new HeronNewsCandidate();
-        candidate.setCandidateId(IdUtil.getSnowflakeNextId());
+        candidate.setId(IdUtil.getSnowflakeNextId());
         candidate.setTitle("第一次租房先做这三件事");
         candidate.setSummary("押金条款写清楚，比什么都省钱");
         candidate.setNormalizedTitle("第一次租房先做这三件事");
-        candidate.setDedupKey(DigestUtil.sha256Hex("knowledge:" + candidate.getCandidateId()));
+        candidate.setDedupKey(DigestUtil.sha256Hex("knowledge:" + candidate.getId()));
         candidate.setSourceKind(HeronNewsCandidate.SOURCE_KNOWLEDGE);
         candidate.setSourceKey(SOURCE_KEY);
         candidate.setEvidence(JsonUtils.toJsonString(Map.of("items", List.of(Map.of(
@@ -96,7 +96,7 @@ class KnowledgeSandboxPublishMysqlTest extends NewsMysqlTestSupport {
         candidate.setCreateTime(LocalDateTime.now());
         candidate.setUpdateTime(LocalDateTime.now());
         assertEquals(1, candidateMapper.insert(candidate));
-        return candidate.getCandidateId();
+        return candidate.getId();
     }
 
     /** 认领会校验 auto 模板存在，所以先在测试模板根下放一套 knowledge 模板的 LOCK。 */

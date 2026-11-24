@@ -112,7 +112,7 @@ public class ToolCallLedger implements Hook {
         String rejection = failed && budget != null ? budget.pollRejection() : null;
 
         HeronAgentToolCall row = new HeronAgentToolCall();
-        row.setCallId(IdUtil.getSnowflakeNextId());
+        row.setId(IdUtil.getSnowflakeNextId());
         row.setResearchId(researchId);
         row.setAttemptNo(attemptNo);
         row.setRoundNo(rounds.get());

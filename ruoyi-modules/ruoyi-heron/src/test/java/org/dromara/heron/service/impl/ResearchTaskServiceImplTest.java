@@ -66,7 +66,7 @@ class ResearchTaskServiceImplTest {
     @SuppressWarnings("unchecked")
     private static Harness claimed() {
         HeronResearchTask queued = new HeronResearchTask();
-        queued.setResearchId(9L);
+        queued.setId(9L);
         queued.setStatus(HeronResearchTask.STATUS_QUEUED);
         queued.setAttemptNo(0);
         queued.setSessionId("research-9");
@@ -104,7 +104,7 @@ class ResearchTaskServiceImplTest {
         org.dromara.heron.mapper.HeronDataOpportunityMapper opportunities =
             mock(org.dromara.heron.mapper.HeronDataOpportunityMapper.class);
         var row = new org.dromara.heron.domain.HeronDataOpportunity();
-        row.setOpportunityId(7L);
+        row.setId(7L);
         row.setScore(new java.math.BigDecimal("82.5"));
         when(opportunities.selectById(7L)).thenReturn(row);
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
@@ -129,7 +129,7 @@ class ResearchTaskServiceImplTest {
         var decision = new org.dromara.heron.domain.HeronContentDecision();
         decision.setResearchId(314L);
         var oldTask = new HeronResearchTask();
-        oldTask.setResearchId(314L);
+        oldTask.setId(314L);
         when(mapper.selectById(314L)).thenReturn(oldTask);
         @SuppressWarnings("unchecked")
         ObjectProvider<org.dromara.heron.service.IContentDecisionService> decisions = mock(ObjectProvider.class);
@@ -211,7 +211,7 @@ class ResearchTaskServiceImplTest {
     void returnsExistingInsteadOfInserting() {
         HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
         HeronResearchTask existing = new HeronResearchTask();
-        existing.setResearchId(42L);
+        existing.setId(42L);
         when(mapper.selectOne(any())).thenReturn(existing);
 
         long id = service(mapper).createFor(2121151796750819328L, "判断这条值不值得做");
@@ -231,7 +231,7 @@ class ResearchTaskServiceImplTest {
         var captor = org.mockito.ArgumentCaptor.forClass(HeronResearchTask.class);
         verify(mapper).insert(captor.capture());
         HeronResearchTask inserted = captor.getValue();
-        assertEquals("research-" + inserted.getResearchId(), inserted.getSessionId());
+        assertEquals("research-" + inserted.getId(), inserted.getSessionId());
         assertEquals(HeronResearchTask.STATUS_QUEUED, inserted.getStatus());
         assertEquals(0, inserted.getAttemptNo());
     }
@@ -326,13 +326,13 @@ class ResearchTaskServiceImplTest {
     @DisplayName("执行期间被取消：跑完也写 cancelled，不写 succeeded")
     void cancellationWinsOverCompletion() {
         HeronResearchTask running = new HeronResearchTask();
-        running.setResearchId(9L);
+        running.setId(9L);
         running.setStatus(HeronResearchTask.STATUS_QUEUED);
         running.setAttemptNo(0);
         running.setSessionId("research-9");
         running.setGoal("机会 9 在候选里。");
         HeronResearchTask cancelledRow = new HeronResearchTask();
-        cancelledRow.setResearchId(9L);
+        cancelledRow.setId(9L);
         cancelledRow.setStatus(HeronResearchTask.STATUS_CANCELLED);
 
         HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
@@ -360,7 +360,7 @@ class ResearchTaskServiceImplTest {
         HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
         when(mapper.selectOne(any())).thenReturn(null);
         HeronResearchTask raced = new HeronResearchTask();
-        raced.setResearchId(777L);
+        raced.setId(777L);
         // 第一次查去重键为空；insert 撞键；回读拿到先到者建的那行
         when(mapper.selectOne(any())).thenReturn(null);
         doThrow(new org.springframework.dao.DuplicateKeyException("dup"))
@@ -391,7 +391,7 @@ class ResearchTaskServiceImplTest {
     @DisplayName("重跑只把终态打回排队，执行中的不动")
     void requeueOnlyRevertsTerminalStatus() {
         HeronResearchTask finished = new HeronResearchTask();
-        finished.setResearchId(9L);
+        finished.setId(9L);
         finished.setStatus(HeronResearchTask.STATUS_SUCCEEDED);
         HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
         when(mapper.selectById(9L)).thenReturn(finished);
@@ -442,13 +442,13 @@ class ResearchTaskServiceImplTest {
     @DisplayName("写回被拒：不落决策，返回库里的真实状态")
     void rejectedWriteBackSkipsDecision() {
         HeronResearchTask queued = new HeronResearchTask();
-        queued.setResearchId(9L);
+        queued.setId(9L);
         queued.setStatus(HeronResearchTask.STATUS_QUEUED);
         queued.setAttemptNo(0);
         queued.setSessionId("research-9");
         queued.setGoal("机会 9 在候选里。");
         HeronResearchTask taken = new HeronResearchTask();
-        taken.setResearchId(9L);
+        taken.setId(9L);
         taken.setStatus(HeronResearchTask.STATUS_RUNNING);
         taken.setAttemptNo(2);
 
@@ -483,13 +483,13 @@ class ResearchTaskServiceImplTest {
     @DisplayName("取消中抛错：落 cancelled，不落 failed")
     void failureDuringCancelStaysCancelled() {
         HeronResearchTask queued = new HeronResearchTask();
-        queued.setResearchId(9L);
+        queued.setId(9L);
         queued.setStatus(HeronResearchTask.STATUS_QUEUED);
         queued.setAttemptNo(0);
         queued.setSessionId("research-9");
         queued.setGoal("机会 9 在候选里。");
         HeronResearchTask cancelling = new HeronResearchTask();
-        cancelling.setResearchId(9L);
+        cancelling.setId(9L);
         cancelling.setStatus(HeronResearchTask.STATUS_CANCELLING);
 
         HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
@@ -523,7 +523,7 @@ class ResearchTaskServiceImplTest {
     @DisplayName("执行中取消落 cancelling，不直接落终态")
     void cancelWhileRunningMarksCancelling() {
         HeronResearchTask running = new HeronResearchTask();
-        running.setResearchId(9L);
+        running.setId(9L);
         running.setStatus(HeronResearchTask.STATUS_RUNNING);
         HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
         when(mapper.selectById(9L)).thenReturn(running);
@@ -547,7 +547,7 @@ class ResearchTaskServiceImplTest {
     @DisplayName("排队中取消直接落 cancelled：没有执行方要等")
     void cancelWhileQueuedIsImmediate() {
         HeronResearchTask queued = new HeronResearchTask();
-        queued.setResearchId(9L);
+        queued.setId(9L);
         queued.setStatus(HeronResearchTask.STATUS_QUEUED);
         HeronResearchTaskMapper mapper = mock(HeronResearchTaskMapper.class);
         when(mapper.selectById(9L)).thenReturn(queued);
@@ -581,7 +581,7 @@ class ResearchTaskServiceImplTest {
             return chain;
         });
         HeronResearchTask queued = new HeronResearchTask();
-        queued.setResearchId(7L);
+        queued.setId(7L);
         when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(queued));
 
         List<Long> ids = service(mapper).claimableIds(5);

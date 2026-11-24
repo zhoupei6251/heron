@@ -45,22 +45,22 @@ class ProtoVersionTransactionTest extends ProtoMysqlTestSupport {
     @Test
     void replaySurvivesLaterEditingButDifferentRevisionConflicts() {
         var p = proto.insertByBo(draft("第一版"));
-        var first = proto.generate(p.getProjectId(), new ProtoGenerateBo("same", 1));
+        var first = proto.generate(p.getId(), new ProtoGenerateBo("same", 1));
         var edit = draft("第二版");
         edit.setExpectedRevision(1L);
-        assertEquals(2, proto.updateByBo(p.getProjectId(), edit).getRevision());
-        assertEquals(first, proto.generate(p.getProjectId(), new ProtoGenerateBo("same", 1)));
+        assertEquals(2, proto.updateByBo(p.getId(), edit).getRevision());
+        assertEquals(first, proto.generate(p.getId(), new ProtoGenerateBo("same", 1)));
         assertEquals(409, assertThrows(HeronBusinessException.class,
-            () -> proto.generate(p.getProjectId(), new ProtoGenerateBo("same", 2))).getStatus());
-        var frozen = proto.version(p.getProjectId(), first.versionId());
+            () -> proto.generate(p.getId(), new ProtoGenerateBo("same", 2))).getStatus());
+        var frozen = proto.version(p.getId(), first.versionId());
         assertEquals("第一版", frozen.getInput().requirement());
         assertEquals(1, frozen.getInput().revision());
-        assertThrows(HeronBusinessException.class, () -> proto.archive(p.getProjectId()));
+        assertThrows(HeronBusinessException.class, () -> proto.archive(p.getId()));
         production.cancel(first.taskId());
-        var second = proto.generate(p.getProjectId(), new ProtoGenerateBo("next", 2));
-        assertEquals(2, proto.version(p.getProjectId(), second.versionId()).getVersionNo());
-        assertEquals("第一版", proto.version(p.getProjectId(), first.versionId()).getInput().requirement());
-        assertEquals("cancelled", proto.version(p.getProjectId(), first.versionId()).getStatus());
+        var second = proto.generate(p.getId(), new ProtoGenerateBo("next", 2));
+        assertEquals(2, proto.version(p.getId(), second.versionId()).getVersionNo());
+        assertEquals("第一版", proto.version(p.getId(), first.versionId()).getInput().requirement());
+        assertEquals("cancelled", proto.version(p.getId(), first.versionId()).getStatus());
     }
 
     @Test
@@ -99,7 +99,7 @@ class ProtoVersionTransactionTest extends ProtoMysqlTestSupport {
         var receipt = (ProductionReceiptVo) results.stream().filter(ProductionReceiptVo.class::isInstance)
             .findFirst().orElseThrow();
         var task = taskMapper.selectById(receipt.taskId());
-        task.setTaskId(task.getTaskId() + 1);
+        task.setId(task.getId() + 1);
         tx.executeWithoutResult(ignored -> { domain.lockObject(id); domain.release(task); });
         assertEquals(receipt.taskId(), proto.queryById(id).getActiveTaskId());
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM heron_proto_version", Integer.class));

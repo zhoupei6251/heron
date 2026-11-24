@@ -20,7 +20,7 @@ public class HeronJevShadow extends BaseEntity {
     public static final String STATUS_OK = "ok";
     public static final String STATUS_UNDETERMINED = "undetermined";
 
-    @TableId private Long shadowId;
+    @TableId private Long id;
     private String poolId;
     private String poolHash;
     private String localLine;

@@ -113,7 +113,7 @@ public class ProductionServiceImpl implements IProductionService {
         access.requireObject(reservation.ownerId(), type, HeronAccessService.generatePermission(type));
 
         HeronProductionTask task = new HeronProductionTask();
-        task.setTaskId(taskId);
+        task.setId(taskId);
         task.setBizType(type.name());
         task.setBizId(command.bizId());
         task.setVersionId(reservation.versionId());
@@ -163,7 +163,7 @@ public class ProductionServiceImpl implements IProductionService {
                 query.getBizType() == null ? null : query.getBizType().name())
             .eq(query.getStatus() != null && !query.getStatus().isBlank(), HeronProductionTask::getStatus, query.getStatus())
             .eq(query.getBizId() != null, HeronProductionTask::getBizId, query.getBizId())
-            .orderByDesc(HeronProductionTask::getCreateTime, HeronProductionTask::getTaskId)
+            .orderByDesc(HeronProductionTask::getCreateTime, HeronProductionTask::getId)
             .build();
         if (!LoginHelper.isSuperAdmin(actor)) {
             boolean allNews = access.hasAllScope(ProductionBizType.news_video);
@@ -211,7 +211,7 @@ public class ProductionServiceImpl implements IProductionService {
                 .set(HeronProductionTask::getStatus, ProductionStatus.cancelled.name())
                 .set(HeronProductionTask::getFinishedAt, now)
                 .set(HeronProductionTask::getUpdateTime, now)
-                .eq(HeronProductionTask::getTaskId, taskId)
+                .eq(HeronProductionTask::getId, taskId)
                 .eq(HeronProductionTask::getStatus, ProductionStatus.queued.name())
                 .updateCount();
             if (affected != 1) {
@@ -219,14 +219,14 @@ public class ProductionServiceImpl implements IProductionService {
                     "任务状态已变化");
             }
             domain.release(task);
-            notifications.terminal(task.getTaskId(), type, task.getActorId(), task.getOwnerId(),
+            notifications.terminal(task.getId(), type, task.getActorId(), task.getOwnerId(),
                 ProductionStatus.cancelled);
         } else if (ProductionStatus.running.name().equals(task.getStatus())) {
             int affected = taskMapper.lambda()
                 .set(HeronProductionTask::getStatus, ProductionStatus.cancelling.name())
                 .set(HeronProductionTask::getCancelRequestedAt, now)
                 .set(HeronProductionTask::getUpdateTime, now)
-                .eq(HeronProductionTask::getTaskId, taskId)
+                .eq(HeronProductionTask::getId, taskId)
                 .eq(HeronProductionTask::getStatus, ProductionStatus.running.name())
                 .updateCount();
             if (affected != 1) {
@@ -238,7 +238,7 @@ public class ProductionServiceImpl implements IProductionService {
             taskMapper.lambda()
                 .set(HeronProductionTask::getCancelRequestedAt, now)
                 .set(HeronProductionTask::getUpdateTime, now)
-                .eq(HeronProductionTask::getTaskId, taskId)
+                .eq(HeronProductionTask::getId, taskId)
                 .eq(HeronProductionTask::getStatus, ProductionStatus.cancelling.name())
                 .isNull(HeronProductionTask::getCancelRequestedAt)
                 .update();
@@ -272,13 +272,13 @@ public class ProductionServiceImpl implements IProductionService {
     }
 
     private ProductionReceiptVo receipt(HeronProductionTask task) {
-        return new ProductionReceiptVo(task.getTaskId(), ProductionBizType.valueOf(task.getBizType()),
+        return new ProductionReceiptVo(task.getId(), ProductionBizType.valueOf(task.getBizType()),
             task.getBizId(), task.getVersionId(), ProductionStatus.valueOf(task.getStatus()));
     }
 
     private ProductionTaskVo toVo(HeronProductionTask task) {
         ProductionTaskVo vo = new ProductionTaskVo();
-        vo.setTaskId(task.getTaskId());
+        vo.setId(task.getId());
         vo.setBizType(ProductionBizType.valueOf(task.getBizType()));
         vo.setBizId(task.getBizId());
         vo.setVersionId(task.getVersionId());

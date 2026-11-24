@@ -50,7 +50,7 @@ class ContentDecisionServiceImplTest {
 
     private static HeronResearchTask withReport(String reportJson) {
         HeronResearchTask task = new HeronResearchTask();
-        task.setResearchId(9L);
+        task.setId(9L);
         task.setOpportunityId(900L);
         task.setReportJson(reportJson);
         return task;
@@ -102,7 +102,7 @@ class ContentDecisionServiceImplTest {
     @DisplayName("同一研究同一次执行只落一条")
     void idempotentPerAttempt() {
         HeronContentDecision existing = new HeronContentDecision();
-        existing.setDecisionId(77L);
+        existing.setId(77L);
         HeronContentDecisionMapper decisions = mock(HeronContentDecisionMapper.class);
         when(decisions.selectOne(any())).thenReturn(existing);
         HeronResearchTaskMapper research = mock(HeronResearchTaskMapper.class);
@@ -116,7 +116,7 @@ class ContentDecisionServiceImplTest {
     @DisplayName("并发落重复时回读已存在的那条，不抛给调用方")
     void toleratesConcurrentInsert() {
         HeronContentDecision other = new HeronContentDecision();
-        other.setDecisionId(88L);
+        other.setId(88L);
         HeronContentDecisionMapper decisions = mock(HeronContentDecisionMapper.class);
         when(decisions.selectOne(any())).thenReturn(null, other);
         when(decisions.insert(any(HeronContentDecision.class))).thenThrow(new DuplicateKeyException("dup"));
@@ -131,7 +131,7 @@ class ContentDecisionServiceImplTest {
     void rejectRequiresNote() {
         HeronContentDecisionMapper decisions = mock(HeronContentDecisionMapper.class);
         HeronContentDecision existing = new HeronContentDecision();
-        existing.setDecisionId(1L);
+        existing.setId(1L);
         when(decisions.selectById(1L)).thenReturn(existing);
 
         var subject = service(decisions, mock(HeronResearchTaskMapper.class));
@@ -145,7 +145,7 @@ class ContentDecisionServiceImplTest {
     void acceptWithoutNote() {
         HeronContentDecisionMapper decisions = mock(HeronContentDecisionMapper.class);
         HeronContentDecision existing = new HeronContentDecision();
-        existing.setDecisionId(1L);
+        existing.setId(1L);
         when(decisions.selectById(1L)).thenReturn(existing);
         var chain = mock(org.dromara.common.mybatis.core.mapper.LambdaCrudChainWrapper.class);
         when(chain.set(any(), any())).thenReturn(chain);
@@ -153,7 +153,7 @@ class ContentDecisionServiceImplTest {
         when(chain.updateCount()).thenReturn(1);
         when(decisions.lambda()).thenReturn(chain);
         ContentDecisionVo vo = new ContentDecisionVo();
-        vo.setDecisionId(1L);
+        vo.setId(1L);
         vo.setStatus(HeronContentDecision.STATUS_ACCEPTED);
         when(decisions.selectVoById(1L)).thenReturn(vo);
 
@@ -172,7 +172,7 @@ class ContentDecisionServiceImplTest {
     void cannotReworkDecided() {
         HeronContentDecisionMapper decisions = mock(HeronContentDecisionMapper.class);
         HeronContentDecision existing = new HeronContentDecision();
-        existing.setDecisionId(1L);
+        existing.setId(1L);
         existing.setStatus(HeronContentDecision.STATUS_ACCEPTED);
         when(decisions.selectById(1L)).thenReturn(existing);
         var chain = mock(org.dromara.common.mybatis.core.mapper.LambdaCrudChainWrapper.class);
@@ -195,7 +195,7 @@ class ContentDecisionServiceImplTest {
     void acceptAndPromoteDelegates() {
         HeronContentDecisionMapper decisions = mock(HeronContentDecisionMapper.class);
         HeronContentDecision existing = new HeronContentDecision();
-        existing.setDecisionId(1L);
+        existing.setId(1L);
         when(decisions.selectById(1L)).thenReturn(existing);
         var chain = mock(org.dromara.common.mybatis.core.mapper.LambdaCrudChainWrapper.class);
         when(chain.set(any(), any())).thenReturn(chain);
@@ -203,7 +203,7 @@ class ContentDecisionServiceImplTest {
         when(chain.updateCount()).thenReturn(1);
         when(decisions.lambda()).thenReturn(chain);
         ContentDecisionVo vo = new ContentDecisionVo();
-        vo.setDecisionId(1L);
+        vo.setId(1L);
         when(decisions.selectVoById(1L)).thenReturn(vo);
         var promotions = mock(org.dromara.heron.service.IResearchPromotionService.class);
         when(promotions.promote(1L, "源站已人工核实", null)).thenReturn(7L);

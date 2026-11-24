@@ -9,7 +9,7 @@ heron:
     # 文章解说线与数据看板线并行：模板根下的 news-* 与 news-data-* 都参与生产
     article-enabled: true
     # 清理仅生成候选清单，不自动删除
-    cleanup-retention-days: 7
+    cleanup-retention-days: 15
     python: python3
     node: node
     ffmpeg: ffmpeg

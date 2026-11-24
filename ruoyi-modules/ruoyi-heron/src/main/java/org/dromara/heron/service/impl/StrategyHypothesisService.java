@@ -99,7 +99,7 @@ public class StrategyHypothesisService {
         List<StrategyHypothesisVo> out = new ArrayList<>();
         for (Row row : rows) {
             HeronStrategyHypothesis entity = new HeronStrategyHypothesis();
-            entity.setHypothesisId(IdUtil.getSnowflakeNextId());
+            entity.setId(IdUtil.getSnowflakeNextId());
             entity.setSchemaVersion(SCHEMA_VERSION);
             entity.setClaim(row.claim());
             entity.setDimension(row.dimension());
@@ -187,7 +187,7 @@ public class StrategyHypothesisService {
     }
 
     private static StrategyHypothesisVo toVo(HeronStrategyHypothesis entity) {
-        return new StrategyHypothesisVo(String.valueOf(entity.getHypothesisId()), entity.getClaim(),
+        return new StrategyHypothesisVo(String.valueOf(entity.getId()), entity.getClaim(),
             entity.getDimension(), entity.getBucketValue(), entity.getMetric(),
             entity.getMinSamples() == null ? 0 : entity.getMinSamples(),
             entity.getMinWeeks() == null ? 0 : entity.getMinWeeks(),

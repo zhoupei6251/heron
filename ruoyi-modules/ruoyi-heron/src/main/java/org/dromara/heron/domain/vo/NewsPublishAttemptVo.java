@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Data
 @AutoMapper(target = HeronNewsPublishAttempt.class)
 public class NewsPublishAttemptVo implements Serializable {
-    private Long attemptId;
+    private Long id;
     private Long versionId;
     private String videoSha;
     private String source;

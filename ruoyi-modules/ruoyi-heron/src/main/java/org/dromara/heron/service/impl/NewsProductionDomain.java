@@ -214,8 +214,8 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         long versionId = IdUtil.getSnowflakeNextId();
         Map<String, Object> snapshot = new TreeMap<>();
         snapshot.put("schemaVersion", FrozenContext.SCHEMA);
-        snapshot.put("workId", work.getWorkId());
-        snapshot.put("candidateId", candidate.getCandidateId());
+        snapshot.put("workId", work.getId());
+        snapshot.put("candidateId", candidate.getId());
         snapshot.put("versionNo", work.getNextVersion());
         snapshot.put("revision", work.getRevision());
         snapshot.put("title", work.getTitle());
@@ -240,10 +240,10 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         // 三个地方（context / version / task）字节相同，谁被改都能立刻发现。
         String input = JsonUtils.toJsonString(FrozenContext.canonical(snapshot));
         boundedJson(input);
-        contexts.freeze(work.getWorkId(), versionId, taskId, work.getNextVersion(), actorId, input);
+        contexts.freeze(work.getId(), versionId, taskId, work.getNextVersion(), actorId, input);
         HeronVideoVersion version = new HeronVideoVersion();
-        version.setVersionId(versionId);
-        version.setWorkId(work.getWorkId());
+        version.setId(versionId);
+        version.setWorkId(work.getId());
         version.setOwnerId(work.getOwnerId());
         version.setVersionNo(work.getNextVersion());
         version.setTaskId(taskId);
@@ -256,11 +256,11 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         if (versionMapper.insert(version) != 1) throw conflict("reserve_failed", "版本预留失败");
         int changed = workMapper.lambda().set(HeronNewsWork::getNextVersion, work.getNextVersion() + 1)
             .set(HeronNewsWork::getActiveTaskId, taskId).set(HeronNewsWork::getUpdateBy, actorId)
-            .set(HeronNewsWork::getUpdateTime, now()).eq(HeronNewsWork::getWorkId, work.getWorkId())
+            .set(HeronNewsWork::getUpdateTime, now()).eq(HeronNewsWork::getId, work.getId())
             .eq(HeronNewsWork::getRevision, command.expectedRevision()).isNull(HeronNewsWork::getActiveTaskId).updateCount();
         int claimed = candidateMapper.lambda().set(HeronNewsCandidate::getActiveTaskId, taskId)
             .set(HeronNewsCandidate::getUpdateBy, actorId).set(HeronNewsCandidate::getUpdateTime, now())
-            .eq(HeronNewsCandidate::getCandidateId, candidate.getCandidateId()).isNull(HeronNewsCandidate::getActiveTaskId)
+            .eq(HeronNewsCandidate::getId, candidate.getId()).isNull(HeronNewsCandidate::getActiveTaskId)
             .isNull(HeronNewsCandidate::getPublishedAt).updateCount();
         if (changed != 1 || claimed != 1) throw conflict("reserve_conflict", "候选或草稿状态已变化");
         return new ProductionReservationVo(versionId, work.getOwnerId(), input);
@@ -275,8 +275,8 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             .equals(JsonUtils.getJsonMapper().readTree(task.getInputSnapshot()))) throw conflict("completion_conflict", "任务状态或冻结输入不匹配");
         HeronNewsWork work = workMapper.selectById(task.getBizId());
         HeronNewsCandidate candidate = candidateMapper.selectById(work.getCandidateId());
-        if (!Objects.equals(work.getActiveTaskId(), task.getTaskId())
-            || !Objects.equals(candidate.getActiveTaskId(), task.getTaskId()) || candidate.getPublishedAt() != null
+        if (!Objects.equals(work.getActiveTaskId(), task.getId())
+            || !Objects.equals(candidate.getActiveTaskId(), task.getId()) || candidate.getPublishedAt() != null
             || version.getArtifactManifest() != null || version.getCleanupStartedAt() != null) {
             throw conflict("completion_conflict", "该版本已完成或不属于当前任务");
         }
@@ -319,13 +319,13 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             .set(qualityReport != null, HeronVideoVersion::getQualityReport, qualityReport)
             .set(contentProfile != null, HeronVideoVersion::getContentProfile, contentProfile)
             .set(HeronVideoVersion::getUpdateBy, task.getActorId()).set(HeronVideoVersion::getUpdateTime, now())
-            .eq(HeronVideoVersion::getVersionId, version.getVersionId()).eq(HeronVideoVersion::getTaskId, task.getTaskId())
+            .eq(HeronVideoVersion::getId, version.getId()).eq(HeronVideoVersion::getTaskId, task.getId())
             .isNull(HeronVideoVersion::getArtifactManifest).isNull(HeronVideoVersion::getScript)
             .isNull(HeronVideoVersion::getChecks).isNull(HeronVideoVersion::getCleanupStartedAt).updateCount();
         if (changed != 1) throw conflict("completion_conflict", "版本结果只能写入一次");
-        if (workMapper.lambda().set(HeronNewsWork::getCurrentVersionId, version.getVersionId())
+        if (workMapper.lambda().set(HeronNewsWork::getCurrentVersionId, version.getId())
             .set(HeronNewsWork::getUpdateBy, task.getActorId()).set(HeronNewsWork::getUpdateTime, now())
-            .eq(HeronNewsWork::getWorkId, task.getBizId()).eq(HeronNewsWork::getActiveTaskId, task.getTaskId()).updateCount() != 1) {
+            .eq(HeronNewsWork::getId, task.getBizId()).eq(HeronNewsWork::getActiveTaskId, task.getId()).updateCount() != 1) {
             throw conflict("completion_conflict", "作品在途指针已变化");
         }
         if (dataBoardLine) {
@@ -336,7 +336,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     /** 完成才记账：失败或重跑不占用 7 天去重窗口。 */
     private void recordDatasetUsage(HeronProductionTask task, JsonNode dataset) {
         HeronDatasetUsage usage = new HeronDatasetUsage();
-        usage.setUsageId(IdUtil.getSnowflakeNextId());
+        usage.setId(IdUtil.getSnowflakeNextId());
         usage.setSourceKey(dataset.path("source_key").asString(""));
         usage.setEntity(entityOf(dataset));
         usage.setMetric(dataset.path("metric").path("key").asString(""));
@@ -364,10 +364,10 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         if (work == null) throw new HeronAccessException();
         candidateMapper.lambda().set(HeronNewsCandidate::getActiveTaskId, null)
             .set(HeronNewsCandidate::getUpdateBy, task.getActorId()).set(HeronNewsCandidate::getUpdateTime, now())
-            .eq(HeronNewsCandidate::getCandidateId, work.getCandidateId()).eq(HeronNewsCandidate::getActiveTaskId, task.getTaskId()).update();
+            .eq(HeronNewsCandidate::getId, work.getCandidateId()).eq(HeronNewsCandidate::getActiveTaskId, task.getId()).update();
         workMapper.lambda().set(HeronNewsWork::getActiveTaskId, null)
             .set(HeronNewsWork::getUpdateBy, task.getActorId()).set(HeronNewsWork::getUpdateTime, now())
-            .eq(HeronNewsWork::getWorkId, task.getBizId()).eq(HeronNewsWork::getActiveTaskId, task.getTaskId()).update();
+            .eq(HeronNewsWork::getId, task.getBizId()).eq(HeronNewsWork::getActiveTaskId, task.getId()).update();
     }
 
     /** 版本冻结输入里的 kind 决定产物清单、闸清单与脚本契约；不读实时配置，重放口径一致。 */
@@ -426,7 +426,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     /** 查询、审核、下载均核对版本与任务的不可变归属。 */
     public void requireTask(HeronVideoVersion version, HeronProductionTask task) {
         if (version == null || task == null || !ProductionBizType.news_video.name().equals(task.getBizType())
-            || !Objects.equals(version.getTaskId(), task.getTaskId()) || !Objects.equals(version.getVersionId(), task.getVersionId())
+            || !Objects.equals(version.getTaskId(), task.getId()) || !Objects.equals(version.getId(), task.getVersionId())
             || !Objects.equals(version.getWorkId(), task.getBizId()) || !Objects.equals(version.getOwnerId(), task.getOwnerId())) {
             throw new HeronAccessException();
         }
@@ -446,7 +446,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         }
         Set<String> kinds = new HashSet<>();
         Set<String> ids = new HashSet<>();
-        String prefix = "videos/" + version.getWorkId() + "/v" + version.getVersionId() + "/a" + task.getAttemptNo() + "-" + task.getRunToken() + "/";
+        String prefix = "videos/" + version.getWorkId() + "/v" + version.getId() + "/a" + task.getAttemptNo() + "-" + task.getRunToken() + "/";
         for (ProductionArtifactVo file : files) {
             if (file == null || !expected.contains(file.kind()) || !kinds.add(file.kind()) || file.artifactId() == null
                 || !file.artifactId().matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}") || !ids.add(file.artifactId())
@@ -569,7 +569,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
                 path = path.getParent();
             }
         }
-        Path taskRoot = properties.getDataRoot().toAbsolutePath().normalize().resolve("work/news_video/" + task.getTaskId());
+        Path taskRoot = properties.getDataRoot().toAbsolutePath().normalize().resolve("work/news_video/" + task.getId());
         for (Path parent = taskRoot; parent != null; parent = parent.getParent()) {
             if (Files.isSymbolicLink(parent) || Files.exists(parent.resolve(".keep"), LinkOption.NOFOLLOW_LINKS)) return true;
         }

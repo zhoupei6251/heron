@@ -7,8 +7,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.domain.HeronBusinessException;
+import org.dromara.heron.domain.HeronTrendHotword;
 import org.dromara.heron.domain.HeronTrendVideo;
+import org.dromara.heron.mapper.HeronTrendHotwordMapper;
 import org.dromara.heron.mapper.HeronTrendVideoMapper;
+import org.dromara.heron.service.IReferenceAssetService;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 
@@ -44,7 +47,9 @@ public class TrendCollectService {
     static final String PLATFORM = "douyin";
 
     private final HeronTrendVideoMapper videos;
+    private final HeronTrendHotwordMapper hotwords;
     private final HeronNewsProperties news;
+    private final IReferenceAssetService referenceAssets;
 
     /**
      * 采集一次并入库。
@@ -65,7 +70,7 @@ public class TrendCollectService {
                 continue;
             }
             HeronTrendVideo video = new HeronTrendVideo();
-            video.setTrendId(IdWorker.getId());
+            video.setId(IdWorker.getId());
             video.setPlatform(PLATFORM);
             video.setAwemeId(awemeId);
             video.setRankNo(intNumber(item, "rankNo"));
@@ -86,9 +91,78 @@ public class TrendCollectService {
             video.setCreateTime(now);
             saved.add(upsert(video));
         }
+        int hotwordCount = saveHotwords(root.path("hotWords"), now);
+        referenceAssets.registerFromTrend(saved);
         long shortCount = saved.stream().filter(this::shortEnough).count();
-        log.info("抖音热点采集完成：本次 {} 条，其中够短 {} 条", saved.size(), shortCount);
+        log.info("抖音热点采集完成：本次 {} 条作品（其中够短 {} 条）、{} 个热词",
+            saved.size(), shortCount, hotwordCount);
         return saved.size();
+    }
+
+    /**
+     * 热词按「同一个词」累积，不按次快照：连着重采到几次比单次位次更有信息量。
+     *
+     * <p>热词是选题线索，采不到不该让整次采集失败——作品那半边的结果已经拿到手了。
+     */
+    private int saveHotwords(JsonNode words, LocalDateTime now) {
+        if (words == null || !words.isArray()) {
+            return 0;
+        }
+        int count = 0;
+        for (JsonNode item : words) {
+            String word = text(item, "word");
+            if (word == null || word.strip().isEmpty()) {
+                continue;
+            }
+            word = word.strip();
+            Integer rank = intNumber(item, "position");
+            HeronTrendHotword incoming = new HeronTrendHotword();
+            incoming.setId(IdWorker.getId());
+            incoming.setPlatform(PLATFORM);
+            incoming.setWord(limit(word, 200));
+            incoming.setRankNo(rank);
+            incoming.setBestRank(rank);
+            incoming.setHotValue(number(item, "hotValue"));
+            incoming.setViewCount(number(item, "viewCount"));
+            incoming.setVideoCount(number(item, "videoCount"));
+            incoming.setHitCount(1L);
+            incoming.setFirstSeenAt(now);
+            incoming.setLastSeenAt(now);
+            incoming.setCreateTime(now);
+            upsertHotword(incoming);
+            count++;
+        }
+        return count;
+    }
+
+    /** 同一个词重复采到：热度与位次刷新，首次见到的时间与入库时间不动，次数 +1。 */
+    private void upsertHotword(HeronTrendHotword incoming) {
+        HeronTrendHotword existing = hotwords.selectOne(new LambdaQueryWrapper<HeronTrendHotword>()
+            .eq(HeronTrendHotword::getPlatform, incoming.getPlatform())
+            .eq(HeronTrendHotword::getWord, incoming.getWord()));
+        if (existing == null) {
+            hotwords.insert(incoming);
+            return;
+        }
+        mergeHotword(incoming, existing);
+        hotwords.updateById(incoming);
+    }
+
+    /**
+     * 把已入库的累积值并进本次采到的行。纯函数，便于单测锁住「位次只降不升」。
+     *
+     * @param incoming 本次采到的新行，会被就地改写
+     * @param existing 库里已有的行
+     */
+    static void mergeHotword(HeronTrendHotword incoming, HeronTrendHotword existing) {
+        incoming.setId(existing.getId());
+        incoming.setFirstSeenAt(existing.getFirstSeenAt());
+        incoming.setCreateTime(existing.getCreateTime());
+        incoming.setHitCount(existing.getHitCount() == null ? 2L : existing.getHitCount() + 1);
+        // 位次只降不升：记得住它最好到过第几名，不会因为这轮掉下去就抹掉。
+        Integer best = existing.getBestRank();
+        Integer current = incoming.getBestRank();
+        incoming.setBestRank(best == null || (current != null && current < best) ? current : best);
     }
 
     /** 同一支作品重复采到只更新热度与位次，不新增行：热榜每天都会重复出现同一批视频。 */
@@ -102,7 +176,7 @@ public class TrendCollectService {
             return incoming;
         }
         // 首次入库时间不动：它记的是「这支视频第一次被我们看到」。
-        incoming.setTrendId(existing.getTrendId());
+        incoming.setId(existing.getId());
         incoming.setCreateTime(existing.getCreateTime());
         videos.updateById(incoming);
         return incoming;

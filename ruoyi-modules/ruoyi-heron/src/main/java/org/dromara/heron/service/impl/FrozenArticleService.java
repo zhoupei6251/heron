@@ -72,7 +72,7 @@ public class FrozenArticleService {
     public NewsArticleBody freeze(long taskId, NewsArticleBody body) {
         String content = render(body);
         HeronProductionArtifact row = new HeronProductionArtifact();
-        row.setArtifactId(IdUtil.getSnowflakeNextId());
+        row.setId(IdUtil.getSnowflakeNextId());
         row.setTaskId(taskId);
         row.setKind(KIND_ARTICLE);
         row.setSourceUrl(body.url());
