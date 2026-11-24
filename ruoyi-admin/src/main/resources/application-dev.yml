@@ -357,6 +357,12 @@ heron:
     pipeline-enabled: true
     # 泛资讯源白名单（时政不进）；本机开发与 N3 闭环验收用这两家实测可达的 RSS
     collection-enabled: true
+    # 抖音热点采集：只采「别人怎么做」，不参与选题与发布。开发机开着便于验证。
+    trend-enabled: true
+    trend-slots:
+      - '0 7,13,19 * * *'
+    # 只留 90 秒以内的作品：热榜里混着几分钟的长片，拆解一条要好几分钟
+    trend-max-duration-ms: 90000
     allowed-hosts:
       - www.ithome.com
       - sspai.com

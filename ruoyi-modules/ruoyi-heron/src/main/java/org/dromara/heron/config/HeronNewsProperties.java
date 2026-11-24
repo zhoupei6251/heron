@@ -75,4 +75,33 @@ public class HeronNewsProperties {
         private String sourceKey;
         private boolean auto;
     }
+
+    /**
+     * 市面爆款采集：定时跑抖音热点榜单，把热视频按位次存下来。
+     *
+     * <p>默认关。纯 HTTP 取不到数据（接口回 200 但正文为空），只能靠浏览器渲染后拦截
+     * 页面自己发的请求，所以这里要配解释器与脚本，不是一条 HTTP 调用。
+     */
+    private boolean trendEnabled;
+
+    /** 采集 cron；空清单表示只由接口手动触发。 */
+    private List<String> trendSlots = new ArrayList<>();
+
+    /** 采集脚本路径，相对仓库根。 */
+    private String trendScript = "data/tools/douyin-trend/trend.py";
+
+    /** 跑采集脚本的 Python；用 social-auto-upload 的虚拟环境（其中已装 patchright）。 */
+    private String trendPython = "data/tools/social-auto-upload/.venv/Scripts/python.exe";
+
+    /** 采集脚本超时；抓不到数据时宁可失败也不要挂着。 */
+    private int trendTimeoutSeconds = 180;
+
+    /** 页面滚动次数：每滚一次多拿一批热视频，次数越多越慢。 */
+    private int trendScrolls = 6;
+
+    /**
+     * 只留不超过这么久（毫秒）的作品。热榜里混着几分钟的长片，
+     * 拆解一条要好几分钟，第一版先只处理短视频。0 表示不过滤。
+     */
+    private long trendMaxDurationMs = 90_000L;
 }

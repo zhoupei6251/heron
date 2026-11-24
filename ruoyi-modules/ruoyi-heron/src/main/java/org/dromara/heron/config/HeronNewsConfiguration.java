@@ -9,6 +9,8 @@ import org.dromara.heron.service.impl.NewsAutoService;
 import org.dromara.heron.service.impl.NewsCleanupRunner;
 import org.dromara.heron.service.impl.NewsSourceRunner;
 import org.dromara.heron.service.impl.NewsWorkServiceImpl;
+import org.dromara.heron.service.impl.TrendCollectRunner;
+import org.dromara.heron.service.impl.TrendCollectService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -57,5 +59,13 @@ public class HeronNewsConfiguration {
     public NewsCleanupRunner newsCleanupRunner(NewsWorkServiceImpl maintenance,
                                                @Qualifier("scheduledExecutorService") ScheduledExecutorService scheduler) {
         return new NewsCleanupRunner(maintenance, scheduler);
+    }
+
+    /** 抖音热点采集只在显式打开时装配：默认不出网、不占浏览器。 */
+    @Bean
+    @ConditionalOnProperty(prefix = "heron.news", name = "trend-enabled", havingValue = "true")
+    public TrendCollectRunner trendCollectRunner(TrendCollectService collect, HeronNewsProperties news,
+                                                 @Qualifier("scheduledExecutorService") ScheduledExecutorService scheduler) {
+        return new TrendCollectRunner(collect, news, scheduler);
     }
 }

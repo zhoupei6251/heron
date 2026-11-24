@@ -74,6 +74,9 @@ application-ga.yml
 !/data/tools/package.json
 !/data/tools/package-lock.json
 !/data/tools/model-stub.mjs
+# 抖音热点采集脚本是生产依赖：Java 侧 TrendCollectService 直接调它，漏了它自动采集就起不来
+!/data/tools/douyin-trend/
+!/data/tools/douyin-trend/trend.py
 # 模板生成器是模板的唯一真相，必须进仓库：漏了它，clone 下来只剩生成产物，
 # 改 template.config.json 也不会生效
 !/data/tools/build-templates.mjs
