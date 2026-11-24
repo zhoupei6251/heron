@@ -26,4 +26,14 @@ public interface OssService {
      * @return 列表
      */
     List<OssDTO> selectByIds(String ossIds);
+
+    /**
+     * 登记已经上传完成的对象；同一存储配置与对象键重复调用不新增记录。
+     */
+    void registerUploaded(OssDTO uploaded);
+
+    /**
+     * 按存储配置与对象键注销元数据，不删除桶对象。
+     */
+    void unregisterUploaded(String service, String fileName);
 }

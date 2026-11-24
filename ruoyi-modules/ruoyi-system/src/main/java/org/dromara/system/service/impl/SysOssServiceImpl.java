@@ -156,6 +156,39 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         return list;
     }
 
+    @Override
+    public void registerUploaded(OssDTO uploaded) {
+        if (uploaded == null || StringUtils.isBlank(uploaded.getService())
+            || StringUtils.isBlank(uploaded.getFileName()) || StringUtils.isBlank(uploaded.getUrl())) {
+            throw new ServiceException("已上传对象信息不完整");
+        }
+        SysOss existing = ossMapper.selectOne(new LambdaQueryWrapper<SysOss>()
+            .eq(SysOss::getService, uploaded.getService())
+            .eq(SysOss::getFileName, uploaded.getFileName())
+            .last("limit 1"));
+        if (existing != null) {
+            return;
+        }
+        SysOss oss = new SysOss();
+        oss.setService(uploaded.getService());
+        oss.setFileName(uploaded.getFileName());
+        oss.setOriginalName(uploaded.getOriginalName());
+        oss.setFileSuffix(uploaded.getFileSuffix());
+        oss.setUrl(uploaded.getUrl());
+        oss.setExt1(uploaded.getExt1());
+        ossMapper.insert(oss);
+    }
+
+    @Override
+    public void unregisterUploaded(String service, String fileName) {
+        if (StringUtils.isBlank(service) || StringUtils.isBlank(fileName)) {
+            throw new ServiceException("存储配置与对象键不能为空");
+        }
+        ossMapper.delete(new LambdaQueryWrapper<SysOss>()
+            .eq(SysOss::getService, service)
+            .eq(SysOss::getFileName, fileName));
+    }
+
     /**
      * 构造 OSS 文件列表查询条件。
      *

@@ -43,4 +43,14 @@ public class OssDTO implements Serializable {
      */
     private String url;
 
+    /**
+     * 存储配置标识
+     */
+    private String service;
+
+    /**
+     * 扩展信息
+     */
+    private String ext1;
+
 }
