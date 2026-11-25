@@ -29,6 +29,15 @@
         ],
         "createdAt": "2026-11-17T07:12:37.144Z",
         "reason": "design intent: plan_impl.md 风格A 明确要求下三分之一信息条（Lower Third），左侧立标是播报图形的行业惯例；这是视频画幅内的图形，不是网页卡片"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "data/templates/layouts/data-board/news-data-9x16.css"
+        ],
+        "createdAt": "2026-11-25T03:21:41.780Z",
+        "reason": "文件头把 #closing 的 --panel + 左侧 10px 强调条列为本套版式不变量第 3 条（播报式引语条，不是卡片侧标签）；属既有设计，非本次会话引入"
       }
     ]
   }

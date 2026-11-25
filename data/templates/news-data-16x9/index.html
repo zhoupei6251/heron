@@ -1,0 +1,1787 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='[{"id":"title","type":"string","label":"标题","maxLength":15,"default":"金价创阶段新高"},{"id":"kicker","type":"string","label":"栏目标签","maxLength":12,"default":"数据观察"},{"id":"scene1_lead","type":"string","label":"第1屏领句","maxLength":40,"default":"金价站上关键位"},{"id":"scene1_body","type":"string","label":"第1屏正文","maxLength":600,"default":"最新收于 4113.34 美元，接近区间高点。"},{"id":"scene2_lead","type":"string","label":"第2屏领句","maxLength":40,"default":"较区间起点走高"},{"id":"scene2_body","type":"string","label":"第2屏正文","maxLength":600,"default":"较区间起点上涨 125.14 美元，涨幅 3.14%。"},{"id":"scene3_lead","type":"string","label":"第3屏领句","maxLength":40,"default":"区间高点确认"},{"id":"scene3_body","type":"string","label":"第3屏正文","maxLength":600,"default":"这段区间最高 4113.34 美元，最低 3988.20 美元。"},{"id":"scene4_lead","type":"string","label":"第4屏领句","maxLength":40,"default":""},{"id":"scene4_body","type":"string","label":"第4屏正文","maxLength":600,"default":""},{"id":"scene5_lead","type":"string","label":"第5屏领句","maxLength":40,"default":""},{"id":"scene5_body","type":"string","label":"第5屏正文","maxLength":600,"default":""},{"id":"scene6_lead","type":"string","label":"第6屏领句","maxLength":40,"default":""},{"id":"scene6_body","type":"string","label":"第6屏正文","maxLength":600,"default":""},{"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"关注接下来的走势。"},{"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"来源：示例数据集"},{"id":"accent","type":"color","label":"品牌色","default":"#18b7c9"},{"id":"scene_count","type":"number","label":"场景数","min":3,"max":6,"default":3},{"id":"chart","type":"enum","label":"图表模块","default":"line","options":[{"value":"line","label":"折线"},{"value":"bars","label":"排行"},{"value":"race","label":"赛跑"},{"value":"stacked","label":"堆叠"},{"value":"multiline","label":"多线"},{"value":"radar","label":"雷达"}]},{"id":"dataset_json","type":"string","label":"数据快照","default":"{\"contract\":\"dataset/1\",\"source_key\":\"sample-gold-price\",\"source_name\":\"示例数据集\",\"cadence\":\"daily\",\"shape\":\"wide\",\"columns\":[\"date\",\"value\"],\"metric\":{\"key\":\"close\",\"label\":\"伦敦金收盘价\",\"unit\":\"USD/oz\",\"precision\":2},\"rows\":[[\"2026-10-26\",3988.2],[\"2026-10-27\",3996.4],[\"2026-10-28\",4002.1],[\"2026-10-29\",3991.8],[\"2026-10-30\",4008.6],[\"2026-11-02\",4021.3],[\"2026-11-03\",4033],[\"2026-11-04\",4042.7],[\"2026-11-05\",4091.55],[\"2026-11-06\",4105.5],[\"2026-11-09\",4110.04],[\"2026-11-10\",4113.34]],\"time_range\":{\"start\":\"2026-10-26\",\"end\":\"2026-11-10\",\"points\":12},\"facts\":{\"first\":{\"date\":\"2026-10-26\",\"value\":3988.2},\"last\":{\"date\":\"2026-11-10\",\"value\":4113.34},\"min\":{\"date\":\"2026-10-26\",\"value\":3988.2},\"max\":{\"date\":\"2026-11-10\",\"value\":4113.34},\"change\":125.14,\"change_pct\":3.14,\"period\":{\"start_year\":2026,\"end_year\":2026}}}"},{"id":"scene1_focus","type":"string","label":"第1屏画面依据","default":"{\"mode\":\"range\",\"refs\":[\"max.value\",\"min.value\"],\"labels\":[]}"},{"id":"scene2_focus","type":"string","label":"第2屏画面依据","default":"{\"mode\":\"change\",\"refs\":[\"change\",\"change_pct\"],\"labels\":[]}"},{"id":"scene3_focus","type":"string","label":"第3屏画面依据","default":"{\"mode\":\"range\",\"refs\":[\"max.value\",\"min.value\"],\"labels\":[]}"},{"id":"scene4_focus","type":"string","label":"第4屏画面依据","default":"{}"},{"id":"scene5_focus","type":"string","label":"第5屏画面依据","default":"{}"},{"id":"scene6_focus","type":"string","label":"第6屏画面依据","default":"{}"},{"id":"scene1_type","type":"string","label":"场景类型","default":"headline"},{"id":"scene2_type","type":"string","label":"场景类型","default":"number"},{"id":"scene3_type","type":"string","label":"场景类型","default":"compare"},{"id":"scene4_type","type":"string","label":"场景类型","default":""},{"id":"scene5_type","type":"string","label":"场景类型","default":""},{"id":"scene6_type","type":"string","label":"场景类型","default":""},{"id":"scene1_beat","type":"string","label":"叙事节点","default":"HOOK"},{"id":"scene1_text","type":"string","label":"上屏文字","default":""},{"id":"scene2_beat","type":"string","label":"叙事节点","default":"EVIDENCE"},{"id":"scene2_text","type":"string","label":"上屏文字","default":""},{"id":"scene3_beat","type":"string","label":"叙事节点","default":"INSIGHT"},{"id":"scene3_text","type":"string","label":"上屏文字","default":""},{"id":"scene4_beat","type":"string","label":"叙事节点","default":""},{"id":"scene4_text","type":"string","label":"上屏文字","default":""},{"id":"scene5_beat","type":"string","label":"叙事节点","default":""},{"id":"scene5_text","type":"string","label":"上屏文字","default":""},{"id":"scene6_beat","type":"string","label":"叙事节点","default":""},{"id":"scene6_text","type":"string","label":"上屏文字","default":""}]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Heron 数据看板横版</title>
+    <style>
+/* 所有模板共享的画布基础。令牌由 _shared/tokens 下的同名样式文件提供。
+   注意：注释里不要出现 style 标签的字面写法，它会被 HTML 解析器当成真的开始标签。 */
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("fonts/NotoSansSC-Regular.otf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+}
+#root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+.clip { position: absolute; inset: 0; }
+
+/* 镜头层：整幅内容在这个容器里进推出画框，幅度由 --cam-push 控制（1 即镜头不动）。
+   下三分之一与进度条留在容器外——那是播出界面，不该跟着镜头晃。
+   画面被推出去的部分由 #root 的 overflow 裁掉，这正是推近该有的裁切。 */
+#camera { position: absolute; inset: 0; z-index: 1; }
+
+/* 纵深：环境层是最远的一层，永远在内容之下、永远在动。
+   三层各自可开关（透明度为 0 即视为关闭），但网格与光晕是默认配置。 */
+.ambient { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.ambient > div { position: absolute; inset: 0; }
+.ambient-grid {
+  background-image:
+    linear-gradient(to right, var(--rule-faint) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule-faint) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  opacity: var(--grid-opacity);
+}
+.ambient-glow {
+  background: radial-gradient(circle at var(--glow-x) var(--glow-y),
+              var(--glow-color) 0%, transparent var(--glow-spread));
+  opacity: var(--glow-opacity);
+}
+.ambient-grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.55'/></svg>");
+  background-size: 140px 140px;
+  opacity: var(--grain-opacity);
+}
+/* 内容层压在环境层之上：骨架里的每块都自己定位，这里只统一抬 z-index。 */
+#title-card, #chart-slot, .scene, #closing-slot, #bottom-bar { z-index: 1; }
+
+/* 场景序号：给画面一个「第几拍」的锚点，避免每屏长得一样。 */
+.scene-no {
+  display: block;
+  font-family: var(--font-num);
+  font-size: var(--fs-note);
+  font-weight: 700;
+  letter-spacing: var(--track-kicker);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 硬规则 1：视频字号下限 24px，竖屏 32px。这条不能靠 CSS 强制，只作为约定写在这里，由构建期校验兜底。 */
+/* 风格 C · Dynamic Data Explainer：深底、高对比、等宽数字、网格装饰。
+   定位：数据看板解读、指标变化、排行与趋势。信息密度最高的一套。
+   注意：--accent 不在这里定义——它由 HyperFrames 从 composition 的
+   color 类型变量自动注入为同名 CSS 自定义属性，手写会与之冲突。 */
+:root {
+  --bg: #0c1417;
+  --fg: #f3f0e8;
+  --muted: #7f949b;
+  --muted-2: #9fb0b6;
+  --body: #b7c4c9;
+  --legend: #dde6e8;
+  --down: #e06c5a;
+
+  --rule-faint: rgba(243, 240, 232, 0.12);
+  --rule-soft: rgba(243, 240, 232, 0.14);
+  --rule-strong: rgba(243, 240, 232, 0.28);
+  --panel: rgba(243, 240, 232, 0.06);
+  --glow-color: rgba(24, 183, 201, 0.20);
+  --accent-glow: rgba(24, 183, 201, 0.35);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 92px;
+  --fs-title-lg: 76px;
+  --fs-title-sm: 68px;
+  --fs-data: 64px;
+  --fs-data-sm: 34px;
+  --fs-lead: 54px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 28px;
+
+  --pad-frame: 84px;
+  --rule-width: 3px;
+  --radius: 8px;
+  --track-kicker: 0.16em;
+
+  /* 环境层：网格给结构感，光晕给焦点，颗粒给质感。透明度不得低于 0.1，否则等于没有。 */
+  --grid-size: 72px;
+  --grid-opacity: 0.55;
+  --glow-x: 78%;
+  --glow-y: 18%;
+  --glow-spread: 62%;
+  --glow-opacity: 0.9;
+  --grain-opacity: 0.16;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.32s;
+  --dur-ambient: 7s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+
+  /* 镜头与转场：解释型信息密度最高，1.05 保住图表与极值标注的边距。
+     图表原先自带一个 4% 推近，现在由整帧统一推，那句已从 chart.js 删掉。
+     位移给 130px：图表占主视区，换屏时整屏一起走才不会被读成图表在跳。 */
+  --cam-push: 1.05;
+  --cam-origin: 50% 50%;
+  --slide-shift: 130px;
+
+  /* 图表语义（C · 解释）：图表是主角，占主视区。
+     面积保留 0.16（解释要让人看见「一段区间」的体量），折线 6px 居中。
+     极值双标注各用自己的语义色：最高随强调色，最低用 down 色系。
+     焦点压暗最轻（0.62）：解释要把整条曲线都留在可读范围，观众读的是关系不是某一点。 */
+  --chart-line-width: 6px;
+  --chart-area-alpha: 0.16;
+  --chart-max-annot: #18b7c9;
+  --chart-min-annot: #e06c5a;
+  --chart-min-size: 24px;
+  --focus-dim: 0.62;
+  --focus-ring-width: 6px;
+  --focus-ring-dash: none;
+}
+/* chart 能力专用样式。仅在 capabilities 含 chart 时注入。
+   与风格相关的取值一律读令牌（--chart-* / --focus-*），不在这里写死：
+   写死会让三套风格里出现不属于自己的颜色与粗细（过去极值标注就是三套都用青色）。
+   令牌默认值与改动前一致，所以没写这些令牌的老模板行为不变。 */
+#kpi { display: flex; align-items: baseline; gap: 14px; margin-top: 24px; }
+#kpi-value { font-size: var(--fs-data); font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
+#kpi-unit { font-size: var(--fs-label); color: var(--muted); }
+#kpi-change { font-size: 32px; font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+#focus-caption { margin: 12px 0 0; font-size: 28px; font-weight: 600; line-height: 1.4; color: var(--muted-2); }
+.focus-ring { fill: var(--bg); stroke: var(--accent); stroke-width: var(--focus-ring-width, 6px);
+              stroke-dasharray: var(--focus-ring-dash, none); }
+.focus-halo { fill: none; stroke: var(--accent); stroke-width: 18; opacity: 0.22; }
+.focus-link { fill: none; stroke: var(--accent); stroke-width: 4; stroke-dasharray: 10 8; }
+#chart-slot { top: 430px; left: var(--pad-frame); right: var(--pad-frame); height: 760px; overflow: hidden; }
+#chart { width: 100%; height: 100%; display: block; }
+.axis { stroke: var(--rule-soft); stroke-width: 2; }
+.axis-label { fill: var(--muted); font-size: var(--fs-label); font-variant-numeric: tabular-nums; }
+.annotation { fill: var(--fg); font-size: var(--fs-label); font-weight: 600; font-variant-numeric: tabular-nums; }
+.series-line { fill: none; stroke: var(--accent); stroke-width: var(--chart-line-width, 8px);
+               stroke-linecap: round; stroke-linejoin: round;
+               filter: drop-shadow(0 0 8px var(--accent-glow)); }
+.series-area { fill: var(--accent); opacity: var(--chart-area-alpha, 0.16); }
+.dot { fill: var(--accent); filter: drop-shadow(0 0 10px var(--accent-glow)); }
+.dot-label { fill: var(--fg); font-size: var(--fs-data-sm); font-weight: 700; font-variant-numeric: tabular-nums; }
+.bar { fill: var(--accent); transform-box: fill-box; transform-origin: left center; }
+.bar-label { fill: var(--fg); font-size: var(--fs-label); font-weight: 600; }
+.bar-value { fill: var(--muted-2); font-size: var(--fs-label); font-variant-numeric: tabular-nums; }
+.band { stroke: var(--bg); stroke-width: 2; }
+.multi-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.baseline { stroke: var(--rule-strong); stroke-width: 2; stroke-dasharray: 10 10; }
+.legend-name { fill: var(--legend); font-weight: 600; }
+.legend-value { fill: var(--muted-2); font-variant-numeric: tabular-nums; }
+.radar-grid { fill: none; stroke: var(--rule-faint); stroke-width: 2; }
+.radar-spoke { stroke: var(--rule-faint); stroke-width: 2; }
+.radar-poly { fill: var(--accent); fill-opacity: 0.18; stroke: var(--accent); stroke-width: 5;
+              stroke-linejoin: round; filter: drop-shadow(0 0 10px var(--accent-glow)); }
+.radar-dot { fill: var(--accent); }
+.radar-label { fill: var(--legend); font-weight: 600; }
+.radar-value { fill: var(--muted-2); font-weight: 400; font-variant-numeric: tabular-nums; }
+.chart-note { fill: var(--muted); font-size: var(--fs-note); }
+/* 分镜：这一屏用什么画面、承担什么叙事节点、上屏写哪句话。
+   三套数据风格共用这一份规则——字号差异由令牌承担，版式差异由各自的 layout 负责。
+   变量落到 DOM 属性上的位置在 fill.js：只声明变量不写属性，这些变体就是死代码。 */
+
+/* 上屏文字与旁白解耦：屏幕文字节点同时带 lead 类，直接继承领句的排版，
+   这里只藏掉原来那条领句。三套版式的领句排版各不相同（flex / grid / 缩进），
+   另写一份屏幕文字样式等于把三套版式再抄一遍。 */
+.scene.has-screen-text .lead:not(.screen-text) { display: none; }
+
+/* headline：一屏一句话。领句顶到标题级，正文让位。 */
+.scene[data-scene-type="headline"] .lead {
+  font-size: var(--fs-title-sm);
+  max-height: 212px;
+}
+.scene[data-scene-type="headline"] .body { display: none; }
+
+/* number：这一屏就是一个数。正文让位，数字交给常驻的 KPI 头。 */
+.scene[data-scene-type="number"] .body { display: none; }
+
+/* compare：结论卡。正文垫一层面板，读起来是对照关系而不是流水句。
+   用面板而不是左边框：播报版式整屏本来就挂着一条强调竖条，再加一条会变成双线。 */
+.scene[data-scene-type="compare"] .body {
+  background: var(--panel);
+  padding: 18px 22px;
+  border-radius: var(--radius);
+}
+
+/* timeline：时间轴屏。屏次编号让位给刻度，记号更轻。 */
+.scene[data-scene-type="timeline"] .scene-no { letter-spacing: 0.06em; }
+
+/* compare：真正两栏对照。数字与标签来自数据事实（compare.js 建的 .compare-pairs），
+   正文让位——两栏已经把「谁比谁、差多少」说完了，留着正文只是重复。
+   有事实才画这一栏，没事实时正文照旧（见 .scene[data-scene-type="compare"] .body）。 */
+#root .scene.has-compare .body { display: none; }
+#root .scene.has-compare .compare-pairs {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 20px;
+  align-items: stretch;
+  /* 播报版式的 .scene 是两栏 grid（编号列 + 内容列），对照块要横跨整行 */
+  grid-column: 1 / -1;
+  margin-top: 4px;
+}
+#root .scene.has-compare .compare-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 20px 22px;
+  background: var(--panel);
+  border-radius: var(--radius);
+}
+#root .scene.has-compare .compare-tag {
+  font-size: var(--fs-note);
+  color: var(--muted-2);
+  letter-spacing: 0.06em;
+}
+#root .scene.has-compare .compare-number {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+#root .scene.has-compare .compare-value {
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--fg);
+}
+#root .scene.has-compare .compare-unit {
+  font-style: normal;
+  font-size: var(--fs-body);
+  color: var(--muted-2);
+}
+#root .scene.has-compare .compare-label {
+  font-size: var(--fs-note);
+  line-height: 1.35;
+  color: var(--muted-2);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+#root .scene.has-compare .compare-vs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: var(--fs-body);
+  color: var(--muted-2);
+}
+#root .scene.has-compare .compare-delta {
+  font-size: var(--fs-label);
+  color: var(--accent);
+}
+
+/* 冲击屏：headline 屏接管整幅画面——图表与常驻标题让位，这一屏只有一句话。
+   口径 docs/2026-11-20-storyboard-and-visual-signal-report.md §六.2。
+   选择器带 #root：版式里有 #scene-N 这类 ID 规则（news-trend 用 ID 定位当前屏），
+   权重比类选择器高，不压过去就接管不了整幅画面。 */
+/* 特异性要压过版式的 .scene：storyboard.css 在版式 CSS 之前加载，
+   而横版版式把 .scene 钉在右半栏（left:44% / width:46% / border-right）。
+   只写 left/top/bottom/right 不够——left 与 right 同时给值时，只要版式还留着
+   width，宽度就按 width 算，元素仍停在半栏；边框也要整体清零，版式用的是
+   border-right 而不是 border-left。.takeover.takeover 提高一级特异性，
+   不依赖文件顺序。 */
+#root .scene.takeover.takeover {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  /* 版式的固定宽度会压过 left+right，必须显式回到 auto */
+  width: auto;
+  padding: 0 var(--pad-frame);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  /* 版式给 .scene 挂了底色与强调条（播报色带、趋势刻度、调查竖线、横版的右边框），
+     满幅接管时这些是残留装饰：整条边框清零，这一屏只剩一句话。 */
+  background: none;
+  border: 0;
+}
+#root .scene.takeover::before,
+#root .scene.takeover::after { display: none; }
+#root .scene.takeover .scene-no,
+#root .scene.takeover .body,
+#root .scene.takeover .scene-figure { display: none; }
+#root .scene.takeover .lead {
+  font-size: var(--fs-title);
+  line-height: 1.24;
+  max-height: none;
+  margin: 0;
+  -webkit-line-clamp: 3;
+}
+:root {
+  --fs-title: 72px; --fs-title-lg: 64px; --fs-title-sm: 56px;
+  --fs-lead: 46px; --fs-body: 34px; --fs-label: 28px; --fs-note: 28px;
+  --chart-min-size: 28px;
+  --cam-push: 1.025;
+  --cam-origin: 50% 42%;
+  --slide-shift: 220px;
+}
+#title-card {
+  top: 0; left: 0; right: 0; bottom: auto; height: 300px;
+  padding: 52px 64px;
+}
+#kicker { margin-bottom: 18px; }
+#title { max-width: 920px; font-size: var(--fs-title); line-height: 1.14; }
+#rule { margin-top: 20px; width: 280px; }
+#kpi { position: absolute; right: 64px; top: 58px; margin: 0; }
+#focus-caption { position: absolute; right: 64px; top: 150px; margin: 0; max-width: 720px; text-align: right; }
+#chart-slot { top: 330px; bottom: 150px; left: 46%; right: 56px; height: auto; }
+.scene {
+  top: 330px; bottom: 150px; left: 0; right: auto; width: 46%;
+  padding: 42px 56px 0; border-right: 2px solid var(--rule-soft);
+  overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start;
+}
+.scene-no { margin-bottom: 10px; }
+.lead {
+  margin: 0 0 16px; font-size: var(--fs-lead); line-height: 1.35;
+  max-height: 124px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.body {
+  margin: 0; font-size: 34px; line-height: 1.6;
+  max-height: 270px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5;
+}
+#closing-slot {
+  top: 330px; bottom: 150px; left: 0; right: auto; width: 46%;
+  padding: 42px 56px 0; display: flex; align-items: flex-start; border-right: 2px solid var(--rule-soft);
+}
+#closing {
+  margin: 0; padding: 24px 28px; font-size: var(--fs-body); line-height: 1.6;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; overflow: hidden;
+}
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 28px; padding: 0 56px; }
+#progress { display: block; height: 6px; border-radius: 3px; background: var(--accent); transform-origin: left center; margin-bottom: 16px; }
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+#aigc-badge { font-size: var(--fs-label); padding: 10px 22px; border-radius: 999px; white-space: nowrap; color: var(--bg); background: var(--fg); }
+#source-line { font-size: var(--fs-label); max-width: 1100px; text-align: right; color: var(--muted); }
+/* 场景骨架：每种 scene_type 一种构图，不是同一条版式换三行字。
+   由 _gen/behaviors/skeleton.js 按时间轴给当前屏加 skeleton-<type> 类。
+
+   为什么单独成文件：这三种骨架与「这一屏讲什么」绑定，跟具体版式的
+   边距字号无关；放进 storyboard.css 会和版式覆盖规则纠缠。
+   选择器一律带 #root，压过版式的 .scene 规则。 */
+
+/* 数字屏：这一屏就是**那个数**。
+   关键区别：放大的是数字（#kpi-value），不是领句——领句是一句话，
+   放大到 168px 会被截断成「较区间起…」，那是把排版当成了内容。
+   数字屏期间把常驻 KPI 从标题区拉进画面中部并放大，图表退场腾出的空间由它填。 */
+#root .scene.skeleton-number {
+  top: 900px;
+  bottom: 300px;
+  justify-content: flex-start;
+  align-items: flex-start;
+  text-align: left;
+}
+#root .scene.skeleton-number .scene-no {
+  margin-bottom: 20px;
+  letter-spacing: 0.3em;
+  font-size: var(--fs-label);
+}
+#root .scene.skeleton-number .lead {
+  font-size: var(--fs-lead);
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--fg);
+  max-height: none;
+  -webkit-line-clamp: 2;
+  margin-bottom: 18px;
+}
+/* 数字屏的正文是注脚：安静、可读，不抢数字 */
+#root .scene.skeleton-number .body {
+  display: block;
+  font-size: var(--fs-body);
+  color: var(--body);
+  line-height: 1.6;
+  max-height: none;
+  -webkit-line-clamp: 3;
+}
+
+/* 图表屏：图表是主角，上半幅到中段整块给它；场景文字收成一行压底注记。
+   图表槽本身由 .skeleton-chart 期间放大高度（见下），文字让到下方一条窄带。 */
+#root .scene.skeleton-chart {
+  top: auto;
+  bottom: 300px;
+  height: auto;
+  justify-content: flex-end;
+  padding-bottom: 24px;
+}
+#root .scene.skeleton-chart .scene-no { display: none; }
+#root .scene.skeleton-chart .lead {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--muted-2);
+  letter-spacing: 0.02em;
+  max-height: none;
+  -webkit-line-clamp: 1;
+  margin-bottom: 6px;
+}
+#root .scene.skeleton-chart .body {
+  font-size: var(--fs-note);
+  color: var(--muted-2);
+  max-height: none;
+  -webkit-line-clamp: 2;
+  line-height: 1.5;
+}
+
+/* 对照屏：两栏对照块（compare.js 建的 .compare-pairs）已经是内容。
+   图表在这期间退场，它让出的上半幅必须由对照块接住——否则只是把
+   「图表 + 文字」换成「空白 + 文字」，等于用更大的空白做对照。
+   这里把对照块抬到画面中部，正文退成一句结论压底。 */
+#root .scene.skeleton-compare {
+  top: 520px;
+  bottom: 300px;
+  justify-content: flex-start;
+}
+#root .scene.skeleton-compare .scene-no {
+  margin-bottom: 12px;
+}
+#root .scene.skeleton-compare .lead {
+  font-size: var(--fs-title-sm);
+  font-weight: 700;
+  margin-bottom: 28px;
+  max-height: none;
+  -webkit-line-clamp: 2;
+}
+#root .scene.skeleton-compare .body {
+  font-size: var(--fs-body);
+  color: var(--body);
+  max-height: none;
+  -webkit-line-clamp: 3;
+  line-height: 1.6;
+}
+/* 两栏卡片本身放大一档：这一屏就是它，不该还按正文的尺寸摆 */
+#root .scene.skeleton-compare .compare-col {
+  padding: 32px 26px;
+}
+#root .scene.skeleton-compare .compare-tag {
+  font-size: var(--fs-label);
+}
+#root .scene.skeleton-compare .compare-label {
+  font-size: var(--fs-label);
+}
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-style="data-board" data-start="0" data-width="1920" data-height="1080" data-duration="45">
+
+      <div class="ambient" aria-hidden="true">
+        <div class="ambient-grid" data-ambient="drift"></div>
+        <div class="ambient-glow" data-ambient="pulse"></div>
+        <div class="ambient-grain" data-ambient="flicker"></div>
+      </div>
+
+      <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="45" data-track-index="9"></audio>
+
+      <div id="camera">
+      <header id="title-card" class="clip" data-start="0" data-duration="45" data-track-index="0">
+        <div id="kicker">
+          <span id="kicker-flag"></span>
+          <span id="kicker-text" data-var-text="kicker">数据观察</span>
+        </div>
+        <h1 id="title" data-var-text="title">金价创阶段新高</h1>
+        <div id="rule"></div>
+        <div id="kpi">
+          <span id="kpi-value"></span>
+          <span id="kpi-unit"></span>
+           <span id="kpi-change"></span>
+         </div>
+         <p id="focus-caption"></p>
+      </header>
+
+      <section id="chart-slot" class="clip" data-start="0" data-duration="45" data-track-index="1">
+        <svg id="chart" viewBox="0 0 912 760" role="img" aria-label="数据图表"></svg>
+      </section>
+
+      <section id="scene-1" class="clip scene" data-start="0" data-duration="15" data-track-index="2" data-scene-index="1">
+        <span class="scene-no">01</span>
+        <p class="lead" data-var-text="scene1_lead">金价站上关键位</p>
+        <p class="body" data-var-text="scene1_body">最新收于 4113.34 美元，接近区间高点。</p>
+      </section>
+      <section id="scene-2" class="clip scene" data-start="15" data-duration="15" data-track-index="2" data-scene-index="2">
+        <span class="scene-no">02</span>
+        <p class="lead" data-var-text="scene2_lead">较区间起点走高</p>
+        <p class="body" data-var-text="scene2_body">较区间起点上涨 125.14 美元，涨幅 3.14%。</p>
+      </section>
+      <section id="scene-3" class="clip scene" data-start="30" data-duration="9" data-track-index="2" data-scene-index="3">
+        <span class="scene-no">03</span>
+        <p class="lead" data-var-text="scene3_lead">区间高点确认</p>
+        <p class="body" data-var-text="scene3_body">这段区间最高 4113.34 美元，最低 3988.20 美元。</p>
+      </section>
+      <section id="scene-4" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="4">
+        <span class="scene-no">04</span>
+        <p class="lead" data-var-text="scene4_lead"></p>
+        <p class="body" data-var-text="scene4_body"></p>
+      </section>
+      <section id="scene-5" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="5">
+        <span class="scene-no">05</span>
+        <p class="lead" data-var-text="scene5_lead"></p>
+        <p class="body" data-var-text="scene5_body"></p>
+      </section>
+      <section id="scene-6" class="clip scene" data-start="45" data-duration="0.01" data-track-index="2" data-scene-index="6">
+        <span class="scene-no">06</span>
+        <p class="lead" data-var-text="scene6_lead"></p>
+        <p class="body" data-var-text="scene6_body"></p>
+      </section>
+
+      <section id="closing-slot" class="clip" data-start="39" data-duration="6" data-track-index="2">
+        <p id="closing" data-var-text="closing">关注接下来的走势。</p>
+      </section>
+      </div>
+
+      <div id="bottom-bar">
+        <div id="progress"></div>
+        <div id="meta-row">
+          <span id="aigc-badge">内容由 AI 生成</span>
+          <span id="source-line" data-var-text="source_name">来源：示例数据集</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="gsap.min.js"></script><script src="SplitText.min.js"></script>
+    <script>
+// 变量注入与通用填充。所有模板共用，必须最先执行。
+const declared = window.__hyperframes && window.__hyperframes.getVariables
+  ? window.__hyperframes.getVariables()
+  : {};
+const root = document.getElementById("root");
+const tl = gsap.timeline({ paused: true });
+const total = parseFloat(root.dataset.duration);
+
+// 模板里的尺寸一律来自令牌，避免 JS 和 CSS 各写一份而漂移
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// 标题按字数降档：92px → 76px → 68px
+const titleEl = document.getElementById("title");
+const titleLen = Array.from(declared.title || titleEl.textContent || "").length;
+if (titleLen > 11) titleEl.style.fontSize = cssVar("--fs-title-sm");
+else if (titleLen > 9) titleEl.style.fontSize = cssVar("--fs-title-lg");
+
+// 实际播几屏由稿件决定，模板只负责准备好槽位
+const sceneCount = Number.isFinite(Number(declared.scene_count)) ? Number(declared.scene_count) : 3;
+
+// 屏次编号与配图同理：槽位先备好，有没有编号和有没有图由稿件与模板能力决定。
+document.querySelectorAll(".scene").forEach((slot) => {
+  const index = slot.dataset.sceneIndex;
+  const no = slot.querySelector(".scene-no");
+  if (no) no.textContent = String(index).padStart(2, "0");
+  // 场景类型落到属性上：quote / rank 这类版式靠 [data-scene-type] 选择器换排版，
+  // 只声明变量不写属性，那些变体就是死代码。
+  const type = declared["scene" + index + "_type"];
+  if (type) slot.dataset.sceneType = type;
+  // 叙事节点给版式一条辅线
+  const beat = declared["scene" + index + "_beat"];
+  if (beat) slot.dataset.beat = beat;
+  // 上屏文字与旁白解耦：屏幕文字节点同时带 lead 类，继承三套版式各自的领句排版。
+  // 原来的领句由 .has-screen-text 藏掉，两条不会同时上屏。
+  const screen = declared["scene" + index + "_text"];
+  if (screen && String(screen).trim()) {
+    const text = document.createElement("p");
+    text.className = "lead screen-text";
+    text.textContent = screen;
+    const lead = slot.querySelector(".lead");
+    if (lead) lead.after(text);
+    else slot.appendChild(text);
+    slot.classList.add("has-screen-text");
+  }
+  const figure = slot.querySelector(".scene-figure");
+  const src = declared["scene" + index + "_image"];
+  if (!figure || !src) return;
+  // has-image 让版式知道这一屏真的有图：文稿线用它把图位展开、同时把正文压回两行
+  slot.classList.add("has-image");
+  // img 由脚本创建而不是写在 HTML 里：静态 <img> 会被版式闸判成同组重复媒体节点
+  const img = document.createElement("img");
+  img.alt = "";
+  img.src = src;
+  figure.appendChild(img);
+});
+
+// 冲击屏：headline 屏接管整幅画面——图表与常驻标题让位，这一屏只有一句话。
+// 口径：docs/2026-11-20-storyboard-and-visual-signal-report.md §六.2「冲击屏」。
+// 屏次窗口取渲染期改写过的 data-start/data-duration（与真实口播对齐），不另建时间轴：
+// 这套模板只有一条时间轴，多一条就会和口播对不齐。
+const sceneSlots = Array.from(document.querySelectorAll(".scene"));
+const headlineSlots = sceneSlots.filter((slot) => {
+  // 超出实际播出的屏次没有窗口，motion.js 会把它们整块藏掉
+  if (slot.dataset.sceneType !== "headline") return false;
+  return Number(slot.dataset.sceneIndex) <= sceneCount;
+});
+
+const headlineWindows = headlineSlots
+  .map((slot) => {
+    const start = Number(slot.dataset.start);
+    const duration = Number(slot.dataset.duration);
+    if (!Number.isFinite(start) || !Number.isFinite(duration) || duration <= 0) return null;
+    return { slot, start, end: start + duration };
+  })
+  .filter(Boolean);
+
+if (headlineWindows.length) {
+  // 冲击屏最多接管这么久。窗口来自真实口播，一屏常到 10 秒以上；
+  // 整段都让常驻层退场，等于用十几秒白板换一句钩子——冲击只在开头成立，
+  // 之后观众需要数据接住。超出部分把常驻层放回来，这一屏退回普通版式。
+  const MAX_TAKEOVER = 4.5;
+  // 相邻的 headline 屏之间不把常驻层放回来：放回来再藏一次等于抖一下
+  const merged = [];
+  headlineWindows.forEach((win) => {
+    const last = merged[merged.length - 1];
+    const end = Math.min(win.end, win.start + MAX_TAKEOVER);
+    if (last && win.start <= last.end + 0.8) last.end = Math.max(last.end, end);
+    else merged.push({ start: win.start, end });
+  });
+
+  const layers = ["#title-card", "#chart-slot"]
+    .map((selector) => document.querySelector(selector))
+    .filter(Boolean);
+  const FADE = 0.4;
+  merged.forEach((win) => {
+    const fadeOutAt = Math.max(0, win.start - 0.35);
+    // 冲击屏就是片头时，常驻层一开始就不该露脸。
+    // set 之外再压一次 inline：渲染是逐帧 seek，零时长补间在第 0 帧偶尔不落值。
+    if (fadeOutAt <= 0) {
+      tl.set(layers, { opacity: 0 }, 0);
+      layers.forEach((el) => { el.style.opacity = "0"; });
+    } else {
+      tl.to(layers, { opacity: 0, duration: FADE, ease: "sine.inOut" }, fadeOutAt);
+    }
+    // 收尾不越片长：越界的补间会把时间轴拖长，渲染帧数跟着变
+    const fadeInDur = Math.min(FADE, Math.max(0, total - win.end));
+    if (fadeInDur > 0.05) tl.to(layers, { opacity: 1, duration: fadeInDur, ease: "sine.inOut" }, win.end);
+  });
+
+  // 上屏文字按「排不排得下一行」定字号，不按字数猜：各风格的 --fs-title 与可用宽度都不同
+  // （调查线 100px + 窄边距，播报线 86px + 通栏），猜出来的档位迟早在某个风格上挤成孤字。
+  headlineWindows.forEach((win) => {
+    // 上屏文字才看得见（.lead.screen-text），原领句被 CSS 藏了——按看得见的那句定字号
+    const lead = win.slot.querySelector(".lead.screen-text") || win.slot.querySelector(".lead");
+    if (!lead) return;
+    const style = getComputedStyle(win.slot);
+    const avail = win.slot.clientWidth
+      - parseFloat(style.paddingLeft || 0)
+      - parseFloat(style.paddingRight || 0);
+    const len = Array.from((lead.textContent || "").trim()).length;
+    if (!Number.isFinite(avail) || avail <= 0 || !len) return;
+    let picked = null;
+    for (const token of ["--fs-title", "--fs-title-lg", "--fs-title-sm"]) {
+      const px = parseFloat(cssVar(token));
+      if (!Number.isFinite(px) || px <= 0) continue;
+      picked = token;
+      if (len * px <= avail) break;
+    }
+    if (picked) lead.style.fontSize = cssVar(picked);
+  });
+
+  // 接管期间这一屏占满整幅画面。类名按时间轴绝对时间算：seek 到哪一帧都对。
+  // 窗口用 merged（已按时长上限截断），与常驻层的进出保持同一份时间窗；
+  // 用原始窗口会让文字继续满屏居中，而标题卡已经放回来了。
+  const takeoverClock = { time: 0 };
+  tl.to(takeoverClock, {
+    time: total,
+    duration: total,
+    ease: "none",
+    onUpdate: () => {
+      const t = tl.time();
+      headlineWindows.forEach((win) => {
+        const capped = Math.min(win.end, win.start + MAX_TAKEOVER);
+        win.slot.classList.toggle("takeover", t >= win.start && t < capped);
+      });
+    },
+  }, 0);
+}
+
+      const dataset = JSON.parse(declared.dataset_json);
+      const chart = declared.chart || "line";
+      if (!["line", "bars", "race", "stacked", "multiline", "radar"].includes(chart)) {
+        throw new Error("尚未实现的图表模块：" + chart);
+      }
+      const precision = Number(dataset.metric && dataset.metric.precision);
+      const unit = dataset.metric && dataset.metric.unit ? dataset.metric.unit : "";
+      const rows = dataset.rows.map((row) => ({ label: String(row[0]), value: Number(row[1]) }));
+      const svg = document.getElementById("chart");
+      const NS = "http://www.w3.org/2000/svg";
+      const make = (name, attrs) => {
+        const node = document.createElementNS(NS, name);
+        Object.keys(attrs).forEach((key) => node.setAttribute(key, attrs[key]));
+        return node;
+      };
+      const fmt = (value) => Number(value).toFixed(Number.isFinite(precision) ? precision : 2);
+      const facts = dataset.facts || {};
+      if (facts.last && typeof facts.last.value === "number") {
+        document.getElementById("kpi-value").textContent = fmt(facts.last.value);
+        document.getElementById("kpi-unit").textContent = unit;
+        if (typeof facts.change === "number") {
+          const arrow = facts.change >= 0 ? "▲" : "▼";
+          const pct = typeof facts.change_pct === "number" ? "（" + Math.abs(facts.change_pct).toFixed(2) + "%）" : "";
+          const changeEl = document.getElementById("kpi-change");
+          changeEl.textContent = arrow + " " + fmt(Math.abs(facts.change)) + pct;
+          changeEl.style.color = facts.change >= 0 ? "var(--accent)" : "var(--down)";
+        }
+      } else if (facts.leader) {
+        document.getElementById("kpi-value").textContent = fmt(facts.leader.value);
+        document.getElementById("kpi-unit").textContent = unit;
+        document.getElementById("kpi-change").textContent = facts.leader.label || facts.leader.location
+          || facts.leader.name || "";
+      }
+      const W = 912;
+      // 初始化时按实际图位确定坐标系，避免760高的图被缩进460高的版式后字也一起变小。
+      const H = Math.round(W * (svg.clientHeight || 760) / (svg.clientWidth || W));
+      svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+      // 图表内元素的颜色与字号一律读令牌：写死会让三套风格里出现不属于自己的取值。
+      // 回退值等于改动前的常量，所以没写这些令牌的老模板行为不变。
+      const token = (name, fallback) => cssVar(name) || fallback;
+      // 字号下限：低于 24px 在 1080×1920 上读不出来。过去这里写死 16，
+      // 图表内字号由 JS 反推、构建期扫不到，三套风格一起违规。
+      const minSize = () => {
+        const value = Number.parseFloat(token("--chart-min-size", "24px"));
+        return Number.isFinite(value) && value > 0 ? Math.max(24, value) : 24;
+      };
+      const pad = { left: 132, right: 36, top: 56, bottom: 72 };
+      const chartEvidence = { points: new Map(), rows: new Map(), series: new Map(), race: null };
+      const openingScene = document.querySelector('.scene[data-scene-index="1"]');
+      const openingEnd = openingScene
+        ? Number(openingScene.dataset.start) + Number(openingScene.dataset.duration) : 8;
+      const introDrawStart = 0.35;
+      const introDrawDuration = Math.max(0.7, Math.min(8, openingEnd - 0.8));
+      const introDrawEnd = introDrawStart + introDrawDuration;
+      const clip = (text) => {
+        const list = Array.from(text);
+        const max = /[一-鿿]/.test(text) ? 10 : 22;
+        return list.length > max ? list.slice(0, max).join("") + "…" : text;
+      };
+
+      // long 形态：(date, series, value)。折线/排行两种 wide 形态不走这里。
+      const parseLong = () => {
+        const byName = new Map();
+        const dateSet = new Set();
+        dataset.rows.forEach((row) => {
+          const date = String(row[0]);
+          const name = String(row[1]);
+          const value = Number(row[2]);
+          if (!Number.isFinite(value)) return;
+          dateSet.add(date);
+          if (!byName.has(name)) byName.set(name, new Map());
+          byName.get(name).set(date, value);
+        });
+        return { byName, dates: Array.from(dateSet).sort() };
+      };
+      const lastValue = (points, dates) => {
+        for (let i = dates.length - 1; i >= 0; i--) {
+          if (points.has(dates[i])) return points.get(dates[i]);
+        }
+        return NaN;
+      };
+      const accentHue = () => {
+        const hex = getComputedStyle(document.getElementById("root")).getPropertyValue("--accent")
+          .trim().replace("#", "");
+        if (!/^[0-9a-f]{6}$/i.test(hex)) return 187;
+        const rgb = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+        const max = Math.max(...rgb);
+        const min = Math.min(...rgb);
+        const d = max - min;
+        if (!d) return 187;
+        const h = max === rgb[0] ? ((rgb[1] - rgb[2]) / d) % 6
+          : max === rgb[1] ? (rgb[2] - rgb[0]) / d + 2
+          : (rgb[0] - rgb[1]) / d + 4;
+        return (h * 60 + 360) % 360;
+      };
+      const baseHue = accentHue();
+      // 20 个系列也不彩虹：色相只在强调色两侧小幅摆动，相邻靠明度错开。
+      const seriesColor = (index, count) => {
+        const sweep = Math.min(76, 10 + count * 6);
+        const angle = count <= 1 ? 0 : (index / (count - 1) - 0.5) * sweep;
+        const lightness = [46, 58, 66][index % 3];
+        return "hsl(" + ((baseHue + angle + 360) % 360).toFixed(1) + " " + (count > 12 ? 52 : 64)
+          + "% " + lightness + "%)";
+      };
+      const charEm = (ch) => /[\x00-\xff]/.test(ch) ? 0.56 : 1;
+      const clipTo = (text, px, size) => {
+        const list = Array.from(text);
+        let used = 0;
+        let keep = 0;
+        for (const ch of list) {
+          if ((used + charEm(ch)) * size > px) break;
+          used += charEm(ch);
+          keep += 1;
+        }
+        if (keep >= list.length) return text;
+        return list.slice(0, Math.max(1, keep - 1)).join("") + "…";
+      };
+      // 图例行：行高够就名字一行、数值一行，不够就单行。字号按行高反推，下限 16。
+      const legendItem = (x, right, y, rowH, color, name, value) => {
+        const twoLine = rowH >= 56;
+        const size = Math.max(minSize(), Math.min(28, Math.round(rowH * (twoLine ? 0.26 : 0.42))));
+        const row = make("g", {});
+        row.appendChild(make("rect", { x, y: y - 10, width: 20, height: 20, rx: 3, fill: color }));
+        const nameText = make("text", { x: x + 30, y: twoLine ? y + 2 : y + size * 0.36,
+          class: "legend-name", style: "font-size:" + size + "px" });
+        nameText.textContent = clipTo(name, right - x - 30, size);
+        const valueText = make("text", { x: right, y: twoLine ? y + size * 1.15 : y + size * 0.36,
+          "text-anchor": "end", class: "legend-value", style: "font-size:" + Math.max(minSize(), Math.round(size * 0.8)) + "px" });
+        valueText.textContent = value;
+        row.append(nameText, valueText);
+        return row;
+      };
+
+      if (chart === "bars") {
+        // 画全部行：facts 的 count/spread 是全量口径，截断会让口播和画面互相打脸。
+        const top = rows.slice().sort((a, b) => b.value - a.value);
+        const max = Math.max(...top.map((row) => row.value)) || 1;
+        const rowH = (H - pad.top - pad.bottom) / Math.max(top.length, 1);
+        const typeSize = Math.max(minSize(), Math.min(28, Math.round(rowH * 0.44)));
+        const fontStyle = "font-size:" + typeSize + "px";
+        const x0 = 430;
+        // 右侧留 210：最长那条的数值要落在柱子外面，不压柱身。
+        const x1 = W - pad.right - 210;
+        const bars = [];
+        top.forEach((row, index) => {
+          const y = pad.top + index * rowH + rowH * 0.16;
+          const height = rowH * 0.56;
+          const label = make("text", { x: pad.left, y: y + height * 0.72, class: "bar-label", style: fontStyle });
+          label.textContent = clip(row.label);
+          const bar = make("rect", { x: x0, y, width: Math.max(6, (row.value / max) * (x1 - x0)), height, rx: 6, class: "bar" });
+          const value = make("text", { x: W - pad.right, y: y + height * 0.72, "text-anchor": "end",
+            class: "bar-value", style: fontStyle });
+          value.textContent = fmt(row.value) + " " + unit;
+          svg.append(label, bar, value);
+          bars.push(bar);
+          chartEvidence.rows.set(row.label, { label, bar, value });
+        });
+        tl.from(bars, { scaleX: 0, duration: 1.1, stagger: Math.min(0.1, 1.2 / bars.length), ease: "power3.out" }, 0.8);
+      } else if (chart === "race") {
+        // long 形态：(date, series, value)。全部实体都建节点，超出可视窗口的沉到槽位下方由 overflow 裁掉。
+        const { byName, dates: timeline } = parseLong();
+        const names = Array.from(byName.keys());
+        const visibleMax = Math.max(1, Math.min(names.length, 14));
+        const rowH = (H - pad.top - pad.bottom) / visibleMax;
+        const typeSize = Math.max(minSize(), Math.min(28, Math.round(rowH * 0.44)));
+        const fontStyle = "font-size:" + typeSize + "px";
+        const barH = Math.max(6, rowH * 0.56);
+        const x0 = 430;
+        const x1 = W - pad.right - 210;
+        const offSlot = H + rowH;
+        const nodes = new Map();
+        names.forEach((name) => {
+          const label = make("text", { x: pad.left, y: offSlot, class: "bar-label", style: fontStyle });
+          label.textContent = clip(name);
+          const bar = make("rect", { x: x0, y: offSlot, width: 0, height: barH, rx: 6, class: "bar" });
+          const value = make("text", { x: W - pad.right, y: offSlot, "text-anchor": "end",
+            class: "bar-value", style: fontStyle });
+          svg.append(label, bar, value);
+          nodes.set(name, { label, bar, value });
+          chartEvidence.rows.set(name, { label, bar, value });
+        });
+        const start = introDrawStart;
+        const step = Math.max(0.04, (introDrawEnd - start - 0.5) / Math.max(timeline.length - 1, 1));
+        chartEvidence.race = { start, step, frames: [] };
+        const move = (node, y, at, duration) => {
+          tl.to(node.bar, { attr: { y }, duration, ease: "power2.out" }, at);
+          tl.to(node.label, { attr: { y: y + barH * 0.72 }, duration, ease: "power2.out" }, at);
+          tl.to(node.value, { attr: { y: y + barH * 0.72 }, duration, ease: "power2.out" }, at);
+        };
+        timeline.forEach((date, index) => {
+          const ranked = names
+            .map((name) => ({ name, value: byName.get(name).get(date) }))
+            .filter((item) => Number.isFinite(item.value))
+            .sort((a, b) => b.value - a.value);
+          const max = ranked.length ? ranked[0].value : 1;
+          const at = start + index * step;
+          const duration = index === 0 ? 0.5 : step * 0.85;
+          chartEvidence.race.frames.push({ date, ranked });
+          ranked.forEach((item, rank) => {
+            const node = nodes.get(item.name);
+            const hidden = rank >= visibleMax;
+            const y = hidden ? offSlot : pad.top + rank * rowH + rowH * 0.16;
+            move(node, y, at, duration);
+            tl.to(node.bar, { attr: { width: Math.max(6, (item.value / max) * (x1 - x0)) },
+              duration, ease: "power2.out" }, at);
+            // 文本由focus.js按当前帧重算，避免seek回调一次执行完而提前显示终局数值。
+          });
+        });
+      } else if (chart === "stacked") {
+        // 份额堆叠：每个日期归一到 100%，系列按末日规模排序，前 9 名 + 其他，避免 20 条带子糊成一片。
+        const { byName, dates } = parseLong();
+        const ranked = Array.from(byName.entries())
+          .map(([name, points]) => ({ name, points, last: lastValue(points, dates) }))
+          .filter((item) => Number.isFinite(item.last) && item.last > 0)
+          .sort((a, b) => b.last - a.last);
+        const bands = ranked.slice(0, 9)
+          .map((item) => ({ name: item.name, get: (date) => item.points.get(date) || 0 }));
+        const rest = ranked.slice(9);
+        if (rest.length) {
+          bands.push({ name: "其他", get: (date) => rest.reduce((sum, item) => sum + (item.points.get(date) || 0), 0) });
+        }
+        const totals = dates.map((date) => bands.reduce((sum, band) => sum + band.get(date), 0));
+        const shareOf = (band, index) => totals[index] ? (band.get(dates[index]) / totals[index]) * 100 : 0;
+        const padL = 96;
+        const padR = 292;
+        const padT = 44;
+        const padB = 68;
+        const plotW = W - padL - padR;
+        const plotH = H - padT - padB;
+        const xOf = (index) => padL + (index / Math.max(dates.length - 1, 1)) * plotW;
+        const yOf = (pct) => padT + (1 - pct / 100) * plotH;
+        for (let i = 0; i <= 4; i++) {
+          const yy = yOf(i * 25);
+          svg.appendChild(make("line", { x1: padL, y1: yy, x2: padL + plotW, y2: yy, class: "axis" }));
+          const label = make("text", { x: padL - 14, y: yy + 9, "text-anchor": "end", class: "axis-label" });
+          label.textContent = i * 25 + "%";
+          svg.appendChild(label);
+        }
+        const note = make("text", { x: padL, y: padT - 14, class: "chart-note" });
+        note.textContent = "份额 %";
+        const shortDate = (date) => date.endsWith("-01-01") ? date.slice(0, 4) : date;
+        const first = make("text", { x: padL, y: H - padB + 40, class: "axis-label" });
+        first.textContent = shortDate(dates[0]);
+        const last = make("text", { x: padL + plotW, y: H - padB + 40, "text-anchor": "end", class: "axis-label" });
+        last.textContent = shortDate(dates[dates.length - 1]);
+        const axisLabels = make("g", {});
+        axisLabels.append(first, last);
+        svg.append(note, axisLabels);
+        const defs = make("defs", {});
+        const revealRect = make("rect", { x: padL - 2, y: 0, width: 0, height: H });
+        const revealClip = make("clipPath", { id: "stack-reveal" });
+        revealClip.appendChild(revealRect);
+        defs.appendChild(revealClip);
+        svg.appendChild(defs);
+        const bandGroup = make("g", { "clip-path": "url(#stack-reveal)" });
+        svg.appendChild(bandGroup);
+        const cumulative = dates.map(() => 0);
+        const legendX = padL + plotW + 24;
+        const legendRight = W - 36;
+        const rowH = plotH / Math.max(bands.length, 1);
+        const legendRows = [];
+        bands.forEach((band, index) => {
+          const color = seriesColor(index, bands.length);
+          const tops = [];
+          const bottoms = [];
+          dates.forEach((date, i) => {
+            const share = shareOf(band, i);
+            bottoms.push(cumulative[i]);
+            cumulative[i] += share;
+            tops.push(cumulative[i]);
+          });
+          const forward = tops.map((value, i) => (i ? "L" : "M") + xOf(i).toFixed(1) + "," + yOf(value).toFixed(1));
+          const backward = dates.map((_, i) =>
+            "L" + xOf(dates.length - 1 - i).toFixed(1) + "," + yOf(bottoms[dates.length - 1 - i]).toFixed(1));
+          const shape = make("path", { d: forward.concat(backward).join(" ") + " Z", class: "band", fill: color });
+          bandGroup.appendChild(shape);
+          const row = legendItem(legendX, legendRight, padT + index * rowH + rowH / 2, rowH, color,
+            band.name, shareOf(band, dates.length - 1).toFixed(1) + "%");
+          svg.appendChild(row);
+          legendRows.push(row);
+          chartEvidence.series.set(band.name, { shape, legend: row });
+        });
+        const drawStart = introDrawStart;
+        const drawDur = introDrawDuration;
+        tl.to(revealRect, { attr: { width: plotW + 4 }, duration: drawDur, ease: "none" }, drawStart);
+        tl.from(axisLabels, { opacity: 0, duration: 0.5, ease: "sine.out" }, drawStart);
+        tl.from(legendRows, { opacity: 0, x: 18, duration: 0.5, stagger: Math.min(0.08, 0.8 / Math.max(bands.length, 1)), ease: "power2.out" }, drawStart + 0.2);
+      } else if (chart === "multiline") {
+        // 多线对照：各系列按首个有效值归一到 100；系列超过 20 只画前 20，图例注明。
+        const { byName, dates } = parseLong();
+        const all = Array.from(byName.entries())
+          .map(([name, points]) => ({
+            name,
+            points,
+            base: dates.map((date) => points.get(date))
+              .find((value) => Number.isFinite(value) && value !== 0)
+          }))
+          .filter((item) => Number.isFinite(item.base))
+          .map((item) => ({ ...item, last: lastValue(item.points, dates) }))
+          .sort((a, b) => b.last - a.last);
+        const entries = all.slice(0, 20);
+        const series = entries.map((item) => {
+          const points = dates.map((date) => item.points.has(date) ? (item.points.get(date) / item.base) * 100 : NaN);
+          let final = NaN;
+          for (let i = points.length - 1; i >= 0; i--) {
+            if (Number.isFinite(points[i])) { final = points[i]; break; }
+          }
+          return { name: item.name, points, final };
+        });
+        const flat = series.flatMap((item) => item.points).filter(Number.isFinite);
+        let lo = Math.min(100, ...flat);
+        let hi = Math.max(100, ...flat);
+        const padL = 96;
+        const padR = 292;
+        const padT = 48;
+        const padB = 68;
+        const plotW = W - padL - padR;
+        const plotH = H - padT - padB;
+        const raw = (hi - lo) / 4 || 1;
+        const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+        const factor = raw / pow;
+        let step = (factor <= 1 ? 1 : factor <= 2 ? 2 : factor <= 5 ? 5 : 10) * pow;
+        while ((hi - lo) / step > 6) step *= 2;
+        lo = Math.floor(lo / step) * step;
+        hi = Math.ceil(hi / step) * step;
+        const xOf = (index) => padL + (index / Math.max(dates.length - 1, 1)) * plotW;
+        const yOf = (value) => padT + (1 - (value - lo) / (hi - lo || 1)) * plotH;
+        const tickText = (value) => step < 1 ? value.toFixed(1) : String(Math.round(value));
+        for (let value = lo; value <= hi + step * 0.001; value += step) {
+          const yy = yOf(value);
+          svg.appendChild(make("line", { x1: padL, y1: yy, x2: padL + plotW, y2: yy, class: "axis" }));
+          const label = make("text", { x: padL - 14, y: yy + 9, "text-anchor": "end", class: "axis-label" });
+          label.textContent = tickText(value);
+          svg.appendChild(label);
+        }
+        svg.appendChild(make("line", { x1: padL, y1: yOf(100), x2: padL + plotW, y2: yOf(100), class: "baseline" }));
+        const note = make("text", { x: padL, y: padT - 14, class: "chart-note" });
+        note.textContent = "指数（基期=100）" + (all.length > entries.length ? " · 显示前 20 项" : "");
+        const shortDate = (date) => date.endsWith("-01-01") ? date.slice(0, 4) : date;
+        const first = make("text", { x: padL, y: H - padB + 40, class: "axis-label" });
+        first.textContent = shortDate(dates[0]);
+        const last = make("text", { x: padL + plotW, y: H - padB + 40, "text-anchor": "end", class: "axis-label" });
+        last.textContent = shortDate(dates[dates.length - 1]);
+        const axisLabels = make("g", {});
+        axisLabels.append(first, last);
+        svg.append(note, axisLabels);
+        const drawStart = introDrawStart;
+        const drawDur = introDrawDuration;
+        const stagger = Math.min(0.06, (drawDur * 0.35) / Math.max(series.length, 1));
+        const legendX = padL + plotW + 24;
+        const legendRight = W - 36;
+        const rowH = plotH / Math.max(series.length, 1);
+        const legendRows = [];
+        series.forEach((item, index) => {
+          let d = "";
+          let drawing = false;
+          item.points.forEach((value, i) => {
+            if (!Number.isFinite(value)) { drawing = false; return; }
+            d += (drawing ? "L" : "M") + xOf(i).toFixed(1) + "," + yOf(value).toFixed(1);
+            drawing = true;
+          });
+          const path = make("path", { d, class: "multi-line", stroke: seriesColor(index, series.length),
+            "stroke-width": series.length > 12 ? 4 : 5 });
+          svg.appendChild(path);
+          const length = path.getTotalLength();
+          gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
+          tl.to(path, { strokeDashoffset: 0, duration: drawDur, ease: "none" }, drawStart + index * stagger);
+          const row = legendItem(legendX, legendRight, padT + index * rowH + rowH / 2, rowH,
+            seriesColor(index, series.length), item.name, Number.isFinite(item.final) ? item.final.toFixed(0) : "—");
+          svg.appendChild(row);
+          legendRows.push(row);
+          chartEvidence.series.set(item.name, { shape: path, legend: row });
+        });
+        tl.from(axisLabels, { opacity: 0, duration: 0.5, ease: "sine.out" }, drawStart);
+        tl.from(legendRows, { opacity: 0, x: 18, duration: 0.5, stagger: Math.min(0.06, 0.8 / Math.max(series.length, 1)), ease: "power2.out" }, drawStart + 0.2);
+      } else if (chart === "radar") {
+        // 雷达：每个系列一根轴，取最后有效值；半径按所有轴的最大值归一，形状反映彼此的相对量级。
+        const { byName, dates } = parseLong();
+        const all = Array.from(byName.entries()).map(([name, points]) => {
+          return { name, last: lastValue(points, dates) };
+        }).filter((item) => Number.isFinite(item.last) && item.last > 0)
+          .sort((a, b) => b.last - a.last);
+        const axes = all.slice(0, 12);
+        const n = axes.length;
+        const maxLast = Math.max(...axes.map((item) => item.last), 1);
+        const ratioOf = (item) => Math.max(0, Math.min(1, item.last / maxLast));
+        const cx = W / 2;
+        const cy = H / 2;
+        const R = Math.min(W, H) * 0.33;
+        const angleOf = (index) => (-90 + (index * 360) / Math.max(n, 1)) * Math.PI / 180;
+        const pointOf = (index, ratio) => [
+          cx + Math.cos(angleOf(index)) * R * ratio,
+          cy + Math.sin(angleOf(index)) * R * ratio
+        ];
+        [0.25, 0.5, 0.75, 1].forEach((level) => {
+          const points = Array.from({ length: n }, (_, i) => pointOf(i, level).map((v) => v.toFixed(1)).join(",")).join(" ");
+          svg.appendChild(make("polygon", { points, class: "radar-grid" }));
+        });
+        const arc = (2 * Math.PI * (R + 24)) / Math.max(n, 1);
+        const allowed = arc * 0.92;
+        // 字号按最长系列名反推：英文约 0.56em、中文 1em，下限读令牌。
+        const nameUnits = Math.max(...axes.map((item) =>
+          Array.from(item.name).reduce((sum, ch) => sum + charEm(ch), 0)), 1);
+        const typeSize = Math.max(minSize(), Math.min(28, Math.floor(allowed / nameUnits)));
+        const labels = [];
+        const dots = [];
+        axes.forEach((item, index) => {
+          const [x, y] = pointOf(index, 1);
+          svg.appendChild(make("line", { x1: cx, y1: cy, x2: x.toFixed(1), y2: y.toFixed(1), class: "radar-spoke" }));
+          const a = angleOf(index);
+          const lx = cx + Math.cos(a) * (R + 24);
+          const ly = cy + Math.sin(a) * (R + 24);
+          const anchor = Math.cos(a) > 0.3 ? "start" : Math.cos(a) < -0.3 ? "end" : "middle";
+          const label = make("text", { x: lx.toFixed(1), y: ly.toFixed(1), "text-anchor": anchor,
+            class: "radar-label", style: "font-size:" + typeSize + "px", "dominant-baseline": "middle" });
+          label.textContent = clipTo(item.name, allowed, typeSize);
+          const value = make("tspan", { x: lx.toFixed(1), dy: typeSize * 0.9, class: "radar-value",
+            style: "font-size:" + Math.max(minSize(), Math.round(typeSize * 0.78)) + "px" });
+          value.textContent = clipTo(fmt(item.last), allowed, typeSize * 0.78);
+          label.appendChild(value);
+          svg.appendChild(label);
+          labels.push(label);
+          const [dx, dy] = pointOf(index, ratioOf(item));
+          const dot = make("circle", { cx: dx.toFixed(1), cy: dy.toFixed(1), r: 8, class: "radar-dot" });
+          svg.appendChild(dot);
+          dots.push(dot);
+          chartEvidence.series.set(item.name, { shape: dot, legend: label });
+        });
+        const polyPoints = axes.map((item, index) =>
+          pointOf(index, ratioOf(item)).map((v) => v.toFixed(1)).join(",")).join(" ");
+        const poly = make("polygon", { points: polyPoints, class: "radar-poly" });
+        if (dots.length) svg.insertBefore(poly, dots[0]);
+        else svg.appendChild(poly);
+        const note = make("text", { x: 24, y: 34, class: "chart-note" });
+        note.textContent = "各系列最新值 · 按最大值归一" + (all.length > axes.length ? " · 显示前 12 项" : "");
+        svg.appendChild(note);
+        tl.from(svg.querySelectorAll(".radar-grid"), { opacity: 0, duration: 0.5, stagger: 0.1, ease: "sine.out" }, 0.6);
+        tl.from(svg.querySelectorAll(".radar-spoke"), { opacity: 0, duration: 0.4, stagger: 0.03 }, 0.7);
+        tl.from(poly, { scale: 0.15, opacity: 0, duration: 1.2, ease: "back.out(1.3)", svgOrigin: cx + " " + cy }, 1.1);
+        tl.from(dots, { attr: { r: 0 }, duration: 0.4, stagger: 0.04, ease: "back.out(2)" }, 1.6);
+        tl.from(labels, { opacity: 0, duration: 0.4, stagger: 0.03 }, 1.7);
+        tl.from(note, { opacity: 0, duration: 0.4, ease: "sine.out" }, 0.8);
+      } else {
+        const values = rows.map((row) => row.value);
+        let min = Math.min(...values);
+        let max = Math.max(...values);
+        const span = max - min || 1;
+        min -= span * 0.14;
+        max += span * 0.14;
+        const x = (index) => pad.left + (index / Math.max(rows.length - 1, 1)) * (W - pad.left - pad.right);
+        const y = (value) => pad.top + (1 - (value - min) / (max - min)) * (H - pad.top - pad.bottom);
+        for (let i = 0; i < 4; i++) {
+          const yy = pad.top + (i * (H - pad.top - pad.bottom)) / 3;
+          svg.appendChild(make("line", { x1: pad.left, y1: yy, x2: W - pad.right, y2: yy, class: "axis" }));
+          const label = make("text", { x: pad.left - 14, y: yy + 9, "text-anchor": "end", class: "axis-label" });
+          label.textContent = fmt(max - (i * (max - min)) / 3);
+          svg.appendChild(label);
+        }
+        const line = rows.map((row, index) => (index ? "L" : "M") + x(index) + "," + y(row.value)).join(" ");
+        const area = line + " L" + x(rows.length - 1) + "," + (H - pad.bottom) + " L" + x(0) + "," + (H - pad.bottom) + " Z";
+        const areaPath = make("path", { d: area, class: "series-area" });
+        // 面积跟着折线一起推进；整块先出现会把结尾走势提前泄底。
+        const revealRect = make("rect", { x: 0, y: 0, width: 0, height: H });
+        const revealClip = make("clipPath", { id: "area-reveal" });
+        revealClip.appendChild(revealRect);
+        const defs = make("defs", {});
+        defs.appendChild(revealClip);
+        areaPath.setAttribute("clip-path", "url(#area-reveal)");
+        svg.append(defs, areaPath);
+        const path = make("path", { d: line, class: "series-line" });
+        svg.appendChild(path);
+        const dot = make("circle", { cx: x(rows.length - 1), cy: y(rows[rows.length - 1].value), r: 12, class: "dot" });
+        svg.appendChild(dot);
+        const dotLabel = make("text", { x: x(rows.length - 1), y: y(rows[rows.length - 1].value) - 26,
+          "text-anchor": "end", class: "dot-label" });
+        dotLabel.textContent = fmt(rows[rows.length - 1].value) + " " + unit;
+        svg.appendChild(dotLabel);
+        const shortDate = (date) => date.endsWith("-01-01") ? date.slice(0, 4) : date;
+        const first = make("text", { x: pad.left, y: H - pad.bottom + 42, class: "axis-label" });
+        first.textContent = shortDate(rows[0].label);
+        const last = make("text", { x: W - pad.right, y: H - pad.bottom + 42, "text-anchor": "end", class: "axis-label" });
+        last.textContent = shortDate(rows[rows.length - 1].label);
+        svg.append(first, last);
+        const length = path.getTotalLength();
+        gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
+        tl.to(path, { strokeDashoffset: 0, duration: introDrawDuration, ease: "none" }, introDrawStart);
+        tl.to(revealRect, { attr: { width: W }, duration: introDrawDuration, ease: "none" }, introDrawStart);
+        tl.from(dot, { scale: 0, transformOrigin: "center", duration: 0.5, ease: "back.out(2)" }, introDrawEnd - 0.2);
+        tl.from(dotLabel, { opacity: 0, y: 12, duration: 0.5, ease: "power2.out" }, introDrawEnd);
+        // 有限次呼吸，保持后段画面有动感；不用 repeat:-1，保证可 seek。
+        const pulseRepeats = Math.max(0, Math.floor((total - introDrawEnd - 1) / 2) - 1);
+        if (pulseRepeats > 0) {
+          tl.to(dot, { scale: 1.3, transformOrigin: "center", duration: 0.9, yoyo: true,
+            repeat: pulseRepeats, ease: "sine.inOut" }, introDrawEnd + 0.7);
+        }
+        const annotate = (index, text, color) => {
+          if (index < 0 || index >= rows.length) return;
+          const cx = x(index);
+          const cy = y(rows[index].value);
+          const anchor = cx > W * 0.72 ? "end" : "start";
+          const labelY = cy < 90 ? cy + 34 : cy - 18;
+          const group = make("g", {});
+          const point = make("circle", { cx, cy, r: 7, fill: color });
+          const label = make("text", { x: cx + (anchor === "end" ? -14 : 14), y: labelY,
+            "text-anchor": anchor, class: "annotation" });
+          label.textContent = text;
+          group.append(point, label);
+          svg.appendChild(group);
+          tl.from(group, { opacity: 0, duration: 0.4, ease: "sine.out" },
+            introDrawStart + introDrawDuration * (index / Math.max(rows.length - 1, 1)));
+        };
+        const maxIndex = rows.findIndex((row) => row.label === (facts.max && facts.max.date));
+        const minIndex = rows.findIndex((row) => row.label === (facts.min && facts.min.date));
+        [["first", 0], ["last", rows.length - 1], ["min", minIndex], ["max", maxIndex]].forEach(([key, index]) => {
+          if (index >= 0) chartEvidence.points.set(key, { x: x(index), y: y(rows[index].value) });
+        });
+        // 极值点离末点太近就不标注：末点自己的数值标签已经在那个位置了，
+        // 两个标签叠在一起谁都看不清（最低点落在最后两期时最常见）。
+        const lastX = x(rows.length - 1);
+        const lastY = y(rows[rows.length - 1].value);
+        const crowded = (index) => Math.abs(x(index) - lastX) < 90 && Math.abs(y(rows[index].value) - lastY) < 48;
+        if (maxIndex >= 0 && !crowded(maxIndex)) {
+          annotate(maxIndex, "最高 " + fmt(facts.max.value), token("--chart-max-annot", "#18b7c9"));
+        }
+        if (minIndex >= 0 && !crowded(minIndex)) {
+          annotate(minIndex, "最低 " + fmt(facts.min.value), token("--chart-min-annot", "#e06c5a"));
+        }
+      }
+
+// 每段的画面重点来自Java解析的事实引用，时间来自真实口播。所有帧都从时间轴绝对时间重算。
+const focusWindows = [...document.querySelectorAll(".scene")]
+  .filter((slot) => Number(slot.dataset.sceneIndex) <= sceneCount)
+  .map((slot) => ({
+    start: Number(slot.dataset.start),
+    end: Number(slot.dataset.start) + Number(slot.dataset.duration),
+    focus: JSON.parse(declared["scene" + slot.dataset.sceneIndex + "_focus"] || "{}"),
+  }));
+const focusCaption = document.getElementById("focus-caption");
+const focusLayer = make("g", { "aria-hidden": "true" });
+svg.appendChild(focusLayer);
+const factAt = (path) => path.split(".").reduce((node, key) =>
+  node != null && Object.hasOwn(node, key) ? node[key] : undefined, facts);
+const signed = (value) => (value > 0 ? "+" : "") + fmt(value);
+const captionText = (value) => {
+  const text = Array.from(String(value));
+  const max = /[一-鿿]/.test(value) ? 28 : 50;
+  return text.length > max ? text.slice(0, max - 1).join("") + "…" : text.join("");
+};
+const periodText = () => {
+  const start = facts.first && facts.first.date;
+  const end = facts.last && facts.last.date;
+  if (!start || !end) return "同一快照";
+  return start.slice(0, 4) === end.slice(0, 4)
+    ? start.slice(5) + " → " + end.slice(5) : start.slice(0, 4) + " → " + end.slice(0, 4);
+};
+function focusValue(focus) {
+  const refs = focus.refs || [];
+  const labels = focus.labels || [];
+  const base = facts.last || facts.leader || {};
+  const result = { value: base.value, unit, detail: "", caption: dataset.metric.label || "数据全貌", signed: false };
+  if (typeof facts.change === "number") {
+    result.detail = (facts.change >= 0 ? "▲ " : "▼ ") + fmt(Math.abs(facts.change));
+    if (typeof facts.change_pct === "number") result.detail += "（" + Math.abs(facts.change_pct).toFixed(2) + "%）";
+  } else if (facts.leader) {
+    result.detail = facts.leader.label || facts.leader.name || facts.leader.location || "";
+  }
+  if (focus.mode === "change") {
+    const pct = !refs.includes("change") && refs.includes("change_pct");
+    result.value = pct ? facts.change_pct : facts.change;
+    result.unit = pct ? "%" : unit;
+    result.detail = pct ? signed(facts.change) + " " + unit
+      : typeof facts.change_pct === "number" ? signed(facts.change_pct) + "%" : "";
+    result.caption = (pct ? "区间涨跌幅 · " : "区间首末变化 · ") + periodText();
+    result.signed = true;
+  } else if (focus.mode === "range") {
+    const key = (refs.find((ref) => ref.startsWith("min.") || ref.startsWith("max.")) || "max.value").split(".")[0];
+    const point = facts[key];
+    if (point) {
+      result.value = point.value;
+      result.caption = (key === "min" ? "区间最低 · " : "区间最高 · ") + (point.date || "同一快照");
+      result.detail = "";
+    }
+  } else if (focus.mode === "comparison") {
+    result.caption = typeof facts.spread === "number" ? "首尾差距 · 同一快照" : "区间首末对比 · " + periodText();
+    result.value = typeof facts.spread === "number" ? facts.spread : base.value;
+    result.detail = facts.first ? "起点 " + fmt(facts.first.value) + " " + unit : "";
+  } else if (focus.mode === "item" || focus.mode === "leader") {
+    const entities = [...(facts.items || []), ...(facts.series || []), ...(facts.leader ? [facts.leader] : [])];
+    const item = entities.find((entry) => labels.includes(entry.label || entry.name || entry.location));
+    if (item) {
+      const ref = refs.find((ref) => /^(items\.\d+|series\.\d+|leader)\.(value|first|last|min|max|change|change_pct)$/.test(ref)
+        && typeof factAt(ref) === "number");
+      const field = ref && ref.split(".").at(-1);
+      result.value = ref ? factAt(ref) : typeof item.value === "number" ? item.value : item.last;
+      result.unit = field === "change_pct" ? "%" : unit;
+      result.signed = field === "change" || field === "change_pct";
+      result.detail = "";
+      const meaning = { first: "起点", last: "最新值", min: "最低", max: "最高", change: "区间变化", change_pct: "区间涨跌幅" };
+      result.caption = (item.label || item.name || item.location) + " · " + (meaning[field] || "数值");
+    }
+  } else if (focus.mode === "latest") {
+    const key = refs.some((ref) => ref.startsWith("last.")) ? "last" : "first";
+    if (facts[key]) {
+      result.value = facts[key].value;
+      result.caption = (key === "last" ? "最新数值 · " : "区间起点 · ") + (facts[key].date || "同一快照");
+    }
+  }
+  return result;
+}
+let paintedFocus = -2;
+function paintEvidence(focus, index) {
+  if (paintedFocus === index) return;
+  paintedFocus = index;
+  focusLayer.replaceChildren();
+  const refs = focus.refs || [];
+  let keys = refs.map((ref) => ref.split(".")[0]).filter((key) => chartEvidence.points.has(key));
+  if (focus.mode === "change" || focus.mode === "comparison") keys = ["first", "last"];
+  const points = [...new Set(keys)].map((key) => chartEvidence.points.get(key)).filter(Boolean);
+  if (points.length === 2) {
+    focusLayer.appendChild(make("path", { d: "M" + points[0].x + "," + points[0].y
+      + " L" + points[1].x + "," + points[1].y, class: "focus-link" }));
+  }
+  points.forEach((point) => {
+    focusLayer.appendChild(make("circle", { cx: point.x, cy: point.y, r: 23, class: "focus-halo" }));
+    focusLayer.appendChild(make("circle", { cx: point.x, cy: point.y, r: 11, class: "focus-ring" }));
+  });
+  const selected = new Set(focus.labels || []);
+  if (focus.mode === "comparison" && chartEvidence.rows.size) {
+    const names = [...chartEvidence.rows.keys()];
+    selected.add(names[0]);
+    selected.add(names[names.length - 1]);
+  }
+  // 压暗强度读令牌：A 播报只要压住、B 调查要接近退场、C 解释要保持可读，
+  // 同一个常量不可能同时满足三套。回退 0.55 与改动前一致。
+  const dim = Number.parseFloat(cssVar("--focus-dim")) || 0.55;
+  chartEvidence.rows.forEach((node, name) => {
+    const active = selected.size === 0 || selected.has(name);
+    node.bar.style.opacity = active ? "1" : String(dim);
+    node.label.style.fontWeight = selected.has(name) ? "800" : "600";
+    node.value.style.fill = active ? "var(--fg)" : "var(--muted-2)";
+  });
+  chartEvidence.series.forEach((node, name) => {
+    const active = selected.size === 0 || selected.has(name);
+    node.shape.style.filter = active ? "" : "brightness(" + dim + ")";
+    node.legend.style.fontWeight = selected.has(name) ? "800" : "600";
+  });
+}
+function paintFocus() {
+  const t = tl.time();
+  const index = focusWindows.findIndex((slot) => slot.start <= t && t < slot.end);
+  const focus = index >= 0 ? focusWindows[index].focus : {};
+  paintEvidence(focus, index);
+  let display = focusValue(focus);
+  if (chartEvidence.race && chartEvidence.race.frames.length) {
+    const race = chartEvidence.race;
+    const frameIndex = Math.max(0, Math.min(race.frames.length - 1, Math.floor((t - race.start) / race.step)));
+    const frame = race.frames[frameIndex];
+    const values = new Map(frame.ranked.map((item) => [item.name, item.value]));
+    chartEvidence.rows.forEach((node, name) => {
+      node.value.textContent = values.has(name) ? fmt(values.get(name)) + " " + unit : "";
+    });
+    const leader = frame.ranked[0];
+    display = { value: leader && leader.value, unit, detail: leader ? leader.name : "", signed: false,
+      caption: frame.date + " · 当期榜首" };
+  }
+  if (Number.isFinite(display.value)) {
+    // 只在片头滚动数字；之后展示本段实际事实值，避免过渡中的数值被误当作新事实。
+    const progress = !chartEvidence.race ? Math.max(0, Math.min(1, (t - 0.35) / 1.2)) : 1;
+    const value = t < 1.55 && !chartEvidence.race ? display.value * (1 - Math.pow(1 - progress, 3)) : display.value;
+    const kpi = document.getElementById("kpi-value");
+    kpi.textContent = display.signed ? signed(value) : fmt(value);
+    kpi.style.color = display.signed && display.value < 0 ? "var(--down)" : "var(--accent)";
+    document.getElementById("kpi-unit").textContent = display.unit;
+    document.getElementById("kpi-change").textContent = display.detail;
+    document.getElementById("kpi-change").style.color = "var(--muted-2)";
+  }
+  if (focusCaption) focusCaption.textContent = captionText(display.caption);
+}
+paintFocus();
+const focusClock = { time: 0 };
+tl.to(focusClock, { time: total, duration: total, ease: "none", onUpdate: paintFocus }, 0);
+
+// 全局时间线与场景进出。所有模板共用，必须在 chart 之后执行。
+// 只有五个动作：enter / enterChars / ambient / camera / swap。参数全部来自令牌，
+// 风格差异靠改令牌而不是另写一套动画——否则三套风格很快就会长成三份真相。
+// 数字滚动不在这里：KPI 的小数位与单位随数据集变化，由 chart.js 按 precision 驱动。
+const has = (selector) => document.querySelector(selector) !== null;
+const numberVar = (name, fallback) => {
+  const value = parseFloat(cssVar(name));
+  return Number.isFinite(value) ? value : fallback;
+};
+const EASE_OUT = cssVar("--ease-out") || "power3.out";
+const EASE_IN = cssVar("--ease-in") || "power2.in";
+const DUR = {
+  entrance: numberVar("--dur-entrance", 0.5),
+  swap: numberVar("--dur-swap", 0.3),
+  ambient: numberVar("--dur-ambient", 7),
+};
+const FROM = { up: { y: 30 }, down: { y: -30 }, left: { x: 46 }, right: { x: -46 }, none: {} };
+// 屏间位移的距离。太小读不出方向，太大等于把画面甩出去。
+const SHIFT = numberVar("--slide-shift", 130);
+
+// immediateRender：动画排在中段时 GSAP 默认不提前写起始值，元素会先裸着露出来
+function enter(targets, { dir = "up", at = 0, stagger = 0 } = {}) {
+  const list = queryList(targets);
+  if (!list) return;
+  tl.from(list, { ...FROM[dir], opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger, immediateRender: true }, at);
+}
+
+function queryList(targets) {
+  if (!targets) return null;
+  const list = typeof targets === "string" ? document.querySelectorAll(targets) : targets;
+  return list && (list.nodeType || list.length) ? list : null;
+}
+
+// 逐字入场：只给「标题型」文字用——主标题、屏头编号、引句、片尾口播。
+// 正文不拆：一段话逐字进场会拖长入场时间，也把该一眼扫过的句子打散成一串字。
+// 拆字之后每个字符是绝对定位的 span，autoSplit 让它在宽度变化时重新分行，
+// 而不是按拆字那一刻的排版钉死。
+function enterChars(targets, { at = 0, stagger = 0.025, duration = DUR.entrance } = {}) {
+  const list = queryList(targets);
+  if (!list) return;
+  // 插件没加载时退回整段淡入：少一个文件不该让模板白屏
+  if (typeof SplitText === "undefined") {
+    enter(targets, { at });
+    return;
+  }
+  const split = SplitText.create(list, { type: "chars,lines", mask: "lines", autoSplit: true });
+  tl.from(split.chars, { yPercent: 55, opacity: 0, duration, ease: EASE_OUT, stagger }, at);
+}
+
+function ambient(scope = document) {
+  scope.querySelectorAll("[data-ambient]").forEach((el) => {
+    const base = parseFloat(getComputedStyle(el).opacity);
+    const dim = Number.isFinite(base) ? base : 1;
+    const kind = el.dataset.ambient;
+    const nominal = DUR.ambient * (kind === "pulse" ? 0.8 : kind === "flicker" ? 0.35 : 1);
+    const cycles = Math.max(1, Math.ceil(total / nominal));
+    const duration = total / cycles;
+    if (kind === "drift") {
+      tl.to(el, { x: 18, y: -14, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    } else if (kind === "pulse") {
+      tl.to(el, { opacity: dim * 0.55, scale: 1.06, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    } else if (kind === "flicker") {
+      tl.to(el, { opacity: dim * 0.7, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    }
+  });
+}
+
+// 镜头：全片一条补间——钩子段快推、中段几乎匀速、片尾回拉半格。
+// 三条独立补间会在同一个 scale 上互相抢值，所以用 keyframes 串成一条。
+// 推近的裁切交给 #root 的 overflow：推出去的部分本就该看不见。
+function camera() {
+  const el = document.getElementById("camera");
+  const push = numberVar("--cam-push", 1.05);
+  if (!el || push <= 1) return;
+  el.style.transformOrigin = cssVar("--cam-origin") || "50% 50%";
+  const hook = Math.min(2.2, total * 0.2);
+  const tail = Math.min(2.4, total * 0.16);
+  const mid = Math.max(0.1, total - hook - tail);
+  tl.to(el, {
+    keyframes: [
+      { scale: 1 + (push - 1) * 0.6, duration: hook, ease: "power2.out" },
+      { scale: push, duration: mid, ease: "none" },
+      { scale: 1 + (push - 1) * 0.4, duration: tail, ease: "power2.inOut" },
+    ],
+  }, 0);
+}
+
+function swap(slot, start, outAt) {
+  const parts = slot.querySelectorAll(".scene-no, .lead, .body");
+  if (!parts.length) return;
+  // 屏与屏之间是硬切：同轨 clip 的时间窗不重叠，没有可以交叉淡入的两帧。
+  // 改成整屏内容位移——逐屏换向地推进、向另一侧退出，切点因此读作一次移镜。
+  // 位移必须落在子元素上：带 data-start 的 clip 元素由引擎接管 transform，
+  // 对 section 本身 set x 会被忽略（实测 tl.set(section,{x:300}) 不动，子元素能动能）。
+  // 不用全帧遮罩：浅色纸面的版式各自刷底色，幕布要么盖错颜色，要么被审计判成遮挡文字。
+  const dir = Number(slot.dataset.sceneIndex) % 2 ? 1 : -1;
+  tl.fromTo(parts, { x: SHIFT * dir }, { x: 0, duration: DUR.entrance, ease: EASE_OUT }, start);
+  // 屏头编号与引句逐字，正文整段：正文是给人读的，拆成字只会读得更慢
+  enterChars(slot.querySelectorAll(".scene-no, .lead"), { at: start });
+  const body = slot.querySelectorAll(".body");
+  if (body.length) {
+    tl.from(body, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, start + 0.12);
+  }
+  // 短屏时退场不能排在入场之前
+  const outStart = Math.max(start + DUR.entrance, outAt);
+  tl.to(parts, { x: -SHIFT * 0.6 * dir, y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, outStart);
+}
+
+ambient();
+camera();
+
+tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
+enter("#kicker", { dir: "left", at: 0.1 });
+enterChars("#title", { at: 0.2 });
+tl.from("#rule", { scaleX: 0, duration: DUR.entrance, ease: EASE_OUT, immediateRender: true }, 0.45);
+if (has("#kpi")) enter("#kpi", { dir: "up", at: 0.35 });
+enter("#aigc-badge", { dir: "none", at: 0.2 });
+// 数据图表常驻时保留选题标题，避免后半片只剩孤立数字；文稿线沿用原退场。
+if (!has("#chart")) tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
+
+// 版式自带的静态装饰（#plate / #rail / #tick）。它们不来自数据，
+// 但各自有动画：没有动画的装饰层等于死图层。
+if (has("#plate")) {
+  tl.fromTo("#plate", { scaleY: 0 }, { scaleY: 1, duration: 0.8, ease: "power3.inOut" }, 0.05);
+}
+if (has("#rail")) {
+  tl.fromTo("#rail", { scaleY: 0 }, { scaleY: 1, duration: total, ease: "none" }, 0);
+}
+const tick = document.getElementById("tick");
+if (tick) {
+  // 不能用 tl.call 逐屏写：按帧 seek 时回调会一次跑完，tick 停在最后一屏。
+  // 从时间线时间反推屏次，seek 到哪一帧都对。
+  const pad = (n) => String(n).padStart(2, "0");
+  const starts = [...document.querySelectorAll(".scene")]
+    .filter((slot) => Number(slot.dataset.sceneIndex) <= sceneCount)
+    .map((slot) => parseFloat(slot.dataset.start));
+  tl.to(tick, {
+    duration: total,
+    ease: "none",
+    onUpdate: () => {
+      const t = tl.time();
+      const hit = starts.filter((start) => start <= t).length;
+      tick.textContent = pad(Math.max(hit, 1)) + " / " + pad(sceneCount);
+    },
+  }, 0);
+}
+
+// 结尾口播独占片尾一段窗口（生成器已把最后一屏的窗口切短），这里只需按窗口起点进场
+const closingSlot = document.getElementById("closing-slot");
+const closingAt = closingSlot ? parseFloat(closingSlot.dataset.start) : NaN;
+const hasClosing = Number.isFinite(closingAt) && closingAt < total - 0.1;
+
+document.querySelectorAll(".scene").forEach((slot) => {
+  if (Number(slot.dataset.sceneIndex) > sceneCount) {
+    slot.hidden = true;
+    slot.style.display = "none";
+    return;
+  }
+  const start = parseFloat(slot.dataset.start);
+  const end = start + parseFloat(slot.dataset.duration);
+  swap(slot, start, end - DUR.swap);
+});
+
+if (hasClosing) {
+  enterChars(closingSlot.querySelector("#closing"), { at: closingAt });
+}
+
+window.__timelines["main"] = tl;
+
+// compare 屏做成真正两栏对照：左边起点、右边对照项，数字与标签都来自数据事实，不来自文案。
+// 事实口径由 Java 侧 DatasetFacts 决定（wide / long / rows / geo 四种 shape），这里只取数并呈现：
+//   rows、geo：首条 vs 最高
+//   wide：起点 vs 最新
+//   long：同一对象的起点 vs 最新；焦点指了两个对象就照焦点来
+// 事实不够就不画这一栏——宁可这一屏只有文案，也不要摆一个空框。
+// 这一段必须排在 motion.js 之后：要借它的 DUR / EASE 与同一条时间轴。
+const compareDataset = JSON.parse(declared.dataset_json || "{}");
+const compareFacts = compareDataset.facts || {};
+const compareUnit = (compareDataset.metric && compareDataset.metric.unit) || "";
+const comparePrecision = Number.isFinite(Number(compareDataset.metric && compareDataset.metric.precision))
+  ? Number(compareDataset.metric.precision)
+  : 2;
+const compareNumber = (value) => Number(value).toFixed(comparePrecision);
+const compareOf = (entry) => {
+  if (!entry) return null;
+  const value = typeof entry.value === "number" ? entry.value
+    : typeof entry.last === "number" ? entry.last : NaN;
+  if (!Number.isFinite(value)) return null;
+  return { value, label: String(entry.label || entry.name || entry.location || entry.date || "") };
+};
+const comparePool = () => {
+  const list = [];
+  (compareFacts.series || []).forEach((entry) => list.push({ value: entry.last, label: String(entry.name || "") }));
+  (compareFacts.items || []).forEach((entry) => list.push({ value: entry.value, label: String(entry.label || entry.location || "") }));
+  return list;
+};
+const comparePair = (focus) => {
+  const labels = (focus && focus.labels) || [];
+  if (labels.length >= 2) {
+    const pool = comparePool();
+    const picked = labels.map((label) => pool.find((entry) => entry.label === label)).filter(Boolean);
+    if (picked.length >= 2) {
+      return { left: { ...picked[0], tag: picked[0].label }, right: { ...picked[1], tag: picked[1].label } };
+    }
+  }
+  const items = compareFacts.items || [];
+  if (items.length) {
+    const first = compareOf(items[0]);
+    const leader = compareOf(compareFacts.leader) || compareOf(items.reduce((best, entry) =>
+      (Number(entry.value) > Number(best.value) ? entry : best), items[0]));
+    if (first && leader && first.label !== leader.label) {
+      return { left: { ...first, tag: "首条" }, right: { ...leader, tag: "最高" } };
+    }
+    // 首条就是最高时这组对照塌了，退到最高 vs 最低：对照屏总要有个对照。
+    if (leader) {
+      const lowest = compareOf(items.reduce((best, entry) =>
+        (Number(entry.value) < Number(best.value) ? entry : best), items[0]));
+      if (lowest && lowest.label !== leader.label) {
+        return { left: { ...leader, tag: "最高" }, right: { ...lowest, tag: "最低" } };
+      }
+    }
+  }
+  if (compareFacts.first && compareFacts.last) {
+    const left = compareOf(compareFacts.first);
+    const right = compareOf(compareFacts.last);
+    if (left && right && left.label !== right.label) {
+      return { left: { ...left, tag: "起点" }, right: { ...right, tag: "最新" } };
+    }
+  }
+  const series = compareFacts.series || [];
+  if (series.length) {
+    const leaderName = compareFacts.leader && compareFacts.leader.name;
+    const entry = series.find((item) => item.name === leaderName) || series[0];
+    const left = { value: entry.first, label: String(entry.name || ""), tag: "起点" };
+    const right = { value: entry.last, label: String(entry.name || ""), tag: "最新" };
+    if (Number.isFinite(left.value) && Number.isFinite(right.value)) return { left, right };
+  }
+  return null;
+};
+// 字号按这一栏实际能放下的宽度降档，不按字数猜：各风格栏宽与字号都不同。
+const compareTextWidth = (text, px) => Array.from(String(text)).reduce((sum, ch) =>
+  sum + (/[一-鿿]/.test(ch) ? px : (/[0-9]/.test(ch) ? px * 0.62 : px * 0.42)), 0);
+// 单位跟在数字右侧同一行（.compare-number 是 flex），量宽度时漏掉它，
+// 「4113.34」会刚好占满整栏，把 USD/oz 顶到中间列去压住差值。按单位自身字号量。
+const compareNumberWidth = (text, px, unit) => {
+  if (!unit) return compareTextWidth(text, px);
+  const unitPx = parseFloat(cssVar("--fs-body")) || px;
+  return compareTextWidth(text, px) + parseFloat(cssVar("--fs-note") || 0) + compareTextWidth(unit, unitPx);
+};
+const compareFitSize = (text, width) => {
+  const ladder = ["--fs-title-sm", "--fs-lead", "--fs-body"];
+  for (const token of ladder) {
+    const px = parseFloat(cssVar(token));
+    if (Number.isFinite(px) && compareNumberWidth(text, px, compareUnit) <= width) return token;
+  }
+  return "--fs-body";
+};
+const compareClip = (text, max) => {
+  const list = Array.from(String(text));
+  return list.length > max ? list.slice(0, max - 1).join("") + "…" : String(text);
+};
+const compareElement = (name, className, text) => {
+  const node = document.createElement(name);
+  node.className = className;
+  node.textContent = text;
+  return node;
+};
+document.querySelectorAll(".scene").forEach((slot) => {
+  if (Number(slot.dataset.sceneIndex) > sceneCount) return;
+  if (slot.dataset.sceneType !== "compare") return;
+  const focus = JSON.parse(declared["scene" + slot.dataset.sceneIndex + "_focus"] || "{}");
+  const pair = comparePair(focus);
+  if (!pair) return;
+  const leftText = compareNumber(pair.left.value);
+  const rightText = compareNumber(pair.right.value);
+  const style = getComputedStyle(slot);
+  const inner = slot.clientWidth - parseFloat(style.paddingLeft || 0) - parseFloat(style.paddingRight || 0);
+  const column = Math.max(120, (inner - 40 - 72) / 2);
+  const size = compareFitSize(leftText.length >= rightText.length ? leftText : rightText, column);
+  const pairs = compareElement("div", "compare-pairs", "");
+  const left = compareElement("div", "compare-col", "");
+  left.appendChild(compareElement("span", "compare-tag", pair.left.tag));
+  const leftNumber = compareElement("span", "compare-number", "");
+  const leftValue = compareElement("b", "compare-value", leftText);
+  leftValue.style.fontSize = cssVar(size);
+  leftNumber.appendChild(leftValue);
+  if (compareUnit) leftNumber.appendChild(compareElement("i", "compare-unit", compareUnit));
+  left.appendChild(leftNumber);
+  left.appendChild(compareElement("span", "compare-label", compareClip(pair.left.label, 22)));
+  const middle = compareElement("div", "compare-vs", "");
+  middle.appendChild(compareElement("span", "compare-vs-mark", "vs"));
+  const delta = Math.abs(pair.right.value - pair.left.value);
+  if (Number.isFinite(delta)) {
+    middle.appendChild(compareElement("span", "compare-delta", "差 " + compareNumber(delta)));
+  }
+  const right = compareElement("div", "compare-col", "");
+  right.appendChild(compareElement("span", "compare-tag", pair.right.tag));
+  const rightNumber = compareElement("span", "compare-number", "");
+  const rightValue = compareElement("b", "compare-value", rightText);
+  rightValue.style.fontSize = cssVar(size);
+  rightNumber.appendChild(rightValue);
+  if (compareUnit) rightNumber.appendChild(compareElement("i", "compare-unit", compareUnit));
+  right.appendChild(rightNumber);
+  right.appendChild(compareElement("span", "compare-label", compareClip(pair.right.label, 22)));
+  pairs.append(left, middle, right);
+  slot.appendChild(pairs);
+  slot.classList.add("has-compare");
+  const start = Number(slot.dataset.start);
+  const outAt = Math.max(start + DUR.entrance, start + Number(slot.dataset.duration) - DUR.swap);
+  tl.from(pairs, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, immediateRender: true }, start);
+  tl.to(pairs, { y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN }, outAt);
+});
+
+// 场景骨架：每一屏按自己的 scene_type 换构图，而不只是换三行字。
+//
+// 为什么需要这一层：模板原先只有一个骨架——上半屏固定图表、下半屏编号+领句+正文。
+// 三个场景讲三件不同的事，画面上却只有文字在换，构图 45 秒不动。
+// 观众读到的是「一张图配三段话」，不是三段有层次的叙事。
+//
+// 借鉴 HyperFrames registry 的两个设计（只借理念，不复制实现）：
+//   chart-story 的 emphasize —— 「强调哪一个数据点」是内容给的，不是模板写死的；
+//   decline-chart 的 ambient lockstep —— 背景随数据走向一起变，画面与内容同感。
+// 落到这里：chart 屏把整幅让给图表并锁定焦点；number 屏把数字放大到读得清；
+// compare 屏走两栏对照（compare.js 已有，这里只清场）。
+//
+// 三种骨架都只在**屏内前段**接管，之后把常驻层放回来——冲击与强调是开场动作，
+// 不是整屏形态。时长上限与 headline 同一条规则，不另立一套。
+const skeletonSlots = Array.from(document.querySelectorAll(".scene"))
+  .filter((slot) => Number(slot.dataset.sceneIndex) <= sceneCount);
+
+// 每种场景类型接管时，常驻层里哪些要退场。留空的类型不接管（text/timeline 保持原样）。
+const SKELETONS = {
+  // 图表屏：图表升为主角，场景文字压缩成一句压底标注
+  chart: { hide: ["#title-card"], maxSec: 0 },
+  // 数字屏：数字与单位占主视区，图表退场
+  number: { hide: ["#chart-slot"], maxSec: 0 },
+  // 对照屏：两栏对照由 compare.js 建，常驻图表退场
+  compare: { hide: ["#chart-slot"], maxSec: 0 },
+};
+
+const windows = [];
+skeletonSlots.forEach((slot) => {
+  const type = slot.dataset.sceneType;
+  const spec = SKELETONS[type];
+  if (!spec) return;
+  const start = Number(slot.dataset.start);
+  const duration = Number(slot.dataset.duration);
+  if (!Number.isFinite(start) || !Number.isFinite(duration) || duration <= 0) return;
+  // maxSec 为 0 表示整屏接管：这三种类型本身就是「这一屏就是这件事」，
+  // 不像 headline 只是钩子。仍然保留整屏而不是半屏，因为点掉图表之后
+  // 画面必须立刻给出替代内容（大数字或两栏对照），不存在白板风险。
+  windows.push({ slot, type, start, end: start + duration, hide: spec.hide });
+});
+
+if (windows.length) {
+  const FADE = 0.4;
+  const byLayer = new Map();
+  windows.forEach((win) => {
+    win.hide.forEach((selector) => {
+      const el = document.querySelector(selector);
+      if (!el) return;
+      if (!byLayer.has(el)) byLayer.set(el, []);
+      byLayer.get(el).push(win);
+    });
+  });
+
+  byLayer.forEach((list, el) => {
+    // 逐屏排进/排出的补间。相邻窗口重叠时不重复藏，避免抖一下。
+    list.sort((a, b) => a.start - b.start).forEach((win, index) => {
+      const prev = list[index - 1];
+      const fadeOutAt = Math.max(0, win.start - 0.35);
+      if (fadeOutAt <= 0) {
+        tl.set(el, { opacity: 0 }, 0);
+        el.style.opacity = "0";
+      } else if (!prev || fadeOutAt >= prev.end) {
+        // 与上一屏窗口重叠时不再藏一次：它本来就该一直是暗的
+        tl.to(el, { opacity: 0, duration: FADE, ease: "sine.inOut" }, fadeOutAt);
+      }
+      const next = list[index + 1];
+      // 下一屏紧接着也要藏，就不在这里放回来——放回来再藏等于闪一下
+      const overlapsNext = next && next.start <= win.end + 0.8;
+      const fadeInDur = Math.min(FADE, Math.max(0, total - win.end));
+      if (!overlapsNext && fadeInDur > 0.05) {
+        tl.to(el, { opacity: 1, duration: fadeInDur, ease: "sine.inOut" }, win.end);
+      }
+    });
+  });
+
+  // 骨架类名按时间轴时间算，seek 到哪一帧都对
+  const clock = { time: 0 };
+  tl.to(clock, {
+    time: total,
+    duration: total,
+    ease: "none",
+    onUpdate: () => {
+      const t = tl.time();
+      windows.forEach((win) => {
+        const on = t >= win.start && t < win.end;
+        win.slot.classList.toggle("skeleton-" + win.type, on);
+      });
+    },
+  }, 0);
+}
+    </script>
+  </body>
+</html>

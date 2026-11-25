@@ -1,0 +1,51 @@
+:root {
+  --fs-title: 74px; --fs-title-lg: 66px; --fs-title-sm: 58px;
+  --cam-push: 1.025;
+  --cam-origin: 46% 50%;
+  --slide-shift: 230px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #f6f4ef; color: #1c2226; font-family: "Noto Sans SC", sans-serif; }
+#root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #f6f4ef; }
+#title-card {
+  top: 0; bottom: 0; left: 0; right: auto; width: 46%;
+  padding: 90px 72px 150px;
+  display: flex; flex-direction: column; justify-content: center;
+  background: #efede6; border-right: 3px solid #1c2226;
+}
+#kicker { margin: 0 0 26px; font-size: 28px; font-weight: 500; letter-spacing: 7px; color: #6b7c80; }
+#title {
+  margin: 0; font-size: var(--fs-title); font-weight: 600; line-height: 1.2; letter-spacing: 0.01em; color: #131a1d;
+  border-bottom: 3px solid #1c2226; padding-bottom: 30px;
+}
+#rule { margin-top: 26px; width: 120px; height: 6px; background: var(--accent); }
+.scene {
+  top: 70px; bottom: 150px; left: 46%; right: 0;
+  padding: 0 72px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.lead {
+  margin: 0 0 28px; font-size: 54px; font-weight: 600; line-height: 1.35; color: #131a1d;
+  max-height: 146px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.lead::before { content: "— "; color: var(--accent); }
+.body {
+  margin: 0; padding-left: 28px; border-left: 3px solid #c9cfc9; font-size: 34px; font-weight: 400;
+  line-height: 1.65; color: #3f4a4e; max-height: 340px; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6;
+}
+#closing-slot {
+  top: 70px; bottom: 150px; left: 46%; right: 0;
+  padding: 0 72px; display: flex; align-items: center;
+}
+#closing {
+  margin: 0; font-size: 34px; font-weight: 500; line-height: 1.6; color: #3f4a4e;
+  max-height: 230px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4;
+}
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 30px; padding: 0 64px; }
+#progress { display: block; height: 6px; border-radius: 3px; background: var(--accent); transform-origin: left center; margin-bottom: 16px; }
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+#aigc-badge { font-size: 26px; padding: 10px 22px; border-radius: 999px; white-space: nowrap; color: #131a1d; background: transparent; border: 2px solid #131a1d; }
+#source-line { font-size: 26px; max-width: 1100px; text-align: right; color: #6b7c80; border-top: 1px solid #c9cfc9; padding-top: 14px; }
+.scene-no { display: none; }
+#source-line::before { content: "来源："; }

@@ -5,6 +5,7 @@
   "line": "DATA_BOARD",
   "style": "data-board",
   "layout": "news-data-9x16",
+  "layouts": ["9x16", "16x9"],
   "width": 1080,
   "height": 1920,
   "duration": 45,
@@ -22,6 +23,7 @@
     "timeline"
   ],
   "storyboard": true,
+  "skeletons": true,
   "description": "动态数据解释：折线/排行/赛跑/堆叠/多线/雷达，1080×1920，数据由 dataset/1 快照驱动",
   "recommendedDuration": {
     "min": 30,
@@ -48,6 +50,44 @@
         "区间高点确认",
         "这段区间最高 4113.34 美元，最低 3988.20 美元。"
       ]
+    ],
+    "sceneMeta": [
+      {
+        "type": "headline",
+        "beat": "HOOK",
+        "focus": {
+          "mode": "range",
+          "refs": [
+            "max.value",
+            "min.value"
+          ],
+          "labels": []
+        }
+      },
+      {
+        "type": "number",
+        "beat": "EVIDENCE",
+        "focus": {
+          "mode": "change",
+          "refs": [
+            "change",
+            "change_pct"
+          ],
+          "labels": []
+        }
+      },
+      {
+        "type": "compare",
+        "beat": "INSIGHT",
+        "focus": {
+          "mode": "range",
+          "refs": [
+            "max.value",
+            "min.value"
+          ],
+          "labels": []
+        }
+      }
     ],
     "dataset": {
       "contract": "dataset/1",

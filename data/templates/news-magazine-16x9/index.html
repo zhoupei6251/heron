@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='[{"id":"title","type":"string","label":"标题","maxLength":15,"default":"新一代旗舰手机发布"},{"id":"kicker","type":"string","label":"栏目标签","maxLength":12,"default":"HERON WEEKLY"},{"id":"scene1_lead","type":"string","label":"第1屏领句","maxLength":40,"default":"电池容量提升两成"},{"id":"scene1_body","type":"string","label":"第1屏正文","maxLength":600,"default":"厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。"},{"id":"scene2_lead","type":"string","label":"第2屏领句","maxLength":40,"default":"影像算法全面重写"},{"id":"scene2_body","type":"string","label":"第2屏正文","maxLength":600,"default":"影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。"},{"id":"scene3_lead","type":"string","label":"第3屏领句","maxLength":40,"default":"起售价保持不变"},{"id":"scene3_body","type":"string","label":"第3屏正文","maxLength":600,"default":"价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。"},{"id":"scene4_lead","type":"string","label":"第4屏领句","maxLength":40,"default":"现货发售时间已定"},{"id":"scene4_body","type":"string","label":"第4屏正文","maxLength":600,"default":"官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。"},{"id":"scene5_lead","type":"string","label":"第5屏领句","maxLength":40,"default":"竞品同期密集上新"},{"id":"scene5_body","type":"string","label":"第5屏正文","maxLength":600,"default":"过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。"},{"id":"scene6_lead","type":"string","label":"第6屏领句","maxLength":40,"default":"售后政策同步调整"},{"id":"scene6_body","type":"string","label":"第6屏正文","maxLength":600,"default":"厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。"},{"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"更多机型对比与实测，我们会在后续持续跟进。"},{"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"公开报道整理"},{"id":"accent","type":"color","label":"品牌色","default":"#d97706"},{"id":"scene_count","type":"number","label":"场景数","min":3,"max":6,"default":6},{"id":"scene1_type","type":"string","label":"场景类型","default":""},{"id":"scene2_type","type":"string","label":"场景类型","default":""},{"id":"scene3_type","type":"string","label":"场景类型","default":""},{"id":"scene4_type","type":"string","label":"场景类型","default":""},{"id":"scene5_type","type":"string","label":"场景类型","default":""},{"id":"scene6_type","type":"string","label":"场景类型","default":""}]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Heron 杂志横版</title>
+    <style>
+/* 所有模板共享的画布基础。令牌由 _shared/tokens 下的同名样式文件提供。
+   注意：注释里不要出现 style 标签的字面写法，它会被 HTML 解析器当成真的开始标签。 */
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("fonts/NotoSansSC-Regular.otf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+}
+#root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+.clip { position: absolute; inset: 0; }
+
+/* 镜头层：整幅内容在这个容器里进推出画框，幅度由 --cam-push 控制（1 即镜头不动）。
+   下三分之一与进度条留在容器外——那是播出界面，不该跟着镜头晃。
+   画面被推出去的部分由 #root 的 overflow 裁掉，这正是推近该有的裁切。 */
+#camera { position: absolute; inset: 0; z-index: 1; }
+
+/* 纵深：环境层是最远的一层，永远在内容之下、永远在动。
+   三层各自可开关（透明度为 0 即视为关闭），但网格与光晕是默认配置。 */
+.ambient { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.ambient > div { position: absolute; inset: 0; }
+.ambient-grid {
+  background-image:
+    linear-gradient(to right, var(--rule-faint) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule-faint) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  opacity: var(--grid-opacity);
+}
+.ambient-glow {
+  background: radial-gradient(circle at var(--glow-x) var(--glow-y),
+              var(--glow-color) 0%, transparent var(--glow-spread));
+  opacity: var(--glow-opacity);
+}
+.ambient-grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.55'/></svg>");
+  background-size: 140px 140px;
+  opacity: var(--grain-opacity);
+}
+/* 内容层压在环境层之上：骨架里的每块都自己定位，这里只统一抬 z-index。 */
+#title-card, #chart-slot, .scene, #closing-slot, #bottom-bar { z-index: 1; }
+
+/* 场景序号：给画面一个「第几拍」的锚点，避免每屏长得一样。 */
+.scene-no {
+  display: block;
+  font-family: var(--font-num);
+  font-size: var(--fs-note);
+  font-weight: 700;
+  letter-spacing: var(--track-kicker);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 硬规则 1：视频字号下限 24px，竖屏 32px。这条不能靠 CSS 强制，只作为约定写在这里，由构建期校验兜底。 */
+/* 文稿解说线的共用令牌。12 个版式各自的配色与排版写在 layouts/article/<key>.css 里——
+   这条线本来就有 12 种长相，统一成一套皮等于把可选性砍掉。
+   这里只提供所有版式都要用的那层：字体、动效节奏、环境层兜底值。
+   注意：--accent 不在这里定义，由 HyperFrames 从 composition 的 color 变量注入。 */
+:root {
+  --bg: #0b1418;
+  --fg: #f3f0e8;
+  --muted: #7d8d92;
+  --muted-2: #9fb2bf;
+  --body: #c2d1dd;
+  --legend: #dde6e8;
+  --down: #e06c5a;
+
+  --rule-faint: rgba(243, 240, 232, 0.12);
+  --rule-soft: rgba(243, 240, 232, 0.16);
+  --rule-strong: rgba(243, 240, 232, 0.30);
+  --panel: rgba(243, 240, 232, 0.06);
+  --glow-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  --accent-glow: rgba(111, 188, 204, 0.35);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 92px;
+  --fs-title-lg: 76px;
+  --fs-title-sm: 68px;
+  --fs-data: 64px;
+  --fs-data-sm: 34px;
+  --fs-lead: 54px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 24px;
+
+  --pad-frame: 92px;
+  --rule-width: 3px;
+  --radius: 8px;
+  --track-kicker: 0.16em;
+
+  --grid-size: 96px;
+  --grid-opacity: 0.4;
+  --glow-x: 70%;
+  --glow-y: 20%;
+  --glow-spread: 60%;
+  --glow-opacity: 0.8;
+  --grain-opacity: 0.2;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.3s;
+  --dur-ambient: 8s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+
+  /* 镜头与转场：文稿线一屏字多，推近压到 1.05 以免边缘的正文被裁掉。
+     位移给 120px——文稿换屏该干脆，再远就把一句话甩出画面。 */
+  --cam-push: 1.05;
+  --cam-origin: 50% 50%;
+  --slide-shift: 120px;
+}
+:root {
+  --fs-title: 74px; --fs-title-lg: 66px; --fs-title-sm: 58px;
+  --cam-push: 1.025;
+  --cam-origin: 46% 50%;
+  --slide-shift: 230px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #f6f4ef; color: #1c2226; font-family: "Noto Sans SC", sans-serif; }
+#root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #f6f4ef; }
+#title-card {
+  top: 0; bottom: 0; left: 0; right: auto; width: 46%;
+  padding: 90px 72px 150px;
+  display: flex; flex-direction: column; justify-content: center;
+  background: #efede6; border-right: 3px solid #1c2226;
+}
+#kicker { margin: 0 0 26px; font-size: 28px; font-weight: 500; letter-spacing: 7px; color: #6b7c80; }
+#title {
+  margin: 0; font-size: var(--fs-title); font-weight: 600; line-height: 1.2; letter-spacing: 0.01em; color: #131a1d;
+  border-bottom: 3px solid #1c2226; padding-bottom: 30px;
+}
+#rule { margin-top: 26px; width: 120px; height: 6px; background: var(--accent); }
+.scene {
+  top: 70px; bottom: 150px; left: 46%; right: 0;
+  padding: 0 72px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.lead {
+  margin: 0 0 28px; font-size: 54px; font-weight: 600; line-height: 1.35; color: #131a1d;
+  max-height: 146px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.lead::before { content: "— "; color: var(--accent); }
+.body {
+  margin: 0; padding-left: 28px; border-left: 3px solid #c9cfc9; font-size: 34px; font-weight: 400;
+  line-height: 1.65; color: #3f4a4e; max-height: 340px; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6;
+}
+#closing-slot {
+  top: 70px; bottom: 150px; left: 46%; right: 0;
+  padding: 0 72px; display: flex; align-items: center;
+}
+#closing {
+  margin: 0; font-size: 34px; font-weight: 500; line-height: 1.6; color: #3f4a4e;
+  max-height: 230px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4;
+}
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 30px; padding: 0 64px; }
+#progress { display: block; height: 6px; border-radius: 3px; background: var(--accent); transform-origin: left center; margin-bottom: 16px; }
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+#aigc-badge { font-size: 26px; padding: 10px 22px; border-radius: 999px; white-space: nowrap; color: #131a1d; background: transparent; border: 2px solid #131a1d; }
+#source-line { font-size: 26px; max-width: 1100px; text-align: right; color: #6b7c80; border-top: 1px solid #c9cfc9; padding-top: 14px; }
+.scene-no { display: none; }
+#source-line::before { content: "来源："; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-style="article" data-start="0" data-width="1920" data-height="1080" data-duration="45">
+
+      <div class="ambient" aria-hidden="true">
+        <div class="ambient-grid" data-ambient="drift"></div>
+        <div class="ambient-glow" data-ambient="pulse"></div>
+        <div class="ambient-grain" data-ambient="flicker"></div>
+      </div>
+
+      <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="45" data-track-index="9"></audio>
+
+      <div id="camera">
+      <header id="title-card" class="clip" data-start="0" data-duration="45" data-track-index="0">
+        <div id="kicker">
+          <span id="kicker-flag"></span>
+          <span id="kicker-text" data-var-text="kicker">HERON WEEKLY</span>
+        </div>
+        <h1 id="title" data-var-text="title">新一代旗舰手机发布</h1>
+        <div id="rule"></div>
+
+      </header>
+
+      <section id="scene-1" class="clip scene" data-start="0" data-duration="7.5" data-track-index="2" data-scene-index="1">
+        <span class="scene-no">01</span>
+        <p class="lead" data-var-text="scene1_lead">电池容量提升两成</p>
+        <p class="body" data-var-text="scene1_body">厂商在今日上午的线上发布会上公布新一代旗舰机型，主打续航与影像。官方资料显示，新机电池容量较上一代提升约两成，整机重量基本持平。</p>
+      </section>
+      <section id="scene-2" class="clip scene" data-start="7.5" data-duration="7.5" data-track-index="2" data-scene-index="2">
+        <span class="scene-no">02</span>
+        <p class="lead" data-var-text="scene2_lead">影像算法全面重写</p>
+        <p class="body" data-var-text="scene2_body">影像部分引入新的降噪与色彩管线，官方称弱光成片速度提升明显。发布会现场展示的样张来自工程机，量产版本仍可能调整。</p>
+      </section>
+      <section id="scene-3" class="clip scene" data-start="15" data-duration="7.5" data-track-index="2" data-scene-index="3">
+        <span class="scene-no">03</span>
+        <p class="lead" data-var-text="scene3_lead">起售价保持不变</p>
+        <p class="body" data-var-text="scene3_body">价格方面，起步版本与上一代首发价一致，存储升级需要加价。渠道商反馈，首销期赠品与以旧换新补贴是主要促销手段。</p>
+      </section>
+      <section id="scene-4" class="clip scene" data-start="22.5" data-duration="7.5" data-track-index="2" data-scene-index="4">
+        <span class="scene-no">04</span>
+        <p class="lead" data-var-text="scene4_lead">现货发售时间已定</p>
+        <p class="body" data-var-text="scene4_body">官方宣布在下周开启全渠道现货发售，首批覆盖国内主要城市。海外上市时间表尚未公布。</p>
+      </section>
+      <section id="scene-5" class="clip scene" data-start="30" data-duration="7.5" data-track-index="2" data-scene-index="5">
+        <span class="scene-no">05</span>
+        <p class="lead" data-var-text="scene5_lead">竞品同期密集上新</p>
+        <p class="body" data-var-text="scene5_body">过去一个月内，多家厂商集中发布新机，旗舰档位竞争加剧。分析机构预计本季度整体出货量小幅回升。</p>
+      </section>
+      <section id="scene-6" class="clip scene" data-start="37.5" data-duration="3.5" data-track-index="2" data-scene-index="6">
+        <span class="scene-no">06</span>
+        <p class="lead" data-var-text="scene6_lead">售后政策同步调整</p>
+        <p class="body" data-var-text="scene6_body">厂商将整机保修期延长，并新增电池健康度检测服务。具体条款以官网公告为准。</p>
+      </section>
+
+      <section id="closing-slot" class="clip" data-start="41" data-duration="4" data-track-index="2">
+        <p id="closing" data-var-text="closing">更多机型对比与实测，我们会在后续持续跟进。</p>
+      </section>
+      </div>
+
+      <div id="bottom-bar">
+        <div id="progress"></div>
+        <div id="meta-row">
+          <span id="aigc-badge">内容由 AI 生成</span>
+          <span id="source-line" data-var-text="source_name">公开报道整理</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="gsap.min.js"></script><script src="SplitText.min.js"></script>
+    <script>
+// 变量注入与通用填充。所有模板共用，必须最先执行。
+const declared = window.__hyperframes && window.__hyperframes.getVariables
+  ? window.__hyperframes.getVariables()
+  : {};
+const root = document.getElementById("root");
+const tl = gsap.timeline({ paused: true });
+const total = parseFloat(root.dataset.duration);
+
+// 模板里的尺寸一律来自令牌，避免 JS 和 CSS 各写一份而漂移
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// 标题按字数降档：92px → 76px → 68px
+const titleEl = document.getElementById("title");
+const titleLen = Array.from(declared.title || titleEl.textContent || "").length;
+if (titleLen > 11) titleEl.style.fontSize = cssVar("--fs-title-sm");
+else if (titleLen > 9) titleEl.style.fontSize = cssVar("--fs-title-lg");
+
+// 实际播几屏由稿件决定，模板只负责准备好槽位
+const sceneCount = Number.isFinite(Number(declared.scene_count)) ? Number(declared.scene_count) : 3;
+
+// 屏次编号与配图同理：槽位先备好，有没有编号和有没有图由稿件与模板能力决定。
+document.querySelectorAll(".scene").forEach((slot) => {
+  const index = slot.dataset.sceneIndex;
+  const no = slot.querySelector(".scene-no");
+  if (no) no.textContent = String(index).padStart(2, "0");
+  // 场景类型落到属性上：quote / rank 这类版式靠 [data-scene-type] 选择器换排版，
+  // 只声明变量不写属性，那些变体就是死代码。
+  const type = declared["scene" + index + "_type"];
+  if (type) slot.dataset.sceneType = type;
+  // 叙事节点给版式一条辅线
+  const beat = declared["scene" + index + "_beat"];
+  if (beat) slot.dataset.beat = beat;
+  // 上屏文字与旁白解耦：屏幕文字节点同时带 lead 类，继承三套版式各自的领句排版。
+  // 原来的领句由 .has-screen-text 藏掉，两条不会同时上屏。
+  const screen = declared["scene" + index + "_text"];
+  if (screen && String(screen).trim()) {
+    const text = document.createElement("p");
+    text.className = "lead screen-text";
+    text.textContent = screen;
+    const lead = slot.querySelector(".lead");
+    if (lead) lead.after(text);
+    else slot.appendChild(text);
+    slot.classList.add("has-screen-text");
+  }
+  const figure = slot.querySelector(".scene-figure");
+  const src = declared["scene" + index + "_image"];
+  if (!figure || !src) return;
+  // has-image 让版式知道这一屏真的有图：文稿线用它把图位展开、同时把正文压回两行
+  slot.classList.add("has-image");
+  // img 由脚本创建而不是写在 HTML 里：静态 <img> 会被版式闸判成同组重复媒体节点
+  const img = document.createElement("img");
+  img.alt = "";
+  img.src = src;
+  figure.appendChild(img);
+});
+
+// 全局时间线与场景进出。所有模板共用，必须在 chart 之后执行。
+// 只有五个动作：enter / enterChars / ambient / camera / swap。参数全部来自令牌，
+// 风格差异靠改令牌而不是另写一套动画——否则三套风格很快就会长成三份真相。
+// 数字滚动不在这里：KPI 的小数位与单位随数据集变化，由 chart.js 按 precision 驱动。
+const has = (selector) => document.querySelector(selector) !== null;
+const numberVar = (name, fallback) => {
+  const value = parseFloat(cssVar(name));
+  return Number.isFinite(value) ? value : fallback;
+};
+const EASE_OUT = cssVar("--ease-out") || "power3.out";
+const EASE_IN = cssVar("--ease-in") || "power2.in";
+const DUR = {
+  entrance: numberVar("--dur-entrance", 0.5),
+  swap: numberVar("--dur-swap", 0.3),
+  ambient: numberVar("--dur-ambient", 7),
+};
+const FROM = { up: { y: 30 }, down: { y: -30 }, left: { x: 46 }, right: { x: -46 }, none: {} };
+// 屏间位移的距离。太小读不出方向，太大等于把画面甩出去。
+const SHIFT = numberVar("--slide-shift", 130);
+
+// immediateRender：动画排在中段时 GSAP 默认不提前写起始值，元素会先裸着露出来
+function enter(targets, { dir = "up", at = 0, stagger = 0 } = {}) {
+  const list = queryList(targets);
+  if (!list) return;
+  tl.from(list, { ...FROM[dir], opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger, immediateRender: true }, at);
+}
+
+function queryList(targets) {
+  if (!targets) return null;
+  const list = typeof targets === "string" ? document.querySelectorAll(targets) : targets;
+  return list && (list.nodeType || list.length) ? list : null;
+}
+
+// 逐字入场：只给「标题型」文字用——主标题、屏头编号、引句、片尾口播。
+// 正文不拆：一段话逐字进场会拖长入场时间，也把该一眼扫过的句子打散成一串字。
+// 拆字之后每个字符是绝对定位的 span，autoSplit 让它在宽度变化时重新分行，
+// 而不是按拆字那一刻的排版钉死。
+function enterChars(targets, { at = 0, stagger = 0.025, duration = DUR.entrance } = {}) {
+  const list = queryList(targets);
+  if (!list) return;
+  // 插件没加载时退回整段淡入：少一个文件不该让模板白屏
+  if (typeof SplitText === "undefined") {
+    enter(targets, { at });
+    return;
+  }
+  const split = SplitText.create(list, { type: "chars,lines", mask: "lines", autoSplit: true });
+  tl.from(split.chars, { yPercent: 55, opacity: 0, duration, ease: EASE_OUT, stagger }, at);
+}
+
+function ambient(scope = document) {
+  scope.querySelectorAll("[data-ambient]").forEach((el) => {
+    const base = parseFloat(getComputedStyle(el).opacity);
+    const dim = Number.isFinite(base) ? base : 1;
+    const kind = el.dataset.ambient;
+    const nominal = DUR.ambient * (kind === "pulse" ? 0.8 : kind === "flicker" ? 0.35 : 1);
+    const cycles = Math.max(1, Math.ceil(total / nominal));
+    const duration = total / cycles;
+    if (kind === "drift") {
+      tl.to(el, { x: 18, y: -14, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    } else if (kind === "pulse") {
+      tl.to(el, { opacity: dim * 0.55, scale: 1.06, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    } else if (kind === "flicker") {
+      tl.to(el, { opacity: dim * 0.7, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    }
+  });
+}
+
+// 镜头：全片一条补间——钩子段快推、中段几乎匀速、片尾回拉半格。
+// 三条独立补间会在同一个 scale 上互相抢值，所以用 keyframes 串成一条。
+// 推近的裁切交给 #root 的 overflow：推出去的部分本就该看不见。
+function camera() {
+  const el = document.getElementById("camera");
+  const push = numberVar("--cam-push", 1.05);
+  if (!el || push <= 1) return;
+  el.style.transformOrigin = cssVar("--cam-origin") || "50% 50%";
+  const hook = Math.min(2.2, total * 0.2);
+  const tail = Math.min(2.4, total * 0.16);
+  const mid = Math.max(0.1, total - hook - tail);
+  tl.to(el, {
+    keyframes: [
+      { scale: 1 + (push - 1) * 0.6, duration: hook, ease: "power2.out" },
+      { scale: push, duration: mid, ease: "none" },
+      { scale: 1 + (push - 1) * 0.4, duration: tail, ease: "power2.inOut" },
+    ],
+  }, 0);
+}
+
+function swap(slot, start, outAt) {
+  const parts = slot.querySelectorAll(".scene-no, .lead, .body");
+  if (!parts.length) return;
+  // 屏与屏之间是硬切：同轨 clip 的时间窗不重叠，没有可以交叉淡入的两帧。
+  // 改成整屏内容位移——逐屏换向地推进、向另一侧退出，切点因此读作一次移镜。
+  // 位移必须落在子元素上：带 data-start 的 clip 元素由引擎接管 transform，
+  // 对 section 本身 set x 会被忽略（实测 tl.set(section,{x:300}) 不动，子元素能动能）。
+  // 不用全帧遮罩：浅色纸面的版式各自刷底色，幕布要么盖错颜色，要么被审计判成遮挡文字。
+  const dir = Number(slot.dataset.sceneIndex) % 2 ? 1 : -1;
+  tl.fromTo(parts, { x: SHIFT * dir }, { x: 0, duration: DUR.entrance, ease: EASE_OUT }, start);
+  // 屏头编号与引句逐字，正文整段：正文是给人读的，拆成字只会读得更慢
+  enterChars(slot.querySelectorAll(".scene-no, .lead"), { at: start });
+  const body = slot.querySelectorAll(".body");
+  if (body.length) {
+    tl.from(body, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, start + 0.12);
+  }
+  // 短屏时退场不能排在入场之前
+  const outStart = Math.max(start + DUR.entrance, outAt);
+  tl.to(parts, { x: -SHIFT * 0.6 * dir, y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, outStart);
+}
+
+ambient();
+camera();
+
+tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
+enter("#kicker", { dir: "left", at: 0.1 });
+enterChars("#title", { at: 0.2 });
+tl.from("#rule", { scaleX: 0, duration: DUR.entrance, ease: EASE_OUT, immediateRender: true }, 0.45);
+if (has("#kpi")) enter("#kpi", { dir: "up", at: 0.35 });
+enter("#aigc-badge", { dir: "none", at: 0.2 });
+// 数据图表常驻时保留选题标题，避免后半片只剩孤立数字；文稿线沿用原退场。
+if (!has("#chart")) tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
+
+// 版式自带的静态装饰（#plate / #rail / #tick）。它们不来自数据，
+// 但各自有动画：没有动画的装饰层等于死图层。
+if (has("#plate")) {
+  tl.fromTo("#plate", { scaleY: 0 }, { scaleY: 1, duration: 0.8, ease: "power3.inOut" }, 0.05);
+}
+if (has("#rail")) {
+  tl.fromTo("#rail", { scaleY: 0 }, { scaleY: 1, duration: total, ease: "none" }, 0);
+}
+const tick = document.getElementById("tick");
+if (tick) {
+  // 不能用 tl.call 逐屏写：按帧 seek 时回调会一次跑完，tick 停在最后一屏。
+  // 从时间线时间反推屏次，seek 到哪一帧都对。
+  const pad = (n) => String(n).padStart(2, "0");
+  const starts = [...document.querySelectorAll(".scene")]
+    .filter((slot) => Number(slot.dataset.sceneIndex) <= sceneCount)
+    .map((slot) => parseFloat(slot.dataset.start));
+  tl.to(tick, {
+    duration: total,
+    ease: "none",
+    onUpdate: () => {
+      const t = tl.time();
+      const hit = starts.filter((start) => start <= t).length;
+      tick.textContent = pad(Math.max(hit, 1)) + " / " + pad(sceneCount);
+    },
+  }, 0);
+}
+
+// 结尾口播独占片尾一段窗口（生成器已把最后一屏的窗口切短），这里只需按窗口起点进场
+const closingSlot = document.getElementById("closing-slot");
+const closingAt = closingSlot ? parseFloat(closingSlot.dataset.start) : NaN;
+const hasClosing = Number.isFinite(closingAt) && closingAt < total - 0.1;
+
+document.querySelectorAll(".scene").forEach((slot) => {
+  if (Number(slot.dataset.sceneIndex) > sceneCount) {
+    slot.hidden = true;
+    slot.style.display = "none";
+    return;
+  }
+  const start = parseFloat(slot.dataset.start);
+  const end = start + parseFloat(slot.dataset.duration);
+  swap(slot, start, end - DUR.swap);
+});
+
+if (hasClosing) {
+  enterChars(closingSlot.querySelector("#closing"), { at: closingAt });
+}
+
+window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

@@ -97,21 +97,29 @@
    口径 docs/2026-11-20-storyboard-and-visual-signal-report.md §六.2。
    选择器带 #root：版式里有 #scene-N 这类 ID 规则（news-trend 用 ID 定位当前屏），
    权重比类选择器高，不压过去就接管不了整幅画面。 */
-#root .scene.takeover {
+/* 特异性要压过版式的 .scene：storyboard.css 在版式 CSS 之前加载，
+   而横版版式把 .scene 钉在右半栏（left:44% / width:46% / border-right）。
+   只写 left/top/bottom/right 不够——left 与 right 同时给值时，只要版式还留着
+   width，宽度就按 width 算，元素仍停在半栏；边框也要整体清零，版式用的是
+   border-right 而不是 border-left。.takeover.takeover 提高一级特异性，
+   不依赖文件顺序。 */
+#root .scene.takeover.takeover {
   top: 0;
   bottom: 0;
   left: 0;
   right: 0;
+  /* 版式的固定宽度会压过 left+right，必须显式回到 auto */
+  width: auto;
   padding: 0 var(--pad-frame);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   text-align: center;
-  /* 版式给 .scene 挂了底色与左边强调条（播报色带、趋势刻度、调查竖线），
-     满幅接管时这些是残留装饰：撤掉，这一屏只剩一句话。 */
+  /* 版式给 .scene 挂了底色与强调条（播报色带、趋势刻度、调查竖线、横版的右边框），
+     满幅接管时这些是残留装饰：整条边框清零，这一屏只剩一句话。 */
   background: none;
-  border-left: 0;
+  border: 0;
 }
 #root .scene.takeover::before,
 #root .scene.takeover::after { display: none; }

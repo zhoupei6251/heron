@@ -71,11 +71,18 @@ const comparePair = (focus) => {
 // 字号按这一栏实际能放下的宽度降档，不按字数猜：各风格栏宽与字号都不同。
 const compareTextWidth = (text, px) => Array.from(String(text)).reduce((sum, ch) =>
   sum + (/[一-鿿]/.test(ch) ? px : (/[0-9]/.test(ch) ? px * 0.62 : px * 0.42)), 0);
+// 单位跟在数字右侧同一行（.compare-number 是 flex），量宽度时漏掉它，
+// 「4113.34」会刚好占满整栏，把 USD/oz 顶到中间列去压住差值。按单位自身字号量。
+const compareNumberWidth = (text, px, unit) => {
+  if (!unit) return compareTextWidth(text, px);
+  const unitPx = parseFloat(cssVar("--fs-body")) || px;
+  return compareTextWidth(text, px) + parseFloat(cssVar("--fs-note") || 0) + compareTextWidth(unit, unitPx);
+};
 const compareFitSize = (text, width) => {
   const ladder = ["--fs-title-sm", "--fs-lead", "--fs-body"];
   for (const token of ladder) {
     const px = parseFloat(cssVar(token));
-    if (Number.isFinite(px) && compareTextWidth(text, px) <= width) return token;
+    if (Number.isFinite(px) && compareNumberWidth(text, px, compareUnit) <= width) return token;
   }
   return "--fs-body";
 };

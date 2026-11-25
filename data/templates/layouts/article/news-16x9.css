@@ -1,0 +1,54 @@
+:root {
+  --fs-title: 76px; --fs-title-lg: 68px; --fs-title-sm: 60px;
+  --cam-push: 1.03;
+  --cam-origin: 42% 50%;
+  --slide-shift: 240px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #131a2a; color: #f2f6f9; font-family: "Noto Sans SC", sans-serif; }
+#root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #131a2a; }
+#title-card {
+  top: 0; bottom: 0; left: 0; right: auto; width: 44%;
+  padding: 96px 64px 150px;
+  display: flex; flex-direction: column; justify-content: center;
+  background: linear-gradient(135deg, rgba(217,119,6,0.12), transparent 68%);
+  border-right: 2px solid rgba(242,246,249,0.12);
+}
+#kicker { margin: 0 0 24px; font-size: 28px; font-weight: 500; letter-spacing: 6px; color: #8fb6c6; }
+#title { margin: 0; font-size: var(--fs-title); font-weight: 700; line-height: 1.18; letter-spacing: -0.01em; color: #ffffff; }
+#rule { margin-top: 28px; width: 180px; height: 10px; border-radius: 5px; background: var(--accent); }
+.scene {
+  top: 64px; bottom: 150px; left: 44%; right: 0;
+  padding: 0 64px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.scene-figure {
+  margin: 0 0 20px; width: 100%; height: 400px; border-radius: 16px; overflow: hidden;
+  background: rgba(255,255,255,0.05); display: none; flex: 0 0 auto;
+}
+.scene-figure img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scene.has-image .scene-figure { display: block; }
+.lead {
+  margin: 0 0 16px; font-size: 50px; font-weight: 700; line-height: 1.28; letter-spacing: -0.01em; color: #ffffff;
+  max-height: 128px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.body {
+  margin: 0; font-size: 34px; font-weight: 400; line-height: 1.55; color: #c2d1dd;
+  max-height: 270px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5;
+}
+#closing-slot {
+  top: 64px; bottom: 150px; left: 44%; right: 0;
+  padding: 0 64px; display: flex; align-items: center;
+}
+#closing {
+  margin: 0; padding: 30px 36px; font-size: 34px; font-weight: 500; line-height: 1.55; color: #f2f6f9;
+  background: rgba(217,119,6,0.14); border-left: 10px solid var(--accent); border-radius: 10px;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden;
+}
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 32px; padding: 0 56px; }
+#progress { display: block; height: 6px; border-radius: 3px; background: var(--accent); transform-origin: left center; margin-bottom: 16px; }
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+#aigc-badge { font-size: 26px; padding: 10px 22px; border-radius: 999px; white-space: nowrap; color: #0b1418; background: var(--accent); }
+#source-line { font-size: 26px; max-width: 1100px; text-align: right; color: #9fb2bf; }
+.scene-no { display: none; }
+#source-line::before { content: "来源："; }

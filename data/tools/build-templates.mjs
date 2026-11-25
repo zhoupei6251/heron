@@ -35,6 +35,10 @@ const STAGE = value('--stage');
 const STAGE_OUT = value('--out');
 
 const CAPABILITIES = new Set(['chart', 'image', 'globe']);
+const RATIOS = {
+  '9x16': { width: 1080, height: 1920 },
+  '16x9': { width: 1920, height: 1080 },
+};
 // globe 模板自带的渲染库：与 gsap 一样随模板一起提交，渲染时不需要联网。
 const THREE_SOURCE = path.resolve(import.meta.dirname, 'node_modules', 'three', 'build', 'three.min.js');
 // 只装 SplitText 一个插件。图表的描边生长 chart.js 已经用 strokeDashoffset 自己做掉了，
@@ -95,6 +99,19 @@ function loadConfig(dir) {
   if (cfg.visualMode === '3d' && !cfg.capabilities.includes('globe')) {
     fail(`${key}: 3D 模板必须声明 globe 能力——没有渲染库的三维模板渲不出来`);
   }
+  const currentRatio = ratioOf(cfg);
+  if (cfg.layouts !== undefined) {
+    if (!Array.isArray(cfg.layouts) || cfg.layouts.length === 0 || new Set(cfg.layouts).size !== cfg.layouts.length) {
+      fail(`${key}: layouts 必须是非空且不重复的比例数组`);
+    }
+    for (const layout of cfg.layouts) {
+      if (!(layout in RATIOS)) fail(`${key}: 未知比例「${layout}」，合法值：${Object.keys(RATIOS).join('、')}`);
+    }
+    if (!currentRatio || !cfg.layouts.includes(currentRatio)) {
+      fail(`${key}: layouts 必须包含当前画布比例 ${currentRatio ?? `${cfg.width}x${cfg.height}`}`);
+    }
+  }
+  cfg.layouts ??= currentRatio ? [currentRatio] : [];
   cfg.activeScenes ??= cfg.scenes;
   cfg.defaults ??= {};
   // 分镜由模板配置显式开启（现只有五个数据模板开了）：场景类型、叙事节点与上屏文字
@@ -105,9 +122,55 @@ function loadConfig(dir) {
   return cfg;
 }
 
+function ratioOf(cfg) {
+  return Object.keys(RATIOS).find((key) => RATIOS[key].width === cfg.width && RATIOS[key].height === cfg.height);
+}
+
+function variantConfig(cfg, ratio) {
+  const baseKey = cfg.key.replace(/-(?:9x16|16x9)$/, '');
+  const description = (cfg.description ?? '').replace('1080×1920', '1920×1080');
+  return {
+    ...cfg,
+    key: `${baseKey}-${ratio}`,
+    name: `${cfg.name}（横版）`,
+    pageTitle: (cfg.pageTitle ?? cfg.name).replace('竖版', '横版'),
+    layout: cfg.layout.replace(/(?:9x16|16x9)$/, ratio),
+    width: RATIOS[ratio].width,
+    height: RATIOS[ratio].height,
+    layouts: [ratio],
+    description: description.includes('16:9') ? description : `${description}；横版 16:9`,
+    generatedFrom: cfg.key,
+  };
+}
+
+function buildJobs() {
+  const dirs = fs.readdirSync(TEMPLATES, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('_') && entry.name !== 'layouts')
+    .map((entry) => path.join(TEMPLATES, entry.name))
+    .filter((dir) => fs.existsSync(path.join(dir, 'template.config.json')))
+    .map((dir) => ({ dir, cfg: loadConfig(dir), sourceDir: dir, generated: false }))
+    .filter((job) => !job.cfg.generatedFrom);
+  const jobs = [];
+  for (const job of dirs) {
+    jobs.push(job);
+    for (const ratio of job.cfg.layouts) {
+      if (ratio === ratioOf(job.cfg)) continue;
+      const cfg = variantConfig(job.cfg, ratio);
+      jobs.push({ dir: path.join(TEMPLATES, cfg.key), cfg, sourceDir: job.dir, generated: true });
+    }
+  }
+  return jobs;
+}
+
 function variables(cfg) {
   const d = cfg.defaults;
   const scenes = d.scenes ?? [];
+  // fixture：每一屏的画面依据与场景类型。生产期这两项由 Java 注入
+  // （NewsProductionPipeline.dataTemplateVariables），模板里的默认值是给本地
+  // 渲染用的样例。默认值过去一律写死成 '{}' 与 ''，本地渲出来的永远是
+  // 「固定图表 + 三行字」的最差形态，和线上不是同一个画面，看片等于看错片。
+  // 模板在 defaults.sceneMeta 里声明样例；没声明就退回原来的空值，行为不变。
+  const meta = d.sceneMeta ?? [];
   const out = [
     { id: 'title', type: 'string', label: '标题', maxLength: 15, default: d.title ?? '' },
     { id: 'kicker', type: 'string', label: '栏目标签', maxLength: 12, default: d.kicker ?? '' },
@@ -145,17 +208,21 @@ function variables(cfg) {
       default: JSON.stringify(d.dataset ?? {}),
     });
     for (let i = 1; i <= cfg.scenes; i++) {
-      out.push({ id: `scene${i}_focus`, type: 'string', label: `第${i}屏画面依据`, default: '{}' });
+      const focus = meta[i - 1]?.focus;
+      out.push({
+        id: `scene${i}_focus`, type: 'string', label: `第${i}屏画面依据`,
+        default: focus ? JSON.stringify(focus) : '{}',
+      });
     }
   }
   for (let i = 1; i <= cfg.scenes; i++) {
-    out.push({ id: `scene${i}_type`, type: 'string', label: '场景类型', default: '' });
+    out.push({ id: `scene${i}_type`, type: 'string', label: '场景类型', default: meta[i - 1]?.type ?? '' });
   }
   if (cfg.storyboard) {
     // 分镜另两件：叙事节点给版式一条辅线，上屏文字与旁白解耦。
     // 与 sceneN_focus 一样不绑到元素上，由 fill.js 从 declared 里读。
     for (let i = 1; i <= cfg.scenes; i++) {
-      out.push({ id: `scene${i}_beat`, type: 'string', label: '叙事节点', default: '' });
+      out.push({ id: `scene${i}_beat`, type: 'string', label: '叙事节点', default: meta[i - 1]?.beat ?? '' });
       out.push({ id: `scene${i}_text`, type: 'string', label: '上屏文字', default: '' });
     }
   }
@@ -260,6 +327,9 @@ function styles(cfg) {
   // 分镜版式：只给声明了分镜的模板，三套数据风格共用一份规则
   if (cfg.storyboard) files.push(path.join(SHARED, 'storyboard.css'));
   files.push(path.join(LAYOUTS, cfg.style, `${cfg.layout}.css`));
+  // 场景骨架：让 scene_type 决定构图，而不是只换三行字。
+  // 放在版式之后：同样的 #root .scene 前缀，靠后加载才能压过版式的定位规则。
+  if (cfg.skeletons) files.push(path.join(SHARED, 'skeletons.css'));
   for (const file of files) {
     if (!fs.existsSync(file)) fail(`${cfg.key}: 缺少样式文件 ${path.relative(TEMPLATES, file)}`);
   }
@@ -274,7 +344,30 @@ function styles(cfg) {
   if (tiny.length) {
     fail(`${cfg.key}: 有 ${tiny.length} 处字号低于 24px（最小 ${Math.min(...tiny)}px）`);
   }
+  if (ratioOf(cfg) === '16x9') checkLandscapeContract(cfg, css);
   return css;
+}
+
+function checkLandscapeContract(cfg, css) {
+  const value = (block, property) => Number(block.match(new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*(\\d+)px`))?.[1]);
+  const bodySize = value(ruleBlock(css, '.body'), 'font-size');
+  if (!Number.isFinite(bodySize) || bodySize < 32) {
+    fail(`${cfg.key}: 横版正文必须显式 ≥ 32px（当前 ${Number.isFinite(bodySize) ? bodySize + 'px' : '未定义'}）`);
+  }
+  const shift = Number([...css.matchAll(/--slide-shift:\s*(\d+)px/g)].at(-1)?.[1]);
+  if (!Number.isFinite(shift) || shift < 180) {
+    fail(`${cfg.key}: 横版转场位移必须 ≥ 180px（当前 ${Number.isFinite(shift) ? shift + 'px' : '未定义'}）`);
+  }
+  const bottomBar = value(ruleBlock(css, '#bottom-bar'), 'bottom');
+  if (!Number.isFinite(bottomBar) || bottomBar < 0 || bottomBar > 72) {
+    fail(`${cfg.key}: 横版底栏必须距底 0–72px，给字幕留出安全区`);
+  }
+  for (const selector of ['.scene', '#closing-slot']) {
+    const bottom = value(ruleBlock(css, selector), 'bottom');
+    if (!Number.isFinite(bottom) || bottom < 150) {
+      fail(`${cfg.key}: ${selector} 必须距底 ≥ 150px，不能压住横版底栏与字幕区`);
+    }
+  }
 }
 
 function script(cfg) {
@@ -288,12 +381,17 @@ function script(cfg) {
   if (cfg.capabilities.includes('globe')) {
     files.push(path.join(GEN, 'behaviors', 'globe.js'));
   }
+  // 场景骨架：按 scene_type 换构图。排在 compare.js 之后，
+  // 这样 skeleton-compare 类加上时两栏对照块已经建好，不会先闪一版单栏。
+  const afterMotion = [];
   files.push(path.join(GEN, 'motion.js'));
   // compare 真两栏：数字与标签来自数据事实。这一段要借 motion.js 的 DUR / EASE
   // 与同一条时间轴（进出场跟着所在屏走），所以必须排在 motion.js 之后。
   if ((cfg.supportedSceneTypes || []).includes('compare')) {
-    files.push(path.join(GEN, 'behaviors', 'compare.js'));
+    afterMotion.push(path.join(GEN, 'behaviors', 'compare.js'));
   }
+  if (cfg.skeletons) afterMotion.push(path.join(GEN, 'behaviors', 'skeleton.js'));
+  files.push(...afterMotion);
   for (const file of files) {
     if (!fs.existsSync(file)) fail(`${cfg.key}: 缺少脚本片段 ${path.relative(TEMPLATES, file)}`);
   }
@@ -405,14 +503,14 @@ function motionJson(cfg) {
       // 关掉环境层的模板不能断言它出现：断言必须描述这套模板真的有的东西
       ...(cfg.ambient === false ? [] : [{ kind: 'appearsBy', selector: '.ambient', bySec: 2 }]),
       { kind: 'appearsBy', selector: '#aigc-badge', bySec: 0.5 },
-      { kind: 'appearsBy', selector: '#title', bySec: 1.5 },
+      { kind: 'appearsBy', selector: '#title', bySec: ratioOf(cfg) === '16x9' && cfg.storyboard ? 5.5 : 1.5 },
       { kind: 'staysInFrame', selector: '#aigc-badge' },
       { kind: 'keepsMoving', withinSelector: '#root', maxStaticSec: 4 },
     ],
   }, null, 2) + '\n';
 }
 
-function writeManifest(dir) {
+function manifestJson(dir) {
   const entries = [];
   const walk = (current) => {
     for (const name of fs.readdirSync(current, { withFileTypes: true })) {
@@ -427,23 +525,28 @@ function writeManifest(dir) {
   };
   walk(dir);
   entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  const manifest = { templateKey: path.basename(dir), templateVersion: '1', files: entries };
-  const manifestPath = path.join(dir, 'assets-manifest.json');
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+  return JSON.stringify({ templateKey: path.basename(dir), templateVersion: '1', files: entries }, null, 2) + '\n';
+}
 
+function lockJson(dir, manifest) {
   const lockPath = path.join(dir, 'LOCK.json');
   const previous = fs.existsSync(lockPath) ? JSON.parse(read(lockPath)) : {};
   if (!fs.existsSync(SHARED_FONT)) fail(`${path.basename(dir)}: 找不到共用字体 ${SHARED_FONT}`);
-  const lock = {
+  return JSON.stringify({
     templateKey: path.basename(dir),
     templateVersion: '1',
     // 字体不进模板目录：渲染前注入的是同一份共用字体，哈希因此与所有模板一致
     fontSha256: sha256(SHARED_FONT),
     voiceKey: previous.voiceKey ?? 'zh-CN-XiaoxiaoNeural',
     voiceVersion: previous.voiceVersion ?? '1',
-    assetManifestSha256: sha256(manifestPath),
-  };
-  fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
+    assetManifestSha256: crypto.createHash('sha256').update(manifest).digest('hex'),
+  }, null, 2) + '\n';
+}
+
+function writeManifest(dir) {
+  const manifest = manifestJson(dir);
+  fs.writeFileSync(path.join(dir, 'assets-manifest.json'), manifest);
+  fs.writeFileSync(path.join(dir, 'LOCK.json'), lockJson(dir, manifest));
 }
 
 /**
@@ -639,28 +742,62 @@ function extraLib(cfg) {
   return libs.join('');
 }
 
-function build(dir) {
-  const cfg = loadConfig(dir);
+const VARIANT_GENERATED = new Set([
+  'template.config.json', 'index.html', 'template.json', 'index.motion.json', 'assets-manifest.json', 'LOCK.json',
+]);
+
+function syncVariantAssets(job) {
+  const copy = (sourceDir, targetDir) => {
+    if (!fs.existsSync(targetDir)) {
+      if (CHECK_ONLY) fail(`${job.cfg.key}: 横版模板目录缺失（运行不带 --check 以生成）`);
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || VARIANT_GENERATED.has(entry.name)) continue;
+      const source = path.join(sourceDir, entry.name);
+      const target = path.join(targetDir, entry.name);
+      if (entry.isDirectory()) {
+        copy(source, target);
+        continue;
+      }
+      if (fs.existsSync(target) && sha256(target) === sha256(source)) continue;
+      if (CHECK_ONLY) fail(`${job.cfg.key}: 横版静态资产 ${path.relative(job.dir, target)} 与源模板不一致`);
+      fs.copyFileSync(source, target);
+    }
+  };
+  copy(job.sourceDir, job.dir);
+}
+
+function build(job) {
+  const cfg = job.cfg;
+  if (job.generated) syncVariantAssets(job);
   checkStyleContract(cfg);
-  if (!vendorSplitText(dir)) return false;
-  if (cfg.capabilities.includes('globe') && !vendorThree(dir)) {
+  if (!vendorSplitText(job.dir)) return false;
+  if (cfg.capabilities.includes('globe') && !vendorThree(job.dir)) {
     return false;
   }
-  // 三个产物都从配置派生，--check 就三个都要比：
+  // 生成产物都从配置派生，--check 就都要比：
   // 只比 index.html 的话，手改 index.motion.json 能悄悄放宽断言而检查不出来。
   const generated = {
     'index.html': render(cfg),
     'template.json': templateJson(cfg),
     'index.motion.json': motionJson(cfg),
+    ...(job.generated ? { 'template.config.json': JSON.stringify(cfg, null, 2) + '\n' } : {}),
   };
   checkWindows(cfg, generated['index.html']);
-  const indexPath = path.join(dir, 'index.html');
+  const indexPath = path.join(job.dir, 'index.html');
 
   if (CHECK_ONLY) {
-    const drifted = Object.entries(generated)
-      .filter(([name, expected]) => {
-        const file = path.join(dir, name);
-        return !fs.existsSync(file) || normalizeEol(read(file)) !== expected;
+    const manifest = manifestJson(job.dir);
+    const expected = {
+      ...generated,
+      'assets-manifest.json': manifest,
+      'LOCK.json': lockJson(job.dir, manifest),
+    };
+    const drifted = Object.entries(expected)
+      .filter(([name, content]) => {
+        const file = path.join(job.dir, name);
+        return !fs.existsSync(file) || normalizeEol(read(file)) !== content;
       })
       .map(([name]) => name);
     if (drifted.length) {
@@ -672,9 +809,9 @@ function build(dir) {
   }
 
   for (const [name, content] of Object.entries(generated)) {
-    fs.writeFileSync(path.join(dir, name), content);
+    fs.writeFileSync(path.join(job.dir, name), content);
   }
-  writeManifest(dir);
+  writeManifest(job.dir);
   console.log(`✓ ${cfg.key}  ${(Buffer.byteLength(generated['index.html']) / 1024).toFixed(1)} KB`);
   return true;
 }
@@ -729,6 +866,7 @@ function main() {
   // 但一次都不查就等于没有——风格登记写错时没有任何地方会响。
   checkNarrativeContract(JSON.parse(read(path.join(SHARED, 'styles.json'))));
 
+  if (CHECK_ONLY && STAGE) fail('--check 不能与 --stage 同用：前者只比对，后者会写暂存目录');
   if (STAGE) {
     const dir = path.join(TEMPLATES, STAGE);
     if (!fs.existsSync(path.join(dir, 'template.config.json'))) {
@@ -738,19 +876,15 @@ function main() {
     return;
   }
 
-  const dirs = fs.readdirSync(TEMPLATES, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('_') && entry.name !== 'layouts')
-    .map((entry) => path.join(TEMPLATES, entry.name))
-    .filter((dir) => fs.existsSync(path.join(dir, 'template.config.json')));
-
-  const targets = ONLY ? dirs.filter((dir) => path.basename(dir) === ONLY) : dirs;
+  const jobs = buildJobs();
+  const targets = ONLY ? jobs.filter((job) => job.cfg.key === ONLY) : jobs;
   if (ONLY && targets.length === 0) fail(`找不到模板 ${ONLY}（或其缺少 template.config.json）`);
 
   let ok = true;
-  for (const dir of targets) {
+  for (const job of targets) {
     try {
-      ok = build(dir) && ok;
-      if (VERIFY && !CHECK_ONLY) ok = verify(dir) && ok;
+      ok = build(job) && ok;
+      if (VERIFY && !CHECK_ONLY) ok = verify(job.dir) && ok;
     } catch (e) {
       if (e instanceof BuildError) {
         console.error(`✗ ${e.message}`);

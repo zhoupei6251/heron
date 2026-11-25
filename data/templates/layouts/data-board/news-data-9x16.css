@@ -35,7 +35,10 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  /* 垂直居中而不是顶对齐：一屏只有编号+领句+正文三行时，顶对齐会把文字贴在
+     框顶、下方空出近 300px（实测 y=1216–1552 全空）。其余 19 套版式都是 center，
+     只有这里写成 flex-start，等于数据线独有的空洞。 */
+  justify-content: center;
 }
 /* flex: none——默认的 flex-shrink 会在内容超高时把文字盒压扁，再由 overflow 裁掉字形 */
 .scene-no { flex: none; color: var(--accent); margin-bottom: 12px; }

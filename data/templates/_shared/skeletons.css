@@ -1,0 +1,106 @@
+/* 场景骨架：每种 scene_type 一种构图，不是同一条版式换三行字。
+   由 _gen/behaviors/skeleton.js 按时间轴给当前屏加 skeleton-<type> 类。
+
+   为什么单独成文件：这三种骨架与「这一屏讲什么」绑定，跟具体版式的
+   边距字号无关；放进 storyboard.css 会和版式覆盖规则纠缠。
+   选择器一律带 #root，压过版式的 .scene 规则。 */
+
+/* 数字屏：这一屏就是**那个数**。
+   关键区别：放大的是数字（#kpi-value），不是领句——领句是一句话，
+   放大到 168px 会被截断成「较区间起…」，那是把排版当成了内容。
+   数字屏期间把常驻 KPI 从标题区拉进画面中部并放大，图表退场腾出的空间由它填。 */
+#root .scene.skeleton-number {
+  top: 900px;
+  bottom: 300px;
+  justify-content: flex-start;
+  align-items: flex-start;
+  text-align: left;
+}
+#root .scene.skeleton-number .scene-no {
+  margin-bottom: 20px;
+  letter-spacing: 0.3em;
+  font-size: var(--fs-label);
+}
+#root .scene.skeleton-number .lead {
+  font-size: var(--fs-lead);
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--fg);
+  max-height: none;
+  -webkit-line-clamp: 2;
+  margin-bottom: 18px;
+}
+/* 数字屏的正文是注脚：安静、可读，不抢数字 */
+#root .scene.skeleton-number .body {
+  display: block;
+  font-size: var(--fs-body);
+  color: var(--body);
+  line-height: 1.6;
+  max-height: none;
+  -webkit-line-clamp: 3;
+}
+
+/* 图表屏：图表是主角，上半幅到中段整块给它；场景文字收成一行压底注记。
+   图表槽本身由 .skeleton-chart 期间放大高度（见下），文字让到下方一条窄带。 */
+#root .scene.skeleton-chart {
+  top: auto;
+  bottom: 300px;
+  height: auto;
+  justify-content: flex-end;
+  padding-bottom: 24px;
+}
+#root .scene.skeleton-chart .scene-no { display: none; }
+#root .scene.skeleton-chart .lead {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--muted-2);
+  letter-spacing: 0.02em;
+  max-height: none;
+  -webkit-line-clamp: 1;
+  margin-bottom: 6px;
+}
+#root .scene.skeleton-chart .body {
+  font-size: var(--fs-note);
+  color: var(--muted-2);
+  max-height: none;
+  -webkit-line-clamp: 2;
+  line-height: 1.5;
+}
+
+/* 对照屏：两栏对照块（compare.js 建的 .compare-pairs）已经是内容。
+   图表在这期间退场，它让出的上半幅必须由对照块接住——否则只是把
+   「图表 + 文字」换成「空白 + 文字」，等于用更大的空白做对照。
+   这里把对照块抬到画面中部，正文退成一句结论压底。 */
+#root .scene.skeleton-compare {
+  top: 520px;
+  bottom: 300px;
+  justify-content: flex-start;
+}
+#root .scene.skeleton-compare .scene-no {
+  margin-bottom: 12px;
+}
+#root .scene.skeleton-compare .lead {
+  font-size: var(--fs-title-sm);
+  font-weight: 700;
+  margin-bottom: 28px;
+  max-height: none;
+  -webkit-line-clamp: 2;
+}
+#root .scene.skeleton-compare .body {
+  font-size: var(--fs-body);
+  color: var(--body);
+  max-height: none;
+  -webkit-line-clamp: 3;
+  line-height: 1.6;
+}
+/* 两栏卡片本身放大一档：这一屏就是它，不该还按正文的尺寸摆 */
+#root .scene.skeleton-compare .compare-col {
+  padding: 32px 26px;
+}
+#root .scene.skeleton-compare .compare-tag {
+  font-size: var(--fs-label);
+}
+#root .scene.skeleton-compare .compare-label {
+  font-size: var(--fs-label);
+}

@@ -1,0 +1,33 @@
+{
+  "name": "榜单（横版）",
+  "description": "大号名次数字配横向标尺，逐条排列，适合 TOP N、排名与名次；横版 16:9",
+  "style": {
+    "key": "article",
+    "name": "Editorial",
+    "label": "文稿解说",
+    "role": "文稿解说线的共用底层；具体长相由各版式决定",
+    "narratives": [],
+    "bg": "#0b1418",
+    "fg": "#f3f0e8",
+    "accent": "#d97706"
+  },
+  "supportedLines": [
+    "NEWS_EXPLAINER"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "text",
+    "rank"
+  ],
+  "aspectRatio": "16:9",
+  "recommendedDuration": {
+    "min": 30,
+    "max": 60
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
+}

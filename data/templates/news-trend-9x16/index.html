@@ -278,21 +278,29 @@ body {
    口径 docs/2026-11-20-storyboard-and-visual-signal-report.md §六.2。
    选择器带 #root：版式里有 #scene-N 这类 ID 规则（news-trend 用 ID 定位当前屏），
    权重比类选择器高，不压过去就接管不了整幅画面。 */
-#root .scene.takeover {
+/* 特异性要压过版式的 .scene：storyboard.css 在版式 CSS 之前加载，
+   而横版版式把 .scene 钉在右半栏（left:44% / width:46% / border-right）。
+   只写 left/top/bottom/right 不够——left 与 right 同时给值时，只要版式还留着
+   width，宽度就按 width 算，元素仍停在半栏；边框也要整体清零，版式用的是
+   border-right 而不是 border-left。.takeover.takeover 提高一级特异性，
+   不依赖文件顺序。 */
+#root .scene.takeover.takeover {
   top: 0;
   bottom: 0;
   left: 0;
   right: 0;
+  /* 版式的固定宽度会压过 left+right，必须显式回到 auto */
+  width: auto;
   padding: 0 var(--pad-frame);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   text-align: center;
-  /* 版式给 .scene 挂了底色与左边强调条（播报色带、趋势刻度、调查竖线），
-     满幅接管时这些是残留装饰：撤掉，这一屏只剩一句话。 */
+  /* 版式给 .scene 挂了底色与强调条（播报色带、趋势刻度、调查竖线、横版的右边框），
+     满幅接管时这些是残留装饰：整条边框清零，这一屏只剩一句话。 */
   background: none;
-  border-left: 0;
+  border: 0;
 }
 #root .scene.takeover::before,
 #root .scene.takeover::after { display: none; }
@@ -651,12 +659,17 @@ const headlineWindows = headlineSlots
   .filter(Boolean);
 
 if (headlineWindows.length) {
+  // 冲击屏最多接管这么久。窗口来自真实口播，一屏常到 10 秒以上；
+  // 整段都让常驻层退场，等于用十几秒白板换一句钩子——冲击只在开头成立，
+  // 之后观众需要数据接住。超出部分把常驻层放回来，这一屏退回普通版式。
+  const MAX_TAKEOVER = 4.5;
   // 相邻的 headline 屏之间不把常驻层放回来：放回来再藏一次等于抖一下
   const merged = [];
   headlineWindows.forEach((win) => {
     const last = merged[merged.length - 1];
-    if (last && win.start <= last.end + 0.8) last.end = Math.max(last.end, win.end);
-    else merged.push({ start: win.start, end: win.end });
+    const end = Math.min(win.end, win.start + MAX_TAKEOVER);
+    if (last && win.start <= last.end + 0.8) last.end = Math.max(last.end, end);
+    else merged.push({ start: win.start, end });
   });
 
   const layers = ["#title-card", "#chart-slot"]
@@ -701,6 +714,8 @@ if (headlineWindows.length) {
   });
 
   // 接管期间这一屏占满整幅画面。类名按时间轴绝对时间算：seek 到哪一帧都对。
+  // 窗口用 merged（已按时长上限截断），与常驻层的进出保持同一份时间窗；
+  // 用原始窗口会让文字继续满屏居中，而标题卡已经放回来了。
   const takeoverClock = { time: 0 };
   tl.to(takeoverClock, {
     time: total,
@@ -709,7 +724,8 @@ if (headlineWindows.length) {
     onUpdate: () => {
       const t = tl.time();
       headlineWindows.forEach((win) => {
-        win.slot.classList.toggle("takeover", t >= win.start && t < win.end);
+        const capped = Math.min(win.end, win.start + MAX_TAKEOVER);
+        win.slot.classList.toggle("takeover", t >= win.start && t < capped);
       });
     },
   }, 0);
@@ -1639,11 +1655,18 @@ const comparePair = (focus) => {
 // 字号按这一栏实际能放下的宽度降档，不按字数猜：各风格栏宽与字号都不同。
 const compareTextWidth = (text, px) => Array.from(String(text)).reduce((sum, ch) =>
   sum + (/[一-鿿]/.test(ch) ? px : (/[0-9]/.test(ch) ? px * 0.62 : px * 0.42)), 0);
+// 单位跟在数字右侧同一行（.compare-number 是 flex），量宽度时漏掉它，
+// 「4113.34」会刚好占满整栏，把 USD/oz 顶到中间列去压住差值。按单位自身字号量。
+const compareNumberWidth = (text, px, unit) => {
+  if (!unit) return compareTextWidth(text, px);
+  const unitPx = parseFloat(cssVar("--fs-body")) || px;
+  return compareTextWidth(text, px) + parseFloat(cssVar("--fs-note") || 0) + compareTextWidth(unit, unitPx);
+};
 const compareFitSize = (text, width) => {
   const ladder = ["--fs-title-sm", "--fs-lead", "--fs-body"];
   for (const token of ladder) {
     const px = parseFloat(cssVar(token));
-    if (Number.isFinite(px) && compareTextWidth(text, px) <= width) return token;
+    if (Number.isFinite(px) && compareNumberWidth(text, px, compareUnit) <= width) return token;
   }
   return "--fs-body";
 };

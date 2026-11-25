@@ -1,0 +1,45 @@
+:root {
+  --fs-title: 72px; --fs-title-lg: 64px; --fs-title-sm: 56px;
+  --fs-lead: 46px; --fs-body: 34px; --fs-label: 28px; --fs-note: 28px;
+  --chart-min-size: 28px;
+  --cam-push: 1.025;
+  --cam-origin: 50% 42%;
+  --slide-shift: 220px;
+}
+#title-card {
+  top: 0; left: 0; right: 0; bottom: auto; height: 300px;
+  padding: 52px 64px;
+}
+#kicker { margin-bottom: 18px; }
+#title { max-width: 920px; font-size: var(--fs-title); line-height: 1.14; }
+#rule { margin-top: 20px; width: 280px; }
+#kpi { position: absolute; right: 64px; top: 58px; margin: 0; }
+#focus-caption { position: absolute; right: 64px; top: 150px; margin: 0; max-width: 720px; text-align: right; }
+#chart-slot { top: 330px; bottom: 150px; left: 46%; right: 56px; height: auto; }
+.scene {
+  top: 330px; bottom: 150px; left: 0; right: auto; width: 46%;
+  padding: 42px 56px 0; border-right: 2px solid var(--rule-soft);
+  overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start;
+}
+.scene-no { margin-bottom: 10px; }
+.lead {
+  margin: 0 0 16px; font-size: var(--fs-lead); line-height: 1.35;
+  max-height: 124px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.body {
+  margin: 0; font-size: 34px; line-height: 1.6;
+  max-height: 270px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5;
+}
+#closing-slot {
+  top: 330px; bottom: 150px; left: 0; right: auto; width: 46%;
+  padding: 42px 56px 0; display: flex; align-items: flex-start; border-right: 2px solid var(--rule-soft);
+}
+#closing {
+  margin: 0; padding: 24px 28px; font-size: var(--fs-body); line-height: 1.6;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; overflow: hidden;
+}
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 28px; padding: 0 56px; }
+#progress { display: block; height: 6px; border-radius: 3px; background: var(--accent); transform-origin: left center; margin-bottom: 16px; }
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+#aigc-badge { font-size: var(--fs-label); padding: 10px 22px; border-radius: 999px; white-space: nowrap; color: var(--bg); background: var(--fg); }
+#source-line { font-size: var(--fs-label); max-width: 1100px; text-align: right; color: var(--muted); }

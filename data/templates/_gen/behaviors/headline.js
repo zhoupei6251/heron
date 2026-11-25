@@ -19,12 +19,17 @@ const headlineWindows = headlineSlots
   .filter(Boolean);
 
 if (headlineWindows.length) {
+  // 冲击屏最多接管这么久。窗口来自真实口播，一屏常到 10 秒以上；
+  // 整段都让常驻层退场，等于用十几秒白板换一句钩子——冲击只在开头成立，
+  // 之后观众需要数据接住。超出部分把常驻层放回来，这一屏退回普通版式。
+  const MAX_TAKEOVER = 4.5;
   // 相邻的 headline 屏之间不把常驻层放回来：放回来再藏一次等于抖一下
   const merged = [];
   headlineWindows.forEach((win) => {
     const last = merged[merged.length - 1];
-    if (last && win.start <= last.end + 0.8) last.end = Math.max(last.end, win.end);
-    else merged.push({ start: win.start, end: win.end });
+    const end = Math.min(win.end, win.start + MAX_TAKEOVER);
+    if (last && win.start <= last.end + 0.8) last.end = Math.max(last.end, end);
+    else merged.push({ start: win.start, end });
   });
 
   const layers = ["#title-card", "#chart-slot"]
@@ -69,6 +74,8 @@ if (headlineWindows.length) {
   });
 
   // 接管期间这一屏占满整幅画面。类名按时间轴绝对时间算：seek 到哪一帧都对。
+  // 窗口用 merged（已按时长上限截断），与常驻层的进出保持同一份时间窗；
+  // 用原始窗口会让文字继续满屏居中，而标题卡已经放回来了。
   const takeoverClock = { time: 0 };
   tl.to(takeoverClock, {
     time: total,
@@ -77,7 +84,8 @@ if (headlineWindows.length) {
     onUpdate: () => {
       const t = tl.time();
       headlineWindows.forEach((win) => {
-        win.slot.classList.toggle("takeover", t >= win.start && t < win.end);
+        const capped = Math.min(win.end, win.start + MAX_TAKEOVER);
+        win.slot.classList.toggle("takeover", t >= win.start && t < capped);
       });
     },
   }, 0);
