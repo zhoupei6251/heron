@@ -5,12 +5,17 @@ import cn.hutool.core.util.EscapeUtil;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.EditorialStory;
 import org.dromara.heron.domain.HeronBusinessException;
+import org.dromara.heron.domain.MediaAssetLicensePolicy;
+import org.dromara.heron.domain.bo.MediaAssetSelectionBo;
 import org.dromara.heron.domain.bo.ProductionProcessBo;
+import org.dromara.heron.domain.vo.MediaAssetGateVo;
+import org.dromara.heron.domain.vo.MediaAssetSelectionVo;
 import org.dromara.heron.domain.vo.ProductionArtifactVo;
 import org.dromara.heron.domain.vo.ProductionProcessVo;
 import org.dromara.heron.domain.vo.ProductionResultVo;
 import org.dromara.heron.domain.vo.ProductionRunVo;
 import org.dromara.heron.service.IProductionPipeline;
+import org.dromara.heron.service.IMediaAssetService;
 import org.dromara.heron.service.NewsScriptAuthor;
 import org.dromara.heron.service.ProductionStageReporter;
 import tools.jackson.databind.JsonNode;
@@ -21,8 +26,14 @@ import tools.jackson.databind.node.ObjectNode;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -64,6 +75,9 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private static final String VARS_FILE = "vars.json";
     private static final String RAW_FILE = "raw.mp4";
     private static final String FINAL_FILE = "final.mp4";
+    private static final String PREVIOUS_FILE = "previous.mp4";
+    private static final String SCENE_FILE = "scene.mp4";
+    private static final String SCENE_FRAME_FILE = "scene-frame.png";
     private static final String SHEET_FILE = "contact.png";
     /** 模板共用一份字体，落在模板根目录同级的 fonts/ 下，复制模板时注入 composition。 */
     private static final String FONT_NAME = "NotoSansSC-Regular.otf";
@@ -91,6 +105,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private final QualityReviewer qualityReviewer;
     private final NewsSourceFetcher fetcher;
     private final FrozenContextService contexts;
+    private final IMediaAssetService mediaAssets;
+    private final HttpClient assetHttp;
 
     public NewsProductionPipeline(NewsScriptAuthor author, KnowledgeScriptAuthor knowledgeAuthor,
                                   ProductionProcessService processes,
@@ -99,6 +115,18 @@ public class NewsProductionPipeline implements IProductionPipeline {
                                   DatasetFetchService datasets, DatasetScriptAuthor datasetAuthor,
                                   EditorialReviewer reviewer, QualityReviewer qualityReviewer,
                                   NewsSourceFetcher fetcher, FrozenContextService contexts) {
+        this(author, knowledgeAuthor, processes, artifacts, properties, stages, router, datasets, datasetAuthor,
+            reviewer, qualityReviewer, fetcher, contexts, null);
+    }
+
+    public NewsProductionPipeline(NewsScriptAuthor author, KnowledgeScriptAuthor knowledgeAuthor,
+                                  ProductionProcessService processes,
+                                  ProductionArtifactService artifacts, HeronProductionProperties properties,
+                                  ProductionStageReporter stages, DatasetRouter router,
+                                  DatasetFetchService datasets, DatasetScriptAuthor datasetAuthor,
+                                  EditorialReviewer reviewer, QualityReviewer qualityReviewer,
+                                  NewsSourceFetcher fetcher, FrozenContextService contexts,
+                                  IMediaAssetService mediaAssets) {
         this.author = author;
         this.knowledgeAuthor = knowledgeAuthor;
         this.processes = processes;
@@ -112,6 +140,9 @@ public class NewsProductionPipeline implements IProductionPipeline {
         this.qualityReviewer = qualityReviewer;
         this.fetcher = fetcher;
         this.contexts = contexts;
+        this.mediaAssets = mediaAssets;
+        this.assetHttp = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
+            .followRedirects(HttpClient.Redirect.NEVER).build();
     }
 
     /**
@@ -215,12 +246,15 @@ public class NewsProductionPipeline implements IProductionPipeline {
         Path composition = copyTemplate(work, templateDir);
         // 占位稿入库供 data 闸复核；TTS 与模板用解析后的可读文本。
         JsonNode renderScript = datasetLine ? DatasetPlaceholders.resolve(script, dataset, trendDoc) : script;
-        // 解说线的图片场景：把稿子里引用的资产下载进工作目录，再以 sceneN_image 变量交给模板
-        Map<String, String> images = datasetLine ? Map.of() : materializeImages(composition, renderScript, input);
+        // 解说线的图片场景由 V5 selector 选定许可素材，下载到工作目录后交给模板。
+        List<MediaAssetSelectionVo> mediaSelections = new ArrayList<>();
+        Map<String, String> images = datasetLine ? Map.of()
+            : materializeImages(composition, renderScript, input, mediaSelections);
+        gates.addAll(mediaSelections.stream().map(NewsProductionPipeline::mediaAssetGate).toList());
         // 只给模板自己声明过的变量：--strict-variables 会把「多给的变量」判成未声明并直接中止渲染
         java.util.Set<String> declared = declaredVariables(templateDir);
         String variables = datasetLine
-            ? dataTemplateVariables(script, dataset, declared)
+            ? dataTemplateVariables(script, dataset, trendDoc, declared)
             : templateVariables(renderScript, images, declared);
         write(work.resolve(VARS_FILE), variables);
         gates.add(assetsGate(composition, input.path("assets"), templateDir));
@@ -239,6 +273,9 @@ public class NewsProductionPipeline implements IProductionPipeline {
         gates.add(subtitleGate(composition.resolve(SUBTITLES_FILE), audioSeconds, timeline));
 
         stages.beginStage(run, "render", 45);
+        JsonNode subtitleNodes = JSON.readTree(subtitles);
+        SoundCueMixer.Result sound = renderSoundCues(run, work, timeline, subtitleNodes, renderScript);
+        gates.addAll(sound.checks().stream().map(NewsProductionPipeline::soundCueGate).toList());
         timeComposition(composition, timeline, audioSeconds);
         JsonNode check = checkComposition(run, work);
         long renderStartedAt = System.nanoTime();
@@ -248,7 +285,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         gates.add(decodeGate(decode(run, work.resolve(RAW_FILE)), audioSeconds));
 
         stages.beginStage(run, "finalize", 85);
-        AudioMix audio = mixAndTag(run, work, timeline.get(timeline.size() - 1));
+        AudioMix audio = mixAndTag(run, work, timeline.get(timeline.size() - 1), sound.bed());
         gates.add(audio.gate());
         Path finalFile = audio.finalFile();
         gates.add(aigcMetadataGate(run, finalFile));
@@ -267,7 +304,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
             artifacts.finalizeFile(run, "subtitles", write(work.resolve("subtitles.json"), subtitles), "application/json"),
             artifacts.finalizeFile(run, "checks", write(work.resolve("checks.json"), checks), "application/json"),
             artifacts.finalizeFile(run, "asset_manifest",
-                write(work.resolve("asset-manifest.json"), assetManifest(composition, input.path("assets"))),
+                write(work.resolve("asset-manifest.json"), assetManifest(composition, input.path("assets"), mediaSelections, null)),
                 "application/json")));
         if (fetched != null) {
             files.add(fetched.artifact());
@@ -282,7 +319,12 @@ public class NewsProductionPipeline implements IProductionPipeline {
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("sourceVersionId", run.versionId());
+        result.put("artifactManifestSha256", DigestUtil.sha256Hex(JSON.writeValueAsString(files)));
         result.put("script", script);
+        if (!mediaSelections.isEmpty()) {
+            result.put("mediaSelections", JSON.readTree(JSON.writeValueAsString(mediaSelections)));
+        }
         // 审稿结论必须随结果落盘：自动发布只认这条记录，内存里通过一次不算数
         result.put("editorialReview", JSON.readTree(review.record));
         if (dataset != null) {
@@ -304,6 +346,344 @@ public class NewsProductionPipeline implements IProductionPipeline {
             result.put("contentProfile", JSON.readTree(contentProfile));
         }
         return new ProductionResultVo(files, JSON.writeValueAsString(result));
+    }
+
+    /**
+     * 按稳定 scene_id 只重渲染一屏，再沿原时间轴拼回成片。
+     *
+     * <p>口播与字幕逐字节继承，TTS 不参与；原成片音轨直接映射并逐包复制，
+     * 因此 V3 已混入成片的音效也不会因画面返工丢失。拼接后重新执行整片闸，
+     * 所有产物由 {@link ProductionArtifactService} 重新计算 SHA-256。
+     *
+     * @param run     新返工尝试的执行上下文
+     * @param request 已审核版本的脚本、产物与目标屏替换内容
+     * @return 新尝试的完整产物与结果；任何闸失败都不会定稿产物
+     */
+    public ProductionResultVo reworkScene(ProductionRunVo run, SceneReworkRequest request) {
+        if (request == null || request.sceneId() == null || request.sceneId().isBlank()) {
+            throw new HeronBusinessException(400, "scene_rework_invalid", "缺少要返工的 scene_id");
+        }
+        if (request.previousVersionId() == null || request.previousVersionId() <= 0
+            || request.expectedManifestSha256() == null
+            || !request.expectedManifestSha256().matches("[0-9a-f]{64}")) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "缺少上一版版本 ID 或预期产物清单指纹");
+        }
+        String previousManifestSha256 = DigestUtil.sha256Hex(JSON.writeValueAsString(request.previousArtifacts()));
+        if (!previousManifestSha256.equals(request.expectedManifestSha256())) {
+            throw new HeronBusinessException(409, "scene_rework_manifest_mismatch", "上一版产物清单与预期指纹不一致");
+        }
+        JsonNode input = frozenInput(run);
+        if (request.previousResultJson() == null || request.previousResultJson().isBlank()
+            || request.previousResultJson().length() > 2_000_000) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版结果缺失或超过大小上限");
+        }
+        JsonNode previousRoot;
+        try {
+            previousRoot = JSON.readTree(request.previousResultJson());
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版结果不是有效 JSON");
+        }
+        if (previousRoot == null || !previousRoot.isObject() || !previousRoot.path("script").isObject()) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版结果缺少完整脚本");
+        }
+        if (previousRoot.path("sourceVersionId").asLong(0) != request.previousVersionId()
+            || !previousManifestSha256.equals(previousRoot.path("artifactManifestSha256").asString(""))) {
+            throw new HeronBusinessException(409, "scene_rework_source_mismatch",
+                "上一版结果与版本 ID、产物清单指纹不匹配");
+        }
+        ObjectNode previousResult = (ObjectNode) previousRoot;
+        JsonNode previousScript = previousResult.path("script");
+        requirePreviousScenes(previousScript);
+        int sceneIndex = sceneIndex(previousScript, request.sceneId());
+        if (sceneIndex < 0) {
+            throw new HeronBusinessException(409, "scene_rework_scene_missing", "上一版没有 scene_id=" + request.sceneId());
+        }
+        JsonNode script = replaceSceneBySceneId(request.sceneId(), previousScript, request.replacementScene());
+        JsonNode dataset = previousResult.path("dataset").isObject() ? previousResult.path("dataset") : null;
+        JsonNode trend = previousResult.path("trend").isObject() ? previousResult.path("trend") : null;
+        boolean dataBoard = "data_board".equals(input.path("kind").asString(""));
+        boolean trendLine = "trend".equals(input.path("kind").asString(""));
+        boolean knowledge = "knowledge_explainer".equals(input.path("kind").asString(""));
+        boolean datasetLine = dataBoard || trendLine;
+        long audioMs = previousResult.path("durationMs").asLong(0);
+        if (audioMs <= 0) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版缺少实测音频时长");
+        }
+
+        List<Gate> gates = new ArrayList<>();
+        gates.add(contractGate(script, dataset, datasetLine));
+        if (datasetLine) {
+            gates.add(dataGate(dataset, DatasetWindowContract.windowOf(input)));
+            gates.add(datasetEvidenceGate(dataset));
+            EditorialStory story = storyOf(input);
+            if (story != null) {
+                gates.add(storyGate(story, dataset));
+            }
+            if (trendLine) {
+                gates.add(trendGate(trend, script, dataset));
+            }
+        } else {
+            gates.add(evidenceGate(script));
+        }
+
+        Map<String, ProductionArtifactVo> inherited = requireInheritedArtifacts(run, request, dataset != null,
+            trend != null, knowledge);
+        requireScriptArtifact(inherited.get("script"), previousScript);
+        JsonNode inheritedChecks = readInheritedJson(inherited.get("checks"), "checks");
+        JsonNode inheritedAssetManifest = readInheritedJson(inherited.get("asset_manifest"), "asset_manifest");
+        for (JsonNode check : inheritedChecks) {
+            if ("sfx".equals(check.path("gate").asString(""))) {
+                gates.add(new Gate(check.path("gate").asString(""), check.path("inputLocator").asString(""),
+                    check.path("reason").asString(""), JSON.convertValue(check.path("measured"), Map.class),
+                    check.path("passed").asBoolean(false), check.has("status") ? check.path("status").asString("") : null,
+                    check.has("code") ? check.path("code").asString("") : null));
+            }
+        }
+        Path work = artifacts.prepareWorkDirectory(run);
+        Map<String, Path> inheritedFiles = new LinkedHashMap<>();
+        for (String kind : List.of("mp4", "subtitles", "dataset", "trend", "citations")) {
+            ProductionArtifactVo artifact = inherited.get(kind);
+            if (artifact == null) {
+                continue;
+            }
+            String name = switch (kind) {
+                case "mp4" -> PREVIOUS_FILE;
+                case "subtitles" -> "application/json".equals(artifact.mediaType()) ? "subtitles.json" : "subtitles.srt";
+                default -> kind + ".json";
+            };
+            inheritedFiles.put(kind, copyArtifact(run, work, artifact, name));
+        }
+        ProductionArtifactVo previousVideo = inherited.get("mp4");
+        ProductionArtifactVo previousSubtitles = inherited.get("subtitles");
+        Path previousFile = inheritedFiles.get("mp4");
+        Path subtitlesFile = inheritedFiles.get("subtitles");
+        String subtitles = read(subtitlesFile);
+        JsonNode subtitleNodes;
+        try {
+            subtitleNodes = "application/json".equals(previousSubtitles.mediaType())
+                ? JSON.readTree(subtitles) : JSON.readTree(subtitleJson(subtitles));
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版字幕不是有效 cue 清单");
+        }
+        if (!subtitleNodes.isArray()) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版字幕不是有效 cue 清单");
+        }
+        requireInheritedJson(inheritedFiles.get("dataset"), dataset, "dataset");
+        requireInheritedJson(inheritedFiles.get("trend"), trend, "trend");
+        String subtitleReportJson = JSON.writeValueAsString(subtitleNodes);
+        List<NewsNarrationTiming.Span> timeline = NewsNarrationTiming.align(previousScript,
+            subtitleNodes, audioMs);
+        if (sceneIndex >= timeline.size()) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版字幕与脚本场景数量不一致");
+        }
+        NewsNarrationTiming.Span target = timeline.get(sceneIndex);
+        double previousSeconds = probeDuration(run, previousFile);
+        JsonNode previousProbe = decodeFile(run, work, PREVIOUS_FILE);
+        Gate previousDecode = decodeGate(previousProbe, audioMs / 1000.0, PREVIOUS_FILE);
+        double fps = ((Number) previousDecode.measured().get("fps")).doubleValue();
+        if (target.endMs() <= target.startMs() || (target.endMs() - target.startMs()) * fps < 1000) {
+            throw new HeronBusinessException(409, "scene_rework_window_invalid", "目标屏窗口不足一帧，不能稳定拼接");
+        }
+
+        String citations = null;
+        if (knowledge) {
+            Path citationsFile = inheritedFiles.get("citations");
+            citations = read(citationsFile);
+            try {
+                JSON.readTree(citations);
+            } catch (RuntimeException e) {
+                throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版引用清单不是有效 JSON");
+            }
+            gates.add(citationGate(script, citations, knowledgePack(input), properties.getKnowledgeVerbatimMaxChars()));
+        }
+
+        Path templateDir = templateDir(input.path("assets").path("templateKey").asString(""));
+        Path composition = copyTemplate(work, templateDir);
+        JsonNode renderScript = datasetLine ? DatasetPlaceholders.resolve(script, dataset, trend) : script;
+        List<MediaAssetSelectionVo> mediaSelections = new ArrayList<>();
+        if (!datasetLine && mediaAssets != null) {
+            for (JsonNode selected : previousResult.path("mediaSelections")) {
+                if (!request.sceneId().equals(selected.path("sceneId").asString(""))) {
+                    mediaSelections.add(restoreMediaSelection(selected));
+                }
+            }
+        }
+        Map<String, String> images = datasetLine ? Map.of()
+            : resolveSceneAssets(composition, script.path("scenes").get(sceneIndex), sceneIndex + 1, input, mediaSelections);
+        gates.addAll(mediaSelections.stream().map(NewsProductionPipeline::mediaAssetGate).toList());
+        Set<String> declared = declaredVariables(templateDir);
+        String variables = datasetLine ? dataTemplateVariables(script, dataset, trend, declared)
+            : templateVariables(renderScript, images, declared);
+        write(work.resolve(VARS_FILE), variables);
+        gates.add(assetsGate(composition, input.path("assets"), templateDir));
+        gates.add(sceneTypeGate(script, templateDir));
+        gates.add(storyboardGate(script, dataset, trend));
+        write(composition.resolve("index.html"), bindVariablesString(read(composition.resolve("index.html")), variables));
+        timeComposition(composition, timeline, audioMs / 1000.0);
+        materializeRenderAudio(run, work, composition);
+        gates.add(subtitleGate(subtitleNodes, audioMs / 1000.0, timeline));
+        if (!sceneTextVariablesMatch(renderScript.path("scenes").get(sceneIndex),
+            JSON.readTree(variables), declared, sceneIndex + 1)) {
+            throw new HeronBusinessException(409, "news_scene_text_failed", "目标屏文字变量没有完整绑定到模板");
+        }
+
+        JsonNode check = checkComposition(run, work);
+        stages.beginStage(run, "render", 45);
+        long renderStartedAt = System.nanoTime();
+        renderScene(run, work, target, request.sceneId());
+        long renderMs = (System.nanoTime() - renderStartedAt) / 1_000_000L;
+        Path sceneFile = work.resolve(SCENE_FILE);
+        JsonNode sceneProbe = decodeFile(run, work, SCENE_FILE);
+        Gate sceneDecode = decodeGate(sceneProbe, (target.endMs() - target.startMs()) / 1000.0, SCENE_FILE);
+        double sceneFps = ((Number) sceneDecode.measured().get("fps")).doubleValue();
+        if (Math.abs(sceneFps - fps) > 0.01) {
+            throw new HeronBusinessException(409, "news_scene_fps_mismatch", "目标屏渲染帧率与原成片不一致");
+        }
+        double sceneSeconds = probeDuration(run, sceneFile);
+        double expectedSceneSeconds = (target.endMs() - target.startMs()) / 1000.0;
+        if (Math.abs(sceneSeconds - expectedSceneSeconds) > 1.0 / fps + 0.001) {
+            throw new HeronBusinessException(409, "news_scene_duration_mismatch", "目标屏渲染时长与时间轴窗口不一致");
+        }
+        VideoSignalCheck.Result signal = VideoSignalCheck.run(processes, run, work, SCENE_FILE, sceneSeconds);
+        VideoSignalCheck.Span black = VideoSignalCheck.blockingBlack(signal);
+        if (black != null) {
+            throw new HeronBusinessException(409, "news_scene_black_frame", "目标屏出现整段纯黑，拒绝拼接");
+        }
+        Path frame = sceneFrame(run, work, target);
+        int blank = blankSingleFrame(frame);
+        int errors = checkErrors(check);
+        if (!check.path("ok").asBoolean(false) || errors > 0 || blank > 0) {
+            throw new HeronBusinessException(409, "news_scene_visual_failed",
+                "目标屏帧或文字闸失败：errors=" + errors + " blankFrames=" + blank);
+        }
+        gates.add(sceneRenderGate(request.sceneId(), sceneIndex, target, renderMs, sceneSeconds, signal, blank, errors));
+
+        stages.beginStage(run, "finalize", 85);
+        String previousAudioHash = audioHash(run, work, PREVIOUS_FILE);
+        spliceScene(run, work, target.startMs() / 1000.0, target.endMs() / 1000.0, previousSeconds, fps);
+        Path finalFile = work.resolve(FINAL_FILE);
+        JsonNode finalProbe = decodeFile(run, work, FINAL_FILE);
+        Gate finalDecode = decodeGate(finalProbe, audioMs / 1000.0, FINAL_FILE);
+        double finalSeconds = probeDuration(run, finalFile);
+        double finalFps = ((Number) finalDecode.measured().get("fps")).doubleValue();
+        if (Math.abs(finalFps - fps) > 0.01) {
+            throw new HeronBusinessException(409, "news_rework_fps_changed", "拼接后帧率与原成片不一致");
+        }
+        String finalAudioHash = audioHash(run, work, FINAL_FILE);
+        MediaTiming previousMedia = mediaTiming(previousProbe);
+        MediaTiming finalMedia = mediaTiming(finalProbe);
+        validateReworkIntegrity(previousSeconds, finalSeconds, fps, previousAudioHash.equals(finalAudioHash),
+            previousMedia, finalMedia);
+        long durationDeltaMs = Math.round((finalSeconds - previousSeconds) * 1000);
+        AudioLoudness.Measurement loudness = AudioLoudness.measureFile(processes, run, work, FINAL_FILE);
+        if (!loudness.deliveryOk()) {
+            throw new HeronBusinessException(409, "news_audio_loudness_failed", "返工后整片响度或真峰值复检未通过");
+        }
+        AudioTiming finalAudio = finalMedia.audio();
+        gates.add(audioGateForRework(finalAudio, previousAudioHash.equals(finalAudioHash)));
+        gates.add(renderGateForRework(finalFile, renderMs, finalSeconds, request.sceneId()));
+        gates.add(finalDecode);
+        gates.add(audioMixGateForRework(loudness));
+        gates.add(aigcMetadataGate(run, finalFile));
+        Path sheet = contactSheet(run, work, finalFile);
+        gates.add(visualGate(check, sheet));
+        gates.add(videoSignalGate(run, work, finalFile));
+        gates.add(aigcVisibleGate(check, composition));
+        gates.add(reworkIntegrityGate(sceneIndex, durationDeltaMs, previousAudioHash.equals(finalAudioHash),
+            previousMedia, finalMedia));
+        gates.sort((left, right) -> left.gate().compareTo(right.gate()));
+
+        String scriptJson = JSON.writeValueAsString(script);
+        String checks = gateJson(gates);
+        List<ProductionArtifactVo> files = new ArrayList<>();
+        try {
+            files.addAll(List.of(
+                artifacts.finalizeFile(run, "mp4", finalFile, "video/mp4"),
+                artifacts.finalizeFile(run, "contact_sheet", sheet, "image/png"),
+                artifacts.finalizeFile(run, "script", write(work.resolve("script.json"), scriptJson), "application/json"),
+                artifacts.finalizeFile(run, "subtitles", subtitlesFile, previousSubtitles.mediaType()),
+                artifacts.finalizeFile(run, "checks", write(work.resolve("checks.json"), checks), "application/json"),
+                artifacts.finalizeFile(run, "asset_manifest",
+                    write(work.resolve("asset-manifest.json"), assetManifest(composition, input.path("assets"),
+                        mediaSelections, inheritedAssetManifest)), "application/json")));
+            for (String kind : List.of("dataset", "trend", "citations")) {
+                if (inheritedFiles.containsKey(kind)) {
+                    files.add(artifacts.finalizeFile(run, kind, inheritedFiles.get(kind), "application/json"));
+                }
+            }
+        } catch (RuntimeException e) {
+            artifacts.releaseAttempt(run, false);
+            throw e;
+        }
+
+        ObjectNode rework = JsonNodeFactory.instance.objectNode();
+        rework.put("sceneId", request.sceneId());
+        rework.put("sceneIndex", sceneIndex);
+        rework.put("previousVersionId", request.previousVersionId());
+        rework.put("previousManifestSha256", previousManifestSha256);
+        rework.put("previousScriptSha256", inherited.get("script").sha256());
+        rework.put("startMs", target.startMs());
+        rework.put("endMs", target.endMs());
+        rework.put("renderCalls", 1);
+        rework.put("renderedSceneCount", 1);
+        rework.put("unchangedSceneCount", script.path("scenes").size() - 1);
+        rework.put("ttsCalls", 0);
+        rework.put("narrationChanged", false);
+        rework.put("artifactFingerprintsRecomputed", true);
+        rework.put("reviewInvalidated", true);
+        rework.put("publishInvalidated", true);
+        rework.putArray("renderedSceneIds").add(request.sceneId());
+        rework.put("durationMs", audioMs);
+        rework.put("durationDeltaMs", durationDeltaMs);
+        rework.put("fps", fps);
+        rework.put("videoStartMs", finalMedia.video().startMs());
+        rework.put("videoFrameCount", finalMedia.video().frameCount());
+        rework.put("audioVideoOffsetMs", finalMedia.audio().startMs() - finalMedia.video().startMs());
+        rework.put("audioHashMatched", previousAudioHash.equals(finalAudioHash));
+        rework.put("audioStartMs", finalAudio.startMs());
+        rework.put("audioDurationMs", finalAudio.durationMs());
+        rework.put("previousVideoSha256", previousVideo.sha256());
+        rework.put("sceneVideoSha256", sha256(sceneFile));
+        rework.put("videoSha256", requireArtifact(files, "mp4").sha256());
+        rework.put("contactSheetSha256", requireArtifact(files, "contact_sheet").sha256());
+        rework.put("scriptSha256", DigestUtil.sha256Hex(scriptJson));
+        rework.put("audioSha256", finalAudioHash);
+        previousResult.set("script", script);
+        if (!mediaSelections.isEmpty()) {
+            previousResult.set("mediaSelections", JSON.readTree(JSON.writeValueAsString(mediaSelections)));
+        } else {
+            previousResult.remove("mediaSelections");
+        }
+        previousResult.put("durationMs", audioMs);
+        previousResult.set("checks", JSON.readTree(checks));
+        previousResult.set("sceneRework", rework);
+        previousResult.put("sourceVersionId", run.versionId());
+        previousResult.put("artifactManifestSha256", DigestUtil.sha256Hex(JSON.writeValueAsString(files)));
+        previousResult.put("reviewInvalidated", true);
+        previousResult.put("publishInvalidated", true);
+        for (String stale : List.of("editorialReview", "reviewStatus", "reviewBy", "reviewAt", "reviewReason",
+            "reviewVideoSha", "reviewContactSha", "publishSource", "publishUrl", "publishAccount", "publishAt",
+            "publishBy", "publishVideoSha")) {
+            previousResult.remove(stale);
+        }
+        String qualityReport = qualityReport(run, script, dataset, checks, subtitleReportJson);
+        if (qualityReport == null) {
+            previousResult.remove("qualityReport");
+        } else {
+            previousResult.set("qualityReport", JSON.readTree(qualityReport));
+        }
+        String hookType = previousResult.path("contentProfile").path("hookType").asString("");
+        String contentProfile = ContentProfileWriter.writeJson(hookType.isBlank() ? null : hookType, script);
+        if (contentProfile == null) {
+            previousResult.remove("contentProfile");
+        } else {
+            previousResult.set("contentProfile", JSON.readTree(contentProfile));
+        }
+        log.info("场景返工完成：taskId={} previousVersionId={} sceneId={} sceneIndex={} renderCalls=1 ttsCalls=0 "
+                + "durationDeltaMs={} videoFrames={} audioHashMatched={}",
+            run.taskId(), request.previousVersionId(), request.sceneId(), sceneIndex + 1, durationDeltaMs,
+            finalMedia.video().frameCount(), previousAudioHash.equals(finalAudioHash));
+        return new ProductionResultVo(files, JSON.writeValueAsString(previousResult));
     }
 
     /**
@@ -349,7 +729,15 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     // ---------- 十道闸 ----------
 
-    private record Gate(String gate, String inputLocator, String reason, Map<String, Object> measured) { }
+    record Gate(String gate, String inputLocator, String reason, Map<String, Object> measured, boolean passed,
+                String status, String code) {
+        Gate(String gate, String inputLocator, String reason, Map<String, Object> measured, boolean passed) {
+            this(gate, inputLocator, reason, measured, passed, null, null);
+        }
+        Gate(String gate, String inputLocator, String reason, Map<String, Object> measured) {
+            this(gate, inputLocator, reason, measured, true);
+        }
+    }
 
     /** 混音定稿的结果：成片位置与响度闸。 */
     private record AudioMix(Path finalFile, Gate gate) { }
@@ -363,6 +751,139 @@ public class NewsProductionPipeline implements IProductionPipeline {
      * @param attempts  混了几次
      */
     private record MixAttempt(boolean ok, double voiceGain, AudioLoudness.Measurement measured, int attempts) { }
+
+    record AudioTiming(long startMs, long durationMs) { }
+
+    record VideoTiming(long startMs, long frameCount) { }
+
+    record MediaTiming(VideoTiming video, AudioTiming audio) { }
+
+    /** 稳定 scene_id 对应的零基下标；不存在或脚本形态畸形返回 -1。 */
+    static int sceneIndex(JsonNode script, String sceneId) {
+        if (script == null || sceneId == null || !script.path("scenes").isArray()) {
+            return -1;
+        }
+        for (int index = 0; index < script.path("scenes").size(); index++) {
+            JsonNode scene = script.path("scenes").get(index);
+            if (scene != null && scene.isObject()
+                && sceneId.equals(scene.path("scene_id").asString(""))) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private static void requirePreviousScenes(JsonNode script) {
+        JsonNode scenes = script.path("scenes");
+        if (!scenes.isArray() || scenes.isEmpty()) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版脚本 scenes 必须是非空数组");
+        }
+        Set<String> ids = new HashSet<>();
+        for (JsonNode scene : scenes) {
+            if (scene == null || !scene.isObject() || scene.path("scene_id").asString("").isBlank()) {
+                throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版脚本包含缺失 scene_id 的畸形场景");
+            }
+            if (!ids.add(scene.path("scene_id").asString(""))) {
+                throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版脚本包含重复 scene_id");
+            }
+        }
+    }
+
+    /** 只替换目标屏对象；视觉返工不允许改变口播，否则旧字幕与时间轴会失去对应关系。 */
+    static JsonNode replaceSceneBySceneId(String sceneId, JsonNode previousScript, JsonNode replacement) {
+        int index = sceneIndex(previousScript, sceneId);
+        if (index < 0) {
+            throw new HeronBusinessException(409, "scene_rework_scene_missing", "上一版没有 scene_id=" + sceneId);
+        }
+        if (replacement == null || !replacement.isObject()
+            || !sceneId.equals(replacement.path("scene_id").asString(""))) {
+            throw new HeronBusinessException(409, "scene_rework_scene_mismatch", "替换场景必须保留同一个 scene_id");
+        }
+        ObjectNode updated = (ObjectNode) previousScript.deepCopy();
+        ((ArrayNode) updated.path("scenes")).set(index, replacement.deepCopy());
+        if (!NewsNarrationTiming.spoken(previousScript).equals(NewsNarrationTiming.spoken(updated))) {
+            throw new HeronBusinessException(409, "scene_rework_narration_changed",
+                "场景返工只改画面；口播变化必须走重新配音流程");
+        }
+        return updated;
+    }
+
+    /** 前段、目标屏、后段三段视频拼接；原音轨由外层 ffmpeg 直接 map，不参与重混。 */
+    static String sceneSpliceFilter(double start, double end, double total) {
+        if (!Double.isFinite(start) || !Double.isFinite(end) || !Double.isFinite(total)
+            || start < 0 || end <= start || end > total) {
+            throw new HeronBusinessException(409, "scene_rework_window_invalid", "场景时间轴窗口不合法");
+        }
+        List<String> inputs = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        if (start > 0) {
+            inputs.add("[0:v]trim=start=0:end=" + fmt(start) + ",setpts=PTS-STARTPTS[pre];");
+            labels.add("pre");
+        }
+        inputs.add("[1:v]setpts=PTS-STARTPTS[scene];");
+        labels.add("scene");
+        if (end < total) {
+            inputs.add("[0:v]trim=start=" + fmt(end) + ":end=" + fmt(total) + ",setpts=PTS-STARTPTS[post];");
+            labels.add("post");
+        }
+        inputs.add(String.join("", labels.stream().map(label -> "[" + label + "]").toList())
+            + "concat=n=" + labels.size() + ":v=1:a=0[v]");
+        return String.join("", inputs);
+    }
+
+    /** 目标屏声明过的文字变量必须逐项等于解析后的场景，避免检查了另一屏。 */
+    static boolean sceneTextVariablesMatch(JsonNode resolved, JsonNode variables, Set<String> declared, int sceneNumber) {
+        String prefix = "scene" + sceneNumber + "_";
+        for (String key : declared) {
+            if (!key.startsWith(prefix)) {
+                continue;
+            }
+            String suffix = key.substring(prefix.length());
+            String field = switch (suffix) {
+                case "lead" -> "lead";
+                case "body" -> "body";
+                case "type" -> "scene_type";
+                case "beat" -> "beat";
+                case "text" -> "on_screen_text";
+                default -> null;
+            };
+            if (field == null) {
+                continue;
+            }
+            if (!variables.has(key) || !variables.path(key).asString("").equals(resolved.path(field).asString(""))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 整片时长最多允许一帧量化误差；视频起点、音画偏移、帧数与音轨均必须保持不变。 */
+    static void validateReworkIntegrity(double previousSeconds, double finalSeconds, double fps,
+                                        boolean audioHashMatched, MediaTiming previous, MediaTiming current) {
+        if (!Double.isFinite(previousSeconds) || !Double.isFinite(finalSeconds) || !Double.isFinite(fps) || fps <= 0
+            || Math.abs(finalSeconds - previousSeconds) > 1.0 / fps + 0.001) {
+            throw new HeronBusinessException(409, "news_rework_duration_changed", "返工后成片时长或时间轴发生变化");
+        }
+        if (!audioHashMatched) {
+            throw new HeronBusinessException(409, "news_rework_audio_changed", "返工后音轨逐包哈希与原片不一致");
+        }
+        if (previous.video().startMs() != current.video().startMs()) {
+            throw new HeronBusinessException(409, "news_rework_video_offset_changed", "返工后视频流起点发生变化");
+        }
+        if (previous.audio().startMs() != current.audio().startMs()) {
+            throw new HeronBusinessException(409, "news_rework_audio_offset_changed", "返工后音轨起点偏移发生变化");
+        }
+        if (previous.audio().startMs() - previous.video().startMs()
+            != current.audio().startMs() - current.video().startMs()) {
+            throw new HeronBusinessException(409, "news_rework_av_offset_changed", "返工后相对音画偏移发生变化");
+        }
+        if (previous.video().frameCount() != current.video().frameCount()) {
+            throw new HeronBusinessException(409, "news_rework_frame_count_changed", "返工后视频帧数发生变化");
+        }
+        if (Math.abs(previous.audio().durationMs() - current.audio().durationMs()) > 1) {
+            throw new HeronBusinessException(409, "news_rework_audio_duration_changed", "返工后音轨时长发生变化");
+        }
+    }
 
     /**
      * 场景类型必须落在模板声明的能力里。
@@ -860,6 +1381,20 @@ public class NewsProductionPipeline implements IProductionPipeline {
             covered = Math.max(covered,
                 millis(matcher.group(5), matcher.group(6), matcher.group(7), matcher.group(8)));
         }
+        return subtitleGate(cues, covered, audioSeconds, timeline);
+    }
+
+    private static Gate subtitleGate(JsonNode subtitles, double audioSeconds, List<NewsNarrationTiming.Span> timeline) {
+        int cues = subtitles.size();
+        long covered = 0;
+        for (JsonNode cue : subtitles) {
+            covered = Math.max(covered, cue.path("endMs").asLong(0));
+        }
+        return subtitleGate(cues, covered, audioSeconds, timeline);
+    }
+
+    private static Gate subtitleGate(int cues, long covered, double audioSeconds,
+                                     List<NewsNarrationTiming.Span> timeline) {
         long audioMs = Math.round(audioSeconds * 1000);
         // 末条 cue 早于音频收尾是 edge-tts 的常态（尾部静音），按覆盖比例判而不是卡绝对差。
         if (cues == 0 || covered * 10 < audioMs * 9) {
@@ -896,6 +1431,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     private static Gate decodeGate(JsonNode probe, double audioSeconds) {
+        return decodeGate(probe, audioSeconds, RAW_FILE);
+    }
+
+    private static Gate decodeGate(JsonNode probe, double audioSeconds, String locator) {
         int video = 0;
         int audio = 0;
         int width = 0;
@@ -934,7 +1473,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         measured.put("durationMs", (long) Math.round(duration * 1000));
         measured.put("fps", fps);
         measured.put("videoStreams", video);
-        return new Gate("decode", RAW_FILE + ":streams", "容器、尺寸、流数与时长实测通过", measured);
+        return new Gate("decode", locator + ":streams", "容器、尺寸、流数与时长实测通过", measured);
     }
 
     private Gate aigcMetadataGate(ProductionRunVo run, Path finalFile) {
@@ -950,11 +1489,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     private static Gate visualGate(JsonNode check, Path sheet) {
-        int errors = 0;
+        int errors = checkErrors(check);
         int warnings = 0;
         // check --json 的每一段是 {ok, errorCount, warningCount, findings:[…]}，计数只认它自己的计数器。
         for (String section : List.of("lint", "runtime", "layout", "contrast", "craft", "audio")) {
-            errors += check.path(section).path("errorCount").asInt(0);
             warnings += check.path(section).path("warningCount").asInt(0);
         }
         int blank = blankCells(sheet);
@@ -981,6 +1519,82 @@ public class NewsProductionPipeline implements IProductionPipeline {
             Map.of("badgeAssertion", true, "motionSamples", motion.path("samples").asInt(0)));
     }
 
+    private static int checkErrors(JsonNode check) {
+        int errors = 0;
+        for (String section : List.of("lint", "runtime", "layout", "contrast", "craft", "audio")) {
+            errors += check.path(section).path("errorCount").asInt(0);
+        }
+        return errors;
+    }
+
+    private static Gate sceneRenderGate(String sceneId, int sceneIndex, NewsNarrationTiming.Span target,
+                                        long renderMs, double sceneSeconds, VideoSignalCheck.Result signal,
+                                        int blankFrames, int errors) {
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("sceneIndex", sceneIndex + 1);
+        measured.put("renderCalls", 1);
+        measured.put("renderedSceneCount", 1);
+        measured.put("startMs", target.startMs());
+        measured.put("endMs", target.endMs());
+        measured.put("renderMs", renderMs);
+        measured.put("videoSeconds", round2(sceneSeconds));
+        measured.put("checkErrors", errors);
+        measured.put("blankFrames", blankFrames);
+        measured.put("blackSpans", signal.black().size());
+        measured.put("longestBlackSeconds", round2(signal.longestBlack()));
+        measured.put("textVariablesMatched", true);
+        return new Gate("scene_render", "scene.mp4#" + sceneId,
+            "只渲染目标屏一次，帧、文字、黑场与时长闸全部通过", measured);
+    }
+
+    private static Gate audioGateForRework(AudioTiming audio, boolean hashMatched) {
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("audioMs", audio.durationMs());
+        measured.put("audioStartMs", audio.startMs());
+        measured.put("audioStreams", 1);
+        measured.put("packetHashMatched", hashMatched);
+        measured.put("ttsCalls", 0);
+        return new Gate("audio", FINAL_FILE + ":audio", "原音轨逐包复制，未重新配音", measured);
+    }
+
+    private static Gate renderGateForRework(Path file, long renderMs, double videoSeconds, String sceneId) {
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("bytes", size(file));
+        measured.put("renderMs", renderMs);
+        measured.put("videoSeconds", round2(videoSeconds));
+        measured.put("sceneRenderCalls", 1);
+        return new Gate("render", FINAL_FILE, "目标屏已按原时间轴拼回成片：" + sceneId, measured);
+    }
+
+    private static Gate audioMixGateForRework(AudioLoudness.Measurement measured) {
+        Map<String, Object> values = new TreeMap<>();
+        values.put("finalLufs", round2(measured.integratedLufs()));
+        values.put("finalTruePeakDb", round2(measured.truePeakDb()));
+        values.put("targetLufs", AudioLoudness.TARGET_LUFS);
+        values.put("toleranceLufs", AudioLoudness.TOLERANCE_LUFS);
+        values.put("truePeakLimitDb", AudioLoudness.MAX_TRUE_PEAK);
+        values.put("deliveryOk", measured.deliveryOk());
+        return new Gate("audio_mix", FINAL_FILE + ":loudness", "拼接后整片响度与真峰值复检通过", values);
+    }
+
+    private static Gate reworkIntegrityGate(int sceneIndex, long durationDeltaMs, boolean audioHashMatched,
+                                            MediaTiming previous, MediaTiming current) {
+        Map<String, Object> measured = new TreeMap<>();
+        measured.put("sceneIndex", sceneIndex + 1);
+        measured.put("durationDeltaMs", durationDeltaMs);
+        measured.put("audioHashMatched", audioHashMatched);
+        measured.put("videoOffsetDeltaMs", current.video().startMs() - previous.video().startMs());
+        measured.put("audioOffsetDeltaMs", current.audio().startMs() - previous.audio().startMs());
+        measured.put("audioVideoOffsetDeltaMs", (current.audio().startMs() - current.video().startMs())
+            - (previous.audio().startMs() - previous.video().startMs()));
+        measured.put("videoFrameCount", current.video().frameCount());
+        measured.put("frameCountMatched", previous.video().frameCount() == current.video().frameCount());
+        measured.put("renderCalls", 1);
+        measured.put("ttsCalls", 0);
+        return new Gate("rework_integrity", FINAL_FILE + ":timeline",
+            "只替换目标屏，成片时长、帧率、视频起点、音画偏移、帧数与音轨均保持", measured);
+    }
+
     private static Gate assetsGate(Path composition, JsonNode locked, Path templateDir) {
         String manifestSha = sha256(composition.resolve("assets-manifest.json"));
         String fontSha = sha256(composition.resolve("fonts").resolve(FONT_NAME));
@@ -998,15 +1612,19 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return new Gate("assets", "LOCK.json", "模板目录实算哈希逐项等于 LOCK.json 声明", measured);
     }
 
-    private static String gateJson(List<Gate> gates) {
+    static String gateJson(List<Gate> gates) {
         List<Map<String, Object>> list = new ArrayList<>();
         for (Gate gate : gates) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("gate", gate.gate());
             item.put("inputLocator", gate.inputLocator());
-            item.put("passed", true);
+            item.put("passed", gate.passed());
             item.put("reason", gate.reason());
             item.put("measured", gate.measured());
+            if (gate.status() != null) {
+                item.put("status", gate.status());
+                item.put("code", gate.code());
+            }
             list.add(item);
         }
         return JSON.writeValueAsString(list);
@@ -1058,13 +1676,152 @@ public class NewsProductionPipeline implements IProductionPipeline {
         }
     }
 
+    private void renderScene(ProductionRunVo run, Path work, NewsNarrationTiming.Span target, String sceneId) {
+        List<String> args = new ArrayList<>(List.of(cliEntry(), "render", COMPOSITION_DIR,
+            "--variables-file", VARS_FILE, "--strict-variables", "--quality", "looks", "--workers", "1",
+            "--no-best-effort", "--quiet", "--start=" + fmt(target.startMs() / 1000.0),
+            "--end=" + fmt(target.endMs() / 1000.0), "--output", SCENE_FILE));
+        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("node", args, work, RENDER_TIMEOUT));
+        if (result.exitCode() != 0 || size(work.resolve(SCENE_FILE)) <= 0) {
+            throw new HeronBusinessException(503, "news_render_failed",
+                "目标屏渲染失败：" + safeTail(result.stdout()) + safeTail(result.stderr()));
+        }
+        log.info("只渲染目标屏：taskId={} sceneId={} startMs={} endMs={} renderCalls=1",
+            run.taskId(), sceneId, target.startMs(), target.endMs());
+    }
+
     private JsonNode decode(ProductionRunVo run, Path raw) {
+        return decodeFile(run, work(run), RAW_FILE);
+    }
+
+    private JsonNode decodeFile(ProductionRunVo run, Path work, String relativeFile) {
         ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffprobe",
-            List.of("-v", "error", "-show_format", "-show_streams", "-of", "json", RAW_FILE), work(run), PROBE_TIMEOUT));
+            List.of("-v", "error", "-show_format", "-show_streams", "-of", "json", relativeFile), work, PROBE_TIMEOUT));
         if (result.exitCode() != 0) {
             throw new HeronBusinessException(409, "news_probe_failed", "ffprobe 读取成片失败");
         }
         return JSON.readTree(result.stdout().substring(result.stdout().indexOf('{')));
+    }
+
+    /** 三段视频硬切拼接，原音轨直接复制；AIGC 标签随新容器重新写入。 */
+    private void spliceScene(ProductionRunVo run, Path work, double start, double end, double total, double fps) {
+        List<String> command = new ArrayList<>(List.of("-y", "-loglevel", "error",
+            "-i", PREVIOUS_FILE, "-i", SCENE_FILE,
+            "-filter_complex", sceneSpliceFilter(start, end, total),
+            "-map", "[v]", "-map", "0:a:0",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
+            "-fps_mode", "cfr", "-r", fmt(fps), "-c:a", "copy", "-t", fmt(total),
+            "-map_metadata", "0", "-movflags", "+use_metadata_tags",
+            "-metadata", AIGC_TAG + "=" + AIGC_STATEMENT, FINAL_FILE));
+        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg", command, work, PACKAGE_TIMEOUT));
+        if (result.exitCode() != 0 || size(work.resolve(FINAL_FILE)) <= 0) {
+            throw new HeronBusinessException(503, "news_rework_splice_failed", "场景拼接失败：" + safeTail(result.stderr()));
+        }
+    }
+
+    /** 对压缩音轨做逐包哈希；只有视频重编码时该值才应前后一致。 */
+    private String audioHash(ProductionRunVo run, Path work, String relativeFile) {
+        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg",
+            List.of("-v", "error", "-i", relativeFile, "-map", "0:a:0", "-c", "copy",
+                "-f", "hash", "-hash", "sha256", "-"), work, PROBE_TIMEOUT));
+        if (result.exitCode() != 0 || !result.stdout().contains("=")) {
+            throw new HeronBusinessException(503, "news_rework_audio_hash_failed", "无法计算原音轨逐包哈希");
+        }
+        return result.stdout().substring(result.stdout().indexOf('=') + 1).trim();
+    }
+
+    private static AudioTiming audioTiming(JsonNode probe) {
+        JsonNode audio = null;
+        for (JsonNode stream : probe.path("streams")) {
+            if ("audio".equals(stream.path("codec_type").asString(""))) {
+                audio = stream;
+                break;
+            }
+        }
+        if (audio == null) {
+            throw new HeronBusinessException(409, "news_rework_audio_changed", "成片缺少音轨");
+        }
+        double duration = audio.path("duration").asDouble(0);
+        double start = audio.path("start_time").asDouble(0);
+        if (!audio.has("start_time") || !Double.isFinite(start) || !Double.isFinite(duration) || duration <= 0) {
+            throw new HeronBusinessException(409, "news_rework_audio_changed", "无法读取成片音轨起点或时长");
+        }
+        return new AudioTiming(Math.round(start * 1000), Math.round(duration * 1000));
+    }
+
+    private static VideoTiming videoTiming(JsonNode probe) {
+        JsonNode video = null;
+        for (JsonNode stream : probe.path("streams")) {
+            if ("video".equals(stream.path("codec_type").asString(""))) {
+                video = stream;
+                break;
+            }
+        }
+        if (video == null) {
+            throw new HeronBusinessException(409, "news_rework_video_offset_changed", "成片缺少视频流");
+        }
+        double start = video.path("start_time").asDouble(0);
+        long frames = video.path("nb_frames").asLong(0);
+        if (frames <= 0) {
+            frames = video.path("nb_read_frames").asLong(0);
+        }
+        if (!video.has("start_time") || !Double.isFinite(start) || frames <= 0) {
+            throw new HeronBusinessException(409, "news_rework_frame_count_missing", "无法读取成片视频起点或帧数");
+        }
+        return new VideoTiming(Math.round(start * 1000), frames);
+    }
+
+    private static MediaTiming mediaTiming(JsonNode probe) {
+        return new MediaTiming(videoTiming(probe), audioTiming(probe));
+    }
+
+    /** HyperFrames 的 audio clip 必须可读；从旧成片提取临时音轨，最终拼接仍复制旧音轨。 */
+    private void materializeRenderAudio(ProductionRunVo run, Path work, Path composition) {
+        String output = COMPOSITION_DIR + "/" + VOICE_FILE;
+        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg",
+            List.of("-y", "-loglevel", "error", "-i", PREVIOUS_FILE, "-map", "0:a:0", "-vn",
+                "-c:a", "libmp3lame", "-b:a", "160k", output), work, PACKAGE_TIMEOUT));
+        if (result.exitCode() != 0 || size(composition.resolve(VOICE_FILE)) <= 0) {
+            throw new HeronBusinessException(503, "news_rework_audio_failed", "无法准备单屏渲染所需的临时音轨");
+        }
+    }
+
+    Path sceneFrame(ProductionRunVo run, Path work, NewsNarrationTiming.Span target) {
+        double midpoint = (target.endMs() - target.startMs()) / 2000.0;
+        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg",
+            List.of("-y", "-loglevel", "error", "-ss", fmt(midpoint), "-i", SCENE_FILE,
+                "-frames:v", "1", "-vf", "scale=360:640", SCENE_FRAME_FILE), work, PACKAGE_TIMEOUT));
+        if (result.exitCode() != 0 || size(work.resolve(SCENE_FRAME_FILE)) <= 0) {
+            throw new HeronBusinessException(503, "news_scene_frame_failed", "目标屏中点帧抽取失败");
+        }
+        return work.resolve(SCENE_FRAME_FILE);
+    }
+
+    /** V3：只使用实测场景窗与字幕句窗规划，音效床非空时才作为额外混音输入。 */
+    SoundCueMixer.Result renderSoundCues(ProductionRunVo run, Path work,
+                                                   List<NewsNarrationTiming.Span> timeline,
+                                                   JsonNode subtitles, JsonNode script) {
+        List<SoundCue.Window> scenes = timeline.stream()
+            .map(span -> new SoundCue.Window(span.id(), span.startMs(), span.endMs())).toList();
+        List<SoundCue.Window> narration = new ArrayList<>();
+        for (int index = 0; index < subtitles.size(); index++) {
+            JsonNode cue = subtitles.get(index);
+            narration.add(new SoundCue.Window("cue-" + (index + 1), cue.path("startMs").asLong(-1),
+                cue.path("endMs").asLong(-1)));
+        }
+        Path root = properties.getNewsTemplate();
+        Path sfx = root == null ? Path.of("data/audio/sfx") : root.toAbsolutePath().normalize().getParent()
+            .resolve("audio").resolve("sfx");
+        SoundCue.Plan plan = SoundCue.plan(scenes, narration, script, sfx);
+        return SoundCueMixer.render(processes, run, work, plan, narration,
+            timeline.getLast().endMs());
+    }
+
+    static Gate soundCueGate(SoundCue.Check check) {
+        Map<String, Object> measured = JSON.convertValue(check.toMap().get("measured"), Map.class);
+        boolean skip = "SKIP".equals(check.status());
+        return new Gate("sfx", check.toMap().get("inputLocator").toString(), check.reason(), measured,
+            check.passed(), skip ? check.status() : null, skip ? check.code() : null);
     }
 
     /**
@@ -1081,7 +1838,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
      * <p>失败分两级：旁白自身不达标是内容主体的问题，直接阻塞出片；
      * 配乐导致超标则去掉配乐重混——音乐是加分项，不该为它卡住一条片子。
      */
-    private AudioMix mixAndTag(ProductionRunVo run, Path work, NewsNarrationTiming.Span closing) {
+    private AudioMix mixAndTag(ProductionRunVo run, Path work, NewsNarrationTiming.Span closing, Path sfxBed) {
         // 测旁白：量的是渲染后成片里的那条音轨，不是工作目录里的配音文件
         AudioLoudness.Measurement voice = AudioLoudness.measureFile(processes, run, work, RAW_FILE);
         double voiceGain = AudioLoudness.voiceGain(voice);
@@ -1094,11 +1851,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
             bgmMeasured = AudioLoudness.measureBgm(processes, run, work, bgm, envelope);
             bgmGain = AudioLoudness.bgmGain(bgmMeasured);
         }
-        MixAttempt attempt = mixAndMeasure(run, work, bgm, envelope, voiceGain, bgmGain, MIX_ATTEMPTS);
+        MixAttempt attempt = mixAndMeasure(run, work, bgm, envelope, voiceGain, bgmGain, sfxBed, MIX_ATTEMPTS);
         boolean bgmDropped = false;
         if (!attempt.ok() && bgm != null) {
             // 配乐导致超标：去掉配乐重来一次，不为音乐卡住出片
-            attempt = mixAndMeasure(run, work, null, envelope, voiceGain, 0, MIX_ATTEMPTS);
+            attempt = mixAndMeasure(run, work, null, envelope, voiceGain, 0, sfxBed, MIX_ATTEMPTS);
             bgmDropped = true;
         }
         if (!attempt.ok()) {
@@ -1109,7 +1866,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
                     + fmt(AudioLoudness.MAX_TRUE_PEAK) + " dBTP");
         }
         return new AudioMix(work.resolve(FINAL_FILE),
-            audioMixGate(voice, attempt, bgm, bgmMeasured, bgmGain, bgmDropped));
+            audioMixGate(voice, attempt, bgm, bgmMeasured, bgmGain, bgmDropped, sfxBed != null));
     }
 
     /**
@@ -1119,11 +1876,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
      * 限幅器介入后关系会被压平，再多试也上不去，那就该按「旁白不达标」处理。
      */
     private MixAttempt mixAndMeasure(ProductionRunVo run, Path work, Path bgm, String envelope,
-                                      double voiceGain, double bgmGain, int maxAttempts) {
+                                      double voiceGain, double bgmGain, Path sfxBed, int maxAttempts) {
         double gain = voiceGain;
         AudioLoudness.Measurement measured = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            mixTo(run, work, bgm, envelope, gain, bgmGain);
+            mixTo(run, work, bgm, envelope, gain, bgmGain, sfxBed);
             measured = AudioLoudness.measureFile(processes, run, work, FINAL_FILE);
             if (measured.deliveryOk()) {
                 return new MixAttempt(true, gain, measured, attempt);
@@ -1139,14 +1896,23 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     /** 混音与 AIGC 元数据一条命令完成；BGM 为空时就是只贴标签。 */
-    private void mixTo(ProductionRunVo run, Path work, Path bgm, String envelope,
-                       double voiceGain, double bgmGain) {
+    void mixTo(ProductionRunVo run, Path work, Path bgm, String envelope,
+                       double voiceGain, double bgmGain, Path sfxBed) {
         List<String> command = new ArrayList<>();
         command.addAll(List.of("-y", "-loglevel", "error", "-i", RAW_FILE));
+        int sfxInput = 1;
         if (bgm != null) {
             command.addAll(List.of("-stream_loop", "-1", "-i", bgm.toAbsolutePath().toString()));
+            sfxInput = 2;
         }
-        command.addAll(List.of("-filter_complex", mixFilter(envelope, voiceGain, bgmGain, bgm != null)));
+        if (sfxBed != null) {
+            command.addAll(List.of("-i", sfxBed.toAbsolutePath().toString()));
+        }
+        String filter = mixFilter(envelope, voiceGain, bgmGain, bgm != null);
+        if (sfxBed != null) {
+            filter = SoundCueMixer.mixIntoBus(filter, "[" + sfxInput + ":a]");
+        }
+        command.addAll(List.of("-filter_complex", filter));
         command.addAll(List.of("-map", "0:v:0", "-map", "[mix]"));
         command.addAll(List.of("-c:v", "copy", "-c:a", "aac", "-b:a", "160k"));
         command.addAll(List.of("-movflags", "+use_metadata_tags",
@@ -1206,7 +1972,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
      */
     private static Gate audioMixGate(AudioLoudness.Measurement voice, MixAttempt attempt, Path bgm,
                                      AudioLoudness.Measurement bgmMeasured, double bgmGain,
-                                     boolean bgmDropped) {
+                                     boolean bgmDropped, boolean withSfx) {
         Map<String, Object> measured = new TreeMap<>();
         measured.put("voiceLufs", round2(voice.integratedLufs()));
         measured.put("voiceTruePeakDb", round2(voice.truePeakDb()));
@@ -1217,6 +1983,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         measured.put("toleranceLufs", AudioLoudness.TOLERANCE_LUFS);
         measured.put("truePeakLimitDb", AudioLoudness.MAX_TRUE_PEAK);
         measured.put("bgmDropped", bgmDropped);
+        measured.put("sfxMixed", withSfx);
         measured.put("mixAttempts", attempt.attempts());
         if (bgm != null && !bgmDropped && bgmMeasured != null) {
             measured.put("bgmLufs", round2(bgmMeasured.integratedLufs()));
@@ -1348,34 +2115,198 @@ public class NewsProductionPipeline implements IProductionPipeline {
      *
      * <p>取不到的图直接跳过，场景退化成纯文字。一张配图失败不该让整条片子报废。
      */
-    private Map<String, String> materializeImages(java.nio.file.Path work, JsonNode script, JsonNode input) {
+    private Map<String, String> materializeImages(Path work, JsonNode script, JsonNode input,
+                                                   List<MediaAssetSelectionVo> selections) {
         Map<String, String> resolved = new TreeMap<>();
-        Map<String, String> byAsset = indexEvidenceAssets(input);
         JsonNode scenes = script.path("scenes");
         for (int index = 0; index < scenes.size(); index++) {
-            JsonNode assets = scenes.get(index).path("visual").path("assets");
-            if (!assets.isArray() || assets.isEmpty()) {
-                continue;
+            resolved.putAll(resolveSceneAssets(work, scenes.get(index), index + 1, input, selections));
+        }
+        return resolved;
+    }
+
+    /** V5：只解析传入场景；返工未改屏不调用 selector，也不重新下载素材。 */
+    protected Map<String, String> resolveSceneAssets(Path work, JsonNode scene, int sceneNumber, JsonNode input,
+                                                      List<MediaAssetSelectionVo> selections) {
+        if (mediaAssets == null) {
+            return legacySceneAssets(work, scene, sceneNumber, input);
+        }
+        if (!"IMAGE".equalsIgnoreCase(scene.path("scene_type").asString(""))) {
+            return Map.of();
+        }
+        String sceneId = scene.path("scene_id").asString("");
+        JsonNode visual = scene.path("visual");
+        JsonNode firstAsset = visual.path("assets").isArray() && !visual.path("assets").isEmpty()
+            ? visual.path("assets").get(0) : visual;
+        MediaAssetSelectionBo request = new MediaAssetSelectionBo(sceneId, sceneNumber,
+            "IMAGE", assetId(scene), visual.path("orientation").asString("PORTRAIT"),
+            keywords(visual.path("keywords")), firstAsset.path("source_url").asString(""));
+        MediaAssetSelectionVo selected = mediaAssets.selectForScene(request);
+        if (selected == null || selected.getGate() == null || !selected.getGate().isPassed()) {
+            throw new HeronBusinessException(409, "news_media_asset_rejected", "场景素材选择没有返回通过的 assets 闸");
+        }
+        selections.add(selected);
+        if (!"SELECTED".equals(selected.getStatus())) {
+            selected.setImageValue("");
+            return Map.of(String.valueOf(sceneNumber), "");
+        }
+        try {
+            byte[] bytes = downloadSelectedAsset(selected);
+            if (bytes.length > MediaAssetStorage.MAX_BYTES || !DigestUtil.sha256Hex(bytes)
+                .equalsIgnoreCase(selected.getContentSha256())) {
+                throw new HeronBusinessException(409, "news_media_asset_integrity", "选中素材的大小上限或 SHA-256 不匹配");
             }
-            JsonNode first = assets.get(0);
-            String url = first.path("source_url").asString("");
-            if (url.isBlank()) {
-                url = byAsset.getOrDefault(first.path("asset_id").asString(""), "");
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(bytes));
+            if (image == null || image.getWidth() != selected.getWidth() || image.getHeight() != selected.getHeight()
+                || (!png(bytes) && !jpeg(bytes))) {
+                throw new HeronBusinessException(409, "news_media_asset_integrity", "选中素材不是声明尺寸的 PNG/JPEG 图像");
             }
-            if (url.isBlank()) {
-                continue;
+            String name = "scene" + sceneNumber + (jpeg(bytes) ? ".jpg" : ".png");
+            Files.write(work.resolve(name), bytes);
+            selected.setImageValue(name);
+            return Map.of(String.valueOf(sceneNumber), name);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new HeronBusinessException(503, "news_media_asset_download_interrupted", "素材下载被中断", e);
+        } catch (IOException | RuntimeException e) {
+            String reason = "选中素材下载或完整性校验失败，场景显式退回纯文字：" + e.getClass().getSimpleName();
+            selected.setStatus("TEXT_ONLY");
+            selected.setReasonCode("asset_download_failed");
+            selected.setReason(reason);
+            selected.setImageValue("");
+            selected.setGate(new MediaAssetGateVo("scene:" + sceneId, "asset_download_failed", reason,
+                true, null, true));
+            log.warn("场景 {} 素材回退纯文字: {}", sceneId, e.getClass().getSimpleName());
+            return Map.of(String.valueOf(sceneNumber), "");
+        }
+    }
+
+    /** 可替换的下载边界；生产只接受 HTTP(S)，不跟随重定向，并限制到素材登记的大小。 */
+    protected byte[] downloadSelectedAsset(MediaAssetSelectionVo selected) throws IOException, InterruptedException {
+        URI uri = URI.create(selected.getImageValue());
+        if (!("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme()))
+            || uri.getHost() == null) {
+            throw new IOException("OSS 地址非法");
+        }
+        HttpResponse<InputStream> response = assetHttp.send(HttpRequest.newBuilder(uri)
+            .timeout(Duration.ofSeconds(30)).GET().build(), HttpResponse.BodyHandlers.ofInputStream());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            response.body().close();
+            throw new IOException("OSS 返回 " + response.statusCode());
+        }
+        try (InputStream body = response.body()) {
+            return body.readNBytes(Math.toIntExact(MediaAssetStorage.MAX_BYTES) + 1);
+        }
+    }
+
+    private static boolean png(byte[] bytes) {
+        return bytes.length >= 8 && (bytes[0] & 0xff) == 0x89 && bytes[1] == 'P' && bytes[2] == 'N'
+            && bytes[3] == 'G' && bytes[4] == 0x0d && bytes[5] == 0x0a && bytes[6] == 0x1a && bytes[7] == 0x0a;
+    }
+
+    private static boolean jpeg(byte[] bytes) {
+        return bytes.length >= 2 && (bytes[0] & 0xff) == 0xff && (bytes[1] & 0xff) == 0xd8;
+    }
+
+    private static Long assetId(JsonNode scene) {
+        JsonNode visual = scene.path("visual");
+        JsonNode firstAsset = visual.path("assets").isArray() && !visual.path("assets").isEmpty()
+            ? visual.path("assets").get(0) : visual;
+        String value = visual.path("mediaAssetId").asString(visual.path("media_asset_id").asString(
+            visual.path("asset_id").asString(firstAsset.path("media_asset_id").asString(
+                firstAsset.path("asset_id").asString("")))));
+        if (value.isBlank()) {
+            return null;
+        }
+        try {
+            long id = Long.parseLong(value);
+            if (id <= 0) {
+                throw new HeronBusinessException(400, "news_media_asset_id_invalid", "显式素材 ID 非法，拒绝自动选材");
             }
-            try {
-                var bytes = fetcher.fetchImage(java.net.URI.create(url));
-                if (bytes.isEmpty()) {
-                    continue;
-                }
-                String name = "scene" + (index + 1) + imageExt(url);
-                java.nio.file.Files.write(work.resolve(name), bytes.get());
-                resolved.put(String.valueOf(index + 1), name);
-            } catch (RuntimeException | java.io.IOException e) {
-                log.warn("场景 {} 的配图取不到，退化成纯文字: {}", index + 1, e.getMessage());
+            return id;
+        } catch (NumberFormatException e) {
+            if (firstAsset.path("asset_id").asString("").equals(value) && firstAsset.path("source_url").isTextual()) {
+                return null;
             }
+            throw new HeronBusinessException(400, "news_media_asset_id_invalid", "显式素材 ID 非法，拒绝自动选材");
+        }
+    }
+
+    private static List<String> keywords(JsonNode node) {
+        if (!node.isArray()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        node.forEach(item -> {
+            String value = item.asString("");
+            if (!value.isBlank()) {
+                values.add(value);
+            }
+        });
+        return values;
+    }
+
+    private static MediaAssetSelectionVo restoreMediaSelection(JsonNode node) {
+        MediaAssetSelectionVo selected = new MediaAssetSelectionVo();
+        selected.setSceneId(node.path("sceneId").asString(""));
+        selected.setSceneNumber(node.path("sceneNumber").isIntegralNumber() ? node.path("sceneNumber").asInt() : null);
+        selected.setSceneType(node.path("sceneType").asString(""));
+        selected.setStatus(node.path("status").asString(""));
+        selected.setReasonCode(node.path("reasonCode").asString(""));
+        selected.setReason(node.path("reason").asString(""));
+        selected.setImageVariable(node.path("imageVariable").asString(""));
+        selected.setImageValue(node.path("imageValue").asString(""));
+        selected.setAssetId(node.path("assetId").isIntegralNumber() ? node.path("assetId").asLong() : null);
+        selected.setAssetName(node.path("assetName").asString(""));
+        selected.setLicenseCode(node.path("licenseCode").asString(""));
+        selected.setLicenseEvidenceUri(node.path("licenseEvidenceUri").asString(""));
+        selected.setAttribution(node.path("attribution").asString(""));
+        selected.setSourceUri(node.path("sourceUri").asString(""));
+        selected.setContentSha256(node.path("contentSha256").asString(""));
+        selected.setWidth(node.path("width").isIntegralNumber() ? node.path("width").asInt() : null);
+        selected.setHeight(node.path("height").isIntegralNumber() ? node.path("height").asInt() : null);
+        selected.setOssConfigKey(node.path("ossConfigKey").asString(""));
+        selected.setOssKey(node.path("ossKey").asString(""));
+        JsonNode measured = node.path("gate").path("measured");
+        selected.setGate(new MediaAssetGateVo(node.path("gate").path("inputLocator").asString(""),
+            selected.getReasonCode(), selected.getReason(), measured.path("licenseChecked").asBoolean(false),
+            selected.getAssetId(), measured.path("fallbackToText").asBoolean(false)));
+        return selected;
+    }
+
+    private static Gate mediaAssetGate(MediaAssetSelectionVo selection) {
+        JsonNode gate = JSON.readTree(JSON.writeValueAsString(selection.getGate()));
+        boolean attributionOk = !MediaAssetLicensePolicy.requiresAttribution(selection.getLicenseCode())
+            || (selection.getAttribution() != null && !selection.getAttribution().isBlank());
+        String reason = attributionOk ? gate.path("reason").asString("") : "CC_BY/CC_BY_SA 素材缺少署名，拒绝发布";
+        return new Gate("assets", gate.path("inputLocator").asString(""), reason,
+            JSON.convertValue(gate.path("measured"), Map.class), gate.path("passed").asBoolean(false) && attributionOk);
+    }
+
+    private Map<String, String> legacySceneAssets(Path work, JsonNode scene, int sceneNumber, JsonNode input) {
+        Map<String, String> resolved = new TreeMap<>();
+        JsonNode assets = scene.path("visual").path("assets");
+        if (!assets.isArray() || assets.isEmpty()) {
+            return resolved;
+        }
+        JsonNode first = assets.get(0);
+        String url = first.path("source_url").asString("");
+        if (url.isBlank()) {
+            url = indexEvidenceAssets(input).getOrDefault(first.path("asset_id").asString(""), "");
+        }
+        if (url.isBlank()) {
+            return resolved;
+        }
+        try {
+            var bytes = fetcher.fetchImage(java.net.URI.create(url));
+            if (bytes.isEmpty()) {
+                return resolved;
+            }
+            String name = "scene" + sceneNumber + imageExt(url);
+            Files.write(work.resolve(name), bytes.get());
+            resolved.put(String.valueOf(sceneNumber), name);
+        } catch (RuntimeException | IOException e) {
+            log.warn("场景 {} 的配图取不到，退化成纯文字: {}", sceneNumber, e.getMessage());
         }
         return resolved;
     }
@@ -1412,7 +2343,12 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     static String dataTemplateVariables(JsonNode script, JsonNode dataset, java.util.Set<String> declared) {
-        ObjectNode vars = (ObjectNode) JSON.readTree(templateVariables(DatasetPlaceholders.resolve(script, dataset),
+        return dataTemplateVariables(script, dataset, null, declared);
+    }
+
+    static String dataTemplateVariables(JsonNode script, JsonNode dataset, JsonNode trend,
+                                        java.util.Set<String> declared) {
+        ObjectNode vars = (ObjectNode) JSON.readTree(templateVariables(DatasetPlaceholders.resolve(script, dataset, trend),
             Map.of(), declared));
         vars.put("chart", DatasetScriptContract.chartFor(dataset.path("shape").asString("")));
         vars.put("dataset_json", dataset.toString());
@@ -1618,9 +2554,29 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     private static String assetManifest(Path composition, JsonNode locked) {
+        return assetManifest(composition, locked, List.of(), null);
+    }
+
+    private static String assetManifest(Path composition, JsonNode locked, List<MediaAssetSelectionVo> selections,
+                                        JsonNode inherited) {
         Map<String, Object> manifest = new TreeMap<>();
         manifest.put("locked", JSON.readTree(JSON.writeValueAsString(locked)));
-        manifest.put("files", fileHashes(composition));
+        Map<String, Map<String, Object>> files = new TreeMap<>();
+        for (Map<String, Object> file : fileHashes(composition)) {
+            files.put((String) file.get("path"), file);
+        }
+        Set<String> reused = selections.stream().map(MediaAssetSelectionVo::getImageValue)
+            .filter(value -> value != null && !value.isBlank()).collect(java.util.stream.Collectors.toSet());
+        if (inherited != null && inherited.path("files").isArray()) {
+            for (JsonNode file : inherited.path("files")) {
+                String path = file.path("path").asString("");
+                if (reused.contains(path) && !files.containsKey(path)) {
+                    files.put(path, JSON.convertValue(file, Map.class));
+                }
+            }
+        }
+        manifest.put("files", new ArrayList<>(files.values()));
+        manifest.put("mediaSelections", JSON.readTree(JSON.writeValueAsString(selections)));
         return JSON.writeValueAsString(manifest);
     }
 
@@ -1660,6 +2616,139 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     // ---------- 小工具 ----------
 
+    private Map<String, ProductionArtifactVo> requireInheritedArtifacts(ProductionRunVo run, SceneReworkRequest request,
+                                                                         boolean dataset, boolean trend, boolean knowledge) {
+        Set<String> expected = new LinkedHashSet<>(List.of("mp4", "contact_sheet", "script", "subtitles",
+            "checks", "asset_manifest"));
+        if (dataset) {
+            expected.add("dataset");
+        }
+        if (trend) {
+            expected.add("dataset");
+            expected.add("trend");
+        }
+        if (knowledge) {
+            expected.add("citations");
+        }
+        List<ProductionArtifactVo> previousArtifacts = request.previousArtifacts();
+        if (previousArtifacts.size() != expected.size()) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版产物清单不完整或包含多余产物");
+        }
+        String prefix = "videos/" + run.bizId() + "/v" + request.previousVersionId() + "/";
+        Map<String, ProductionArtifactVo> result = new LinkedHashMap<>();
+        for (ProductionArtifactVo artifact : previousArtifacts) {
+            if (artifact == null || !expected.contains(artifact.kind()) || result.containsKey(artifact.kind())
+                || artifact.artifactId() == null
+                || !artifact.artifactId().matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+                || artifact.sha256() == null || !artifact.sha256().matches("[0-9a-f]{64}")
+                || artifact.bytes() <= 0 || artifact.bytes() > properties.getNewsMaxBytes()) {
+                throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版产物描述不完整、重复或尺寸不合法");
+            }
+            boolean captionJson = "subtitles".equals(artifact.kind()) && "application/json".equals(artifact.mediaType());
+            String extension = switch (artifact.kind()) {
+                case "mp4" -> "mp4";
+                case "contact_sheet" -> "png";
+                case "subtitles" -> captionJson ? "json" : "srt";
+                default -> "json";
+            };
+            String mediaType = switch (artifact.kind()) {
+                case "mp4" -> "video/mp4";
+                case "contact_sheet" -> "image/png";
+                case "subtitles" -> captionJson ? "application/json" : "application/x-subrip";
+                default -> "application/json";
+            };
+            String fileName = artifact.artifactId() + "." + extension;
+            boolean associated = artifact.storageKey() != null && artifact.storageKey().matches(
+                Pattern.quote(prefix) + "a[0-9]+-[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/"
+                    + Pattern.quote(fileName));
+            if (!mediaType.equals(artifact.mediaType()) || !associated) {
+                throw new HeronBusinessException(409, "scene_rework_source_mismatch",
+                    "上一版产物不属于指定版本或媒体类型错误：" + artifact.kind() + " " + artifact.storageKey());
+            }
+            artifacts.verify(artifact);
+            result.put(artifact.kind(), artifact);
+        }
+        if (!result.keySet().equals(expected)) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版产物清单缺少必需产物");
+        }
+        return result;
+    }
+
+    /** 上一版结果里的 script 必须与已校验产物逐字段完全相等，不能只验证 manifest 自洽。 */
+    private void requireScriptArtifact(ProductionArtifactVo artifact, JsonNode previousScript) {
+        JsonNode actual = readInheritedJson(artifact, "script");
+        if (!actual.isObject() || !actual.equals(previousScript)) {
+            throw new HeronBusinessException(409, "scene_rework_script_mismatch",
+                "上一版结果 script 与已校验的 script 产物不完全相等");
+        }
+    }
+
+    private JsonNode readInheritedJson(ProductionArtifactVo artifact, String kind) {
+        if (artifact == null) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版缺少 " + kind + " 产物");
+        }
+        try (var input = artifacts.openVerified(artifact)) {
+            byte[] bytes = input.readNBytes(256 * 1024 + 1);
+            if (bytes.length > 256 * 1024 || bytes.length != artifact.bytes()
+                || !DigestUtil.sha256Hex(bytes).equals(artifact.sha256())) {
+                throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版 " + kind + " 产物指纹不匹配");
+            }
+            JsonNode node = JSON.readTree(bytes);
+            if (node == null) {
+                throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版 " + kind + " 不是有效 JSON");
+            }
+            return node;
+        } catch (HeronBusinessException e) {
+            throw e;
+        } catch (IOException | RuntimeException e) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版 " + kind + " 不是有效 JSON", e);
+        }
+    }
+
+    private static void requireInheritedJson(Path file, JsonNode expected, String kind) {
+        if (expected == null) {
+            return;
+        }
+        if (file == null) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版缺少 " + kind + " 产物");
+        }
+        try {
+            if (!JSON.readTree(read(file)).equals(expected)) {
+                throw new HeronBusinessException(409, "scene_rework_source_mismatch", "上一版 " + kind + " 与结果快照不一致");
+            }
+        } catch (RuntimeException e) {
+            if (e instanceof HeronBusinessException business) {
+                throw business;
+            }
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版 " + kind + " 不是有效 JSON");
+        }
+    }
+
+    private static ProductionArtifactVo requireArtifact(List<ProductionArtifactVo> artifacts, String kind) {
+        List<ProductionArtifactVo> matches = artifacts.stream().filter(item -> item != null && kind.equals(item.kind())).toList();
+        if (matches.size() != 1) {
+            throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版产物必须恰有一个 " + kind);
+        }
+        return matches.get(0);
+    }
+
+    private Path copyArtifact(ProductionRunVo run, Path work, ProductionArtifactVo artifact, String name) {
+        Path target = work.resolve(name);
+        try {
+            if (!Files.exists(target)) {
+                try (var input = artifacts.openVerified(artifact)) {
+                    Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+            if (Files.size(target) != artifact.bytes() || !sha256(target).equals(artifact.sha256())) {
+                throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版产物复制后指纹不一致：" + artifact.kind());
+            }
+            return target;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     private static double rate(String fraction) {
         String[] parts = fraction.split("/");
         try {
@@ -1673,17 +2762,25 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     /** 联络表按 3x2 分格逐格取样；整格只剩一两种颜色即判为空白帧。 */
     private static int blankCells(Path sheet) {
-        BufferedImage image;
         try {
-            image = ImageIO.read(sheet.toFile());
+            return blankCells(ImageIO.read(sheet.toFile()), 3, 2);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        if (image == null) {
-            throw new HeronBusinessException(409, "news_contact_sheet_unreadable", "联络表不可读");
+    }
+
+    private static int blankSingleFrame(Path frame) {
+        try {
+            return blankCells(ImageIO.read(frame.toFile()), 1, 1);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
-        int columns = 3;
-        int rows = 2;
+    }
+
+    private static int blankCells(BufferedImage image, int columns, int rows) {
+        if (image == null) {
+            throw new HeronBusinessException(409, "news_contact_sheet_unreadable", "画面帧不可读");
+        }
         int cellWidth = image.getWidth() / columns;
         int cellHeight = image.getHeight() / rows;
         int blank = 0;

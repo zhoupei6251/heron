@@ -20,7 +20,7 @@ Heron 业务管理系统，基座 RuoYi-Vue-Plus 6.1.0（Spring Boot 4.1.2 / JDK
 | 模板前缀 | `news-*` | `news-data-*` |
 | 画面主体 | 文字排版 | 图表 |
 | 链路 | 热点 → 写稿 → 套版 | 热点 → 选源 → `dataset/1` 快照 → 写稿 → 出图 |
-| 现状 | `article-enabled: false`，不参与发版 | 当前在跑的产品形态 |
+| 现状 | `article-enabled: true`，article 分支已启用；分镜首期只开 `news-minimal-9x16` | 当前在跑的产品形态 |
 
 命名坑：`kind="article"` 指的是**文稿驱动的那条视频线**，它不产出文章。看到 `article` 不要理解成"写文章"。
 

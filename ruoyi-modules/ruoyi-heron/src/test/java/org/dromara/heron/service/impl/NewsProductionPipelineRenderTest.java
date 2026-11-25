@@ -95,7 +95,8 @@ class NewsProductionPipelineRenderTest {
             kinds.stream().sorted().toList());
 
         JsonNode checks = content.path("checks");
-        assertEquals(11, checks.size(), checks.toString());
+        assertTrue(checks.size() >= 11, checks.toString());
+        assertTrue(find(checks, "sfx").path("passed").asBoolean(), "V3 音效闸必须进入生产报告");
         for (JsonNode gate : checks) {
             assertTrue(gate.path("passed").asBoolean(), gate.path("gate").asString("") + " 未通过");
             assertTrue(gate.path("measured").size() > 0, gate.path("gate").asString("") + " 没有实测值");
@@ -141,7 +142,7 @@ class NewsProductionPipelineRenderTest {
         // 稿子声明了一个 image 场景；图片地址由替身 fetcher 返回，不真的出网
         String script = SCRIPT.replace(
             "\"scenes\":[",
-            "\"scenes\":[{\"lead\":\"配图场景验证\",\"body\":\"这一段应当带一张配图。\",\"duration_s\":10,"
+            "\"scenes\":[{\"scene_id\":\"scene_001\",\"lead\":\"配图场景验证\",\"body\":\"这一段应当带一张配图。\",\"duration_s\":10,"
                 + "\"scene_type\":\"image\",\"visual\":{\"layout\":\"image_with_context\","
                 + "\"assets\":[{\"asset_id\":\"img_0\",\"source_url\":\"https://example.com/photo.jpg\"}]}},");
 
@@ -151,15 +152,47 @@ class NewsProductionPipelineRenderTest {
                 return java.util.Optional.of(tinyPng());
             }
         };
-        NewsProductionPipeline pipeline = new NewsProductionPipeline(
-            fixedAuthor(script), null, new ProductionProcessService(properties,
-            new ProductionArtifactService(properties, null)), new ProductionArtifactService(properties, null), properties,
-            (run, stage, progress) -> true, null, null, null, passingReview(), null, stubFetcher,
-            org.mockito.Mockito.mock(FrozenContextService.class));
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+            new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/photo.png", exchange -> {
+            byte[] bytes = tinyPng();
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        ProductionResultVo result;
+        try {
+            var selected = new org.dromara.heron.domain.vo.MediaAssetSelectionVo();
+            selected.setSceneId("scene_001");
+            selected.setSceneNumber(1);
+            selected.setSceneType("IMAGE");
+            selected.setStatus("SELECTED");
+            selected.setReasonCode("selected");
+            selected.setReason("已选择许可明确的素材");
+            selected.setImageValue("http://127.0.0.1:" + server.getAddress().getPort() + "/photo.png");
+            selected.setAssetId(7L);
+            selected.setContentSha256(DigestUtil.sha256Hex(tinyPng()));
+            selected.setWidth(1);
+            selected.setHeight(1);
+            selected.setGate(new org.dromara.heron.domain.vo.MediaAssetGateVo("scene:scene_001", "selected",
+                "已选择许可明确的素材", true, 7L, false));
+            var mediaAssets = org.mockito.Mockito.mock(org.dromara.heron.service.IMediaAssetService.class);
+            org.mockito.Mockito.when(mediaAssets.selectForScene(org.mockito.ArgumentMatchers.any())).thenReturn(selected);
+            NewsProductionPipeline pipeline = new NewsProductionPipeline(
+                fixedAuthor(script), null, new ProductionProcessService(properties,
+                new ProductionArtifactService(properties, null)), new ProductionArtifactService(properties, null), properties,
+                (run, stage, progress) -> true, null, null, null, passingReview(), null, stubFetcher,
+                org.mockito.Mockito.mock(FrozenContextService.class), mediaAssets);
 
-        ProductionRunVo run = new ProductionRunVo(7002L, ProductionBizType.news_video, 10L, 5L, 1,
-            UUID.randomUUID().toString(), lockedAssets(template), null);
-        ProductionResultVo result = pipeline.execute(run);
+            ProductionRunVo run = new ProductionRunVo(7002L, ProductionBizType.news_video, 10L, 5L, 1,
+                UUID.randomUUID().toString(), lockedAssets(template), null);
+            result = pipeline.execute(run);
+            assertEquals("scene1.png", JSON.readTree(result.resultJson()).path("mediaSelections")
+                .get(0).path("imageValue").asString());
+        } finally {
+            server.stop(0);
+        }
 
         // 配图必须真的落到工作目录并被模板引用
         Path varsFile = findFile(dataRoot, "vars.json");

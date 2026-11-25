@@ -40,8 +40,8 @@ final class AudioLoudness {
     /** 配乐相对成片低多少：12 dB，听感上是背景、不抢话。 */
     static final double BGM_OFFSET_LUFS = -12.0;
 
-    /** 限幅器的线性上限，等于 −1.5 dBFS。 */
-    static final double LIMIT = Math.pow(10, MAX_TRUE_PEAK / 20.0);
+    /** 限幅器只限制采样峰值；为真峰值重建预留 0.3 dB，避免重采样或 AAC 后越界。 */
+    static final double LIMIT = Math.pow(10, (MAX_TRUE_PEAK - 0.3) / 20.0);
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -93,7 +93,7 @@ final class AudioLoudness {
         return (TARGET_LUFS + BGM_OFFSET_LUFS) - measurement.integratedLufs();
     }
 
-    /** 限幅器滤镜：把真峰值压在上限内，且不做自动电平补偿。 */
+    /** 限幅器滤镜：把采样峰值压在真峰值上限以下，且不做自动电平补偿。 */
     static String limiter() {
         return "alimiter=limit=" + fmt(LIMIT) + ":level=disabled";
     }

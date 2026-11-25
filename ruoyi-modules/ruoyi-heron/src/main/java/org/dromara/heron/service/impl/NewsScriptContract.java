@@ -13,7 +13,8 @@ import java.util.Set;
  * <p>两个版本并存：
  * <ul>
  *   <li>v1：段落只有 lead / body / duration_s，纯文字。</li>
- *   <li>v2：段落额外可带 scene_type 与 visual（画面资产），用于图片、图表等非文字场景。</li>
+ *   <li>v2：段落额外可带 scene_type / beat / on_screen_text 与 visual（画面资产），
+ *       用于分镜、图片、图表等非文字场景。</li>
  * </ul>
  * 判定按段落逐个进行：没有 scene_type 的段落按 v1 校验，有的按 v2 校验。
  * 这样旧稿继续合法，新稿可以在同一份脚本里混用——升级契约不会让历史作品无法重渲。
@@ -29,9 +30,10 @@ public final class NewsScriptContract {
     /** 知识解释线：每段挂本轮引用的 entryId 列表；其他线不写，写了也不参与判定。 */
     private static final Set<String> SCENE_CITATION = Set.of("entry_ids");
     /** v2 在 v1 之上增加的字段；scene_type 是启用 v2 校验的开关。 */
-    private static final Set<String> SCENE_V2_EXTRA = Set.of("scene_type", "visual", "scene_id");
-    private static final Set<String> VISUAL_FIELDS = Set.of("layout", "motion", "assets");
-    private static final Set<String> ASSET_FIELDS = Set.of("asset_id", "role", "source_url");
+    private static final Set<String> SCENE_V2_EXTRA = Set.of("scene_type", "beat", "on_screen_text", "visual", "scene_id");
+    private static final Set<String> VISUAL_FIELDS = Set.of("layout", "motion", "assets", "mediaAssetId",
+        "media_asset_id", "asset_id", "orientation", "keywords");
+    private static final Set<String> ASSET_FIELDS = Set.of("asset_id", "media_asset_id", "role", "source_url");
     /** 场景标识：给人工改稿和版本比对一个稳定锚点，不能由数组下标临时推。 */
     private static final java.util.regex.Pattern SCENE_ID = java.util.regex.Pattern.compile("scene_[0-9]{3}");
     /** 允许出现在稿件里的场景类型。新增类型要同时出现在模板 template.json 的 supportedSceneTypes。 */
@@ -178,10 +180,26 @@ public final class NewsScriptContract {
         for (String field : visual.propertyNames()) {
             if (!VISUAL_FIELDS.contains(field)) items.add("第 " + number + " 段 visual 有未知字段 " + field);
         }
+        for (String field : List.of("mediaAssetId", "media_asset_id", "asset_id")) {
+            if (visual.has(field) && !visual.path(field).asString("").matches("[1-9][0-9]{0,18}")) {
+                items.add("第 " + number + " 段 visual." + field + " 必须是正整数素材 ID");
+            }
+        }
+        if (visual.has("orientation") && !Set.of("PORTRAIT", "LANDSCAPE", "SQUARE")
+            .contains(visual.path("orientation").asString(""))) {
+            items.add("第 " + number + " 段 visual.orientation 非法");
+        }
+        JsonNode keywords = visual.path("keywords");
+        if (!keywords.isMissingNode() && (!keywords.isArray() || keywords.size() > 20
+            || java.util.stream.StreamSupport.stream(keywords.spliterator(), false)
+                .anyMatch(item -> !item.isString()))) {
+            items.add("第 " + number + " 段 visual.keywords 必须是不超过 20 个字符串的数组");
+        }
         JsonNode assets = visual.path("assets");
         if (assets.isMissingNode()) {
-            if ("image".equals(type) || "chart".equals(type)) {
-                items.add("第 " + number + " 段的 " + type + " 场景缺少 assets");
+            if (("image".equals(type) || "chart".equals(type))
+                && !visual.has("mediaAssetId") && !visual.has("media_asset_id") && !visual.has("asset_id")) {
+                items.add("第 " + number + " 段的 " + type + " 场景缺少 assets 或素材库 ID");
             }
             return;
         }
@@ -201,8 +219,12 @@ public final class NewsScriptContract {
             for (String field : asset.propertyNames()) {
                 if (!ASSET_FIELDS.contains(field)) items.add("第 " + number + " 段资产有未知字段 " + field);
             }
-            String id = asset.path("asset_id").asString("");
+            String id = asset.path("asset_id").asString(asset.path("media_asset_id").asString(""));
             if (id.isBlank()) items.add("第 " + number + " 段第 " + (i + 1) + " 个资产缺 asset_id");
+            String mediaId = asset.path("media_asset_id").asString("");
+            if (!mediaId.isBlank() && !mediaId.matches("[1-9][0-9]{0,18}")) {
+                items.add("第 " + number + " 段第 " + (i + 1) + " 个资产 media_asset_id 非法");
+            }
             // 模型不能直接指定文件路径：只认资产 ID，由 Asset Resolver 换成实际文件
             if (!asset.path("source_url").asString("").isBlank()
                 && !asset.path("source_url").asString("").matches("https?://[^\\s]{1,2048}")) {

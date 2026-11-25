@@ -29,6 +29,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
@@ -590,7 +591,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     @Override
     @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
     public NewsVideoVersionVo publish(long workId, long versionId, NewsPublishBo bo) {
-        validateManualReceipt(bo);
+        validateManualReceipt(bo, publishAdapter.source());
         HeronVideoVersion version = lockVersion(workId, versionId, "publish");
         HeronNewsWork work = workMapper.selectById(workId);
         HeronNewsPublishAttempt active = publishAttempts.active(work.getCandidateId());
@@ -598,7 +599,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             throw conflict("publish_resolve_required", "请先核对当前发布尝试，不能另写回执绕过保护");
         }
         return withPublishAttempt(applyReceipt(workId, versionId, bo.workUrl(), bo.account(), bo.publishedAt(),
-            bo.videoSha256(), "manual", access.requireActor(), false));
+            bo.videoSha256(), publishAdapter.source(), access.requireActor(), false));
     }
 
     @Override
@@ -756,6 +757,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             throw conflict("publish_unknown", "该选题的另一版本已有发布尝试，请先核对结果");
         }
         Path file = artifacts.localPath(byKind(readyFiles(version), "mp4"));
+        publishAdapter.validate();
         String account = publishAdapter.account();
         if (DouyinCliPublishAdapter.SOURCE.equals(publishAdapter.source()) && (account == null || account.isBlank())) {
             throw new HeronBusinessException(503, "publish_account_missing", "未配置目标发布账号");
@@ -766,8 +768,43 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         text(publishTitle, 200, "成片标题");
         PublishRequest request = new PublishRequest(version.getTaskId(), versionId,
             publishTitle, version.getReviewVideoSha(), now(),
-            file, account);
+            file, account, attributionDescription(readyFiles(version)));
         return new PreparedPublish(reviewed, request, attempt.getId());
+    }
+
+    /** CC_BY/CC_BY_SA 的署名随已校验 asset_manifest 进入发布描述；其他适配器保持原有描述语义。 */
+    private String attributionDescription(List<ProductionArtifactVo> files) {
+        ProductionArtifactVo manifest = files.stream().filter(file -> "asset_manifest".equals(file.kind()))
+            .findFirst().orElse(null);
+        if (manifest == null) {
+            return "";
+        }
+        try (var input = artifacts.openVerified(manifest)) {
+            byte[] bytes = input.readNBytes(256 * 1024 + 1);
+            if (bytes.length > 256 * 1024 || bytes.length != manifest.bytes()
+                || !DigestUtil.sha256Hex(bytes).equals(manifest.sha256())) {
+                throw new HeronBusinessException(409, "publish_attribution_invalid", "素材署名清单指纹不匹配");
+            }
+            JsonNode selections = JSON.readTree(bytes).path("mediaSelections");
+            List<String> credits = new ArrayList<>();
+            for (JsonNode selection : selections) {
+                if (MediaAssetLicensePolicy.requiresAttribution(selection.path("licenseCode").asString(""))) {
+                    String credit = selection.path("attribution").asString("").strip();
+                    if (credit.isEmpty()) {
+                        throw new HeronBusinessException(409, "publish_attribution_missing", "发布素材缺少 CC 署名");
+                    }
+                    String source = selection.path("sourceUri").asString("").strip();
+                    credits.add((credit + (source.isEmpty() ? "" : "（" + source + "）"))
+                        + " / " + selection.path("licenseCode").asString(""));
+                }
+            }
+            return credits.isEmpty() ? "" : "素材署名：\n" + String.join("\n", credits);
+        } catch (IOException | RuntimeException e) {
+            if (e instanceof HeronBusinessException business) {
+                throw business;
+            }
+            throw new HeronBusinessException(409, "publish_attribution_invalid", "素材署名清单不可读", e);
+        }
     }
 
     NewsVideoVersionVo finishConfirm(long workId, long versionId, long attemptId, PublishReceipt receipt,
@@ -812,7 +849,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         }
         long actor = access.requireActor();
         if ("published".equals(bo.decision())) {
-            validateManualReceipt(bo.receipt());
+            validateManualReceipt(bo.receipt(), attempt.getSource());
             if (!attempt.getVideoSha().equals(bo.receipt().videoSha256())) throw conflict("publish_hash", "核对回执与尝试指纹不一致");
             if (attempt.getAccount() != null && !attempt.getAccount().equals(bo.receipt().account().strip())) {
                 throw conflict("publish_account", "核对账号与本次尝试的目标账号不一致");
@@ -823,7 +860,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             }
             NewsPublishBo receipt = bo.receipt();
             NewsVideoVersionVo result = applyReceipt(workId, versionId, receipt.workUrl(), receipt.account(), receipt.publishedAt(),
-                receipt.videoSha256(), "manual", actor, false);
+                receipt.videoSha256(), attempt.getSource(), actor, false);
             if (!"published".equals(attempt.getStatus())) publishAttempts.resolve(attempt, "published", receipt.account(),
                 actor, bo.reason(), bo.uploadStopped(), news.getPublishTimeoutSeconds(), now());
             return withPublishAttempt(result);
@@ -845,8 +882,10 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             || !Objects.equals(attempt.getVideoSha(), version.getReviewVideoSha())) throw new HeronAccessException();
     }
 
-    private void validateManualReceipt(NewsPublishBo bo) {
-        if (bo == null || bo.publishedAt() == null || !sha(bo.videoSha256()) || !douyinUrl(bo.workUrl())) {
+    private void validateManualReceipt(NewsPublishBo bo, String source) {
+        boolean validUrl = YouTubePublishAdapter.SOURCE.equals(source)
+            ? YouTubePublishAdapter.youtubeUrl(bo == null ? null : bo.workUrl()) : douyinUrl(bo == null ? null : bo.workUrl());
+        if (bo == null || bo.publishedAt() == null || !sha(bo.videoSha256()) || !validUrl) {
             throw invalid("作品链接、发布时间或成片指纹不合法");
         }
         text(bo.account(), 120, "账号标识");
@@ -861,6 +900,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             case SandboxPublishAdapter.SOURCE -> url != null && url.startsWith(SandboxPublishAdapter.URL_PREFIX);
             // sau 不回传作品链接，回执只能空着；链接由人在后台复制后补
             case DouyinCliPublishAdapter.SOURCE -> url == null;
+            case YouTubePublishAdapter.SOURCE -> YouTubePublishAdapter.youtubeUrl(url);
             default -> douyinUrl(url);
         };
         if (!urlOk || publishedAt == null || !sha(videoSha256)) throw invalid("作品链接、发布时间或成片指纹不合法");

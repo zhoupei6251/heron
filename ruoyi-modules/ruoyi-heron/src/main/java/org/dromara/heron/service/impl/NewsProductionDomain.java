@@ -499,10 +499,19 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         if (!list.isArray() || list.isEmpty() || list.size() > 200) throw conflict("checks_invalid", "完整检查报告缺失");
         Set<String> seen = new HashSet<>();
         for (JsonNode check : list) {
-            if (!check.isObject() || !Set.of("gate", "inputLocator", "passed", "reason", "measured")
-                .containsAll(JsonUtils.parseMap(JsonUtils.toJsonString(check)).keySet())) throw conflict("checks_invalid", "检查报告包含未知字段");
             String gate = check.path("gate").asText();
-            if (!gate.matches("[a-z][a-z0-9_]{0,63}") || !check.path("passed").isBoolean() || !check.path("passed").asBoolean()
+            boolean handledSfxSkip = "sfx".equals(gate) && "SKIP".equals(check.path("status").asText())
+                && check.path("passed").asBoolean(false) && check.path("code").asText().matches("[A-Z][A-Z0-9_]{0,63}")
+                && check.path("measured").path("skipped").asBoolean(false)
+                && !check.path("measured").path("rendered").asBoolean(true)
+                && check.path("measured").path("missingAsset").asBoolean(false);
+            Set<String> allowedFields = new HashSet<>(Set.of("gate", "inputLocator", "passed", "reason", "measured"));
+            if ("sfx".equals(gate) && "SKIP".equals(check.path("status").asText())) {
+                allowedFields.addAll(Set.of("status", "code"));
+            }
+            if (!check.isObject() || !allowedFields.containsAll(JsonUtils.parseMap(JsonUtils.toJsonString(check)).keySet())
+                || !gate.matches("[a-z][a-z0-9_]{0,63}") || !check.path("passed").isBoolean()
+                || !(check.path("passed").asBoolean(false) || handledSfxSkip)
                 || !check.path("inputLocator").asText().matches("[a-zA-Z0-9_.:#\\[\\]-]{1,256}")
                 || check.path("reason").getNodeType() != tools.jackson.databind.node.JsonNodeType.STRING || check.path("reason").asText().length() > 2000
                 || check.path("reason").asText().contains("/") || check.path("reason").asText().contains("\\")
@@ -510,8 +519,13 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             for (String key : JsonUtils.parseMap(JsonUtils.toJsonString(check.path("measured"))).keySet()) {
                 if (!key.matches("[a-zA-Z][a-zA-Z0-9_]{0,63}")) throw conflict("checks_invalid", "实测指标名称不合法");
             }
-            for (JsonNode value : check.path("measured")) {
-                if (!value.isNumber() && !value.isBoolean()) throw conflict("checks_invalid", "实测值必须是数值或布尔值");
+            for (var entry : check.path("measured").properties()) {
+                JsonNode value = entry.getValue();
+                boolean stringAssetId = "assetId".equals(entry.getKey()) && value.isString()
+                    && value.asString("").matches("[1-9][0-9]{0,18}");
+                if (!value.isNumber() && !value.isBoolean() && !stringAssetId) {
+                    throw conflict("checks_invalid", "实测值必须是数值或布尔值，assetId 必须是十进制字符串");
+                }
             }
             seen.add(gate);
         }

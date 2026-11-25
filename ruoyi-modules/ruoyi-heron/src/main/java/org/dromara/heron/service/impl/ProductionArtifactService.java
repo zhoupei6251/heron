@@ -47,6 +47,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import java.util.regex.Pattern;
 
 /**
@@ -144,7 +145,7 @@ public class ProductionArtifactService {
     }
 
     private ProductionArtifactVo record(ProductionArtifactVo artifact, ProductionRunVo run) {
-        finalized.computeIfAbsent(run.taskId() + ":" + run.attemptNo(),
+        finalized.computeIfAbsent(attemptKey(run),
             key -> Collections.synchronizedList(new ArrayList<>())).add(artifact.storageKey());
         return artifact;
     }
@@ -461,7 +462,15 @@ public class ProductionArtifactService {
      * 失败证据在 work/.keep 下，不在这份清单里，不会被误删。
      */
     public void releaseAttempt(ProductionRunVo run, boolean landed) {
-        List<String> keys = finalized.remove(run.taskId() + ":" + run.attemptNo());
+        releaseAttempt(run, landed, () -> true);
+    }
+
+    /** 删除前再次确认调用方仍拥有该尝试且对应版本尚未成功落库；状态不明时保留字节。 */
+    public void releaseAttempt(ProductionRunVo run, boolean landed, BooleanSupplier stillUncommitted) {
+        if (!landed && !stillUncommitted.getAsBoolean()) {
+            return;
+        }
+        List<String> keys = finalized.remove(attemptKey(run));
         if (keys == null || keys.isEmpty()) {
             return;
         }
@@ -525,7 +534,11 @@ public class ProductionArtifactService {
     }
 
     private static String uploadKey(ProductionRunVo run, String storageKey) {
-        return run.taskId() + ":" + run.attemptNo() + ":" + storageKey;
+        return attemptKey(run) + ":" + storageKey;
+    }
+
+    private static String attemptKey(ProductionRunVo run) {
+        return run.taskId() + ":" + run.attemptNo() + ":" + run.runToken();
     }
 
     private Path finalDirectory(ProductionRunVo run, Long versionNo) {

@@ -51,12 +51,25 @@ class DataBoardPipelineRenderTest {
         + "{\"kind\":\"时间紧迫\",\"title\":\"先看清统计区间\"},"
         + "{\"kind\":\"反常识\",\"title\":\"区间涨跌不是单日涨跌\"}]}";
 
+    private static final String PLAN = """
+        {"hookType":"数字反差","coreThesis":"四期区间变化不等于单日涨跌","scenes":[
+          {"purpose":"给出末值","evidenceRefs":["facts.last.value","facts.last.date"],"beat":"HOOK","emotion":"好奇","rhythm":"紧凑",
+           "expectedVisual":{"sceneType":"headline","description":"末值与日期"}},
+          {"purpose":"解释区间变化","evidenceRefs":["facts.change","facts.change_pct"],"beat":"EVIDENCE","emotion":"平静","rhythm":"平稳",
+           "expectedVisual":{"sceneType":"chart","description":"首末变化"}},
+          {"purpose":"交代高低点","evidenceRefs":["facts.max.value","facts.min.value"],"beat":"CONCLUSION","emotion":"释然","rhythm":"舒缓",
+           "expectedVisual":{"sceneType":"number","description":"高低点数字"}}]}
+        """;
+
     static final String SCRIPT = """
         {"title":"四期金价区间变化",
          "scenes":[
-           {"lead":"先看最新一期","body":"演示快照最新收于 {{facts.last.value}} 美元，对应 {{facts.last.date}}。","duration_s":12},
-           {"lead":"涨幅先别看错","body":"区间增加 {{facts.change}} 美元，涨幅 {{facts.change_pct}}%。这描述首末差异。","duration_s":16},
-           {"lead":"高低点在哪里","body":"区间最高 {{facts.max.value}} 美元，最低 {{facts.min.value}} 美元。","duration_s":12}],
+           {"lead":"先看最新一期","body":"演示快照最新收于 {{facts.last.value}} 美元，对应 {{facts.last.date}}。","duration_s":12,
+            "scene_type":"headline","beat":"HOOK","on_screen_text":"最新一期"},
+           {"lead":"涨幅先别看错","body":"区间增加 {{facts.change}} 美元，涨幅 {{facts.change_pct}}%。这描述首末差异。","duration_s":16,
+            "scene_type":"chart","beat":"EVIDENCE"},
+           {"lead":"高低点在哪里","body":"区间最高 {{facts.max.value}} 美元，最低 {{facts.min.value}} 美元。","duration_s":12,
+            "scene_type":"number","beat":"CONCLUSION"}],
          "closing":"这份固定快照只有四期收盘价，区间变化不代表单日涨跌，也不能预测下一期；本片用于验收配音、分镜与图表同步。",
          "source_name":"示例快照"}
         """;
@@ -111,7 +124,8 @@ class DataBoardPipelineRenderTest {
         DatasetScriptAuthor author = new DatasetScriptAuthor(new OpenAiModelClient(null, null, null) {
             @Override
             public String chat(ProductionRunVo run, String stage, String systemPrompt, String userPrompt) {
-                return "dataset-title".equals(stage) ? TITLES : SCRIPT;
+                return "dataset-title".equals(stage) ? TITLES
+                    : stage.startsWith("dataset-story-plan") ? PLAN : SCRIPT;
             }
         }, new DatasetTitleAuthor(new OpenAiModelClient(null, null, null) {
             @Override
@@ -166,7 +180,7 @@ class DataBoardPipelineRenderTest {
             assertTrue(gate.path("passed").asBoolean(), gate.path("gate").asString("") + " 未通过");
         }
         assertEquals(java.util.Set.of("schema", "evidence", "data", "audio", "audio_mix", "subtitles", "render",
-            "decode", "visual", "aigc_metadata", "aigc_visible", "assets", "scene_type"), gateNames, checks.toString());
+            "decode", "visual", "aigc_metadata", "aigc_visible", "assets", "scene_type", "sfx"), gateNames, checks.toString());
 
         Path mp4 = dataRoot.resolve(byKind(result, "mp4").storageKey());
         Path sheet = dataRoot.resolve(byKind(result, "contact_sheet").storageKey());

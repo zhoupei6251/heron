@@ -91,17 +91,19 @@ class AudioLoudnessTest {
         assertFalse(new AudioLoudness.Measurement(-17.1, -3.0, 5, -26).deliveryOk());
         // 真峰值越界
         assertFalse(new AudioLoudness.Measurement(-16.0, -1.4, 5, -26).deliveryOk());
+        assertFalse(new AudioLoudness.Measurement(-15.74, -1.45, 5, -26).deliveryOk());
         // 响度合格但峰值越界，同样不算达标
         assertFalse(new AudioLoudness.Measurement(-16.0, 0.12, 5, -26).deliveryOk());
     }
 
     @Test
-    @DisplayName("限幅器把峰值压在 −1.5 dBFS，且不做自动电平补偿")
+    @DisplayName("限幅器预留真峰值余量到 −1.8 dBFS，且不做自动电平补偿")
     void limiterHoldsPeakWithoutAutoLevel() {
         String limiter = AudioLoudness.limiter();
 
-        assertTrue(limiter.contains("alimiter=limit=0.841395"), limiter);
+        assertTrue(limiter.contains("alimiter=limit=0.812831"), limiter);
         assertTrue(limiter.contains("level=disabled"), limiter);
-        assertEquals(0.841395, AudioLoudness.LIMIT, 0.000001);
+        assertEquals(-1.5, AudioLoudness.MAX_TRUE_PEAK, 0.000001);
+        assertEquals(0.812831, AudioLoudness.LIMIT, 0.000001);
     }
 }

@@ -17,7 +17,7 @@ Heron 基于 RuoYi-Vue-Plus 6.1.0 构建，保留若依的账号、角色、菜�
 | 文稿解说线 | `article` | `news-*` | 文字排版 | 热点 → 写稿 → 核查 → 套版渲染 |
 | 数据看板线 | `data_board` | `news-data-*` | 图表 | 热点 → 选源 → 数据集快照 → 写稿 → 出图渲染 |
 
-两条子线共用 `ProductionBizType.news_video`，由版本冻结输入里的 `kind` 区分。自动槽位默认使用数据看板模板 `news-data-9x16`；模板不存在时直接失败，不静默回退到其他模板。
+两条子线共用 `ProductionBizType.news_video`，由版本冻结输入里的 `kind` 区分。文稿解说线已启用（`heron.production.article-enabled=true`）；分镜按模板逐个开放，首期只开启 `news-minimal-9x16`，其余文稿模板保持关闭。这个开关只开放 article 分支，不代表后台 worker 或自动发布已开启。自动槽位默认使用数据看板模板 `news-data-9x16`；模板不存在时直接失败，不静默回退到其他模板。
 
 核心对象包括新闻来源、候选、作品、视频版本、生产任务、发布尝试、质量报告和表现指标。每次重渲都会产生新版本，旧版本不会被覆盖。
 

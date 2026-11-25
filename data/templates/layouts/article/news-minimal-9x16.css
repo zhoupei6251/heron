@@ -76,3 +76,23 @@ body { margin: 0; background: #fbfcfc; color: #1a2529; font-family: "Noto Sans S
    来源前缀原本写死在 #source-line 里，骨架把它交给数据，这里补回前缀。 */
 .scene-no { display: none; }
 #source-line::before { content: "来源："; }
+
+/* article 分镜安全规则：headline 是正文屏，不是数据线的整幅冲击屏。
+   共享行为仍会写 takeover 类与标题卡 inline opacity；在本版式内恢复正文、标题卡和原排版。
+   只作用于 article，数据线模板不加载这份 CSS，冲击屏行为保持原样。 */
+#root[data-style="article"] #title-card { opacity: 1 !important; }
+#root[data-style="article"] .scene[data-scene-type="headline"] .body,
+#root[data-style="article"] .scene.takeover .body { display: -webkit-box; }
+#root[data-style="article"] .scene.takeover {
+  top: 440px;
+  bottom: 420px;
+  align-items: stretch;
+  text-align: left;
+}
+#root[data-style="article"] .scene.takeover .lead {
+  font-size: 68px;
+  line-height: 1.42;
+  max-height: 212px;
+  margin: 0 0 38px;
+  -webkit-line-clamp: 3;
+}

@@ -10,6 +10,7 @@
   "duration": 45,
   "scenes": 6,
   "activeScenes": 6,
+  "storyboard": true,
   "capabilities": [],
   "ambient": true,
   "supportedSceneTypes": [

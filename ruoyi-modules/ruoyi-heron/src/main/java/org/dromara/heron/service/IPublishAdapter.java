@@ -11,5 +11,8 @@ public interface IPublishAdapter {
     /** 上传前冻结目标账号；未使用账号的适配器可留空。 */
     default String account() { return null; }
 
+    /** 创建发布尝试前检查出口配置；不可用时抛出带配置原因的异常。 */
+    default void validate() { }
+
     PublishReceipt publish(PublishRequest request);
 }

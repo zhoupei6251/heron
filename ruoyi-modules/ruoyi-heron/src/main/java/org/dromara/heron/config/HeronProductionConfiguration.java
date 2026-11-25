@@ -3,6 +3,7 @@ package org.dromara.heron.config;
 import cn.hutool.crypto.digest.DigestUtil;
 import org.dromara.common.core.factory.YmlPropertySourceFactory;
 import org.dromara.heron.service.IProductionExecutionService;
+import org.dromara.heron.service.IMediaAssetService;
 import org.dromara.heron.service.NewsScriptAuthor;
 import org.dromara.heron.service.ProtoRp1Author;
 import org.dromara.heron.service.impl.DatasetFetchService;
@@ -100,10 +101,11 @@ public class HeronProductionConfiguration {
                                                          EditorialReviewer reviewer,
                                                          QualityReviewer qualityReviewer,
                                                          NewsSourceFetcher newsSourceFetcher,
-                                                         FrozenContextService frozenContexts) {
+                                                         FrozenContextService frozenContexts,
+                                                         IMediaAssetService mediaAssets) {
         return new NewsProductionPipeline(author, knowledgeAuthor, processes, artifacts, properties,
             execution::beginStage, datasetRouter, datasetFetch, datasetAuthor, reviewer, qualityReviewer,
-            newsSourceFetcher, frozenContexts);
+            newsSourceFetcher, frozenContexts, mediaAssets);
     }
 
     /**

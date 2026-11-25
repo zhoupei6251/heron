@@ -82,6 +82,59 @@ class NewsProductionPipelineTest {
     }
 
     @Test
+    @DisplayName("重生成模板实际声明的分镜变量保留独立标题、完整正文与上屏短句")
+    void articleStoryboardKeepsTitleAndBodyVariables() throws Exception {
+        JsonNode script = JSON.readTree("""
+            {"title":"独立标题","scenes":[
+              {"lead":"领句一","body":"完整正文一","duration_s":15,"scene_type":"headline",
+               "beat":"HOOK","on_screen_text":"屏幕短句一"},
+              {"lead":"领句二","body":"完整正文二","duration_s":15,"scene_type":"text",
+               "beat":"EVIDENCE","on_screen_text":"屏幕短句二"},
+              {"lead":"领句三","body":"完整正文三","duration_s":15,"scene_type":"text",
+               "beat":"CONCLUSION","on_screen_text":"屏幕短句三"}]}
+            """);
+        java.nio.file.Path template = java.nio.file.Path.of("..", "..", "data", "templates", "news-minimal-9x16")
+            .toAbsolutePath().normalize();
+        java.util.Set<String> declared = NewsProductionPipeline.declaredVariables(template);
+        for (int index = 1; index <= 6; index++) {
+            assertTrue(declared.contains("scene" + index + "_beat"), "缺少第" + index + "屏 beat 声明");
+            assertTrue(declared.contains("scene" + index + "_text"), "缺少第" + index + "屏上屏文字声明");
+        }
+        JsonNode vars = JSON.readTree(NewsProductionPipeline.templateVariables(
+            script, java.util.Map.of(), declared));
+        assertEquals("独立标题", vars.path("title").asString());
+        assertEquals("完整正文一", vars.path("scene1_body").asString());
+        assertEquals("HOOK", vars.path("scene1_beat").asString());
+        assertEquals("屏幕短句一", vars.path("scene1_text").asString());
+        assertEquals("EVIDENCE", vars.path("scene2_beat").asString());
+        assertEquals("屏幕短句二", vars.path("scene2_text").asString());
+        assertEquals("CONCLUSION", vars.path("scene3_beat").asString());
+        assertEquals("屏幕短句三", vars.path("scene3_text").asString());
+    }
+
+    @Test
+    @DisplayName("文稿模板首期只开 news-minimal 一套分镜")
+    void onlyNewsMinimalEnablesArticleStoryboard() throws Exception {
+        java.nio.file.Path root = java.nio.file.Path.of("..", "..", "data", "templates")
+            .toAbsolutePath().normalize();
+        java.util.List<String> enabled = new java.util.ArrayList<>();
+        try (var dirs = java.nio.file.Files.list(root)) {
+            for (java.nio.file.Path dir : dirs.filter(java.nio.file.Files::isDirectory).sorted().toList()) {
+                java.nio.file.Path configPath = dir.resolve("template.config.json");
+                if (!java.nio.file.Files.isRegularFile(configPath)) {
+                    continue;
+                }
+                JsonNode config = JSON.readTree(java.nio.file.Files.readString(configPath));
+                if ("NEWS_EXPLAINER".equals(config.path("line").asString())
+                    && config.path("storyboard").asBoolean(false)) {
+                    enabled.add(dir.getFileName().toString());
+                }
+            }
+        }
+        assertEquals(java.util.List.of("news-minimal-9x16"), enabled);
+    }
+
+    @Test
     @DisplayName("变量只输出模板声明过的键：多给一个就会被 --strict-variables 中止渲染")
     void variableKeysStayWithinTemplateDeclaration() throws Exception {
         java.nio.file.Path root = java.nio.file.Path.of("..", "..", "data", "templates")

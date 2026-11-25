@@ -40,13 +40,16 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
     public String author(ProductionRunVo run) {
         JsonNode input = JSON.readTree(run.inputJson());
         NewsArticleBody article = articles.of(run.taskId(), input);
-        ObjectNode script = withEvidence(parse(model.chat(run, "script", SYSTEM, prompt(input, article, sceneCapability(input)))), article);
-        List<String> violations = NewsScriptContract.violations(script);
+        SceneCapability sceneCapability = sceneCapability(input);
+        ObjectNode script = withEvidence(parse(model.chat(run, "script", SYSTEM,
+            prompt(input, article, sceneCapability.prompt()))), article);
+        List<String> violations = violations(script, sceneCapability.storyboard());
         if (!violations.isEmpty()) {
             // 一次定向修复：把违规条目原样回给模型，只改不合规的字段；再不过就按规则失败，不盲目重跑
             ObjectNode repaired = withEvidence(
-                parse(model.chat(run, "script-repair", SYSTEM, repairPrompt(script, violations))), article);
-            violations = NewsScriptContract.violations(repaired);
+                parse(model.chat(run, "script-repair", SYSTEM,
+                    repairPrompt(script, violations, sceneCapability.prompt()))), article);
+            violations = violations(repaired, sceneCapability.storyboard());
             if (!violations.isEmpty()) {
                 throw new HeronBusinessException(409, "news_script_contract", "稿件退回写稿：" + String.join("；", violations));
             }
@@ -60,19 +63,22 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
     public String repair(ProductionRunVo run, String scriptJson, List<String> notes) {
         JsonNode input = JSON.readTree(run.inputJson());
         NewsArticleBody article = articles.of(run.taskId(), input);
+        SceneCapability sceneCapability = sceneCapability(input);
         ObjectNode script = withEvidence(
-            parse(model.chat(run, "script-repair", SYSTEM, reviewRepairPrompt(scriptJson, notes))), article);
-        List<String> violations = NewsScriptContract.violations(script);
+            parse(model.chat(run, "script-repair", SYSTEM,
+                reviewRepairPrompt(scriptJson, notes, sceneCapability.prompt()))), article);
+        boolean storyboardRequired = sceneCapability.storyboard() && hasStoryboardSchema(scriptJson);
+        List<String> violations = violations(script, storyboardRequired);
         if (!violations.isEmpty()) {
             throw new HeronBusinessException(409, "news_script_contract", "修复稿仍未过契约：" + String.join("；", violations));
         }
         return JSON.writeValueAsString(script);
     }
 
-    private static String reviewRepairPrompt(String scriptJson, List<String> notes) {
+    private static String reviewRepairPrompt(String scriptJson, List<String> notes, String sceneCapability) {
         return "上一版稿件没有通过审稿，问题如下：\n- " + String.join("\n- ", notes)
             + "\n只修改被点出的问题，其余字段与数字原样保留，输出完整 JSON。\n"
-            + "上一版稿件：\n" + scriptJson;
+            + sceneCapability + "\n上一版稿件：\n" + scriptJson;
     }
 
     /** 出处事实由抓取覆盖，模型自述一律不采信。 */
@@ -84,12 +90,65 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
         return script;
     }
 
-    private static String repairPrompt(ObjectNode script, List<String> violations) {
+    private static String repairPrompt(ObjectNode script, List<String> violations, String sceneCapability) {
         return new StringBuilder()
             .append("上一版稿件没有通过契约校验，问题如下：\n")
             .append("- ").append(String.join("\n- ", violations)).append('\n')
             .append("只修改不符合要求的字段，其余字段原样保留，输出完整 JSON。\n")
+            .append(sceneCapability).append('\n')
             .append("上一版稿件：\n").append(script.toString()).toString();
+    }
+
+    /** 旧无 beat 稿继续按原 schema 修复，不能因模板后来启用分镜而被迫升级。 */
+    private static boolean hasStoryboardSchema(String scriptJson) {
+        try {
+            JsonNode original = JSON.readTree(scriptJson);
+            JsonNode scenes = original.path("scenes");
+            if (!scenes.isArray() || scenes.isEmpty()) {
+                return false;
+            }
+            for (JsonNode scene : scenes) {
+                if (scene.path("scene_type").asString("").isBlank()
+                    || scene.path("beat").asString("").isBlank()) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(409, "news_script_contract", "待修复稿件不是有效 JSON", e);
+        }
+    }
+
+    /** 形状与分镜一起进写稿修复循环，避免渲到闸口才发现节点、组件或上屏文字不成立。 */
+    static List<String> violations(JsonNode script, boolean storyboardRequired) {
+        List<String> shape = NewsScriptContract.violations(script);
+        if (script == null || !script.isObject()) {
+            return shape;
+        }
+        java.util.Set<String> items = new java.util.LinkedHashSet<>(shape);
+        if (storyboardRequired) {
+            JsonNode scenes = script.path("scenes");
+            if (scenes.isArray()) {
+                for (int index = 0; index < scenes.size(); index++) {
+                    JsonNode scene = scenes.get(index);
+                    if (!scene.isObject()) {
+                        continue;
+                    }
+                    int number = index + 1;
+                    if (scene.path("scene_type").asString("").isBlank()) {
+                        items.add("第 " + number + " 段缺少 scene_type");
+                    }
+                    if (scene.path("beat").asString("").isBlank()) {
+                        items.add("第 " + number + " 段缺少 beat");
+                    }
+                    if (!scene.has("on_screen_text") || scene.path("on_screen_text").asString("").isBlank()) {
+                        items.add("第 " + number + " 段缺少 on_screen_text");
+                    }
+                }
+            }
+        }
+        items.addAll(StoryboardContract.violations(script, script));
+        return List.copyOf(items);
     }
 
     /**
@@ -111,22 +170,44 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
         return text.toString();
     }
 
+    record SceneCapability(String prompt, boolean storyboard) { }
+
     /**
      * 把本次模板能渲染的场景类型告诉模型。
      * 模板不支持的类型写了也过不了渲染闸，与其让模型猜，不如在写稿前就把范围收窄。
      */
-    private String sceneCapability(JsonNode input) {
+    SceneCapability sceneCapability(JsonNode input) {
         String templateKey = input.path("assets").path("templateKey").asString("");
         Path root = properties.getNewsTemplate();
         if (templateKey.isBlank() || root == null) {
-            return "";
+            return new SceneCapability("", false);
         }
-        java.util.Set<String> types = NewsProductionPipeline.supportedSceneTypes(root.resolve(templateKey));
-        if (types.isEmpty()) {
-            return "";
+        Path templateDir = root.resolve(templateKey);
+        java.util.Set<String> types = NewsProductionPipeline.supportedSceneTypes(templateDir);
+        StringBuilder capability = new StringBuilder();
+        if (!types.isEmpty()) {
+            capability.append("\n本次模板（").append(templateKey).append("）只支持这些 scene_type，只能用这些：")
+                .append(String.join("、", types)).append("。其余类型一律不要写。");
         }
-        return "\n本次模板（" + templateKey + "）只支持这些 scene_type，只能用这些："
-            + String.join("、", types) + "。其余类型一律不要写。";
+        Path config = templateDir.resolve("template.config.json");
+        if (!java.nio.file.Files.isRegularFile(config)) {
+            return new SceneCapability(capability.toString(), false);
+        }
+        try {
+            JsonNode node = JSON.readTree(java.nio.file.Files.readString(config, StandardCharsets.UTF_8));
+            boolean storyboard = node.path("storyboard").asBoolean(false);
+            if (storyboard) {
+                capability.append("\n本次模板（").append(templateKey)
+                    .append("）已启用分镜：每段必须同时写 scene_type、beat、on_screen_text；")
+                    .append("首段 beat=HOOK，末段 beat=CONCLUSION/INSIGHT/REVEAL，整篇至少两种 scene_type；")
+                    .append("on_screen_text 不超过 18 字且不能复制 lead/body；")
+                    .append("body 保留完整口播，不得为空，title 保留独立标题卡。");
+            }
+            return new SceneCapability(capability.toString(), storyboard);
+        } catch (RuntimeException | IOException e) {
+            throw new HeronBusinessException(409, "news_template_config",
+                "模板分镜配置不可读：" + templateKey, e);
+        }
     }
 
     private static void appendEditorial(StringBuilder text, JsonNode editorial) {

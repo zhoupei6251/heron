@@ -161,6 +161,24 @@ class DatasetScriptContractTest {
     }
 
     @Test
+    @DisplayName("可选的稳定 scene_id 供场景返工定位，形态与唯一性必须成立")
+    void optionalSceneIdSupportsRework() {
+        tools.jackson.databind.node.ObjectNode withIds =
+            (tools.jackson.databind.node.ObjectNode) JSON.readTree(valid());
+        for (int index = 0; index < withIds.path("scenes").size(); index++) {
+            ((tools.jackson.databind.node.ObjectNode) withIds.path("scenes").get(index))
+                .put("scene_id", "scene_%03d".formatted(index + 1));
+        }
+        assertEquals(List.of(), DatasetScriptContract.violations(withIds, snapshot()));
+        ((tools.jackson.databind.node.ObjectNode) withIds.path("scenes").get(2)).put("scene_id", "scene-3");
+        assertTrue(DatasetScriptContract.violations(withIds, snapshot()).stream()
+            .anyMatch(item -> item.contains("scene_id")));
+        ((tools.jackson.databind.node.ObjectNode) withIds.path("scenes").get(2)).put("scene_id", "scene_002");
+        assertTrue(DatasetScriptContract.violations(withIds, snapshot()).stream()
+            .anyMatch(item -> item.contains("scene_id 重复")));
+    }
+
+    @Test
     @DisplayName("哈希、图表类型、未知字段与段落数都拒绝")
     void rejectsShapeDrift() {
         String sha = snapshot().path("data_sha256").asString();

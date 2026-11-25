@@ -73,11 +73,24 @@ class DatasetTrendScriptAuthorTest {
         return JSON.writeValueAsString(TrendAnalysis.analyze(dataset()));
     }
 
+    private static final String PLAN = """
+        {"hookType":"反常识","coreThesis":"关注指数持续抬升，但区间变化不能外推为预测","scenes":[
+          {"purpose":"用区间跨度兑现问题","evidenceRefs":["facts.first.date","facts.last.date"],"beat":"HOOK",
+           "emotion":"好奇","rhythm":"紧凑","expectedVisual":{"sceneType":"headline","description":"区间跨度与问题"}},
+          {"purpose":"给出首末变化证据","evidenceRefs":["facts.change","facts.change_pct"],"beat":"EVIDENCE",
+           "emotion":"平静","rhythm":"平稳","expectedVisual":{"sceneType":"chart","description":"首末变化折线"}},
+          {"purpose":"说明判断仍需后续验证","evidenceRefs":["facts.last.value"],"beat":"CONCLUSION",
+           "emotion":"克制","rhythm":"舒缓","expectedVisual":{"sceneType":"text","description":"末值与观察边界"}}]}
+        """;
+
     private static String reply(String middleBody, String closing) {
         return "{\"title\":\"涨得动吗\",\"scenes\":["
-            + "{\"lead\":\"这轮抬升有多久\",\"body\":\"从 {{facts.first.date}} 到 {{facts.last.date}}，关注指数一路上升。\",\"duration_s\":15},"
-            + "{\"lead\":\"区间首末差多少\",\"body\":\"" + middleBody + "\",\"duration_s\":15},"
-            + "{\"lead\":\"还要观察什么\",\"body\":\"下一期斜率是否走平，是判断抬升是否中断的关键。\",\"duration_s\":15}],"
+            + "{\"lead\":\"这轮抬升有多久\",\"body\":\"从 {{facts.first.date}} 到 {{facts.last.date}}，关注指数一路上升。\","
+            + "\"duration_s\":15,\"scene_type\":\"headline\",\"beat\":\"HOOK\",\"on_screen_text\":\"抬升持续多久\"},"
+            + "{\"lead\":\"区间首末差多少\",\"body\":\"" + middleBody + "\",\"duration_s\":15,"
+            + "\"scene_type\":\"chart\",\"beat\":\"EVIDENCE\"},"
+            + "{\"lead\":\"还要观察什么\",\"body\":\"区间末值为 {{facts.last.value}} 点，是否走平仍待后续数据。\","
+            + "\"duration_s\":15,\"scene_type\":\"text\",\"beat\":\"CONCLUSION\"}],"
             + "\"closing\":\"" + closing + "\",\"source_name\":\"模型自述\"}";
     }
 
@@ -100,6 +113,9 @@ class DatasetTrendScriptAuthorTest {
             prompts.add(stage + "\n" + userPrompt);
             if ("dataset-title".equals(stage)) {
                 return TITLES;
+            }
+            if (stage.startsWith("dataset-story-plan")) {
+                return PLAN;
             }
             return replies.size() > 1 ? replies.poll() : replies.peek();
         }
@@ -133,6 +149,11 @@ class DatasetTrendScriptAuthorTest {
         assertEquals("sha-sample-attention", script.path("dataset_sha256").asString());
         assertEquals("line", script.path("chart").asString());
         assertEquals("示例序列", script.path("source_name").asString());
+        for (int index = 0; index < script.path("scenes").size(); index++) {
+            String sceneId = String.format("scene_%03d", index + 1);
+            assertEquals(sceneId, script.path("scenes").get(index).path("scene_id").asString());
+            assertEquals(index, NewsProductionPipeline.sceneIndex(script, sceneId));
+        }
 
         String writerPrompt = model.prompts.stream()
             .filter(item -> item.startsWith("trend-script\n"))

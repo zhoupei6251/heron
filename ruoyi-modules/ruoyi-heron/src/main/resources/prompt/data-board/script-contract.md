@@ -12,12 +12,16 @@
 | `source_key` | 系统覆盖 | 数据源 key，不必自己填 |
 | `chart` | 系统覆盖 | 由数据形态决定，不必自己填 |
 | `title` | 是 | 屏幕标题，不超过 15 字 |
-| `scenes` | 是 | 3–6 段，每段 `{lead, body, duration_s, scene_type, beat, on_screen_text}` |
+| `scenes` | 是 | 3–6 段，每段 `{lead, body, duration_s, scene_type, beat, on_screen_text}`；字段顺序不要求一致 |
 | `closing` | 是 | 结尾一句话 |
 | `source_name` | 系统覆盖 | 画面「来源：xxx」文案，不必自己填 |
+| `schema_version` | 系统覆盖 | 新稿固定 `2`，旧稿没有此字段或为 `1` |
+| `story_plan` | 系统覆盖 | 正式写稿前冻结的故事计划，不要输出或改写 |
+| `scene_id` | 系统覆盖 | v2 每段由系统按顺序写为 `scene_001`…`scene_006`，模型不要填写或依赖它 |
 
 - 每段 `lead` ≤ 20 字、`body` ≤ 70 字、`duration_s` 为正数秒；全部段落合计 30–75 秒。
 - 只允许上述字段。出现未知字段直接退回。
+- v2 的 `story_plan.scenes` 与 `scenes` 逐屏对位：每屏旁白必须使用计划中的全部 `evidenceRefs`，不得引用计划外路径；`beat` 与 `scene_type` 必须分别等于计划的 `beat` 与 `expectedVisual.sceneType`。标题的钩子类型必须等于计划的 `hookType`。
 
 ## 分镜：每段三件套
 

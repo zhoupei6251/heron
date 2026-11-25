@@ -85,6 +85,8 @@ class NewsScriptContractTest {
 
         assertEquals("script", client.stage);
         assertTrue(client.systemPrompt.contains("duration_s"), client.systemPrompt);
+        assertTrue(client.systemPrompt.contains("beat"), client.systemPrompt);
+        assertTrue(client.systemPrompt.contains("on_screen_text"), client.systemPrompt);
         assertTrue(client.userPrompt.contains("测试新闻标题"), client.userPrompt);
         assertTrue(client.userPrompt.contains("来源事实"), client.userPrompt);
         assertTrue(client.userPrompt.contains("<html>正文</html>"), client.userPrompt);

@@ -47,6 +47,16 @@ class NewsScriptContractV2Test {
     }
 
     @Test
+    @DisplayName("分镜三件套是合法 v2 字段")
+    void storyboardFieldsAllowed() {
+        assertTrue(check("\"scenes\":[" + scene("一",
+            ",\"scene_id\":\"scene_001\",\"scene_type\":\"headline\",\"beat\":\"HOOK\",\"on_screen_text\":\"先看结论\"")
+            + "," + scene("二", ",\"scene_id\":\"scene_002\",\"scene_type\":\"text\",\"beat\":\"EVIDENCE\",\"on_screen_text\":\"再看证据\"")
+            + "," + scene("三", ",\"scene_id\":\"scene_003\",\"scene_type\":\"text\",\"beat\":\"CONCLUSION\",\"on_screen_text\":\"最后落点\"")
+            + "]").isEmpty());
+    }
+
+    @Test
     @DisplayName("图片场景缺 visual 被判违例")
     void imageSceneRequiresVisual() {
         List<String> items = check("\"scenes\":[" + scene("一", ",\"scene_type\":\"image\"") + ","

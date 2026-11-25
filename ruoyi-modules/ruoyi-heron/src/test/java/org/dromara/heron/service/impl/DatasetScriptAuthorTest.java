@@ -1,13 +1,18 @@
 package org.dromara.heron.service.impl;
 
+import org.dromara.heron.domain.EditorialStory;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.vo.ProductionRunVo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.List;
+import java.util.Queue;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -33,27 +38,92 @@ class DatasetScriptAuthorTest {
             Instant.parse("2026-11-10T03:22:00Z"), 30);
     }
 
+    private static final String PLAN = """
+        {"hookType":"数字反差","coreThesis":"金价区间抬升，需要分清首末变化与单日波动","scenes":[
+          {"purpose":"用末值兑现标题","evidenceRefs":["facts.last.value"],"beat":"HOOK","emotion":"好奇","rhythm":"紧凑",
+           "expectedVisual":{"sceneType":"headline","description":"末值与关键位"}},
+          {"purpose":"解释区间涨幅","evidenceRefs":["facts.change"],"beat":"EVIDENCE","emotion":"平静","rhythm":"平稳",
+           "expectedVisual":{"sceneType":"chart","description":"区间变化折线"}},
+          {"purpose":"用阶段高点收束","evidenceRefs":["facts.max.value"],"beat":"CONCLUSION","emotion":"释然","rhythm":"舒缓",
+           "expectedVisual":{"sceneType":"number","description":"高点数字定格"}}]}
+        """;
+
+    private static final String STORY_PLAN = """
+        {"hookType":"数字反差","coreThesis":"末值与峰值只差一点，区间抬升需要分清口径","scenes":[
+          {"purpose":"用末值兑现张力","evidenceRefs":["facts.last.value"],"beat":"HOOK","emotion":"好奇","rhythm":"紧凑",
+           "expectedVisual":{"sceneType":"headline","description":"末值与峰值差距"}},
+          {"purpose":"证明区间末值高于起点","evidenceRefs":["facts.last.value"],"beat":"EVIDENCE","emotion":"平静","rhythm":"平稳",
+           "expectedVisual":{"sceneType":"chart","description":"区间首末连线"}},
+          {"purpose":"说明峰值位置","evidenceRefs":["facts.max.value"],"beat":"COMPARISON","emotion":"惊讶","rhythm":"递进",
+           "expectedVisual":{"sceneType":"compare","description":"末值与峰值对比"}},
+          {"purpose":"收束差距判断","evidenceRefs":["facts.max.value"],"beat":"CONCLUSION","emotion":"释然","rhythm":"舒缓",
+           "expectedVisual":{"sceneType":"number","description":"峰值数字定格"}}]}
+        """;
+
+    private static EditorialStory story() {
+        return new EditorialStory(
+            "story/1", "numeric_contrast", "末值与峰值只差一点",
+            new EditorialStory.Protagonist("metric", "黄金价格", null),
+            new EditorialStory.Tension("gap", "末值与区间峰值只差一点", List.of("facts.last.value")),
+            List.of(
+                new EditorialStory.Claim("c1", "区间末值高于区间起点", "fact", List.of("facts.last.value")),
+                new EditorialStory.Claim("c2", "区间里的峰值出现在靠后一段", "fact", List.of("facts.max.value"))),
+            new EditorialStory.Payoff("差距比看上去更小", List.of("facts.last.value")),
+            new EditorialStory.Stakes("持有黄金的账户", "成本线比想象中更靠近现价"),
+            List.of(),
+            new EditorialStory.Basis("opportunity", 0.2, 1.5, false, 1.0, 10,
+                "2026-11-01", "2026-11-10", "a".repeat(64), "opportunity", 1L));
+    }
+
+    private static String storyReply() {
+        return "{\"title\":\"金价再创新高\",\"scenes\":["
+            + "{\"lead\":\"金价末值与峰值只差一点\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":15,"
+            + "\"scene_type\":\"headline\",\"beat\":\"HOOK\"},"
+            + "{\"lead\":\"区间末值高于起点\",\"body\":\"末值来到 {{facts.last.value}} 美元。\",\"duration_s\":15,"
+            + "\"scene_type\":\"chart\",\"beat\":\"EVIDENCE\"},"
+            + "{\"lead\":\"峰值出现在区间靠后位置\",\"body\":\"阶段高点为 {{facts.max.value}} 美元。\",\"duration_s\":15,"
+            + "\"scene_type\":\"compare\",\"beat\":\"COMPARISON\"},"
+            + "{\"lead\":\"差距比看上去更小\",\"body\":\"峰值定格在 {{facts.max.value}} 美元。\",\"duration_s\":15,"
+            + "\"scene_type\":\"number\",\"beat\":\"CONCLUSION\"}],"
+            + "\"closing\":\"区间最高 {{facts.last.value}} 美元，差距有限。\"}";
+    }
+
     private static String reply(String secondBody) {
         return "{\"title\":\"金价再创新高\",\"scenes\":["
-            + "{\"lead\":\"金价站上关键位\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":15},"
-            + "{\"lead\":\"较区间起点走高\",\"body\":\"" + secondBody + "\",\"duration_s\":15},"
-            + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":15}],"
+            + "{\"lead\":\"金价站上关键位\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":15,"
+            + "\"scene_type\":\"headline\",\"beat\":\"HOOK\",\"on_screen_text\":\"关键位\"},"
+            + "{\"lead\":\"较区间起点走高\",\"body\":\"" + secondBody + "\",\"duration_s\":15,"
+            + "\"scene_type\":\"chart\",\"beat\":\"EVIDENCE\"},"
+            + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":15,"
+            + "\"scene_type\":\"number\",\"beat\":\"CONCLUSION\"}],"
             + "\"closing\":\"关注接下来的走势。\",\"source_name\":\"模型自述\"}";
     }
 
     static class StubModel extends OpenAiModelClient {
         private final String reply;
+        private final Queue<String> plans;
         private final java.util.List<String> prompts = new java.util.ArrayList<>();
 
         StubModel(String reply) {
+            this(reply, PLAN);
+        }
+
+        StubModel(String reply, String... plans) {
             super(null, null, null);
             this.reply = reply;
+            this.plans = new ArrayDeque<>(List.of(plans));
         }
 
         @Override
         public String chat(ProductionRunVo run, String stage, String systemPrompt, String userPrompt) {
             prompts.add(stage + "\n" + userPrompt);
-            return "dataset-title".equals(stage) ? TITLES : reply;
+            if ("dataset-title".equals(stage)) {
+                return TITLES;
+            }
+            if (stage.startsWith("dataset-story-plan")) {
+                return plans.size() > 1 ? plans.poll() : plans.peek();
+            }
+            return reply;
         }
     }
 
@@ -84,6 +154,110 @@ class DatasetScriptAuthorTest {
         assertTrue(writerPrompt.contains("金价冲高后回落的真实幅度被标题夸大"), writerPrompt);
         assertTrue(writerPrompt.contains("昨日热搜在讲暴跌，数据不支持"), writerPrompt);
         assertTrue(writerPrompt.contains("先破再立"), writerPrompt);
+    }
+
+    @Test
+    @DisplayName("先冻结故事计划再写旁白，写稿提示必须包含计划")
+    void freezesPlanBeforeNarration() {
+        StubModel model = new StubModel(reply("上涨 {{facts.change}} 美元。"));
+        JsonNode script = JSON.readTree(author(model).author(null, dataset(), false).script());
+        assertEquals("2", script.path("schema_version").asString());
+        assertEquals(JSON.readTree(dataset()).path("data_sha256").asString(),
+            script.path("story_plan").path("datasetSha256").asString());
+        assertEquals("story-plan/1", script.path("story_plan").path("schemaVersion").asString());
+        for (int index = 0; index < script.path("scenes").size(); index++) {
+            assertEquals(String.format("scene_%03d", index + 1), script.path("scenes").get(index).path("scene_id").asString());
+        }
+        for (int index = 0; index < script.path("scenes").size(); index++) {
+            assertEquals(index, NewsProductionPipeline.sceneIndex(script, String.format("scene_%03d", index + 1)));
+        }
+        assertTrue(NewsProductionPipeline.replaceSceneBySceneId("scene_002", script,
+            script.path("scenes").get(1)).path("scenes").get(1).path("scene_id").asString().equals("scene_002"));
+        int planCall = model.prompts.indexOf(model.prompts.stream()
+            .filter(item -> item.startsWith("dataset-story-plan\n")).findFirst().orElseThrow());
+        int scriptCall = model.prompts.indexOf(model.prompts.stream()
+            .filter(item -> item.startsWith("dataset-script\n")).findFirst().orElseThrow());
+        assertTrue(planCall < scriptCall, model.prompts.toString());
+        assertTrue(model.prompts.get(scriptCall).contains("facts.last.value"), model.prompts.get(scriptCall));
+    }
+
+    @Test
+    @DisplayName("计划证据不可解析时拒绝进入旁白阶段")
+    void invalidPlanStopsBeforeNarration() {
+        String invalid = PLAN.replace("facts.last.value", "facts.missing");
+        StubModel model = new StubModel(reply("上涨 {{facts.change}} 美元。"), invalid);
+        HeronBusinessException error = assertThrows(HeronBusinessException.class,
+            () -> author(model).author(null, dataset(), false));
+        assertEquals("dataset_story_plan_contract", error.getCode());
+        assertTrue(model.prompts.stream().noneMatch(item -> item.startsWith("dataset-script\n")));
+    }
+
+    @Test
+    @DisplayName("story/1 位置与容量错误在计划闸拒绝，旁白阶段不得开始")
+    void invalidStoryPlanPositionsStopBeforeNarration() {
+        ObjectNode wrongOpening = (ObjectNode) JSON.readTree(STORY_PLAN);
+        ((ObjectNode) wrongOpening.path("scenes").get(0)).putArray("evidenceRefs").add("facts.max.value");
+        assertPlanRejected(wrongOpening.toString(), "开场引用了张力之外的路径");
+
+        ObjectNode tooFewMiddle = (ObjectNode) JSON.readTree(STORY_PLAN);
+        ((tools.jackson.databind.node.ArrayNode) tooFewMiddle.path("scenes")).remove(2);
+        assertPlanRejected(tooFewMiddle.toString(), "中段只有 1 段");
+
+        ObjectNode missingClaim = (ObjectNode) JSON.readTree(STORY_PLAN);
+        ((ObjectNode) missingClaim.path("scenes").get(2)).putArray("evidenceRefs").add("facts.last.value");
+        assertPlanRejected(missingClaim.toString(), "事实主张 c2 的出处没有出现在中段");
+    }
+
+    @Test
+    @DisplayName("计划修复收到位置违例并成功后，旁白阶段才获准开始")
+    void storyPlanRepairsBeforeNarration() {
+        ObjectNode wrongOpening = (ObjectNode) JSON.readTree(STORY_PLAN);
+        ((ObjectNode) wrongOpening.path("scenes").get(0)).putArray("evidenceRefs").add("facts.max.value");
+        StubModel model = new StubModel(storyReply(), wrongOpening.toString(), STORY_PLAN);
+        JsonNode script = JSON.readTree(author(model).author(null, dataset(), false, story()).script());
+        assertEquals(JSON.readTree(STORY_PLAN).path("scenes"), script.path("story_plan").path("scenes"));
+        String repairPrompt = model.prompts.stream()
+            .filter(item -> item.startsWith("dataset-story-plan-repair\n"))
+            .findFirst().orElseThrow();
+        assertTrue(repairPrompt.contains("开场引用了张力之外的路径"), repairPrompt);
+        assertTrue(repairPrompt.contains("主张列表"), repairPrompt);
+        assertTrue(model.prompts.stream().anyMatch(item -> item.startsWith("dataset-script\n")));
+    }
+
+    private static void assertPlanRejected(String plan, String message) {
+        StubModel model = new StubModel(storyReply(), plan);
+        HeronBusinessException error = assertThrows(HeronBusinessException.class,
+            () -> author(model).author(null, dataset(), false, story()));
+        assertEquals("dataset_story_plan_contract", error.getCode());
+        assertTrue(error.getMessage().contains(message), error.getMessage());
+        assertTrue(model.prompts.stream().noneMatch(item -> item.startsWith("dataset-script\n")),
+            model.prompts.toString());
+    }
+
+    @Test
+    @DisplayName("修复时模型不能改写已冻结故事计划")
+    void repairCannotRewriteFrozenPlan() {
+        StubModel model = new StubModel(reply("上涨 {{facts.change}} 美元。"));
+        JsonNode original = JSON.readTree(author(model).author(null, dataset(), false).script());
+        String tampered = reply("上涨 {{facts.change}} 美元。")
+            .replace("\"title\"", "\"story_plan\":{\"hookType\":\"反常识\"},\"title\"");
+        JsonNode repaired = JSON.readTree(author(new StubModel(tampered))
+            .repair(null, dataset(), original.toString(), List.of("结尾需要补充判断")).script());
+        assertEquals(original.path("story_plan"), repaired.path("story_plan"));
+    }
+
+    @Test
+    @DisplayName("v1 旧稿修复后仍按 v1 放行，不强制补故事计划")
+    void legacyRepairStaysV1() {
+        JsonNode generated = JSON.readTree(author(new StubModel(reply("上涨 {{facts.change}} 美元。")))
+            .author(null, dataset(), false).script());
+        ((tools.jackson.databind.node.ObjectNode) generated).remove("schema_version");
+        ((tools.jackson.databind.node.ObjectNode) generated).remove("story_plan");
+        JsonNode repaired = JSON.readTree(author(new StubModel(reply("上涨 {{facts.change}} 美元。")))
+            .repair(null, dataset(), generated.toString(), List.of("结尾需要补充判断")).script());
+        assertFalse(repaired.has("schema_version"));
+        assertFalse(repaired.has("story_plan"));
+        assertEquals(List.of(), DatasetScriptContract.violations(repaired, JSON.readTree(dataset())));
     }
 
     @Test

@@ -14,14 +14,15 @@ import java.util.regex.Pattern;
 public final class DatasetScriptContract {
 
     private static final Set<String> FIELDS = Set.of("dataset_sha256", "source_key", "title", "scenes", "closing",
-        "source_name", "chart");
+        "source_name", "chart", "schema_version", "story_plan");
     /**
      * 段落字段。scene_type / beat / on_screen_text 是分镜三件套：
      * 这一屏用什么画面、承担什么叙事节点、上屏写哪句话。形状在契约层看，
      * 取值是否成立由 StoryboardContract 判（它要等模板声明的组件能力才知道）。
      */
     private static final Set<String> SCENE_FIELDS = Set.of("lead", "body", "duration_s",
-        "scene_type", "beat", "on_screen_text");
+        "scene_type", "beat", "on_screen_text", "scene_id");
+    private static final java.util.regex.Pattern SCENE_ID = java.util.regex.Pattern.compile("scene_[0-9]{3}");
     /**
      * 渲染端真正实现了的图表模块，取值必须与 data/templates/_gen/behaviors/chart.js 的白名单一致。
      * 契约只映射到这张表里的值：纸上写过但没实现的图表类型不允许放行。
@@ -118,6 +119,7 @@ public final class DatasetScriptContract {
         narration(items, script, snapshot);
         periodMeaning(items, script, snapshot);
         narrative(items, script, snapshot);
+        items.addAll(StoryPlanContract.violations(script, snapshot));
         return List.copyOf(new java.util.LinkedHashSet<>(items));
     }
 
@@ -184,6 +186,7 @@ public final class DatasetScriptContract {
         }
         String title = script.path("title").asString("");
         double total = 0;
+        java.util.Map<String, Integer> seenIds = new java.util.HashMap<>();
         for (int index = 0; index < scenes.size(); index++) {
             JsonNode scene = scenes.get(index);
             if (!scene.isObject()) {
@@ -204,6 +207,14 @@ public final class DatasetScriptContract {
             if (!title.isBlank()
                 && (title.equals(scene.path("lead").asString("")) || title.equals(scene.path("body").asString("")))) {
                 items.add("第 " + (index + 1) + " 段与标题重复");
+            }
+            if (scene.has("scene_id")) {
+                String id = scene.path("scene_id").asString("");
+                if (!SCENE_ID.matcher(id).matches()) {
+                    items.add("第 " + (index + 1) + " 段 scene_id 不是 scene_001 形态：" + id);
+                } else if (seenIds.putIfAbsent(id, index + 1) != null) {
+                    items.add("第 " + (index + 1) + " 段 scene_id 重复：" + id);
+                }
             }
         }
         if (total > 0 && (total < MIN_TOTAL_SECONDS || total > MAX_TOTAL_SECONDS)) {

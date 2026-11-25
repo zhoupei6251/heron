@@ -18,8 +18,8 @@ import java.util.List;
  * 数据看板脚本由模型写，出处三件（哈希、源、图表类型）由快照覆盖；
  * 契约不过先定向修复一次，再不过就退回，不盲目重跑。
  *
- * <p>有策划结论（story/1）时，策划结论只走两条通道进写稿：
- * 提示词（唯一内容入口）与 Java 复核（唯一硬结构）。脚本 JSON 一个字段都不加。
+ * <p>有策划结论（story/1）时，策划结论通过提示词与 Java 对位复核进入写稿；
+ * 正式旁白之前另产故事计划，冻结后内嵌到 v2 脚本，后续修复只读该计划，不重新策划。
  */
 @Service
 @RequiredArgsConstructor
@@ -27,6 +27,8 @@ public class DatasetScriptAuthor {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String BASE_SYSTEM = resource("/prompt/data-board/script-contract.md");
+    private static final String PLAN_SYSTEM = resource("/prompt/data-board/story-plan-contract.md");
+    private static final String PLAN_STAGE = "dataset-story-plan";
     /** 趋势稿在数据看板契约之上再加一层：方向由 trend/1 说了算，推测与证据必须分开。 */
     private static final String TREND_SYSTEM = BASE_SYSTEM + "\n\n---\n\n"
         + resource("/prompt/data-board/trend-script.md");
@@ -52,23 +54,23 @@ public class DatasetScriptAuthor {
     /**
      * 有策划结论时的写稿。
      *
-     * <p>策划结论只走两条通道进写稿：提示词（唯一内容入口）与 Java 复核（唯一硬结构）。
-     * 脚本 JSON 一个字段都不加，策划结论只决定「讲什么」，不改变结构。
+     * <p>策划结论通过提示词与 Java 对位复核进入写稿；故事计划在旁白前冻结并内嵌 v2 脚本。
      */
     public Result author(ProductionRunVo run, String datasetJson, boolean digest, EditorialStory story) {
         JsonNode snapshot = JSON.readTree(datasetJson);
         List<DatasetTitleAuthor.Candidate> candidates = titleAuthor.candidates(run, datasetJson, "", story);
-        List<String> titles = candidates.stream().map(DatasetTitleAuthor.Candidate::title).toList();
         String system = BASE_SYSTEM + "\n\n---\n\n"
             + ColumnPacks.text(snapshot.path("source_key").asString(""));
         JsonNode editorial = editorialOf(run);
+        JsonNode plan = plan(run, snapshot, candidates, editorial, digest, story, null);
+        List<String> titles = titlesForPlan(candidates, plan);
         JsonNode draft = withEvidence(parse(model.chat(run, STAGE, system,
-            prompt(snapshot, titles, editorial, digest, story))), snapshot);
-        List<String> violations = violations(draft, snapshot, titles, null, story);
+            prompt(snapshot, titles, editorial, digest, story, plan))), snapshot, plan);
+        List<String> violations = violations(draft, snapshot, candidates, null, story);
         for (int repair = 0; repair < MAX_REPAIRS && !violations.isEmpty(); repair++) {
             draft = withEvidence(parse(model.chat(run, STAGE + "-repair", system,
-                repairPrompt(draft, violations, titles, editorial, story))), snapshot);
-            violations = violations(draft, snapshot, titles, null, story);
+                repairPrompt(draft, violations, titles, editorial, story, plan))), snapshot, plan);
+            violations = violations(draft, snapshot, candidates, null, story);
         }
         if (!violations.isEmpty()) {
             throw new HeronBusinessException(409, "dataset_script_contract",
@@ -87,17 +89,18 @@ public class DatasetScriptAuthor {
         JsonNode trend = JSON.readTree(trendJson);
         List<DatasetTitleAuthor.Candidate> candidates =
             titleAuthor.candidates(run, datasetJson, titleContext(trend));
-        List<String> titles = candidates.stream().map(DatasetTitleAuthor.Candidate::title).toList();
         String system = TREND_SYSTEM + "\n\n---\n\n"
             + ColumnPacks.text(snapshot.path("source_key").asString(""));
         JsonNode editorial = editorialOf(run);
+        JsonNode plan = plan(run, snapshot, candidates, editorial, digest, null, trend);
+        List<String> titles = titlesForPlan(candidates, plan);
         JsonNode draft = withEvidence(parse(model.chat(run, TREND_STAGE, system,
-            trendPrompt(snapshot, trend, titles, editorial, digest))), snapshot);
-        List<String> violations = trendViolations(draft, snapshot, trend, titles);
+            trendPrompt(snapshot, trend, titles, editorial, digest, plan))), snapshot, plan);
+        List<String> violations = trendViolations(draft, snapshot, trend, candidates);
         for (int repair = 0; repair < MAX_REPAIRS && !violations.isEmpty(); repair++) {
             draft = withEvidence(parse(model.chat(run, TREND_STAGE + "-repair", system,
-                trendRepairPrompt(draft, violations, titles, editorial, trend))), snapshot);
-            violations = trendViolations(draft, snapshot, trend, titles);
+                trendRepairPrompt(draft, violations, titles, editorial, trend, plan))), snapshot, plan);
+            violations = trendViolations(draft, snapshot, trend, candidates);
         }
         if (!violations.isEmpty()) {
             throw new HeronBusinessException(409, "trend_script_contract",
@@ -114,12 +117,14 @@ public class DatasetScriptAuthor {
         JsonNode trend = JSON.readTree(trendJson);
         List<DatasetTitleAuthor.Candidate> candidates =
             titleAuthor.candidates(run, datasetJson, titleContext(trend));
-        List<String> titles = candidates.stream().map(DatasetTitleAuthor.Candidate::title).toList();
         String system = TREND_SYSTEM + "\n\n---\n\n"
             + ColumnPacks.text(snapshot.path("source_key").asString(""));
+        JsonNode original = JSON.readTree(scriptJson);
+        JsonNode plan = frozenPlan(original, snapshot);
+        List<String> titles = titlesForPlan(candidates, plan);
         JsonNode repaired = withEvidence(parse(model.chat(run, TREND_STAGE + "-repair", system,
-            trendRepairPrompt(JSON.readTree(scriptJson), issues, titles, editorialOf(run), trend))), snapshot);
-        List<String> violations = trendViolations(repaired, snapshot, trend, titles);
+            trendRepairPrompt(original, issues, titles, editorialOf(run), trend, plan))), snapshot, plan);
+        List<String> violations = trendViolations(repaired, snapshot, trend, candidates);
         if (!violations.isEmpty()) {
             throw new HeronBusinessException(409, "trend_script_contract",
                 "趋势稿退回修复：" + String.join("；", violations));
@@ -134,12 +139,13 @@ public class DatasetScriptAuthor {
     }
 
     private static String trendPrompt(JsonNode snapshot, JsonNode trend, List<String> titles,
-                                      JsonNode editorial, boolean digest) {
+                                      JsonNode editorial, boolean digest, JsonNode plan) {
         StringBuilder text = new StringBuilder();
         if (digest) {
             text.append("这是一条「今日数据速览」，不是热点解读，开头点明这是例行盘点。\n");
         }
         appendEditorial(text, editorial);
+        appendFrozenPlan(text, plan);
         text.append("机器趋势判定（方向以它为准，不许改写）：\n")
             .append(TrendAnalysis.summary(trend)).append('\n')
             .append("trend/1：\n").append(trend.toString()).append('\n')
@@ -153,13 +159,14 @@ public class DatasetScriptAuthor {
     }
 
     private static String trendRepairPrompt(JsonNode script, List<String> violations, List<String> titles,
-                                            JsonNode editorial, JsonNode trend) {
+                                            JsonNode editorial, JsonNode trend, JsonNode plan) {
         StringBuilder text = new StringBuilder()
             .append("上一版趋势稿没有通过校验，问题如下：\n")
             .append("- ").append(String.join("\n- ", violations)).append('\n')
             .append("机器趋势判定（方向以它为准，不许改写）：\n")
             .append(TrendAnalysis.summary(trend)).append('\n');
         appendEditorial(text, editorial);
+        appendFrozenPlan(text, plan);
         return text.append("title 只能从这些候选里原样选一个：\n")
             .append("- ").append(String.join("\n- ", titles)).append('\n')
             .append("只修改不符合要求的字段，其余字段原样保留，输出完整 JSON。\n")
@@ -167,8 +174,8 @@ public class DatasetScriptAuthor {
     }
 
     private static List<String> trendViolations(JsonNode script, JsonNode snapshot, JsonNode trend,
-                                                List<String> titles) {
-        List<String> out = new java.util.ArrayList<>(violations(script, snapshot, titles, trend, null));
+                                                List<DatasetTitleAuthor.Candidate> candidates) {
+        List<String> out = new java.util.ArrayList<>(violations(script, snapshot, candidates, trend, null));
         out.addAll(TrendContract.violations(trend, script, snapshot));
         return out;
     }
@@ -183,12 +190,14 @@ public class DatasetScriptAuthor {
                          EditorialStory story) {
         JsonNode snapshot = JSON.readTree(datasetJson);
         List<DatasetTitleAuthor.Candidate> candidates = titleAuthor.candidates(run, datasetJson, "", story);
-        List<String> titles = candidates.stream().map(DatasetTitleAuthor.Candidate::title).toList();
         String system = BASE_SYSTEM + "\n\n---\n\n"
             + ColumnPacks.text(snapshot.path("source_key").asString(""));
+        JsonNode original = JSON.readTree(scriptJson);
+        JsonNode plan = frozenPlan(original, snapshot);
+        List<String> titles = titlesForPlan(candidates, plan);
         JsonNode repaired = withEvidence(parse(model.chat(run, STAGE + "-repair", system,
-            repairPrompt(JSON.readTree(scriptJson), issues, titles, editorialOf(run), story))), snapshot);
-        List<String> violations = violations(repaired, snapshot, titles, null, story);
+            repairPrompt(original, issues, titles, editorialOf(run), story, plan))), snapshot, plan);
+        List<String> violations = violations(repaired, snapshot, candidates, null, story);
         if (!violations.isEmpty()) {
             throw new HeronBusinessException(409, "dataset_script_contract",
                 "脚本退回修复：" + String.join("；", violations));
@@ -224,8 +233,10 @@ public class DatasetScriptAuthor {
         }
     }
 
-    private static List<String> violations(JsonNode script, JsonNode snapshot, List<String> titles,
+    private static List<String> violations(JsonNode script, JsonNode snapshot,
+                                         List<DatasetTitleAuthor.Candidate> candidates,
                                          JsonNode trend, EditorialStory story) {
+        List<String> titles = candidates.stream().map(DatasetTitleAuthor.Candidate::title).toList();
         List<String> violations = new java.util.ArrayList<>(DatasetScriptContract.violations(script, snapshot));
         // 分镜也要进修复循环：分镜不合规时渲染闸会直接退回整条片子，
         // 与其出片前才发现，不如在写稿阶段就修一次。
@@ -241,34 +252,53 @@ public class DatasetScriptAuthor {
         if (!titles.contains(script.path("title").asString(""))) {
             violations.add("title 必须从候选里原样选一个");
         }
+        JsonNode plan = script.path("story_plan");
+        if (plan.isObject()) {
+            String selectedKind = hookType(candidates, script.path("title").asString(""));
+            if (!plan.path("hookType").asString("").equals(selectedKind)) {
+                violations.add("选中标题的 hookType 与冻结故事计划不一致");
+            }
+        }
         // 策划结论的对位：开场讲张力、中段一条主张一段、结尾讲落点、引用的路径不出信封
         violations.addAll(StoryScriptAlignment.violations(script, story, script.path("title").asString("")));
         return List.copyOf(new java.util.LinkedHashSet<>(violations));
     }
 
-    /** 快照事实覆盖模型自述，模型只负责旁白。 */
-    private static ObjectNode withEvidence(JsonNode draft, JsonNode snapshot) {
+    /** 快照事实覆盖模型自述，模型只负责旁白；v2 同时内嵌系统冻结的故事计划。 */
+    private static ObjectNode withEvidence(JsonNode draft, JsonNode snapshot, JsonNode plan) {
         ObjectNode script = (ObjectNode) draft;
         script.put("dataset_sha256", snapshot.path("data_sha256").asString(""));
         script.put("source_key", snapshot.path("source_key").asString(""));
         script.put("chart", DatasetScriptContract.chartFor(snapshot.path("shape").asString("")));
         String attribution = snapshot.path("license").path("attribution").asString("");
         script.put("source_name", attribution.isBlank() ? snapshot.path("source_name").asString("") : attribution);
+        if (plan != null) {
+            script.put("schema_version", "2");
+            script.set("story_plan", plan.deepCopy());
+            JsonNode scenes = script.path("scenes");
+            if (scenes.isArray()) {
+                for (int index = 0; index < scenes.size(); index++) {
+                    if (scenes.get(index).isObject()) {
+                        ((ObjectNode) scenes.get(index)).put("scene_id", String.format("scene_%03d", index + 1));
+                    }
+                }
+            }
+        } else {
+            script.remove("schema_version");
+            script.remove("story_plan");
+        }
         return script;
     }
 
-    private static String prompt(JsonNode snapshot, List<String> titles, JsonNode editorial, boolean digest) {
-        return prompt(snapshot, titles, editorial, digest, null);
-    }
-
     private static String prompt(JsonNode snapshot, List<String> titles, JsonNode editorial, boolean digest,
-                                 EditorialStory story) {
+                                 EditorialStory story, JsonNode plan) {
         StringBuilder text = new StringBuilder();
         if (digest) {
             text.append("这是一条「今日数据速览」，不是热点解读，开头点明这是例行盘点。\n");
         }
         appendEditorial(text, editorial);
         appendStory(text, story);
+        appendFrozenPlan(text, plan);
         text.append("数据快照：\n").append(snapshot).append('\n')
             .append("标题候选（title 必须与下面某一项完全一致，原样复制）：\n");
         for (String title : titles) {
@@ -279,22 +309,111 @@ public class DatasetScriptAuthor {
     }
 
     private static String repairPrompt(JsonNode script, List<String> violations, List<String> titles,
-                                       JsonNode editorial) {
-        return repairPrompt(script, violations, titles, editorial, null);
-    }
-
-    private static String repairPrompt(JsonNode script, List<String> violations, List<String> titles,
-                                       JsonNode editorial, EditorialStory story) {
+                                       JsonNode editorial, EditorialStory story, JsonNode plan) {
         StringBuilder text = new StringBuilder()
             .append("上一版脚本没有通过契约校验，问题如下：\n")
             .append("- ").append(String.join("\n- ", violations)).append('\n');
         appendEditorial(text, editorial);
         appendStory(text, story);
+        appendFrozenPlan(text, plan);
         return text.append("title 只能从这些候选里原样选一个：\n")
             .append("- ").append(String.join("\n- ", titles)).append('\n')
             .append("只修改不符合要求的字段，其余字段原样保留，输出完整 JSON。\n")
             .append("超长的字段压到上限以下并留 10 字余量，不要贴着上限写；宁可短，不能被裁。\n")
             .append("上一版脚本：\n").append(script.toString()).toString();
+    }
+
+    /** 冻结计划选定钩子后，写稿只看到同类型标题，避免模型选一个不相容标题再反复修复。 */
+    private static List<String> titlesForPlan(List<DatasetTitleAuthor.Candidate> candidates, JsonNode plan) {
+        if (plan == null) return candidates.stream().map(DatasetTitleAuthor.Candidate::title).toList();
+        String hook = plan.path("hookType").asString("");
+        return candidates.stream().filter(candidate -> candidate.kind().equals(hook))
+            .map(DatasetTitleAuthor.Candidate::title).toList();
+    }
+
+    /** 先产计划、复核并冻结，再允许模型写旁白；计划不合格不进入写稿阶段。 */
+    private JsonNode plan(ProductionRunVo run, JsonNode snapshot, List<DatasetTitleAuthor.Candidate> candidates,
+                          JsonNode editorial, boolean digest, EditorialStory story, JsonNode trend) {
+        JsonNode draft = freezePlan(parsePlan(model.chat(run, PLAN_STAGE, PLAN_SYSTEM,
+            planPrompt(snapshot, candidates, editorial, digest, story, trend))), snapshot);
+        List<String> violations = planViolations(draft, snapshot, candidates, story);
+        for (int repair = 0; repair < MAX_REPAIRS && !violations.isEmpty(); repair++) {
+            StringBuilder prompt = new StringBuilder("上一版故事计划未通过校验：\n- ")
+                .append(String.join("\n- ", violations)).append('\n');
+            appendStory(prompt, story);
+            draft = freezePlan(parsePlan(model.chat(run, PLAN_STAGE + "-repair", PLAN_SYSTEM,
+                prompt.append("只修计划，不写旁白。\n上一版计划：\n").append(draft).toString())), snapshot);
+            violations = planViolations(draft, snapshot, candidates, story);
+        }
+        if (!violations.isEmpty()) {
+            throw new HeronBusinessException(409, "dataset_story_plan_contract",
+                "故事计划退回：" + String.join("；", violations));
+        }
+        return freezePlan(draft, snapshot);
+    }
+
+    private static List<String> planViolations(JsonNode plan, JsonNode snapshot,
+                                               List<DatasetTitleAuthor.Candidate> candidates, EditorialStory story) {
+        List<String> items = new java.util.ArrayList<>(StoryPlanContract.planViolations(plan, snapshot));
+        items.addAll(StoryPlanContract.storyPlanViolations(plan, story));
+        String hook = plan.path("hookType").asString("");
+        if (candidates.stream().noneMatch(candidate -> candidate.kind().equals(hook))) {
+            items.add("hookType 不在标题候选类型中");
+        }
+        return List.copyOf(new java.util.LinkedHashSet<>(items));
+    }
+
+    private static JsonNode parsePlan(String text) {
+        try {
+            return parse(text);
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(409, "dataset_story_plan_contract",
+                "故事计划退回：模型输出不是 JSON 对象");
+        }
+    }
+
+    private static JsonNode freezePlan(JsonNode plan, JsonNode snapshot) {
+        ObjectNode frozen = (ObjectNode) plan.deepCopy();
+        frozen.put("schemaVersion", StoryPlanContract.SCHEMA_VERSION);
+        frozen.put("datasetSha256", snapshot.path("data_sha256").asString(""));
+        return frozen;
+    }
+
+    private static String planPrompt(JsonNode snapshot, List<DatasetTitleAuthor.Candidate> candidates,
+                                     JsonNode editorial, boolean digest, EditorialStory story, JsonNode trend) {
+        StringBuilder text = new StringBuilder();
+        if (digest) text.append("这是今日数据速览，计划应体现例行盘点与信息密度。\n");
+        appendEditorial(text, editorial);
+        appendStory(text, story);
+        if (trend != null) {
+            text.append("机器趋势判定（方向不许改写）：\n").append(TrendAnalysis.summary(trend)).append('\n')
+                .append(trend).append('\n');
+        }
+        text.append("标题候选（hookType 必须与后续选中标题的类型一致）：\n");
+        for (DatasetTitleAuthor.Candidate candidate : candidates) {
+            text.append("- [").append(candidate.kind()).append("] ").append(candidate.title()).append('\n');
+        }
+        return text.append("冻结数据快照：\n").append(snapshot).append('\n')
+            .append("只输出故事计划 JSON，不写旁白。").toString();
+    }
+
+    /** 修复 v2 时只读原脚本里的冻结计划；v1 旧稿没有计划，保持旧契约。 */
+    private static JsonNode frozenPlan(JsonNode script, JsonNode snapshot) {
+        if (!"2".equals(script.path("schema_version").asString(""))) return null;
+        JsonNode plan = script.path("story_plan");
+        List<String> violations = StoryPlanContract.planViolations(plan, snapshot);
+        if (!violations.isEmpty()) {
+            throw new HeronBusinessException(409, "dataset_story_plan_contract",
+                "冻结故事计划不可用于修复：" + String.join("；", violations));
+        }
+        return plan.deepCopy();
+    }
+
+    private static void appendFrozenPlan(StringBuilder text, JsonNode plan) {
+        if (plan == null) return;
+        text.append("已冻结故事计划（逐屏对位，不得改写；每屏旁白必须消费全部 evidenceRefs，")
+            .append("beat 与 scene_type 必须分别等于计划的 beat 与 expectedVisual.sceneType）：\n")
+            .append(plan).append('\n');
     }
 
     /**
