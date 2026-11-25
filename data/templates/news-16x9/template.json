@@ -15,7 +15,6 @@
     "NEWS_EXPLAINER"
   ],
   "supportedSceneTypes": [
-    "headline",
     "text",
     "image"
   ],

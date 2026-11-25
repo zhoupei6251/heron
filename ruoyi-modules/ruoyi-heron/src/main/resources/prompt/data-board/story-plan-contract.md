@@ -32,7 +32,7 @@
 5. `evidenceRefs` 每屏 1–4 条、不重复，只能是快照 `facts` 下可解析到数字或字符串的路径。不得引用对象、数组、别的数据源或编造路径。
 6. `beat` 取 `HOOK` / `CONTEXT` / `QUESTION` / `EVIDENCE` / `COMPARISON` / `REVEAL` / `EXPLANATION` / `INSIGHT` / `CONCLUSION`。首屏 `HOOK`，末屏 `CONCLUSION` / `INSIGHT` / `REVEAL`。
 7. `emotion` 取 `好奇` / `紧张` / `平静` / `惊讶` / `释然` / `紧迫` / `克制`；`rhythm` 取 `紧凑` / `平稳` / `舒缓` / `递进` / `停顿`。情绪与节奏要有变化，不能每屏都一样。
-8. `expectedVisual.sceneType` 取 `headline` / `text` / `chart` / `number` / `compare` / `timeline`；`description` 是不超过 40 字的 JSON 字符串，写这一屏实际要出现的画面，不能写“配图”“美化一下”。
+8. `expectedVisual.sceneType` 取 `headline` / `text` / `chart` / `number` / `compare`；`description` 是不超过 40 字的 JSON 字符串，写这一屏实际要出现的画面，不能写“配图”“美化一下”。
 9. 后续旁白每屏必须使用本屏计划中的全部证据路径，不得引用计划外路径；`beat` 与 `scene_type` 必须分别等于本屏计划的 `beat` 与 `expectedVisual.sceneType`。
 10. 有 `story/1` 策划时，开场证据只能取自张力，中段屏数至少等于事实主张条数且覆盖每条事实主张的出处，结尾证据取自落点；不得另起结论。这些位置约束在计划闸执行，不通过不会进入旁白阶段。
 11. 文本不写阿拉伯数字；数值只以 `facts.*` 路径登记。描述画面时也不复述旁白。

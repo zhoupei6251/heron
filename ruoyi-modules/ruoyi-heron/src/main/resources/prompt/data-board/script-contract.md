@@ -29,11 +29,11 @@
 
 | 字段 | 取值 | 作用 |
 |---|---|---|
-| `scene_type` | `headline` / `text` / `chart` / `number` / `compare` / `timeline` | 这一屏用什么画面 |
+| `scene_type` | `headline` / `text` / `chart` / `number` / `compare` | 这一屏用什么画面 |
 | `beat` | `HOOK` / `CONTEXT` / `QUESTION` / `EVIDENCE` / `COMPARISON` / `REVEAL` / `EXPLANATION` / `INSIGHT` / `CONCLUSION` | 这一屏承担什么叙事节点 |
 | `on_screen_text` | ≤ 18 字，可省略 | 上屏的那一行短句，与旁白解耦 |
 
-1. **`scene_type` 只能用上表六种**，写别的直接退回。
+1. **`scene_type` 只能用上表五种**，写别的直接退回。
 2. **`beat` 每段都要写**：第一段必须是 `HOOK`（抓人），最后一段必须是 `CONCLUSION`、`INSIGHT` 或 `REVEAL`（收束）。只写几段等于没写，直接退回。
 3. **整篇不能只有一种 `scene_type`**：全篇都是 `text` 等于没做分镜，画面还是一张静止的图配旁白。
 4. `on_screen_text` 是写给观众看的那一行短句，**不是旁白的复制**。旁白是完整句子，上屏文字要一眼读完；写不出来就省略，省略时上屏沿用 `lead`。
@@ -42,7 +42,6 @@
    - `number`：这一屏就是一个关键数字。
    - `chart`：这一屏在讲图表本身——形态、拐点、对比方式。
    - `compare`：两项对照（前 vs 后、A vs B）。
-   - `timeline`：按时间推进的一段。
    - `text`：纯文字叙述。
 6. `on_screen_text` 里的数字与旁白同规则：只能用 `{{facts.<路径>}}`，不能自己写。
 

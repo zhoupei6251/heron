@@ -25,9 +25,8 @@ public final class StoryboardContract {
     static final Set<String> BEATS = Set.of("HOOK", "CONTEXT", "QUESTION", "EVIDENCE", "COMPARISON",
         "REVEAL", "EXPLANATION", "INSIGHT", "CONCLUSION");
 
-    /** 画面组件。取值必须与模板 supportedSceneTypes 交叉。 */
-    static final Set<String> SCENE_TYPES = Set.of("headline", "text", "image", "chart", "quote", "list",
-        "compare", "number", "qa", "timeline", "rank");
+    /** 画面组件。取值必须与模板 supportedSceneTypes 交叉；全集与 NewsScriptContract 一致，只含渲染端实现了的类型。 */
+    static final Set<String> SCENE_TYPES = Set.of("headline", "text", "image", "chart", "compare", "number");
 
     /** 开场节点：观众第一眼看到的就是它。 */
     static final String OPENING_BEAT = "HOOK";

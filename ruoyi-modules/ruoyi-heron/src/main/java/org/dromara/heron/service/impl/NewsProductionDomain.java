@@ -635,8 +635,11 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     public Map<String, Object> lockedAssets(String templateKey) {
         Path lock = lockFile(templateKey);
         if (lock == null || !Files.isRegularFile(lock)) {
-            throw new HeronBusinessException(503, "news_assets_unconfigured",
-                "模板 " + templateKey + " 缺少 LOCK.json，请运行 script/tools/template-lock.mjs 生成");
+            // 目录整个不在说明这套模板已被删除：跑 template-lock 也救不回来，该做的是重选版式
+            String message = lock != null && Files.isDirectory(lock.getParent())
+                ? "模板 " + templateKey + " 缺少 LOCK.json，请运行 script/tools/template-lock.mjs 生成"
+                : "模板 " + templateKey + " 不存在，该作品需要重新选版式";
+            throw new HeronBusinessException(503, "news_assets_unconfigured", message);
         }
         Map<String, Object> asset = new TreeMap<>();
         try {

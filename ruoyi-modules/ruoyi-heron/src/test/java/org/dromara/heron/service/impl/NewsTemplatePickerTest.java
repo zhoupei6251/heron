@@ -2,6 +2,7 @@ package org.dromara.heron.service.impl;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.dromara.heron.domain.HeronNewsWork;
 
 import java.util.List;
 
@@ -72,6 +73,34 @@ class NewsTemplatePickerTest {
         assertTrue(dataBoard.supports(EditorialDecisionService.DATA_BOARD));
         assertFalse(explainer.supports(EditorialDecisionService.DATA_BOARD));
     }
+
+    @Test
+    @DisplayName("最近用过的模板只认在册的：已删模板和没选版式的作品都不占名额")
+    void recentOnlyCountsInstalledTemplates() {
+        // 最新一条用的是已删模板，第二条还没选版式——都不该挤掉后面真正在册的记录
+        var works = List.of(work("news-poster-9x16"), work(null), work(MAGAZINE.key()), work(POSTER.key()),
+            work("knowledge-mono-9x16"), work(MONO.key()));
+
+        assertEquals(List.of("magazine", "poster", "mono"), NewsTemplatePicker.recentInstalled(works, ALL_KEYS));
+        // 没有在册记录时是空表，交给「从未用过优先」，不抛异常
+        assertEquals(List.of(), NewsTemplatePicker.recentInstalled(works, List.of("news-9x16")));
+    }
+
+    @Test
+    @DisplayName("最近用过最多记 5 套，且同一套重复出现只算一次")
+    void recentIsDeduplicatedAndCapped() {
+        var works = List.of(work(MONO.key()), work(MONO.key()), work(MAGAZINE.key()), work(POSTER.key()));
+
+        assertEquals(List.of("mono", "magazine", "poster"), NewsTemplatePicker.recentInstalled(works, ALL_KEYS));
+    }
+
+    private static HeronNewsWork work(String templateKey) {
+        var work = new HeronNewsWork();
+        work.setTemplateKey(templateKey);
+        return work;
+    }
+
+    private static final List<String> ALL_KEYS = List.of("poster", "magazine", "mono");
 
     private static final NewsProductionDomain.TemplateStyle DATA_BOARD_STYLE =
         new NewsProductionDomain.TemplateStyle("data-board", "Dynamic Data Explainer", "动态数据解释",

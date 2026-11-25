@@ -1,10 +1,4 @@
 {
-  "news-broadcast": {
-    "name": "Professional News",
-    "label": "专业新闻",
-    "role": "热点新闻、重要事件、权威信息解读",
-    "narratives": ["rank_competition", "time_change"]
-  },
   "data-investigation": {
     "name": "Data Investigation",
     "label": "数据调查",
@@ -15,7 +9,7 @@
     "name": "Dynamic Data Explainer",
     "label": "动态数据解释",
     "role": "数据看板解读、指标变化、排行与趋势",
-    "narratives": ["trend_reversal", "numeric_contrast"]
+    "narratives": ["trend_reversal", "numeric_contrast", "rank_competition", "time_change"]
   },
   "article": {
     "name": "Editorial",

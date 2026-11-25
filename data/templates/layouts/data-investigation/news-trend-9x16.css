@@ -3,11 +3,11 @@
    第 3、4 屏（证据 / 解释）用左侧加粗强调条 + 淡淡底色标成「论证段」。
    纵向预算（1080×1920）：标题区 0–600 / 图表 600–1070 / 场景 1085–1570 / 底栏 1600–1665。
 
-   本套与 news-data-investigate-9x16 共用 data-investigation 的设计语言：
+   data-investigation 风格的骨架（本套是它唯一的承载者）：
    1. .scene 缩进到 --pad-frame 并带左侧结构线（本套把结构线拆成「时间轴刻度 + 场景引线」）
    2. .body 是本套唯一的 300 字重，靠 300↔900 的字重差造编辑气质
    3. #closing 用 border-top 而不是面板盒子——B 不用卡片
-   骨架不变的断言在 news-data-investigate-9x16.css 上，本文件只做本模板的加法。 */
+   骨架不变的断言在本文件上，由 build-templates.mjs 的 SKELETON_INVARIANTS 在构建期检查。 */
 
 /* 节奏令牌：趋势线比调查线快一档。入场 0.9s → 0.5s，让第一屏在 0.5s 内立住，
    后面每屏的 lead/body 也更快换句——这是「随时间演进」的观感来源之一。

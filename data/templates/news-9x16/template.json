@@ -12,10 +12,10 @@
     "accent": "#d97706"
   },
   "supportedLines": [
-    "NEWS_EXPLAINER"
+    "NEWS_EXPLAINER",
+    "KNOWLEDGE_EXPLAINER"
   ],
   "supportedSceneTypes": [
-    "headline",
     "text",
     "image"
   ],

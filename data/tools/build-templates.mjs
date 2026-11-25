@@ -35,6 +35,8 @@ const STAGE = value('--stage');
 const STAGE_OUT = value('--out');
 
 const CAPABILITIES = new Set(['chart', 'image', 'globe']);
+// 模板能声明的编辑线，取值与 EditorialSelection 的线常量一致。
+const LINES = new Set(['NEWS_EXPLAINER', 'DATA_BOARD', 'TREND_INSIGHT', 'KNOWLEDGE_EXPLAINER']);
 const RATIOS = {
   '9x16': { width: 1080, height: 1920 },
   '16x9': { width: 1920, height: 1080 },
@@ -100,6 +102,14 @@ function loadConfig(dir) {
     fail(`${key}: 3D 模板必须声明 globe 能力——没有渲染库的三维模板渲不出来`);
   }
   const currentRatio = ratioOf(cfg);
+  const supportedLines = cfg.lines ?? [cfg.line];
+  if (!Array.isArray(supportedLines) || supportedLines.length === 0 || new Set(supportedLines).size !== supportedLines.length) {
+    fail(`${key}: lines 必须是非空且不重复的线数组`);
+  }
+  for (const line of supportedLines) {
+    if (!LINES.has(line)) fail(`${key}: 未知线「${line}」，合法值：${[...LINES].join('、')}`);
+  }
+  if (!supportedLines.includes(cfg.line)) fail(`${key}: lines 必须包含 line（${cfg.line}）`);
   if (cfg.layouts !== undefined) {
     if (!Array.isArray(cfg.layouts) || cfg.layouts.length === 0 || new Set(cfg.layouts).size !== cfg.layouts.length) {
       fail(`${key}: layouts 必须是非空且不重复的比例数组`);
@@ -140,6 +150,9 @@ function variantConfig(cfg, ratio) {
     layouts: [ratio],
     description: description.includes('16:9') ? description : `${description}；横版 16:9`,
     generatedFrom: cfg.key,
+    // 横版只承接源模板的主线。lines 里其余的线（如知识线）按竖版设计，
+    // 稿子形态未必在横版上成立；要给横版挂第二条线，在源模板上单独声明。
+    lines: [cfg.line],
   };
 }
 
@@ -317,19 +330,33 @@ function kpiBlock(cfg) {
          <p id="focus-caption"></p>`;
 }
 
-function styles(cfg) {
-  const files = [
-    path.join(SHARED, 'base.css'),
-    path.join(SHARED, 'tokens', `${cfg.style}.css`),
-  ];
+function styleFiles(cfg) {
+  const files = [path.join(SHARED, 'base.css'), path.join(SHARED, 'tokens', `${cfg.style}.css`)];
   if (cfg.capabilities.includes('chart')) files.push(path.join(GEN, 'behaviors', 'chart.css'));
   if (cfg.capabilities.includes('globe')) files.push(path.join(GEN, 'behaviors', 'globe.css'));
-  // 分镜版式：只给声明了分镜的模板，三套数据风格共用一份规则
   if (cfg.storyboard) files.push(path.join(SHARED, 'storyboard.css'));
   files.push(path.join(LAYOUTS, cfg.style, `${cfg.layout}.css`));
-  // 场景骨架：让 scene_type 决定构图，而不是只换三行字。
-  // 放在版式之后：同样的 #root .scene 前缀，靠后加载才能压过版式的定位规则。
   if (cfg.skeletons) files.push(path.join(SHARED, 'skeletons.css'));
+  return files;
+}
+
+function behaviorFiles(cfg) {
+  const files = [path.join(GEN, 'behaviors', 'fill.js')];
+  if (cfg.storyboard) files.push(path.join(GEN, 'behaviors', 'headline.js'));
+  if (cfg.capabilities.includes('chart')) {
+    files.push(path.join(GEN, 'behaviors', 'chart.js'), path.join(GEN, 'behaviors', 'focus.js'));
+  }
+  if (cfg.capabilities.includes('globe')) files.push(path.join(GEN, 'behaviors', 'globe.js'));
+  files.push(path.join(GEN, 'motion.js'));
+  const afterMotion = [];
+  if ((cfg.supportedSceneTypes || []).includes('compare')) afterMotion.push(path.join(GEN, 'behaviors', 'compare.js'));
+  if (cfg.skeletons) afterMotion.push(path.join(GEN, 'behaviors', 'skeleton.js'));
+  files.push(...afterMotion);
+  return files;
+}
+
+function styles(cfg) {
+  const files = styleFiles(cfg);
   for (const file of files) {
     if (!fs.existsSync(file)) fail(`${cfg.key}: 缺少样式文件 ${path.relative(TEMPLATES, file)}`);
   }
@@ -371,27 +398,9 @@ function checkLandscapeContract(cfg, css) {
 }
 
 function script(cfg) {
-  const files = [path.join(GEN, 'behaviors', 'fill.js')];
-  // 冲击屏：headline 屏接管整幅画面。只给声明了分镜的模板——
-  // 没有分镜就没有 headline 屏，接管逻辑是死代码。
-  if (cfg.storyboard) files.push(path.join(GEN, 'behaviors', 'headline.js'));
-  if (cfg.capabilities.includes('chart')) {
-    files.push(path.join(GEN, 'behaviors', 'chart.js'), path.join(GEN, 'behaviors', 'focus.js'));
-  }
-  if (cfg.capabilities.includes('globe')) {
-    files.push(path.join(GEN, 'behaviors', 'globe.js'));
-  }
-  // 场景骨架：按 scene_type 换构图。排在 compare.js 之后，
-  // 这样 skeleton-compare 类加上时两栏对照块已经建好，不会先闪一版单栏。
-  const afterMotion = [];
-  files.push(path.join(GEN, 'motion.js'));
-  // compare 真两栏：数字与标签来自数据事实。这一段要借 motion.js 的 DUR / EASE
-  // 与同一条时间轴（进出场跟着所在屏走），所以必须排在 motion.js 之后。
-  if ((cfg.supportedSceneTypes || []).includes('compare')) {
-    afterMotion.push(path.join(GEN, 'behaviors', 'compare.js'));
-  }
-  if (cfg.skeletons) afterMotion.push(path.join(GEN, 'behaviors', 'skeleton.js'));
-  files.push(...afterMotion);
+  const files = behaviorFiles(cfg);
+  // 场景骨架排在 compare.js 之后，这样 skeleton-compare 类加上时两栏对照块已经建好，
+  // 不会先闪一版单栏；compare.js 要借 motion.js 的 DUR / EASE，所以两者都在 motion.js 之后。
   for (const file of files) {
     if (!fs.existsSync(file)) fail(`${cfg.key}: 缺少脚本片段 ${path.relative(TEMPLATES, file)}`);
   }
@@ -480,7 +489,7 @@ function templateJson(cfg) {
     name: cfg.name,
     description: cfg.description ?? '',
     style: styleMeta(cfg),
-    supportedLines: [cfg.line],
+    supportedLines: cfg.lines ?? [cfg.line],
     supportedSceneTypes: cfg.supportedSceneTypes ?? ['headline', 'text'],
     // 只有 3D 才写：2D 是缺省值，写出来只会让历史模板全部产生无意义 diff
     ...(cfg.visualMode === '3d' ? { visualMode: '3d' } : {}),
@@ -577,20 +586,17 @@ function checkWindows(cfg, html) {
   }
 }
 
-// 三套风格的骨架不变量：写进版式 CSS 的注释里，也在构建期断言一次。
-// 为什么要在构建期查：三套风格最容易的退化方式不是换配色，而是「悄悄变成同一套骨架」——
+// 两套数据风格的骨架不变量：写进版式 CSS 的注释里，也在构建期断言一次。
+// 为什么要在构建期查：风格最容易的退化方式不是换配色，而是「悄悄变成同一套骨架」——
 // 改一处 #chart-slot 高度、把 .scene 从通栏改成缩进，画面看起来仍然「正常」，风格却没了。
 // 断言只查结构性声明，不查具体数值，避免把版式微调也锁死。
+// 播报风（news-broadcast）已并入 data-board：它与调查风的结构相似度 97%，是同一套骨架换个底色。
 const SKELETON_INVARIANTS = {
-  'news-broadcast': [
-    ['../layouts/news-broadcast/news-data-broadcast-9x16.css', '.scene', 'border-left'],
-    ['../layouts/news-broadcast/news-data-broadcast-9x16.css', '.scene', 'background'],
-    ['../layouts/news-broadcast/news-data-broadcast-9x16.css', '.scene', 'grid-template-columns'],
-  ],
+  // 调查风现在只有 news-trend 一套在承载，骨架断言落在它自己的版式上
   'data-investigation': [
-    ['../layouts/data-investigation/news-data-investigate-9x16.css', '.scene', 'border-left'],
-    ['../layouts/data-investigation/news-data-investigate-9x16.css', '.body', 'font-weight'],
-    ['../layouts/data-investigation/news-data-investigate-9x16.css', '#closing', 'border-top'],
+    ['../layouts/data-investigation/news-trend-9x16.css', '.scene', 'border-left'],
+    ['../layouts/data-investigation/news-trend-9x16.css', '.body', 'font-weight'],
+    ['../layouts/data-investigation/news-trend-9x16.css', '#closing', 'border-top'],
   ],
   'data-board': [
     ['../layouts/data-board/news-data-9x16.css', '.scene', 'left'],
@@ -643,10 +649,117 @@ function checkNarrativeContract(catalog) {
  */
 function ruleBlock(css, selector) {
   const escaped = selector.replace(/[\\.#*]/g, (ch) => '\\' + ch);
+  // 先剥注释：规则之间夹着一段注释时，上一条的 `}` 与本条选择器就被隔开，锚点落不到这里
   const pattern = new RegExp('(^|\\})\\s*' + escaped + '\\s*\\{([^}]*)\\}', 'g');
   let last = null;
-  for (const match of css.matchAll(pattern)) last = match[2];
+  for (const match of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(pattern)) last = match[2];
   return last;
+}
+
+/**
+ * 场景类型闸：声明了就必须有实现。
+ *
+ * <p>supportedSceneTypes 是对模型的承诺——它照着这份清单选每一屏的画面。
+ * 清单里躺着一个渲染端没实现的类型（曾有过 timeline / list / qa），模型照着写了，
+ * 画面上却什么都不会发生，直到成片才看得出来。
+ *
+ * <p>证据必须是这套模板独有的装配，不能用「每套都挂」的文件凑数：
+ * fill.js 会读 .scene-figure，但它只负责填槽位，图位样式在版式里；
+ * storyboard.css 每条分镜模板都会挂，里面的 number / compare 规则不是某套模板的实现证据。
+ * 所以判据写成「按类型检查哪一份装配 + 在那里找什么痕迹」，不扫全量文本。
+ *
+ * <p>这里的全集就是渲染端实现了的类型。quote / rank 的唯一实现（news-quote / news-rank 两套版式）
+ * 已于 2026-11-25 连同模板删除，它们在这里与 Java 契约里同时除名。
+ */
+const SCENE_TYPE_EVIDENCE = {
+  headline: { files: () => [path.join(GEN, 'behaviors', 'headline.js')], pattern: /headlineSlots|takeover/ },
+  chart: { files: () => [path.join(GEN, 'behaviors', 'chart.css')], pattern: /#chart-slot/ },
+  number: { files: (cfg) => cfg.skeletons ? [path.join(GEN, 'behaviors', 'skeleton.js')] : [], pattern: /number\s*:/ },
+  compare: { files: () => [path.join(GEN, 'behaviors', 'compare.js')], pattern: /compareFacts|compareDataset/ },
+  // 图位靠版式自己声明：fill.js 只是往槽位里塞图，所有模板都挂它
+  image: { files: (cfg) => [path.join(LAYOUTS, cfg.style, `${cfg.layout}.css`)], pattern: /\.scene-figure\b|\.has-image\b/,
+    require: (cfg) => cfg.capabilities.includes('image') },
+};
+
+function checkSceneTypes(cfg) {
+  for (const type of cfg.supportedSceneTypes ?? ['headline', 'text']) {
+    // text 是缺省形态：没有专属规则才是对的，不算「声明了没实现」
+    if (type === 'text') continue;
+    const evidence = SCENE_TYPE_EVIDENCE[type];
+    // 表里没有的类型直接拒：新类型先在这里登记它的实现痕迹，闸才认
+    if (!evidence) fail(`${cfg.key}: 未知场景类型「${type}」，先在 build-templates.mjs 的 SCENE_TYPE_EVIDENCE 登记`);
+    const files = evidence.files(cfg);
+    const hasEvidence = files.length > 0 && (!evidence.require || evidence.require(cfg))
+      && files.every((file) => evidence.pattern.test(read(file)));
+    if (!hasEvidence) {
+      fail(`${cfg.key}: 声明了场景类型「${type}」，但这份模板没有装配它的实现`);
+    }
+  }
+}
+
+/**
+ * 模板身份闸：两套模板不能是同一套。
+ *
+ * <p>身份 = 结构 + 动效。结构是选择器集合与属性名集合（数值、颜色剥掉），
+ * 动效是挂载的行为脚本组合。只换色换数值不算另一套模板——那叫配色。
+ *
+ * <p>口径（2026-11-25 拍板）：综合相似度 = (结构 + 动效) / 2 ≥ 90% 即判为重复。
+ * 阈值按改造前的 23 套实测标定：只换色换数值的版式两两 92%–100%，各有独立构图的 ≤ 88%。
+ */
+const IDENTITY_THRESHOLD = 0.9;
+
+function identityOf(cfg) {
+  const sources = styleFiles(cfg).map((file) => read(file).replace(/\/\*[\s\S]*?\*\//g, ''));
+  const selectors = new Set();
+  const properties = new Set();
+  for (const css of sources) {
+    for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      for (const selector of match[1].split(',')) {
+        const normalized = selector.trim().replace(/\s+/g, '');
+        if (normalized && !normalized.startsWith('@')) selectors.add(normalized);
+      }
+      for (const declaration of match[2].split(';')) {
+        const property = declaration.split(':')[0]?.trim();
+        // 自定义属性按「名字」算结构：--glow-x 与 --rank 是两种版式手段，但它的取值不算
+        if (property) properties.add(property);
+      }
+    }
+  }
+  return { selectors, properties, behaviors: new Set(behaviorFiles(cfg).map((file) => path.basename(file))) };
+}
+
+function jaccard(left, right) {
+  const union = new Set([...left, ...right]).size;
+  const intersection = [...left].filter((item) => right.has(item)).length;
+  return union === 0 ? 1 : intersection / union;
+}
+
+/** 只在整次构建里比：--template 只生成一套时无从比较。 */
+function checkTemplateIdentity(jobs) {
+  // 横版是竖版的派生变体（generatedFrom），本来就该像，不参与比较
+  const groups = new Map();
+  for (const job of jobs.filter((item) => !item.generated)) {
+    const ratio = ratioOf(job.cfg);
+    if (!groups.has(ratio)) groups.set(ratio, []);
+    // 身份签名在分组时算一次，别在两两比较里反复读同一份 CSS
+    groups.get(ratio).push({ cfg: job.cfg, identity: identityOf(job.cfg) });
+  }
+  for (const group of groups.values()) {
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const score = similarity(group[i].identity, group[j].identity);
+        if (score >= IDENTITY_THRESHOLD) {
+          fail(`${group[i].cfg.key} 与 ${group[j].cfg.key} 综合相似度 ${(score * 100).toFixed(0)}%，超过 ${IDENTITY_THRESHOLD * 100}%：`
+            + '只换色换数值不算另一套模板——删掉一套，或给它独立的构图与动效');
+        }
+      }
+    }
+  }
+}
+
+function similarity(left, right) {
+  const structure = (jaccard(left.selectors, right.selectors) + jaccard(left.properties, right.properties)) / 2;
+  return (structure + jaccard(left.behaviors, right.behaviors)) / 2;
 }
 
 function checkStyleContract(cfg) {
@@ -772,6 +885,7 @@ function build(job) {
   const cfg = job.cfg;
   if (job.generated) syncVariantAssets(job);
   checkStyleContract(cfg);
+  checkSceneTypes(cfg);
   if (!vendorSplitText(job.dir)) return false;
   if (cfg.capabilities.includes('globe') && !vendorThree(job.dir)) {
     return false;
@@ -879,6 +993,17 @@ function main() {
   const jobs = buildJobs();
   const targets = ONLY ? jobs.filter((job) => job.cfg.key === ONLY) : jobs;
   if (ONLY && targets.length === 0) fail(`找不到模板 ${ONLY}（或其缺少 template.config.json）`);
+
+  // 跨模板的不变量只在整次构建时查；出错直接抛出，否则第一套重复模板就会先被写盘
+  if (!ONLY) {
+    try {
+      checkTemplateIdentity(jobs);
+    } catch (e) {
+      if (!(e instanceof BuildError)) throw e;
+      console.error(`✗ ${e.message}`);
+      process.exit(1);
+    }
+  }
 
   let ok = true;
   for (const job of targets) {

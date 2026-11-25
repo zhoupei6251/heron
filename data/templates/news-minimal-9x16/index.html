@@ -154,9 +154,6 @@ body {
   border-radius: var(--radius);
 }
 
-/* timeline：时间轴屏。屏次编号让位给刻度，记号更轻。 */
-.scene[data-scene-type="timeline"] .scene-no { letter-spacing: 0.06em; }
-
 /* compare：真正两栏对照。数字与标签来自数据事实（compare.js 建的 .compare-pairs），
    正文让位——两栏已经把「谁比谁、差多少」说完了，留着正文只是重复。
    有事实才画这一栏，没事实时正文照旧（见 .scene[data-scene-type="compare"] .body）。 */

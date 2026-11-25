@@ -36,10 +36,13 @@ public final class NewsScriptContract {
     private static final Set<String> ASSET_FIELDS = Set.of("asset_id", "media_asset_id", "role", "source_url");
     /** 场景标识：给人工改稿和版本比对一个稳定锚点，不能由数组下标临时推。 */
     private static final java.util.regex.Pattern SCENE_ID = java.util.regex.Pattern.compile("scene_[0-9]{3}");
-    /** 允许出现在稿件里的场景类型。新增类型要同时出现在模板 template.json 的 supportedSceneTypes。 */
-    private static final Set<String> SCENE_TYPES = Set.of(
-        "headline", "text", "image", "chart", "quote", "list", "compare",
-        "number", "qa", "timeline", "rank");
+    /**
+     * 允许出现在稿件里的场景类型，即渲染端真正实现了的全集。
+     * timeline / list / qa 曾列在这里，但没有任何模板实现过它们；quote / rank 的唯一实现
+     * （news-quote / news-rank 版式）已随重复模板清理一并删除。列着只会让模型写出来渲染不了的画面。
+     * 具体一份稿子能用哪些，另由模板 template.json 的 supportedSceneTypes 收窄。
+     */
+    private static final Set<String> SCENE_TYPES = Set.of("headline", "text", "image", "chart", "compare", "number");
     private static final int TITLE_CODE_POINTS = 15;
     private static final int MIN_SCENES = 3;
     private static final int MAX_SCENES = 6;

@@ -15,6 +15,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -254,13 +255,29 @@ public class NewsTemplatePicker {
         return candidates.get(0).key();
     }
 
+    /**
+     * 最近用过的模板，最新在前。
+     *
+     * <p>只认当前目录里还在的模板：历史作品会记着已删除的模板键，它们既进不了候选，
+     * 却会占掉「最近 2 期排除」的名额，让真正刚用过的在册模板逃过排除，还会被写进给模型的清单里。
+     */
     private List<String> recentKeys() {
         List<HeronNewsWork> works = workMapper.selectList(QueryBuilder.lambda(HeronNewsWork.class)
             .orderByDesc(HeronNewsWork::getCreateTime, HeronNewsWork::getId).last("LIMIT " + SCAN_LIMIT).build());
+        return recentInstalled(works, domain.availableTemplates());
+    }
+
+    /**
+     * 从按时间倒序的作品里取最近用过的在册模板键。
+     *
+     * <p>已删模板的键和还没选版式的作品（templateKey 为空）都不占名额。
+     */
+    static List<String> recentInstalled(List<HeronNewsWork> works, List<String> installed) {
+        Set<String> known = Set.copyOf(installed);
         LinkedHashSet<String> keys = new LinkedHashSet<>();
         for (HeronNewsWork work : works) {
             String key = work.getTemplateKey();
-            if (key != null && !key.isBlank()) {
+            if (key != null && known.contains(key)) {
                 keys.add(key);
             }
             if (keys.size() >= RECENT_LIMIT) {

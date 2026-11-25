@@ -18,9 +18,7 @@
     "headline",
     "text",
     "chart",
-    "number",
-    "compare",
-    "timeline"
+    "compare"
   ],
   "storyboard": true,
   "description": "三维地球：经纬度分布、区域高亮与高度柱，1080×1920，数据由 dataset/1 的 geo 快照驱动；只服务有空间关系的选题",

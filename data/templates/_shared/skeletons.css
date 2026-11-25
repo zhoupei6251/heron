@@ -9,7 +9,7 @@
    关键区别：放大的是数字（#kpi-value），不是领句——领句是一句话，
    放大到 168px 会被截断成「较区间起…」，那是把排版当成了内容。
    数字屏期间把常驻 KPI 从标题区拉进画面中部并放大，图表退场腾出的空间由它填。 */
-#root .scene.skeleton-number {
+#root[data-width="1080"] .scene.skeleton-number {
   top: 900px;
   bottom: 300px;
   justify-content: flex-start;
@@ -42,7 +42,7 @@
 
 /* 图表屏：图表是主角，上半幅到中段整块给它；场景文字收成一行压底注记。
    图表槽本身由 .skeleton-chart 期间放大高度（见下），文字让到下方一条窄带。 */
-#root .scene.skeleton-chart {
+#root[data-width="1080"] .scene.skeleton-chart {
   top: auto;
   bottom: 300px;
   height: auto;
@@ -72,7 +72,7 @@
    图表在这期间退场，它让出的上半幅必须由对照块接住——否则只是把
    「图表 + 文字」换成「空白 + 文字」，等于用更大的空白做对照。
    这里把对照块抬到画面中部，正文退成一句结论压底。 */
-#root .scene.skeleton-compare {
+#root[data-width="1080"] .scene.skeleton-compare {
   top: 520px;
   bottom: 300px;
   justify-content: flex-start;

@@ -42,8 +42,8 @@ class SceneTypeGateTest {
     @Test
     @DisplayName("模板声明过的类型放行")
     void supportedTypePasses(@TempDir Path dir) throws Exception {
-        Path tpl = template(dir, "[\"headline\",\"text\",\"quote\"]");
-        assertDoesNotThrow(() -> check(script("quote"), tpl));
+        Path tpl = template(dir, "[\"headline\",\"text\",\"chart\"]");
+        assertDoesNotThrow(() -> check(script("chart"), tpl));
     }
 
     @Test
@@ -51,9 +51,9 @@ class SceneTypeGateTest {
     void unsupportedTypeBlocked(@TempDir Path dir) throws Exception {
         Path tpl = template(dir, "[\"headline\",\"text\"]");
         HeronBusinessException e = assertThrows(HeronBusinessException.class,
-            () -> check(script("rank"), tpl));
+            () -> check(script("quote"), tpl));
         assertEquals("scene_type_unsupported", e.getCode());
-        assertTrue(e.getMessage().contains("rank"), e.getMessage());
+        assertTrue(e.getMessage().contains("quote"), e.getMessage());
         assertTrue(e.getMessage().contains("headline"), "错误里要列出模板实际支持什么：" + e.getMessage());
     }
 
@@ -71,12 +71,12 @@ class SceneTypeGateTest {
     @DisplayName("模板没写能力声明时不做类型约束（老模板兼容）")
     void undeclaredTemplateAllowsAny(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("template.json"), "{\"name\":\"老模板\"}");
-        assertDoesNotThrow(() -> check(script("rank"), dir));
+        assertDoesNotThrow(() -> check(script("quote"), dir));
     }
 
     @Test
     @DisplayName("模板目录没有 template.json 时同样不阻断")
     void missingMetaDoesNotBlock(@TempDir Path dir) {
-        assertDoesNotThrow(() -> check(script("rank"), dir));
+        assertDoesNotThrow(() -> check(script("quote"), dir));
     }
 }

@@ -8,7 +8,9 @@
     "role": "数据看板解读、指标变化、排行与趋势",
     "narratives": [
       "trend_reversal",
-      "numeric_contrast"
+      "numeric_contrast",
+      "rank_competition",
+      "time_change"
     ],
     "bg": "#0c1417",
     "fg": "#f3f0e8",
@@ -21,9 +23,7 @@
     "headline",
     "text",
     "chart",
-    "number",
-    "compare",
-    "timeline"
+    "compare"
   ],
   "visualMode": "3d",
   "aspectRatio": "9:16",

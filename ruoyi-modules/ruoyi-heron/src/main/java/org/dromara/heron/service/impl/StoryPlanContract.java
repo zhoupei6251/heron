@@ -22,8 +22,8 @@ public final class StoryPlanContract {
     private static final Set<String> SCENE_FIELDS = Set.of("purpose", "evidenceRefs", "beat", "emotion",
         "rhythm", "expectedVisual");
     private static final Set<String> VISUAL_FIELDS = Set.of("sceneType", "description");
-    /** 数据看板模板实际支持的画面类型，与 script-contract.md 一致。 */
-    private static final Set<String> SCENE_TYPES = Set.of("headline", "text", "chart", "number", "compare", "timeline");
+    /** 数据看板模板实际支持的画面类型，与 script-contract.md 一致。timeline 没有任何模板实现过，不列。 */
+    private static final Set<String> SCENE_TYPES = Set.of("headline", "text", "chart", "number", "compare");
     private static final Set<String> EMOTIONS = Set.of("好奇", "紧张", "平静", "惊讶", "释然", "紧迫", "克制");
     private static final Set<String> RHYTHMS = Set.of("紧凑", "平稳", "舒缓", "递进", "停顿");
 

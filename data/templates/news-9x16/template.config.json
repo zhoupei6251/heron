@@ -3,6 +3,7 @@
   "name": "快报",
   "pageTitle": "Heron 新闻竖版快报",
   "line": "NEWS_EXPLAINER",
+  "lines": ["NEWS_EXPLAINER", "KNOWLEDGE_EXPLAINER"],
   "style": "article",
   "layout": "news-9x16",
   "layouts": ["9x16", "16x9"],
@@ -16,7 +17,6 @@
   ],
   "ambient": true,
   "supportedSceneTypes": [
-    "headline",
     "text",
     "image"
   ],

@@ -21,8 +21,7 @@
     "text",
     "chart",
     "number",
-    "compare",
-    "timeline"
+    "compare"
   ],
   "storyboard": true,
   "skeletons": true,
@@ -188,5 +187,8 @@
       }
     }
   },
-  "generatedFrom": "news-data-9x16"
+  "generatedFrom": "news-data-9x16",
+  "lines": [
+    "DATA_BOARD"
+  ]
 }

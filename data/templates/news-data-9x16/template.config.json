@@ -19,8 +19,7 @@
     "text",
     "chart",
     "number",
-    "compare",
-    "timeline"
+    "compare"
   ],
   "storyboard": true,
   "skeletons": true,

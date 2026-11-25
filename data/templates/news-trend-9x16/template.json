@@ -21,9 +21,7 @@
     "headline",
     "text",
     "chart",
-    "number",
-    "compare",
-    "timeline"
+    "compare"
   ],
   "aspectRatio": "9:16",
   "recommendedDuration": {

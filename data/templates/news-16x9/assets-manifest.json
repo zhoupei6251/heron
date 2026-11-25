@@ -29,13 +29,13 @@
     },
     {
       "path": "template.config.json",
-      "sha256": "da4f5884638879999957d462fcb29d13fccc30e26d89bda3de81fbba114789b5",
-      "bytes": 2207
+      "sha256": "ff018f685ec4d163f7e1ab88d1d0ad8a63bf2cb47990944b35f8112777c7895a",
+      "bytes": 2230
     },
     {
       "path": "template.json",
-      "sha256": "cb08f8e66bd84bc42ff692cb429f2bb364a5534def10fe45b5869a8da2fdf638",
-      "bytes": 735
+      "sha256": "8988f2953f424760e85882a181696eb226879d45565b584ec5597a41361cdad9",
+      "bytes": 719
     }
   ]
 }
