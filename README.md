@@ -189,7 +189,7 @@ npm ci
 - 业务迁移由 Flyway 在启动时执行，记录写入 `flyway_schema_history`。
 - 当前基线版本为 `45`，`script/sql/heron/001~045` 只作历史查阅。
 - 已应用的迁移不能修改；校验和不一致会直接拒绝启动。
-- 新迁移写入 `ruoyi-admin/src/main/resources/db/migration/V{序号}__{描述}.sql`。
+- 新迁移写入 `ruoyi-admin/src/main/resources/db/migration/V{UTC时间戳}__{描述}.sql`，时间戳固定为 `yyyyMMddHHmmssSSS`（17 位，精确到毫秒）；各分支独立命名，不申请序号。已有的 `V46~V65` 保留原名。
 
 ## 部署
 

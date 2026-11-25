@@ -82,7 +82,7 @@ reusablePoints / heronTemplateFit
 
 ## 数据变更
 
-`heron_trend_video` 加 3 列（Flyway `V{序号}__trend_learn_state.sql`）：
+`heron_trend_video` 加 3 列（Flyway `V63__trend_learn_state.sql`，已落地）：
 
 | 列 | 类型 | 说明 |
 | --- | --- | --- |

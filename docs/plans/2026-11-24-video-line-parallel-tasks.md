@@ -6,7 +6,7 @@
 ## 先读这三条，否则并行会互相踩
 
 1. **`NewsProductionPipeline.java`（约 1700 行）是唯一的大户**：V2 / V3 / V6 都想改它。本单一律只分配给**一个** agent 持有，其余任务遇到它只读不写。
-2. **Flyway 序号不许各自挑**。并行 agent 同时写 `V64__*.sql` 会直接撞车。开工前向协调人申请序号，一次只发一个号。
+2. **Flyway 使用 UTC 时间戳版本，不申请序号**。新迁移命名为 `VyyyyMMddHHmmssSSS__描述.sql`（17 位，精确到毫秒），各分支独立生成；已有的 `V46~V65` 不改名。
 3. **`data/templates/**` 与 `data/tools/**` 归主会话**（模板/渲染层正在改）。其他 agent 只读，不改模板、不改 `build-templates.mjs`。
 
 ## 已被占用，不要重复立项
@@ -59,7 +59,7 @@
 | --- | --- |
 | 现状 | 联络表能看，但改一个场景要整片重跑；没有「按场景 ID 重渲染 + 拼回」的路径 |
 | 证据 | `NewsProductionPipeline.java:255 / 1269`（联络表）、`ProductionArtifact` 产物键 |
-| 文件区 | `NewsProductionPipeline.java`（**本任务独占**）、新增场景级服务类、一条 Flyway（申请序号） |
+| 文件区 | `NewsProductionPipeline.java`（**本任务独占**）、新增场景级服务类、一条 UTC 时间戳版本 Flyway |
 | 要做什么 | 场景渲染改成按 `scene_id` 可寻址：参数化单屏渲染 → 校验新屏的帧/文字闸 → 按时间轴替换进成片 → 复检整片门禁 |
 | 验收 | 改一屏后只重渲染该屏（日志可证），成片时长/音画偏移不变，AIGC 元数据与指纹重算正确 |
 | 并行 | 可立即开工，**但它是 `NewsProductionPipeline` 的唯一写者**，V3/V6 遇此文件只读 |
@@ -92,7 +92,7 @@
 | --- | --- |
 | 现状 | 模板有 `image` 能力（`.scene-figure`），但**没有素材来源**；迁移里没有任何普通素材表 |
 | 证据 | `layouts/article/news-9x16.css:32-36`（`.scene-figure`）、迁移目录无素材表 |
-| 文件区 | 新 Flyway（申请序号）+ `service/impl/MediaAsset*.java`（新）、`heron-ui` 素材页（独立仓库，可单独 agent） |
+| 文件区 | 新 UTC 时间戳版本 Flyway + `service/impl/MediaAsset*.java`（新）、`heron-ui` 素材页（独立仓库，可单独 agent） |
 | 要做什么 | 素材入库（来源、许可、尺寸、hash、OSS 指针）→ 按场景需要挑素材 → 缺素材时该场景退回纯文字版式（不是留空框）。许可未知的素材不许进生产 |
 | 验收 | 一条片子用上真素材且 `assets` 闸通过；删掉素材后同一条片子能退回纯文字版式并仍过闸 |
 | 并行 | 可立即开工。只读模板，不改模板 |

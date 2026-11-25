@@ -7,7 +7,7 @@
 
 1. **`NewsProductionPipeline.java`（2845 行）本单只归 A 单**。B 单、C 单若确实需要它加钩子，
    提给 A 单加，不要自己动这个文件。
-2. **Flyway 序号不许各自挑**。开工前向协调人申请序号，一次只发一个号。当前已用到 `V65`。
+2. **Flyway 使用 UTC 时间戳版本，不申请序号**。新迁移命名为 `VyyyyMMddHHmmssSSS__描述.sql`（17 位，精确到毫秒），各分支独立生成；已有的 `V46~V65` 不改名。
 3. **`data/templates/**` 与 `data/tools/**` 本单只归 B 单**。A 单、C 单只读，不改模板、不改
    `build-templates.mjs`。
 
@@ -93,7 +93,7 @@
    做法：取 `timeline.get(0)` 中点，再用既有 `QualityCriteria.picture_motion` 那套运动量
    在 ±0.6s 内挑变化最大的一帧（复用已有能力，不新造指标）。
 2. 输出两张：`cover.png`（模板原始比例，1080×1920）+ `cover-thumb.png`（平台的方图裁切位，1080×1080 居中裁）。
-3. 写进产物：`artifacts.finalizeFile(run, "cover", ...)`。**封面地址要落库，但 `heron_video_version` 没有封面列**（全仓只有 `heron_trend_video.cover_url`，`V56`）；加列要一条 Flyway，向协调人申请序号，不要自己挑。
+3. 写进产物：`artifacts.finalizeFile(run, "cover", ...)`。**封面地址要落库，但 `heron_video_version` 没有封面列**（全仓只有 `heron_trend_video.cover_url`，`V56`）；加列要一条 UTC 时间戳版本 Flyway，各分支独立命名。
 4. 新闸 `cover`：图存在、尺寸对、不是纯色帧（复用 `contactSheet` 之后已有的非空判定思路）。
 
 验收：
