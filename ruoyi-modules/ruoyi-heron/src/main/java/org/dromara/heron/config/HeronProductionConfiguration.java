@@ -102,10 +102,11 @@ public class HeronProductionConfiguration {
                                                          QualityReviewer qualityReviewer,
                                                          NewsSourceFetcher newsSourceFetcher,
                                                          FrozenContextService frozenContexts,
-                                                         IMediaAssetService mediaAssets) {
+                                                         IMediaAssetService mediaAssets,
+                                                         HeronNewsProperties newsProperties) {
         return new NewsProductionPipeline(author, knowledgeAuthor, processes, artifacts, properties,
             execution::beginStage, datasetRouter, datasetFetch, datasetAuthor, reviewer, qualityReviewer,
-            newsSourceFetcher, frozenContexts, mediaAssets);
+            newsSourceFetcher, frozenContexts, mediaAssets, newsProperties);
     }
 
     /**

@@ -62,6 +62,11 @@ heron:
     trend-learn-output-dir: ./docs/learned
     # 模板、渲染器、字体与音色都锁定后才注册新闻流水线 bean
     pipeline-enabled: false
+    # 两项默认关：字幕要先验收编码质量与耗时，封面等字幕稳定观察后再开
+    subtitles:
+      burn: false
+    cover:
+      enabled: false
     # 自动产出：关闭时既不装配调度也不做自动确认；slots 是 cron 列表，几条就是每天最多几条
     auto-enabled: false
     # 自动槽位固定用数据看板模板；模板不存在时自动产出直接失败，不静默退回新闻模板

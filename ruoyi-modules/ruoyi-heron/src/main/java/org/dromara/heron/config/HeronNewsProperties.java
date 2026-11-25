@@ -93,6 +93,22 @@ public class HeronNewsProperties {
      */
     private List<KnowledgeSource> knowledgeSources = new ArrayList<>();
 
+    /** 字幕烧录会增加一次整片编码，默认关以保持既有成片逐字节不变。 */
+    private Subtitles subtitles = new Subtitles();
+
+    /** 封面抽帧与裁切默认关，待字幕烧录稳定观察后再逐期启用。 */
+    private Cover cover = new Cover();
+
+    @Data
+    public static class Subtitles {
+        private boolean burn;
+    }
+
+    @Data
+    public static class Cover {
+        private boolean enabled;
+    }
+
     @Data
     public static class KnowledgeSource {
         private String sourceKey;

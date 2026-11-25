@@ -20,6 +20,8 @@ public class HeronVideoVersion extends BaseEntity {
     private String inputSnapshot;
     private String script;
     private String artifactManifest;
+    /** 受保护的原比例封面预览地址；未启用封面时为空。 */
+    private String coverUrl;
     private String checks;
     /** AI 审稿结论（JSON）。自动发布只认这里记录的 PASS，不认「曾经调过审稿」。 */
     private String editorialReview;

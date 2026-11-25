@@ -23,6 +23,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -93,6 +94,73 @@ class NewsProductionPipelineSoundIntegrationTest {
         String filter = command.get(command.indexOf("-filter_complex") + 1);
         assertTrue(filter.contains("[base][2:a]amix=inputs=2"), filter);
         assertTrue(filter.endsWith("[mix]"));
+        assertEquals("copy", command.get(command.indexOf("-c:v") + 1));
+        assertFalse(command.contains("[v]"));
+    }
+
+    @Test
+    @DisplayName("烧字幕时同一次混流改为 libx264 并挂 ASS，参数与 looks 渲染一致")
+    void burnsSubtitlesInTheMixCommand(@TempDir Path root) throws Exception {
+        HeronProductionProperties properties = properties(root);
+        List<List<String>> commands = new ArrayList<>();
+        ProductionProcessService processes = mock(ProductionProcessService.class);
+        doAnswer(invocation -> {
+            ProductionProcessBo command = invocation.getArgument(1);
+            commands.add(List.copyOf(command.arguments()));
+            Files.writeString(command.workDirectory().resolve("final.mp4"), "burned");
+            return new ProductionProcessVo(0, false, false, "", "");
+        }).when(processes).run(any(), any());
+        NewsProductionPipeline pipeline = pipeline(properties, processes);
+        Path work = Files.createDirectories(root.resolve("work"));
+        SubtitleBurn.Prepared subtitles = subtitles(root, work);
+
+        pipeline.mixTo(run(), work, null, "volume=1", 0, 0, null, subtitles);
+
+        List<String> command = commands.getFirst();
+        String filter = command.get(command.indexOf("-filter_complex") + 1);
+        assertTrue(filter.contains("[0:v]ass=filename=composition/subs.ass:fontsdir=composition/fonts[v]"), filter);
+        assertEquals("[v]", command.get(command.indexOf("-map") + 1));
+        assertEquals("libx264", command.get(command.indexOf("-c:v") + 1));
+        assertEquals("medium", command.get(command.indexOf("-preset") + 1));
+        assertEquals("16", command.get(command.indexOf("-crf") + 1));
+        assertEquals("aac", command.get(command.indexOf("-c:a") + 1));
+    }
+
+    @Test
+    @DisplayName("烧录编码失败返回字幕闸错误，不冒充 AIGC 元数据失败")
+    void reportsSubtitleBurnFailure(@TempDir Path root) throws Exception {
+        HeronProductionProperties properties = properties(root);
+        ProductionProcessService processes = mock(ProductionProcessService.class);
+        org.mockito.Mockito.doReturn(new ProductionProcessVo(1, false, false, "", "ass font missing"))
+            .when(processes).run(any(), any());
+        NewsProductionPipeline pipeline = pipeline(properties, processes);
+        Path work = Files.createDirectories(root.resolve("work"));
+        SubtitleBurn.Prepared subtitles = subtitles(root, work);
+
+        org.dromara.heron.domain.HeronBusinessException error = assertThrows(
+            org.dromara.heron.domain.HeronBusinessException.class,
+            () -> pipeline.mixTo(run(), work, null, "volume=1", 0, 0, null, subtitles));
+
+        assertEquals("news_subtitles_burn_failed", error.getCode());
+        assertTrue(error.getMessage().contains("ass font missing"));
+    }
+
+    private static SubtitleBurn.Prepared subtitles(Path root, Path work) throws Exception {
+        Files.createDirectories(work.resolve("composition"));
+        Path template = Files.createDirectories(root.resolve("templates/news"));
+        Files.writeString(template.resolve("template.config.json"),
+            "{\"key\":\"news\",\"style\":\"article\",\"layout\":\"news\",\"width\":1080,\"height\":1920}");
+        Path tokens = Files.createDirectories(root.resolve("templates/_shared/tokens"));
+        Files.writeString(tokens.resolve("article.css"), """
+            :root { --font-body: "Noto Sans SC", sans-serif; --fs-body: 38px;
+                    --fg: #ffffff; --bg: #000000; --pad-frame: 84px; }
+            """);
+        return SubtitleBurn.prepare(work, template, """
+            WEBVTT
+
+            00:00:00.100 --> 00:00:02.000
+            字幕烧录验证。
+            """);
     }
 
     @Test

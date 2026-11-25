@@ -183,6 +183,8 @@ npm ci
 | `HERON_ZEE_RP` | zee-rp 引擎根目录 |
 | `HERON_PUBLISH_COMMAND` | `douyin-cli` 发布命令路径 |
 
+`heron.news.subtitles.burn` 与 `heron.news.cover.enabled` 默认关闭：前者要增加整片重编码，需先验收质量与耗时；后者待字幕稳定观察后再开，避免一次同时改变成片与交付面。
+
 ## 数据库迁移
 
 - 基座库先导入 `script/sql/ry_vue.sql`。

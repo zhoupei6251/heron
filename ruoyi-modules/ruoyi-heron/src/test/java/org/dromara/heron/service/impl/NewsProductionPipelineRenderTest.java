@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import javax.imageio.ImageIO;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,7 +54,17 @@ class NewsProductionPipelineRenderTest {
 
     @Test
     @DisplayName("六类产物齐备，十道闸全部由真实命令判定通过")
-    void rendersOneRealVideo() {
+    void rendersOneRealVideo() throws Exception {
+        render(false, false);
+    }
+
+    @Test
+    @DisplayName("字幕与封面开启后，真实成片、交付闸和产物清单一起通过")
+    void rendersOneRealVideoWithDeliveryLayer() throws Exception {
+        render(true, true);
+    }
+
+    private void render(boolean burnSubtitles, boolean withCover) throws Exception {
         Path repository = Path.of("..", "..").toAbsolutePath().normalize();
         Path templateRoot = repository.resolve("data").resolve("templates");
         Path template = templateRoot.resolve("news-9x16");
@@ -71,12 +82,15 @@ class NewsProductionPipelineRenderTest {
         properties.setGuardEnabled(false);
         // PATH 上的 node 可能被同机其它会话切成 20.x，而 hyperframes 要求 >=22：与部署侧一样用绝对路径钉住。
         properties.setNode(System.getenv().getOrDefault("HERON_TEST_NODE", "node"));
+        HeronNewsProperties newsProperties = new HeronNewsProperties();
+        newsProperties.getSubtitles().setBurn(burnSubtitles);
+        newsProperties.getCover().setEnabled(withCover);
         NewsProductionPipeline pipeline = new NewsProductionPipeline(
             fixedAuthor(SCRIPT), null, new ProductionProcessService(properties,
             new ProductionArtifactService(properties, null)), new ProductionArtifactService(properties, null), properties,
             (run, stage, progress) -> true, null, null, null, passingReview(), null,
-            new NewsSourceFetcher(null, null, new HeronNewsProperties()),
-            org.mockito.Mockito.mock(FrozenContextService.class));
+            new NewsSourceFetcher(null, null, newsProperties),
+            org.mockito.Mockito.mock(FrozenContextService.class), null, newsProperties);
 
         ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_video, 10L, 5L, 1,
             UUID.randomUUID().toString(), lockedAssets(template), null);
@@ -91,8 +105,12 @@ class NewsProductionPipelineRenderTest {
             kinds.add(artifact.kind());
             assertTrue(artifact.bytes() > 0, artifact.kind() + " 是空产物");
         }
-        assertEquals(List.of("asset_manifest", "checks", "contact_sheet", "mp4", "script", "subtitles"),
-            kinds.stream().sorted().toList());
+        List<String> expectedKinds = new ArrayList<>(List.of(
+            "asset_manifest", "checks", "contact_sheet", "mp4", "script", "subtitles"));
+        if (withCover) {
+            expectedKinds.addAll(List.of("cover", "cover_thumb"));
+        }
+        assertEquals(expectedKinds.stream().sorted().toList(), kinds.stream().sorted().toList());
 
         JsonNode checks = content.path("checks");
         assertTrue(checks.size() >= 11, checks.toString());
@@ -113,6 +131,30 @@ class NewsProductionPipelineRenderTest {
         assertTrue(visual.path("measured").path("checkErrors").asInt() == 0, "版式闸有 error");
         assertTrue(find(checks, "audio").path("measured").path("voiceBytes").asLong() > 1000);
         assertTrue(find(checks, "assets").path("measured").path("manifestMatched").asBoolean());
+        if (burnSubtitles) {
+            JsonNode burn = find(checks, "subtitles_burn");
+            assertTrue(burn.path("measured").path("changedPixels").asLong() >= 16);
+            assertTrue(burn.path("measured").path("durationDeltaMs").asLong() < 20);
+            assertEquals(true, content.path("subtitlesBurned").asBoolean());
+        }
+        if (withCover) {
+            JsonNode coverGate = find(checks, "cover");
+            assertEquals(1080, coverGate.path("measured").path("width").asInt());
+            assertEquals(1920, coverGate.path("measured").path("height").asInt());
+            assertEquals(1080, coverGate.path("measured").path("thumbWidth").asInt());
+            assertEquals(1080, coverGate.path("measured").path("thumbHeight").asInt());
+            assertTrue(coverGate.path("measured").path("nonBlank").asBoolean());
+            ProductionArtifactVo cover = result.artifacts().stream().filter(file -> "cover".equals(file.kind()))
+                .findFirst().orElseThrow();
+            assertEquals(NewsProductionPipeline.coverUrl(run.bizId(), run.versionId(), cover.artifactId()),
+                content.path("coverUrl").asString());
+            assertEquals(1080, ImageIO.read(dataRoot.resolve(cover.storageKey()).toFile()).getWidth());
+            ProductionArtifactVo thumb = result.artifacts().stream().filter(file -> "cover_thumb".equals(file.kind()))
+                .findFirst().orElseThrow();
+            assertEquals(1080, ImageIO.read(dataRoot.resolve(thumb.storageKey()).toFile()).getWidth());
+            assertEquals(1080, ImageIO.read(dataRoot.resolve(thumb.storageKey()).toFile()).getHeight());
+        }
+        System.out.println("NEWS_RENDER_WORK=" + dataRoot.toAbsolutePath());
     }
 
     /**

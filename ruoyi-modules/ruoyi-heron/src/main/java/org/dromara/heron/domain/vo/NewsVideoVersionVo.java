@@ -18,6 +18,8 @@ public class NewsVideoVersionVo implements Serializable {
     private Long taskId;
     private String inputSnapshot;
     private String script;
+    /** 原比例封面预览地址；null 表示该版本没有封面。 */
+    private String coverUrl;
     private String checks;
     /** AI 审稿结论；自动发布只认这里的 PASS，null 表示没审过。 */
     private String editorialReview;

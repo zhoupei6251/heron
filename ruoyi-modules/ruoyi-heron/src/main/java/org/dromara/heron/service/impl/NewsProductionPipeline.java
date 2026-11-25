@@ -2,6 +2,7 @@ package org.dromara.heron.service.impl;
 
 import cn.hutool.crypto.digest.DigestUtil;
 import cn.hutool.core.util.EscapeUtil;
+import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.EditorialStory;
 import org.dromara.heron.domain.HeronBusinessException;
@@ -79,6 +80,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private static final String SCENE_FILE = "scene.mp4";
     private static final String SCENE_FRAME_FILE = "scene-frame.png";
     private static final String SHEET_FILE = "contact.png";
+    private static final String BURNED_FINAL_FILE = "final-burned.mp4";
+    private static final String BURNED_SCENE_FILE = "scene-burned.mp4";
     /** 模板共用一份字体，落在模板根目录同级的 fonts/ 下，复制模板时注入 composition。 */
     private static final String FONT_NAME = "NotoSansSC-Regular.otf";
     private static final String AIGC_TAG = "AIGC";
@@ -97,6 +100,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private final ProductionProcessService processes;
     private final ProductionArtifactService artifacts;
     private final HeronProductionProperties properties;
+    private final HeronNewsProperties newsProperties;
     private final ProductionStageReporter stages;
     private final DatasetRouter router;
     private final DatasetFetchService datasets;
@@ -127,11 +131,24 @@ public class NewsProductionPipeline implements IProductionPipeline {
                                   EditorialReviewer reviewer, QualityReviewer qualityReviewer,
                                   NewsSourceFetcher fetcher, FrozenContextService contexts,
                                   IMediaAssetService mediaAssets) {
+        this(author, knowledgeAuthor, processes, artifacts, properties, stages, router, datasets, datasetAuthor,
+            reviewer, qualityReviewer, fetcher, contexts, mediaAssets, new HeronNewsProperties());
+    }
+
+    public NewsProductionPipeline(NewsScriptAuthor author, KnowledgeScriptAuthor knowledgeAuthor,
+                                  ProductionProcessService processes,
+                                  ProductionArtifactService artifacts, HeronProductionProperties properties,
+                                  ProductionStageReporter stages, DatasetRouter router,
+                                  DatasetFetchService datasets, DatasetScriptAuthor datasetAuthor,
+                                  EditorialReviewer reviewer, QualityReviewer qualityReviewer,
+                                  NewsSourceFetcher fetcher, FrozenContextService contexts,
+                                  IMediaAssetService mediaAssets, HeronNewsProperties newsProperties) {
         this.author = author;
         this.knowledgeAuthor = knowledgeAuthor;
         this.processes = processes;
         this.artifacts = artifacts;
         this.properties = properties;
+        this.newsProperties = newsProperties;
         this.stages = stages;
         this.router = router;
         this.datasets = datasets;
@@ -267,10 +284,13 @@ public class NewsProductionPipeline implements IProductionPipeline {
         speak(run, work, renderScript, input.path("assets").path("voiceKey").asString(""));
         double audioSeconds = probeDuration(run, voice);
         gates.add(voiceGate(voice, audioSeconds));
-        String subtitles = subtitleJson(read(composition.resolve(SUBTITLES_FILE)));
+        String vtt = read(composition.resolve(SUBTITLES_FILE));
+        String subtitles = subtitleJson(vtt);
         List<NewsNarrationTiming.Span> timeline = NewsNarrationTiming.align(renderScript, JSON.readTree(subtitles),
             Math.round(audioSeconds * 1000));
         gates.add(subtitleGate(composition.resolve(SUBTITLES_FILE), audioSeconds, timeline));
+        SubtitleBurn.Prepared burnedSubtitles = newsProperties.getSubtitles().isBurn()
+            ? SubtitleBurn.prepare(work, templateDir, vtt) : null;
 
         stages.beginStage(run, "render", 45);
         JsonNode subtitleNodes = JSON.readTree(subtitles);
@@ -282,17 +302,26 @@ public class NewsProductionPipeline implements IProductionPipeline {
         render(run, work);
         long renderMs = (System.nanoTime() - renderStartedAt) / 1_000_000L;
         gates.add(renderGate(work.resolve(RAW_FILE), renderMs, audioSeconds));
-        gates.add(decodeGate(decode(run, work.resolve(RAW_FILE)), audioSeconds));
+        int[] canvas = templateSize(templateDir);
+        gates.add(decodeGate(decode(run, work.resolve(RAW_FILE)), audioSeconds, canvas[0], canvas[1]));
 
         stages.beginStage(run, "finalize", 85);
         AudioMix audio = mixAndTag(run, work, timeline.get(timeline.size() - 1), sound.bed(), renderScript,
-            templateDir);
+            templateDir, burnedSubtitles);
         gates.add(audio.gate());
         Path finalFile = audio.finalFile();
+        if (burnedSubtitles != null) {
+            gates.add(SubtitleBurn.verify(processes, run, work, RAW_FILE, FINAL_FILE, burnedSubtitles));
+        }
         gates.add(aigcMetadataGate(run, finalFile));
         Path sheet = contactSheet(run, work, finalFile);
         gates.add(visualGate(check, sheet));
         gates.add(videoSignalGate(run, work, finalFile));
+        NewsCover.Result cover = newsProperties.getCover().isEnabled()
+            ? NewsCover.create(processes, run, work, finalFile, templateDir, timeline.get(0)) : null;
+        if (cover != null) {
+            gates.add(cover.gate());
+        }
         gates.add(aigcVisibleGate(check, composition));
         gates.sort((left, right) -> left.gate().compareTo(right.gate()));
 
@@ -307,6 +336,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
             artifacts.finalizeFile(run, "asset_manifest",
                 write(work.resolve("asset-manifest.json"), assetManifest(composition, input.path("assets"), mediaSelections, null)),
                 "application/json")));
+        if (cover != null) {
+            ProductionArtifactVo coverArtifact = artifacts.finalizeFile(run, "cover", cover.cover(), "image/png");
+            files.add(coverArtifact);
+            files.add(artifacts.finalizeFile(run, "cover_thumb", cover.thumb(), "image/png"));
+        }
         if (fetched != null) {
             files.add(fetched.artifact());
         }
@@ -322,6 +356,13 @@ public class NewsProductionPipeline implements IProductionPipeline {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("sourceVersionId", run.versionId());
         result.put("artifactManifestSha256", DigestUtil.sha256Hex(JSON.writeValueAsString(files)));
+        if (cover != null) {
+            ProductionArtifactVo coverArtifact = files.stream().filter(file -> "cover".equals(file.kind())).findFirst().orElseThrow();
+            result.put("coverUrl", coverUrl(run.bizId(), run.versionId(), coverArtifact.artifactId()));
+        }
+        if (burnedSubtitles != null) {
+            result.put("subtitlesBurned", true);
+        }
         result.put("script", script);
         if (!mediaSelections.isEmpty()) {
             result.put("mediaSelections", JSON.readTree(JSON.writeValueAsString(mediaSelections)));
@@ -500,6 +541,13 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
         Path templateDir = templateDir(input.path("assets").path("templateKey").asString(""));
         Path composition = copyTemplate(work, templateDir);
+        boolean previousBurned = false;
+        for (JsonNode check : inheritedChecks) {
+            previousBurned |= "subtitles_burn".equals(check.path("gate").asString(""));
+        }
+        SubtitleBurn.Prepared reworkSubtitles = newsProperties.getSubtitles().isBurn()
+            ? SubtitleBurn.prepareJson(work, templateDir, subtitleNodes, previousBurned ? target : null) : null;
+        int[] canvas = templateSize(templateDir);
         JsonNode renderScript = datasetLine ? DatasetPlaceholders.resolve(script, dataset, trend) : script;
         List<MediaAssetSelectionVo> mediaSelections = new ArrayList<>();
         if (!datasetLine && mediaAssets != null) {
@@ -535,7 +583,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
         long renderMs = (System.nanoTime() - renderStartedAt) / 1_000_000L;
         Path sceneFile = work.resolve(SCENE_FILE);
         JsonNode sceneProbe = decodeFile(run, work, SCENE_FILE);
-        Gate sceneDecode = decodeGate(sceneProbe, (target.endMs() - target.startMs()) / 1000.0, SCENE_FILE);
+        Gate sceneDecode = decodeGate(sceneProbe, (target.endMs() - target.startMs()) / 1000.0,
+            SCENE_FILE, canvas[0], canvas[1]);
         double sceneFps = ((Number) sceneDecode.measured().get("fps")).doubleValue();
         if (Math.abs(sceneFps - fps) > 0.01) {
             throw new HeronBusinessException(409, "news_scene_fps_mismatch", "目标屏渲染帧率与原成片不一致");
@@ -561,10 +610,25 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
         stages.beginStage(run, "finalize", 85);
         String previousAudioHash = audioHash(run, work, PREVIOUS_FILE);
-        spliceScene(run, work, target.startMs() / 1000.0, target.endMs() / 1000.0, previousSeconds, fps);
+        String spliceInput = SCENE_FILE;
+        if (reworkSubtitles != null && previousBurned) {
+            burnVideo(run, work, SCENE_FILE, BURNED_SCENE_FILE, reworkSubtitles);
+            gates.add(SubtitleBurn.verify(processes, run, work, SCENE_FILE, BURNED_SCENE_FILE, reworkSubtitles));
+            spliceInput = BURNED_SCENE_FILE;
+        }
+        spliceScene(run, work, target.startMs() / 1000.0, target.endMs() / 1000.0, previousSeconds, fps, spliceInput);
         Path finalFile = work.resolve(FINAL_FILE);
+        if (reworkSubtitles != null && !previousBurned) {
+            burnVideo(run, work, FINAL_FILE, BURNED_FINAL_FILE, reworkSubtitles);
+            gates.add(SubtitleBurn.verify(processes, run, work, FINAL_FILE, BURNED_FINAL_FILE, reworkSubtitles));
+            try {
+                Files.move(work.resolve(BURNED_FINAL_FILE), finalFile, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                throw new HeronBusinessException(503, "news_subtitles_burn_failed", "烧录成片替换失败", e);
+            }
+        }
         JsonNode finalProbe = decodeFile(run, work, FINAL_FILE);
-        Gate finalDecode = decodeGate(finalProbe, audioMs / 1000.0, FINAL_FILE);
+        Gate finalDecode = decodeGate(finalProbe, audioMs / 1000.0, FINAL_FILE, canvas[0], canvas[1]);
         double finalSeconds = probeDuration(run, finalFile);
         double finalFps = ((Number) finalDecode.measured().get("fps")).doubleValue();
         if (Math.abs(finalFps - fps) > 0.01) {
@@ -589,6 +653,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
         Path sheet = contactSheet(run, work, finalFile);
         gates.add(visualGate(check, sheet));
         gates.add(videoSignalGate(run, work, finalFile));
+        NewsCover.Result cover = newsProperties.getCover().isEnabled()
+            ? NewsCover.create(processes, run, work, finalFile, templateDir, timeline.get(0)) : null;
+        if (cover != null) {
+            gates.add(cover.gate());
+        }
         gates.add(aigcVisibleGate(check, composition));
         gates.add(reworkIntegrityGate(sceneIndex, durationDeltaMs, previousAudioHash.equals(finalAudioHash),
             previousMedia, finalMedia));
@@ -607,6 +676,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
                 artifacts.finalizeFile(run, "asset_manifest",
                     write(work.resolve("asset-manifest.json"), assetManifest(composition, input.path("assets"),
                         mediaSelections, inheritedAssetManifest)), "application/json")));
+            if (cover != null) {
+                files.add(artifacts.finalizeFile(run, "cover", cover.cover(), "image/png"));
+                files.add(artifacts.finalizeFile(run, "cover_thumb", cover.thumb(), "image/png"));
+            }
             for (String kind : List.of("dataset", "trend", "citations")) {
                 if (inheritedFiles.containsKey(kind)) {
                     files.add(artifacts.finalizeFile(run, kind, inheritedFiles.get(kind), "application/json"));
@@ -663,9 +736,15 @@ public class NewsProductionPipeline implements IProductionPipeline {
         previousResult.put("reviewInvalidated", true);
         previousResult.put("publishInvalidated", true);
         for (String stale : List.of("editorialReview", "reviewStatus", "reviewBy", "reviewAt", "reviewReason",
-            "reviewVideoSha", "reviewContactSha", "publishSource", "publishUrl", "publishAccount", "publishAt",
+            "reviewVideoSha", "reviewContactSha", "coverUrl", "subtitlesBurned", "publishSource", "publishUrl", "publishAccount", "publishAt",
             "publishBy", "publishVideoSha")) {
             previousResult.remove(stale);
+        }
+        if (cover != null) {
+            previousResult.put("coverUrl", coverUrl(run.bizId(), run.versionId(), requireArtifact(files, "cover").artifactId()));
+        }
+        if (reworkSubtitles != null) {
+            previousResult.put("subtitlesBurned", true);
         }
         String qualityReport = qualityReport(run, script, dataset, checks, subtitleReportJson);
         if (qualityReport == null) {
@@ -1436,6 +1515,15 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     private static Gate decodeGate(JsonNode probe, double audioSeconds, String locator) {
+        return decodeGate(probe, audioSeconds, locator, 1080, 1920);
+    }
+
+    private static Gate decodeGate(JsonNode probe, double audioSeconds, int expectedWidth, int expectedHeight) {
+        return decodeGate(probe, audioSeconds, RAW_FILE, expectedWidth, expectedHeight);
+    }
+
+    private static Gate decodeGate(JsonNode probe, double audioSeconds, String locator,
+                                   int expectedWidth, int expectedHeight) {
         int video = 0;
         int audio = 0;
         int width = 0;
@@ -1457,8 +1545,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
         if (video != 1 || audio != 1) {
             problems.add("流数不是 1 视频 1 音频");
         }
-        if (width != 1080 || height != 1920) {
-            problems.add("画面尺寸不是 1080x1920");
+        if (width != expectedWidth || height != expectedHeight) {
+            problems.add("画面尺寸不是 " + expectedWidth + "x" + expectedHeight);
         }
         if (fps <= 0 || fps > 60) {
             problems.add("帧率异常");
@@ -1613,6 +1701,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return new Gate("assets", "LOCK.json", "模板目录实算哈希逐项等于 LOCK.json 声明", measured);
     }
 
+    static String coverUrl(long workId, long versionId, String artifactId) {
+        return "/heron/newsWork/" + workId + "/versions/" + versionId + "/preview/" + artifactId;
+    }
+
     static String gateJson(List<Gate> gates) {
         List<Map<String, Object>> list = new ArrayList<>();
         for (Gate gate : gates) {
@@ -1705,9 +1797,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     /** 三段视频硬切拼接，原音轨直接复制；AIGC 标签随新容器重新写入。 */
-    private void spliceScene(ProductionRunVo run, Path work, double start, double end, double total, double fps) {
+    private void spliceScene(ProductionRunVo run, Path work, double start, double end, double total, double fps,
+                             String sceneFile) {
         List<String> command = new ArrayList<>(List.of("-y", "-loglevel", "error",
-            "-i", PREVIOUS_FILE, "-i", SCENE_FILE,
+            "-i", PREVIOUS_FILE, "-i", sceneFile,
             "-filter_complex", sceneSpliceFilter(start, end, total),
             "-map", "[v]", "-map", "0:a:0",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
@@ -1717,6 +1810,18 @@ public class NewsProductionPipeline implements IProductionPipeline {
         ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg", command, work, PACKAGE_TIMEOUT));
         if (result.exitCode() != 0 || size(work.resolve(FINAL_FILE)) <= 0) {
             throw new HeronBusinessException(503, "news_rework_splice_failed", "场景拼接失败：" + safeTail(result.stderr()));
+        }
+    }
+
+    private void burnVideo(ProductionRunVo run, Path work, String input, String output, SubtitleBurn.Prepared subtitles) {
+        List<String> command = new ArrayList<>(List.of("-y", "-loglevel", "error", "-i", input,
+            "-map", "0:v:0", "-map", "0:a:0", "-vf", SubtitleBurn.videoFilter(subtitles),
+            "-c:v", "libx264", "-preset", "medium", "-crf", "16", "-pix_fmt", "yuv420p",
+            "-c:a", "copy", "-map_metadata", "0", "-movflags", "+use_metadata_tags",
+            "-metadata", AIGC_TAG + "=" + AIGC_STATEMENT, output));
+        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg", command, work, PACKAGE_TIMEOUT));
+        if (result.exitCode() != 0 || size(work.resolve(output)) <= 0) {
+            throw new HeronBusinessException(503, "news_subtitles_burn_failed", "返工字幕烧录失败");
         }
     }
 
@@ -1840,7 +1945,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
      * 配乐导致超标则去掉配乐重混——音乐是加分项，不该为它卡住一条片子。
      */
     private AudioMix mixAndTag(ProductionRunVo run, Path work, NewsNarrationTiming.Span closing, Path sfxBed,
-                               JsonNode script, Path templateDir) {
+                               JsonNode script, Path templateDir, SubtitleBurn.Prepared subtitles) {
         // 测旁白：量的是渲染后成片里的那条音轨，不是工作目录里的配音文件
         AudioLoudness.Measurement voice = AudioLoudness.measureFile(processes, run, work, RAW_FILE);
         double voiceGain = AudioLoudness.voiceGain(voice);
@@ -1854,11 +1959,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
             bgmMeasured = AudioLoudness.measureBgm(processes, run, work, bgm, envelope);
             bgmGain = AudioLoudness.bgmGain(bgmMeasured);
         }
-        MixAttempt attempt = mixAndMeasure(run, work, bgm, envelope, voiceGain, bgmGain, sfxBed, MIX_ATTEMPTS);
+        MixAttempt attempt = mixAndMeasure(run, work, bgm, envelope, voiceGain, bgmGain, sfxBed, subtitles, MIX_ATTEMPTS);
         boolean bgmDropped = false;
         if (!attempt.ok() && bgm != null) {
             // 配乐导致超标：去掉配乐重来一次，不为音乐卡住出片
-            attempt = mixAndMeasure(run, work, null, envelope, voiceGain, 0, sfxBed, MIX_ATTEMPTS);
+            attempt = mixAndMeasure(run, work, null, envelope, voiceGain, 0, sfxBed, subtitles, MIX_ATTEMPTS);
             bgmDropped = true;
         }
         if (!attempt.ok()) {
@@ -1879,11 +1984,12 @@ public class NewsProductionPipeline implements IProductionPipeline {
      * 限幅器介入后关系会被压平，再多试也上不去，那就该按「旁白不达标」处理。
      */
     private MixAttempt mixAndMeasure(ProductionRunVo run, Path work, Path bgm, String envelope,
-                                      double voiceGain, double bgmGain, Path sfxBed, int maxAttempts) {
+                                      double voiceGain, double bgmGain, Path sfxBed,
+                                      SubtitleBurn.Prepared subtitles, int maxAttempts) {
         double gain = voiceGain;
         AudioLoudness.Measurement measured = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            mixTo(run, work, bgm, envelope, gain, bgmGain, sfxBed);
+            mixTo(run, work, bgm, envelope, gain, bgmGain, sfxBed, subtitles);
             measured = AudioLoudness.measureFile(processes, run, work, FINAL_FILE);
             if (measured.deliveryOk()) {
                 return new MixAttempt(true, gain, measured, attempt);
@@ -1900,7 +2006,12 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
     /** 混音与 AIGC 元数据一条命令完成；BGM 为空时就是只贴标签。 */
     void mixTo(ProductionRunVo run, Path work, Path bgm, String envelope,
-                       double voiceGain, double bgmGain, Path sfxBed) {
+               double voiceGain, double bgmGain, Path sfxBed) {
+        mixTo(run, work, bgm, envelope, voiceGain, bgmGain, sfxBed, null);
+    }
+
+    void mixTo(ProductionRunVo run, Path work, Path bgm, String envelope,
+               double voiceGain, double bgmGain, Path sfxBed, SubtitleBurn.Prepared subtitles) {
         List<String> command = new ArrayList<>();
         command.addAll(List.of("-y", "-loglevel", "error", "-i", RAW_FILE));
         int sfxInput = 1;
@@ -1915,15 +2026,27 @@ public class NewsProductionPipeline implements IProductionPipeline {
         if (sfxBed != null) {
             filter = SoundCueMixer.mixIntoBus(filter, "[" + sfxInput + ":a]");
         }
+        if (subtitles != null) {
+            filter = "[0:v]" + SubtitleBurn.videoFilter(subtitles) + "[v];" + filter;
+        }
         command.addAll(List.of("-filter_complex", filter));
-        command.addAll(List.of("-map", "0:v:0", "-map", "[mix]"));
-        command.addAll(List.of("-c:v", "copy", "-c:a", "aac", "-b:a", "160k"));
+        command.addAll(List.of("-map", subtitles == null ? "0:v:0" : "[v]", "-map", "[mix]"));
+        if (subtitles == null) {
+            command.addAll(List.of("-c:v", "copy"));
+        } else {
+            command.addAll(List.of("-c:v", "libx264", "-preset", "medium", "-crf", "16", "-pix_fmt", "yuv420p"));
+        }
+        command.addAll(List.of("-c:a", "aac", "-b:a", "160k"));
         command.addAll(List.of("-movflags", "+use_metadata_tags",
             "-metadata", AIGC_TAG + "=" + AIGC_STATEMENT, FINAL_FILE));
         ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg", command,
             work, PACKAGE_TIMEOUT));
         if (result.exitCode() != 0 || size(work.resolve(FINAL_FILE)) <= 0) {
             // 混音失败不静默降级成无 BGM：退回去等于掩盖一次真实的编码失败
+            if (subtitles != null) {
+                throw new HeronBusinessException(503, "news_subtitles_burn_failed",
+                    "字幕烧录或 AIGC 元数据写入失败：" + safeTail(result.stderr()));
+            }
             throw new HeronBusinessException(503, "news_aigc_metadata_failed", "写入 AIGC 元数据失败");
         }
     }
@@ -2032,7 +2155,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         int step = Math.max(1, (int) Math.floor(probeDuration(run, finalFile) / SHEET_TILES));
         ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg",
             List.of("-y", "-loglevel", "error", "-i", FINAL_FILE, "-vf",
-                "fps=1/" + step + ",scale=360:640,tile=3x2", "-frames:v", "1", SHEET_FILE), work, PACKAGE_TIMEOUT));
+                "fps=1/" + step + ",scale=360:-2,tile=3x2", "-frames:v", "1", SHEET_FILE), work, PACKAGE_TIMEOUT));
         if (result.exitCode() != 0 || size(work.resolve(SHEET_FILE)) <= 0) {
             throw new HeronBusinessException(503, "news_contact_sheet_failed", "联络表生成失败");
         }
@@ -2501,6 +2624,23 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return dir;
     }
 
+    private static int[] templateSize(Path templateDir) {
+        try {
+            JsonNode config = JSON.readTree(read(templateDir.resolve("template.config.json")));
+            int width = config.path("width").asInt(0);
+            int height = config.path("height").asInt(0);
+            if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
+                throw new HeronBusinessException(409, "news_decode_failed", "模板画布尺寸声明不合法");
+            }
+            return new int[]{width, height};
+        } catch (RuntimeException e) {
+            if (e instanceof HeronBusinessException business) {
+                throw business;
+            }
+            throw new HeronBusinessException(409, "news_decode_failed", "模板画布尺寸声明不可读", e);
+        }
+    }
+
     private Path copyTemplate(Path work, Path template) {
         if (template == null || !Files.isDirectory(template)) {
             throw new HeronBusinessException(503, "news_template_missing", "找不到锁定的 composition 模板目录");
@@ -2626,13 +2766,18 @@ public class NewsProductionPipeline implements IProductionPipeline {
             expected.add("citations");
         }
         List<ProductionArtifactVo> previousArtifacts = request.previousArtifacts();
-        if (previousArtifacts.size() != expected.size()) {
+        Set<String> allowed = new LinkedHashSet<>(expected);
+        allowed.addAll(Set.of("cover", "cover_thumb"));
+        boolean hasCover = previousArtifacts.stream().anyMatch(file -> file != null && "cover".equals(file.kind()));
+        boolean hasCoverThumb = previousArtifacts.stream().anyMatch(file -> file != null && "cover_thumb".equals(file.kind()));
+        if ((previousArtifacts.size() != expected.size() && previousArtifacts.size() != expected.size() + 2)
+            || hasCover != hasCoverThumb) {
             throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版产物清单不完整或包含多余产物");
         }
         String prefix = "videos/" + run.bizId() + "/v" + request.previousVersionId() + "/";
         Map<String, ProductionArtifactVo> result = new LinkedHashMap<>();
         for (ProductionArtifactVo artifact : previousArtifacts) {
-            if (artifact == null || !expected.contains(artifact.kind()) || result.containsKey(artifact.kind())
+            if (artifact == null || !allowed.contains(artifact.kind()) || result.containsKey(artifact.kind())
                 || artifact.artifactId() == null
                 || !artifact.artifactId().matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")
                 || artifact.sha256() == null || !artifact.sha256().matches("[0-9a-f]{64}")
@@ -2642,13 +2787,13 @@ public class NewsProductionPipeline implements IProductionPipeline {
             boolean captionJson = "subtitles".equals(artifact.kind()) && "application/json".equals(artifact.mediaType());
             String extension = switch (artifact.kind()) {
                 case "mp4" -> "mp4";
-                case "contact_sheet" -> "png";
+                case "contact_sheet", "cover", "cover_thumb" -> "png";
                 case "subtitles" -> captionJson ? "json" : "srt";
                 default -> "json";
             };
             String mediaType = switch (artifact.kind()) {
                 case "mp4" -> "video/mp4";
-                case "contact_sheet" -> "image/png";
+                case "contact_sheet", "cover", "cover_thumb" -> "image/png";
                 case "subtitles" -> captionJson ? "application/json" : "application/x-subrip";
                 default -> "application/json";
             };
@@ -2663,7 +2808,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
             artifacts.verify(artifact);
             result.put(artifact.kind(), artifact);
         }
-        if (!result.keySet().equals(expected)) {
+        if (!result.keySet().containsAll(expected)) {
             throw new HeronBusinessException(409, "scene_rework_source_invalid", "上一版产物清单缺少必需产物");
         }
         return result;
@@ -2772,7 +2917,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         }
     }
 
-    private static int blankCells(BufferedImage image, int columns, int rows) {
+    static int blankCells(BufferedImage image, int columns, int rows) {
         if (image == null) {
             throw new HeronBusinessException(409, "news_contact_sheet_unreadable", "画面帧不可读");
         }

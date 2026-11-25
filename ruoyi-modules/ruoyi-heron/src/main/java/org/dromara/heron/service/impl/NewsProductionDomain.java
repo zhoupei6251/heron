@@ -309,11 +309,29 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         String contentProfile = profileRecord.isObject() ? JsonUtils.toJsonString(profileRecord) : null;
         if (contentProfile != null) boundedJson(contentProfile);
         validateManifest(version, task, result.artifacts(), true);
+        ProductionArtifactVo cover = result.artifacts().stream().filter(file -> "cover".equals(file.kind()))
+            .findFirst().orElse(null);
+        String coverUrl = content.path("coverUrl").asString(null);
+        if ((cover == null) != (coverUrl == null)
+            || (cover != null && !NewsProductionPipeline.coverUrl(task.getBizId(), task.getVersionId(), cover.artifactId())
+                .equals(coverUrl))) {
+            throw conflict("cover_invalid", "封面地址必须指向本版本清单里的原比例封面");
+        }
+        boolean coverGate = false;
+        boolean burnGate = false;
+        for (JsonNode check : content.path("checks")) {
+            coverGate |= "cover".equals(check.path("gate").asString(""));
+            burnGate |= "subtitles_burn".equals(check.path("gate").asString(""));
+        }
+        if ((cover != null && !coverGate) || (content.path("subtitlesBurned").asBoolean(false) && !burnGate)) {
+            throw conflict("checks_incomplete", "封面或字幕烧录已启用但缺少对应交付闸");
+        }
         String manifest = JsonUtils.toJsonString(result.artifacts());
         boundedJson(manifest);
         verifyReports(result.artifacts(), JsonUtils.toJsonString(content.path("script")), checks);
         int changed = versionMapper.lambda().set(HeronVideoVersion::getScript, JsonUtils.toJsonString(content.path("script")))
-            .set(HeronVideoVersion::getArtifactManifest, manifest).set(HeronVideoVersion::getChecks, checks)
+            .set(HeronVideoVersion::getArtifactManifest, manifest)
+            .set(coverUrl != null, HeronVideoVersion::getCoverUrl, coverUrl).set(HeronVideoVersion::getChecks, checks)
             .set(HeronVideoVersion::getEditorialReview, editorialReview)
             .set(HeronVideoVersion::getDurationMs, content.path("durationMs").asLong())
             .set(qualityReport != null, HeronVideoVersion::getQualityReport, qualityReport)
@@ -439,28 +457,37 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         boolean trend = trend(version);
         boolean knowledge = knowledgeExplainer(version);
         Set<String> expected = trend ? TREND_KINDS : knowledge ? KNOWLEDGE_KINDS : dataBoard ? DATA_KINDS : KINDS;
-        if (files == null || files.size() != expected.size()) {
-            throw conflict("manifest_invalid", trend ? "必须具备全部八类产物（含 dataset 与 trend）"
-                : knowledge ? "必须具备全部七类产物（含 citations）"
-                : dataBoard ? "必须具备全部七类产物（含 dataset）" : "必须具备全部六类产物");
+        boolean hasCover = files != null && files.stream().anyMatch(file -> file != null && "cover".equals(file.kind()));
+        boolean hasCoverThumb = files != null && files.stream().anyMatch(file -> file != null && "cover_thumb".equals(file.kind()));
+        if (files == null || (files.size() != expected.size() && files.size() != expected.size() + 2)
+            || hasCover != hasCoverThumb) {
+            throw conflict("manifest_invalid", trend ? "必须具备全部八类产物（含 dataset 与 trend），封面只能成对增加"
+                : knowledge ? "必须具备全部七类产物（含 citations），封面只能成对增加"
+                : dataBoard ? "必须具备全部七类产物（含 dataset），封面只能成对增加"
+                : "必须具备全部六类产物，封面只能成对增加两张");
         }
+        Set<String> allowed = new HashSet<>(expected);
+        allowed.addAll(Set.of("cover", "cover_thumb"));
         Set<String> kinds = new HashSet<>();
         Set<String> ids = new HashSet<>();
         String prefix = "videos/" + version.getWorkId() + "/v" + version.getId() + "/a" + task.getAttemptNo() + "-" + task.getRunToken() + "/";
         for (ProductionArtifactVo file : files) {
-            if (file == null || !expected.contains(file.kind()) || !kinds.add(file.kind()) || file.artifactId() == null
+            if (file == null || !allowed.contains(file.kind()) || !kinds.add(file.kind()) || file.artifactId() == null
                 || !file.artifactId().matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}") || !ids.add(file.artifactId())
                 || file.sha256() == null || !file.sha256().matches("[0-9a-f]{64}") || file.bytes() <= 0
                 || file.bytes() > properties.getNewsMaxBytes()) throw conflict("manifest_invalid", "产物描述不完整或重复");
             boolean captionJson = "subtitles".equals(file.kind()) && "application/json".equals(file.mediaType());
-            String extension = switch (file.kind()) { case "mp4" -> "mp4"; case "contact_sheet" -> "png"; case "subtitles" -> captionJson ? "json" : "srt"; default -> "json"; };
-            String mediaType = switch (file.kind()) { case "mp4" -> "video/mp4"; case "contact_sheet" -> "image/png"; case "subtitles" -> captionJson ? "application/json" : "application/x-subrip"; default -> "application/json"; };
+            String extension = switch (file.kind()) { case "mp4" -> "mp4"; case "contact_sheet", "cover", "cover_thumb" -> "png"; case "subtitles" -> captionJson ? "json" : "srt"; default -> "json"; };
+            String mediaType = switch (file.kind()) { case "mp4" -> "video/mp4"; case "contact_sheet", "cover", "cover_thumb" -> "image/png"; case "subtitles" -> captionJson ? "application/json" : "application/x-subrip"; default -> "application/json"; };
             if (!Objects.equals(file.storageKey(), prefix + file.artifactId() + "." + extension)
                 || !Objects.equals(file.mediaType(), mediaType)) throw conflict("artifact_association", "产物不属于本版本或媒体类型错误");
             if (verifyFiles) {
                 safePath(file);
                 artifacts.verify(file);
             }
+        }
+        if (!kinds.containsAll(expected)) {
+            throw conflict("manifest_invalid", "基础产物缺失，封面不能顶替成片、联络表、脚本、字幕、检查或资产清单");
         }
     }
 
@@ -569,6 +596,8 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         return switch (Objects.toString(kind, "")) {
             case "mp4" -> ".mp4";
             case "contact_sheet" -> "-contact.png";
+            case "cover" -> "-cover.png";
+            case "cover_thumb" -> "-cover-thumb.png";
             case "subtitles" -> "-subtitles.json";
             default -> throw new HeronAccessException();
         };

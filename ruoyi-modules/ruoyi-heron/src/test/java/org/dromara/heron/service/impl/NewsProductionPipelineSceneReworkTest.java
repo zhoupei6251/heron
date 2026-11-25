@@ -1,6 +1,7 @@
 package org.dromara.heron.service.impl;
 
 import cn.hutool.crypto.digest.DigestUtil;
+import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.ProductionBizType;
@@ -222,6 +223,54 @@ class NewsProductionPipelineSceneReworkTest {
     }
 
     @Test
+    @DisplayName("旧片未烧字幕时，返工拼接后补烧全片且不重跑 TTS")
+    void burnsWholeReworkWhenPreviousWasNotBurned(@TempDir Path root) throws Exception {
+        Fixture fixture = new Fixture(root, null, true, false, false);
+
+        ProductionResultVo result = fixture.pipeline.reworkScene(fixture.run, fixture.request);
+
+        JsonNode content = JSON.readTree(result.resultJson());
+        assertTrue(content.path("subtitlesBurned").asBoolean());
+        assertTrue(findGate(content.path("checks"), "subtitles_burn").path("passed").asBoolean());
+        assertEquals(0, fixture.processes.ttsCalls);
+        assertTrue(fixture.processes.burnArguments.stream().anyMatch(args -> args.getLast().equals("final-burned.mp4")));
+        assertTrue(fixture.processes.burnArguments.stream().noneMatch(args -> args.getLast().equals("scene-burned.mp4")));
+    }
+
+    @Test
+    @DisplayName("旧片已烧字幕时，返工只烧替换屏，避免旧字幕二次叠加")
+    void burnsOnlyReplacementSceneWhenPreviousWasBurned(@TempDir Path root) throws Exception {
+        Fixture fixture = new Fixture(root, null, true, false, true);
+
+        ProductionResultVo result = fixture.pipeline.reworkScene(fixture.run, fixture.request);
+
+        JsonNode content = JSON.readTree(result.resultJson());
+        assertTrue(content.path("subtitlesBurned").asBoolean());
+        assertTrue(findGate(content.path("checks"), "subtitles_burn").path("passed").asBoolean());
+        assertTrue(fixture.processes.burnArguments.stream().anyMatch(args -> args.getLast().equals("scene-burned.mp4")));
+        assertTrue(fixture.processes.burnArguments.stream().noneMatch(args -> args.getLast().equals("final-burned.mp4")));
+        assertTrue(fixture.processes.spliceArguments.stream().anyMatch(args -> args.contains("scene-burned.mp4")));
+        String ass = Files.readString(fixture.artifacts.prepareWorkDirectory(fixture.run).resolve("composition/scene.ass"));
+        assertTrue(ass.contains("影像算法重写") && ass.contains("正文二"));
+        assertTrue(!ass.contains("电池容量提升两成") && !ass.contains("起售价与上一代持平"));
+    }
+
+    @Test
+    @DisplayName("带封面的上一版可返工，新封面地址不会被旧字段清理误删")
+    void reworksCoveredVersionAndReplacesCoverUrl(@TempDir Path root) throws Exception {
+        Fixture fixture = new Fixture(root, null, false, true, false);
+
+        ProductionResultVo result = fixture.pipeline.reworkScene(fixture.run, fixture.request);
+
+        JsonNode content = JSON.readTree(result.resultJson());
+        assertEquals(Set.of("mp4", "contact_sheet", "script", "subtitles", "checks", "asset_manifest", "cover", "cover_thumb"),
+            result.artifacts().stream().map(ProductionArtifactVo::kind).collect(java.util.stream.Collectors.toSet()));
+        assertTrue(findGate(content.path("checks"), "cover").path("passed").asBoolean());
+        assertTrue(content.path("coverUrl").asString().startsWith("/heron/newsWork/7/versions/4/preview/"));
+        assertNotEquals("/old-cover", content.path("coverUrl").asString());
+    }
+
+    @Test
     @DisplayName("非规范 JSON 的上一版 script 审计哈希等于真实 artifact SHA，并继承 hookType")
     void auditsOriginalScriptArtifactHashAndInheritsHookType(@TempDir Path root) throws Exception {
         Fixture fixture = new Fixture(root);
@@ -376,10 +425,15 @@ class NewsProductionPipelineSceneReworkTest {
         final RecordingProcesses processes;
 
         private Fixture(Path root) throws Exception {
-            this(root, null);
+            this(root, null, false, false, false);
         }
 
         Fixture(Path root, org.dromara.heron.service.IMediaAssetService mediaAssets) throws Exception {
+            this(root, mediaAssets, false, false, false);
+        }
+
+        Fixture(Path root, org.dromara.heron.service.IMediaAssetService mediaAssets,
+                boolean burnSubtitles, boolean withCover, boolean previousBurned) throws Exception {
             dataRoot = root.resolve("data");
             Path templateRoot = root.resolve("templates");
             Path template = templateRoot.resolve("news-9x16");
@@ -387,6 +441,13 @@ class NewsProductionPipelineSceneReworkTest {
             Files.writeString(template.resolve("fonts/NotoSansSC-Regular.otf"), "font");
             Files.writeString(template.resolve("assets-manifest.json"), "{}");
             Files.writeString(template.resolve("template.json"), "{\"supportedSceneTypes\":[\"text\",\"image\"]}");
+            Files.writeString(template.resolve("template.config.json"),
+                "{\"style\":\"article\",\"layout\":\"news-9x16\",\"width\":1080,\"height\":1920}");
+            Path tokens = Files.createDirectories(templateRoot.resolve("_shared/tokens"));
+            Files.writeString(tokens.resolve("article.css"), """
+                :root { --font-body: "Noto Sans SC", sans-serif; --fs-body: 38px;
+                        --fg: #ffffff; --bg: #000000; --pad-frame: 84px; }
+                """);
             Files.writeString(template.resolve("index.motion.json"), "{\"assertions\":[]}");
             Files.writeString(template.resolve("index.html"), """
                 <html data-composition-variables='[
@@ -435,6 +496,9 @@ class NewsProductionPipelineSceneReworkTest {
             properties.setGuardEnabled(false);
             artifacts = spy(new ProductionArtifactService(properties, null));
             processes = new RecordingProcesses(properties, artifacts);
+            HeronNewsProperties newsProperties = new HeronNewsProperties();
+            newsProperties.getSubtitles().setBurn(burnSubtitles);
+            newsProperties.getCover().setEnabled(withCover);
 
             String oldToken = UUID.randomUUID().toString();
             Path oldDirectory = dataRoot.resolve("videos/7/v3/a1-" + oldToken);
@@ -448,16 +512,26 @@ class NewsProductionPipelineSceneReworkTest {
             Path oldScript = oldDirectory.resolve(UUID.randomUUID() + ".json");
             Files.writeString(oldScript, SCRIPT);
             Path oldChecks = oldDirectory.resolve(UUID.randomUUID() + ".json");
-            Files.writeString(oldChecks, "[]");
+            Files.writeString(oldChecks, previousBurned
+                ? "[{\"gate\":\"subtitles_burn\",\"inputLocator\":\"subs.vtt#final.mp4\",\"passed\":true,\"reason\":\"已烧录\",\"measured\":{\"cues\":7}}]"
+                : "[]");
             Path oldManifest = oldDirectory.resolve(UUID.randomUUID() + ".json");
             Files.writeString(oldManifest, "{\"files\":[{\"path\":\"scene3.png\",\"sha256\":\""
                 + "a".repeat(64) + "\",\"bytes\":4}]}");
             previousVideo = oldArtifact(oldVideo, "mp4", "video/mp4");
             previousSubtitles = oldArtifact(oldSubtitles, "subtitles", "application/json");
-            previousArtifacts = List.of(previousVideo, oldArtifact(oldContact, "contact_sheet", "image/png"),
+            previousArtifacts = new ArrayList<>(List.of(previousVideo, oldArtifact(oldContact, "contact_sheet", "image/png"),
                 oldArtifact(oldScript, "script", "application/json"), previousSubtitles,
                 oldArtifact(oldChecks, "checks", "application/json"),
-                oldArtifact(oldManifest, "asset_manifest", "application/json"));
+                oldArtifact(oldManifest, "asset_manifest", "application/json")));
+            if (withCover) {
+                Path oldCover = oldDirectory.resolve(UUID.randomUUID() + ".png");
+                Path oldThumb = oldDirectory.resolve(UUID.randomUUID() + ".png");
+                Files.write(oldCover, RecordingProcesses.image(1080, 1920, false));
+                Files.write(oldThumb, RecordingProcesses.image(1080, 1080, false));
+                previousArtifacts.add(oldArtifact(oldCover, "cover", "image/png"));
+                previousArtifacts.add(oldArtifact(oldThumb, "cover_thumb", "image/png"));
+            }
             previousManifestSha256 = DigestUtil.sha256Hex(JSON.writeValueAsString(previousArtifacts));
 
             String input = JSON.writeValueAsString(Map.of("kind", "article", "assets", Map.of(
@@ -468,15 +542,26 @@ class NewsProductionPipelineSceneReworkTest {
                 UUID.randomUUID().toString(), input, null);
             JsonNode replacement = JSON.readTree(SCRIPT).path("scenes").get(1).deepCopy();
             ((ObjectNode) replacement).putObject("visual").put("layout", "quote");
-            previousResultJson = JSON.writeValueAsString(Map.of("script", JSON.readTree(SCRIPT),
-                "durationMs", 41500, "editorialReview", Map.of("verdict", "PASS"),
-                "sourceVersionId", 3L, "artifactManifestSha256", previousManifestSha256,
-                "reviewVideoSha", "old-review", "publishVideoSha", "old-publish"));
+            ObjectNode previousResult = JSON.createObjectNode();
+            previousResult.set("script", JSON.readTree(SCRIPT));
+            previousResult.put("durationMs", 41500);
+            previousResult.set("editorialReview", JSON.readTree("{\"verdict\":\"PASS\"}"));
+            previousResult.put("sourceVersionId", 3L);
+            previousResult.put("artifactManifestSha256", previousManifestSha256);
+            previousResult.put("reviewVideoSha", "old-review");
+            previousResult.put("publishVideoSha", "old-publish");
+            if (withCover) {
+                previousResult.put("coverUrl", "/old-cover");
+            }
+            if (previousBurned) {
+                previousResult.put("subtitlesBurned", true);
+            }
+            previousResultJson = JSON.writeValueAsString(previousResult);
             request = new SceneReworkRequest("scene_001", replacement, 3L, previousManifestSha256,
                 previousArtifacts, previousResultJson);
             pipeline = new NewsProductionPipeline(null, null, processes, artifacts, properties,
                 (ignoredRun, stage, progress) -> true, null, null, null, null, null, null,
-                mock(FrozenContextService.class), mediaAssets);
+                mock(FrozenContextService.class), mediaAssets, newsProperties);
         }
 
         private ProductionArtifactVo oldArtifact(Path file, String kind, String mediaType) throws Exception {
@@ -496,6 +581,7 @@ class NewsProductionPipelineSceneReworkTest {
         private double sceneFrameSeek = -1;
         private final List<List<String>> renderArguments = new ArrayList<>();
         private final List<List<String>> spliceArguments = new ArrayList<>();
+        private final List<List<String>> burnArguments = new ArrayList<>();
 
         private RecordingProcesses(HeronProductionProperties properties, ProductionArtifactService artifacts) {
             super(properties, artifacts);
@@ -545,7 +631,8 @@ class NewsProductionPipelineSceneReworkTest {
                 return ok("内容由 AI 生成");
             }
             String file = args.get(args.size() - 1);
-            double seconds = "scene.mp4".equals(file) ? sceneEnd - sceneStart : 41.5;
+            double seconds = "scene.mp4".equals(file) || "scene-burned.mp4".equals(file)
+                ? sceneEnd - sceneStart : 41.5;
             if (args.contains("-show_streams")) {
                 return ok("""
                     {"streams":[{"codec_type":"video","width":1080,"height":1920,"r_frame_rate":"30/1",
@@ -584,7 +671,23 @@ class NewsProductionPipelineSceneReworkTest {
                 Files.writeString(work.resolve("composition/narration.mp3"), "render-audio");
                 return ok("");
             }
-            if (args.get(args.size() - 1).equals("final.mp4")) {
+            String output = args.get(args.size() - 1);
+            if ("scene-burned.mp4".equals(output) || "final-burned.mp4".equals(output)) {
+                burnArguments.add(List.copyOf(args));
+                Files.writeString(work.resolve(output), "burned-video");
+                return ok("");
+            }
+            if ("subtitle-raw.png".equals(output) || "subtitle-final.png".equals(output)) {
+                Files.write(work.resolve(output), subtitleFrame("subtitle-final.png".equals(output)));
+                return ok("");
+            }
+            if (output.startsWith("cover-candidate-") || "cover.png".equals(output) || "cover-thumb.png".equals(output)) {
+                int width = "cover.png".equals(output) ? 1080 : output.startsWith("cover-candidate-") ? 360 : 1080;
+                int height = "cover.png".equals(output) ? 1920 : output.startsWith("cover-candidate-") ? 640 : 1080;
+                Files.write(work.resolve(output), image(width, height, false));
+                return ok("");
+            }
+            if (output.equals("final.mp4")) {
                 spliceCalls++;
                 spliceArguments.add(List.copyOf(args));
                 Files.writeString(work.resolve("final.mp4"), "new-video");
@@ -602,6 +705,21 @@ class NewsProductionPipelineSceneReworkTest {
             }
             var out = new java.io.ByteArrayOutputStream();
             ImageIO.write(image, "png", out);
+            return out.toByteArray();
+        }
+
+        private static byte[] subtitleFrame(boolean burned) throws Exception {
+            BufferedImage frame = new BufferedImage(1080, 1920, BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D graphics = frame.createGraphics();
+            graphics.setColor(java.awt.Color.BLACK);
+            graphics.fillRect(0, 0, 1080, 1920);
+            if (burned) {
+                graphics.setColor(java.awt.Color.WHITE);
+                graphics.fillRect(100, 1000, 800, 100);
+            }
+            graphics.dispose();
+            var out = new java.io.ByteArrayOutputStream();
+            ImageIO.write(frame, "png", out);
             return out.toByteArray();
         }
 

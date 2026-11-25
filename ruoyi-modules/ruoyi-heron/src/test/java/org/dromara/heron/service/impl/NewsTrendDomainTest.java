@@ -206,6 +206,40 @@ class NewsTrendDomainTest {
     }
 
     @Test
+    @DisplayName("封面与方图允许进入受保护预览白名单")
+    void coverArtifactsArePreviewable() {
+        assertEquals("-cover.png", NewsProductionDomain.requirePreviewKind("cover"));
+        assertEquals("-cover-thumb.png", NewsProductionDomain.requirePreviewKind("cover_thumb"));
+    }
+
+    @Test
+    @DisplayName("文章产物可带一对封面，但少一张或只带一张都拒")
+    void articleManifestAcceptsOnlyCompleteCoverPair() {
+        NewsProductionDomain domain = domain();
+        HeronVideoVersion version = version("article");
+        HeronProductionTask task = task();
+        List<ProductionArtifactVo> files = new ArrayList<>();
+        for (String kind : List.of("mp4", "contact_sheet", "script", "subtitles", "checks", "asset_manifest")) {
+            files.add(artifact(kind, files.size() + 1));
+        }
+
+        domain.validateManifest(version, task, files, false);
+        files.add(artifact("cover", 7));
+        HeronBusinessException single = assertThrows(HeronBusinessException.class,
+            () -> domain.validateManifest(version, task, files, false));
+        assertEquals("news_manifest_invalid", single.getCode());
+
+        files.add(artifact("cover_thumb", 8));
+        domain.validateManifest(version, task, files, false);
+
+        List<ProductionArtifactVo> replaced = files.stream()
+            .filter(file -> !List.of("contact_sheet", "asset_manifest").contains(file.kind())).toList();
+        HeronBusinessException missingBase = assertThrows(HeronBusinessException.class,
+            () -> domain.validateManifest(version, task, replaced, false));
+        assertEquals("news_manifest_invalid", missingBase.getCode());
+    }
+
+    @Test
     @DisplayName("趋势产物的存储键必须属于本版本，不能混进别的版本")
     void trendArtifactMustBelongToThisVersion() {
         NewsProductionDomain domain = domain();
@@ -229,12 +263,12 @@ class NewsTrendDomainTest {
         String id = String.format("%08d-1111-1111-1111-111111111111", index);
         String extension = switch (kind) {
             case "mp4" -> "mp4";
-            case "contact_sheet" -> "png";
+            case "contact_sheet", "cover", "cover_thumb" -> "png";
             default -> "json";
         };
         String mediaType = switch (kind) {
             case "mp4" -> "video/mp4";
-            case "contact_sheet" -> "image/png";
+            case "contact_sheet", "cover", "cover_thumb" -> "image/png";
             default -> "application/json";
         };
         String key = "videos/22/v11/a1-11111111-1111-1111-1111-111111111111/" + id + "." + extension;
