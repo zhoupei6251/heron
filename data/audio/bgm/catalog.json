@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "note": "配乐清单：选曲按 lines 过滤、emotions/rhythms 加权、weight 摇号（seed 取自冻结输入）。lufs 是 ffmpeg loudnorm 实测值，只作参考——成片增益一律现测现算，不读这里。加曲目就加一条 + 一个 mp3，不要改代码。",
+  "tracks": [
+    {
+      "key": "we-never",
+      "file": "we-never-bgm-full.mp3",
+      "weight": 100,
+      "lines": ["DATA_BOARD", "TREND_INSIGHT", "KNOWLEDGE_EXPLAINER", "NEWS_EXPLAINER"],
+      "emotions": ["紧张", "紧迫", "克制", "好奇"],
+      "rhythms": ["紧凑", "递进"],
+      "lufs": -9.58,
+      "description": "默认曲目，权重最高。低频推进+稳定节拍，适合解释型与数据型的连续叙事。"
+    },
+    {
+      "key": "stereotype-news",
+      "file": "stereotype-news.mp3",
+      "weight": 60,
+      "lines": ["NEWS_EXPLAINER", "DATA_BOARD"],
+      "emotions": ["紧迫", "紧张"],
+      "rhythms": ["紧凑", "平稳"],
+      "lufs": -10.09,
+      "description": "新闻播报语汇，短促、有节律感。适合硬资讯与快节奏盘点。"
+    },
+    {
+      "key": "city-run",
+      "file": "city-run.mp3",
+      "weight": 40,
+      "lines": ["TREND_INSIGHT", "DATA_BOARD"],
+      "emotions": ["紧迫", "惊讶"],
+      "rhythms": ["紧凑", "递进"],
+      "lufs": -12.75,
+      "description": "都市电子推进感，适合趋势上行与市场动向。"
+    },
+    {
+      "key": "city-sunshine",
+      "file": "city-sunshine.mp3",
+      "weight": 40,
+      "lines": ["KNOWLEDGE_EXPLAINER", "TREND_INSIGHT"],
+      "emotions": ["平静", "释然", "好奇"],
+      "rhythms": ["平稳", "舒缓"],
+      "lufs": -13.01,
+      "description": "明亮轻快，适合知识科普与正向趋势收束。"
+    },
+    {
+      "key": "the-drama",
+      "file": "the-drama.mp3",
+      "weight": 30,
+      "lines": ["NEWS_EXPLAINER", "KNOWLEDGE_EXPLAINER"],
+      "emotions": ["惊讶", "好奇"],
+      "rhythms": ["递进", "停顿"],
+      "lufs": -14.36,
+      "description": "叙事起伏明显，适合有反转与揭示结构的稿子。"
+    },
+    {
+      "key": "ambient-bongos",
+      "file": "ambient-bongos.mp3",
+      "weight": 20,
+      "lines": ["KNOWLEDGE_EXPLAINER"],
+      "emotions": ["平静", "克制"],
+      "rhythms": ["舒缓", "平稳"],
+      "lufs": -16.75,
+      "description": "环境氛围，几乎不抢注意力。适合长解释段与停顿较多的稿子。"
+    },
+    {
+      "key": "horror-suspense",
+      "file": "horror-suspense.mp3",
+      "weight": 10,
+      "lines": ["TREND_INSIGHT"],
+      "emotions": ["紧张", "紧迫"],
+      "rhythms": ["停顿", "递进"],
+      "lufs": -17.42,
+      "description": "悬念压迫感，用途最窄。只在趋势线讲风险与下跌时用。"
+    }
+  ]
+}

@@ -285,7 +285,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
         gates.add(decodeGate(decode(run, work.resolve(RAW_FILE)), audioSeconds));
 
         stages.beginStage(run, "finalize", 85);
-        AudioMix audio = mixAndTag(run, work, timeline.get(timeline.size() - 1), sound.bed());
+        AudioMix audio = mixAndTag(run, work, timeline.get(timeline.size() - 1), sound.bed(), renderScript,
+            templateDir);
         gates.add(audio.gate());
         Path finalFile = audio.finalFile();
         gates.add(aigcMetadataGate(run, finalFile));
@@ -1838,11 +1839,13 @@ public class NewsProductionPipeline implements IProductionPipeline {
      * <p>失败分两级：旁白自身不达标是内容主体的问题，直接阻塞出片；
      * 配乐导致超标则去掉配乐重混——音乐是加分项，不该为它卡住一条片子。
      */
-    private AudioMix mixAndTag(ProductionRunVo run, Path work, NewsNarrationTiming.Span closing, Path sfxBed) {
+    private AudioMix mixAndTag(ProductionRunVo run, Path work, NewsNarrationTiming.Span closing, Path sfxBed,
+                               JsonNode script, Path templateDir) {
         // 测旁白：量的是渲染后成片里的那条音轨，不是工作目录里的配音文件
         AudioLoudness.Measurement voice = AudioLoudness.measureFile(processes, run, work, RAW_FILE);
         double voiceGain = AudioLoudness.voiceGain(voice);
-        Path bgm = pickBgm();
+        BgmCatalog.Pick pick = pickBgm(script, templateDir, run);
+        Path bgm = pick.file();
         String envelope = bgmEnvelope(closing);
         AudioLoudness.Measurement bgmMeasured = null;
         double bgmGain = 0;
@@ -1866,7 +1869,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
                     + fmt(AudioLoudness.MAX_TRUE_PEAK) + " dBTP");
         }
         return new AudioMix(work.resolve(FINAL_FILE),
-            audioMixGate(voice, attempt, bgm, bgmMeasured, bgmGain, bgmDropped, sfxBed != null));
+            audioMixGate(voice, attempt, bgm, bgmMeasured, bgmGain, bgmDropped, sfxBed != null, pick));
     }
 
     /**
@@ -1972,7 +1975,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
      */
     private static Gate audioMixGate(AudioLoudness.Measurement voice, MixAttempt attempt, Path bgm,
                                      AudioLoudness.Measurement bgmMeasured, double bgmGain,
-                                     boolean bgmDropped, boolean withSfx) {
+                                     boolean bgmDropped, boolean withSfx, BgmCatalog.Pick pick) {
         Map<String, Object> measured = new TreeMap<>();
         measured.put("voiceLufs", round2(voice.integratedLufs()));
         measured.put("voiceTruePeakDb", round2(voice.truePeakDb()));
@@ -1985,6 +1988,12 @@ public class NewsProductionPipeline implements IProductionPipeline {
         measured.put("bgmDropped", bgmDropped);
         measured.put("sfxMixed", withSfx);
         measured.put("mixAttempts", attempt.attempts());
+        // 选曲留痕：一首配乐凭什么被选中，事后要能逐条复核
+        if (pick != null) {
+            measured.put("bgmKey", pick.track() == null ? null : pick.track().key());
+            measured.put("bgmReason", pick.reason());
+            measured.putAll(pick.measured());
+        }
         if (bgm != null && !bgmDropped && bgmMeasured != null) {
             measured.put("bgmLufs", round2(bgmMeasured.integratedLufs()));
             measured.put("bgmGainDb", round2(bgmGain));
@@ -2001,36 +2010,22 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     /**
-     * 背景音乐按「最近没用过的优先」轮换，避免每期都是同一首。
-     * 目录不存在或没有 mp3 时返回 null，由调用方退化成无 BGM。
+     * 选配乐：曲库清单 + 编辑线过滤 + 故事计划情绪节奏加权 + 权重摇号。
      *
-     * <p>BGM 是随仓库分发的资产，不跟 dataRoot 走：dataRoot 是工作目录（每个任务一个临时目录），
-     * 在那里找音乐永远找不到。听感资产和产出物不是同一类东西。
+     * <p>摇号的种子取自冻结输入，不用 {@code Math.random}：同一个任务重跑必须选到同一首，
+     * 否则成片指纹、审稿结论与返工基线三处都会对不上。
+     *
+     * <p>曲库不可用（没有目录/没有清单/清单写坏）时退化成无配乐，
+     * 并把原因写进闸报告——降级要留痕，不能静悄悄。
      */
-    private Path pickBgm() {
-        Path root = properties.getNewsTemplate();
-        Path audio = root == null ? null
-            : root.toAbsolutePath().normalize().getParent().resolve("audio").resolve("bgm");
-        if (audio == null || !java.nio.file.Files.isDirectory(audio)) {
-            // 部署侧可能把模板目录指到别处；退回仓库默认布局再试一次
-            audio = java.nio.file.Path.of("data", "audio", "bgm").toAbsolutePath().normalize();
-            if (!java.nio.file.Files.isDirectory(audio)) {
-                return null;
-            }
+    private BgmCatalog.Pick pickBgm(JsonNode script, Path templateDir, ProductionRunVo run) {
+        Path dir = BgmCatalog.directory(properties.getNewsTemplate());
+        if (dir == null) {
+            return new BgmCatalog.Pick(null, null, "配乐目录不存在，本期无配乐", new TreeMap<>());
         }
-        try (var files = java.nio.file.Files.list(audio)) {
-            List<Path> tracks = files.filter(p -> p.getFileName().toString().toLowerCase().endsWith(".mp3"))
-                .sorted().toList();
-            if (tracks.isEmpty()) {
-                return null;
-            }
-            // shortcut: 按日轮换，不做「哪首用过」的持久账本；要做效果归因时再按作品表现挑
-            int index = Math.floorMod(java.time.LocalDate.now().getDayOfYear(), tracks.size());
-            return tracks.get(index);
-        } catch (java.io.IOException e) {
-            log.warn("背景音乐目录不可读，本期无 BGM: {}", e.getMessage());
-            return null;
-        }
+        BgmCatalog.Story story = BgmCatalog.storyOf(script, templateDir);
+        return BgmCatalog.pick(BgmCatalog.load(dir), dir, story.line(), story.emotion(), story.rhythm(),
+            run.inputJson());
     }
 
     private Path contactSheet(ProductionRunVo run, Path work, Path finalFile) {
