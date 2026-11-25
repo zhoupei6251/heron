@@ -35,6 +35,9 @@ public class TrendVideoVo implements Serializable {
     private String coverUrl;
     private LocalDateTime publishedAt;
     private LocalDateTime collectedAt;
+    private String learnState;
+    private String learnNote;
+    private Long ossId;
 
     /** 是否短到能被当成一条短视频；长片不下载也不拆解。 */
     private Boolean shortEnough;

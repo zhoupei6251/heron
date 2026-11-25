@@ -135,6 +135,13 @@ public class ResearchAgentFactory {
 
     public ReActAgent createReAct(String sessionId, ResearchBudget budget, Hook hook,
                                   ResearchFindings findings, ResearchSnapshots snapshots) {
+        return createReAct(sessionId, AGENT_NAME + "-react", resource(SYSTEM_PROMPT),
+            scoped(budget, findings, snapshots), budget, hook);
+    }
+
+    /** 复用同一 L2 执行器，只替换提示词与工具面；不新写 ReAct 循环。 */
+    public ReActAgent createReAct(String sessionId, String agentName, String systemPrompt,
+                                  Object tools, ResearchBudget budget, Hook hook) {
         checkSession(sessionId);
         Toolkit toolkit = new Toolkit(ToolkitConfig.builder()
             .executionConfig(ExecutionConfig.builder()
@@ -142,11 +149,12 @@ public class ResearchAgentFactory {
                 .maxAttempts(1)
                 .build())
             .build());
-        toolkit.registerTool(scoped(budget, findings, snapshots));
+        toolkit.registerTool(tools);
 
         ReActAgent.Builder builder = ReActAgent.builder()
-            .name(AGENT_NAME + "-react")
-            .sysPrompt(resource(SYSTEM_PROMPT))
+            .name(agentName)
+            .defaultSessionId(sessionId)
+            .sysPrompt(systemPrompt)
             .model(model)
             .toolkit(toolkit)
             .maxIters(maxIters)

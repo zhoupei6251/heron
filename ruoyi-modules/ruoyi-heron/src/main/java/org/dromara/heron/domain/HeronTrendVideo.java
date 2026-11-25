@@ -59,4 +59,13 @@ public class HeronTrendVideo implements Serializable {
     private LocalDateTime collectedAt;
 
     private LocalDateTime createTime;
+
+    /** 学习状态；历史行由数据库默认值补为 SEEN。 */
+    private String learnState;
+
+    /** 学习尝试次数、失败原因与产物位置，人可读。 */
+    private String learnNote;
+
+    /** 原片在 sys_oss 中的主键。 */
+    private Long ossId;
 }

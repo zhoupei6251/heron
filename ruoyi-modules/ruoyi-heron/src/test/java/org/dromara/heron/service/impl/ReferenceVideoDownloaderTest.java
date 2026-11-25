@@ -63,6 +63,17 @@ class ReferenceVideoDownloaderTest {
     }
 
     @Test
+    void perCallLimitDoesNotReuseReferenceAssetLimit() {
+        transport.reply("https://cdn.example.test/video.mp4", 200, null, "video/mp4", mp4(32));
+
+        HeronBusinessException error = assertThrows(HeronBusinessException.class,
+            () -> downloader().download("https://cdn.example.test/video.mp4", 16));
+
+        assertEquals("reference_download_too_large", error.getCode());
+        assertEquals(0, transport.bodyReads, "Content-Length 超限时不得读取正文");
+    }
+
+    @Test
     void rejectsPrivateRedirectBeforeSecondConnection() throws Exception {
         transport.reply("https://cdn.example.test/start", 302, "https://127.0.0.1/video.mp4", "video/mp4", new byte[0]);
         resolver.rebind("127.0.0.1", InetAddress.getLoopbackAddress());

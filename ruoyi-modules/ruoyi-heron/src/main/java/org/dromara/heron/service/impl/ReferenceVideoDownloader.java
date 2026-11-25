@@ -51,6 +51,13 @@ public final class ReferenceVideoDownloader implements AutoCloseable {
     }
 
     public Downloaded download(String url) {
+        return download(url, properties.getReferenceMaxBytes());
+    }
+
+    public Downloaded download(String url, long maxBytes) {
+        if (maxBytes <= 0) {
+            throw new HeronBusinessException(400, "reference_download_invalid_limit", "视频体积上限必须大于 0");
+        }
         URI current = https(NewsUrlPolicy.normalize(url));
         int followed = 0;
         while (true) {
@@ -86,7 +93,7 @@ public final class ReferenceVideoDownloader implements AutoCloseable {
                 if (status != 200) {
                     throw new HeronBusinessException(502, "reference_download_status", "视频来源返回异常状态: " + status);
                 }
-                return save(response);
+                return save(response, maxBytes);
             } catch (HeronBusinessException e) {
                 throw e;
             } catch (Exception e) {
@@ -98,13 +105,12 @@ public final class ReferenceVideoDownloader implements AutoCloseable {
         }
     }
 
-    private Downloaded save(ReferenceVideoTransport.Response response) {
+    private Downloaded save(ReferenceVideoTransport.Response response, long maxBytes) {
         String contentType = response.contentType() == null ? "" : response.contentType().split(";", 2)[0]
             .trim().toLowerCase(Locale.ROOT);
         if (!ALLOWED_TYPES.contains(contentType)) {
             throw new HeronBusinessException(502, "reference_download_invalid_media", "视频来源返回了不支持的类型: " + contentType);
         }
-        long maxBytes = Math.max(1, properties.getReferenceMaxBytes());
         if (response.contentLength() > maxBytes) {
             throw new HeronBusinessException(413, "reference_download_too_large", "视频文件超过单文件上限");
         }

@@ -18,6 +18,7 @@ import reactor.core.publisher.Mono;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -51,6 +52,7 @@ public class ToolCallLedger implements Hook {
     private final ResearchBudget budget;
 
     private final Map<String, Long> startedAt = new ConcurrentHashMap<>();
+    private final Set<String> successfulTools = ConcurrentHashMap.newKeySet();
     private final AtomicInteger rounds = new AtomicInteger();
 
     public ToolCallLedger(long researchId, int attemptNo, HeronAgentToolCallMapper mapper,
@@ -107,8 +109,11 @@ public class ToolCallLedger implements Hook {
         startedAt.remove(use.getId());
 
         // 状态看框架给的结果：只有失败的调用才取走预算的拒绝原因，成功的调用不会吞掉别人的错误码
-        boolean failed = event.getToolResult() != null
-            && event.getToolResult().getState() == ToolResultState.ERROR;
+        boolean failed = event.getToolResult() == null
+            || event.getToolResult().getState() == ToolResultState.ERROR;
+        if (!failed) {
+            successfulTools.add(use.getName());
+        }
         String rejection = failed && budget != null ? budget.pollRejection() : null;
 
         HeronAgentToolCall row = new HeronAgentToolCall();
@@ -162,5 +167,10 @@ public class ToolCallLedger implements Hook {
 
     public int rounds() {
         return rounds.get();
+    }
+
+    /** 本次 attempt 实际成功执行的工具名，用于校验 Agent 是否真的读取过证据。 */
+    public Set<String> successfulTools() {
+        return Set.copyOf(successfulTools);
     }
 }

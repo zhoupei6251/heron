@@ -84,6 +84,20 @@ class AgentRuntimeConfigTest {
     }
 
     @Test
+    @DisplayName("ReAct 会话标识必须绑定到 Agent，不能共用默认会话")
+    void reactAgentUsesRequestedSession() {
+        runner.withPropertyValues("heron.agent.enabled=true").run(context -> {
+            ResearchAgentFactory factory = context.getBean(ResearchAgentFactory.class);
+            ResearchBudget budget = new ResearchBudget(4, 10_000);
+            try (ReActAgent first = factory.createReAct("research-a", budget, null, new ResearchFindings());
+                 ReActAgent second = factory.createReAct("research-b", budget, null, new ResearchFindings())) {
+                assertThat(first.getDefaultSessionId()).isEqualTo("research-a");
+                assertThat(second.getDefaultSessionId()).isEqualTo("research-b");
+            }
+        });
+    }
+
+    @Test
     @DisplayName("会话标识为空直接拒绝：空标识等于所有研究共用一段上下文")
     void rejectsBlankSessionId() {
         runner.withPropertyValues("heron.agent.enabled=true").run(context -> {

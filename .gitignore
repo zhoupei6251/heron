@@ -119,5 +119,9 @@ data/.stage/
 # 真实样片验收的产物（成片、联络表、机器证据）：体积大且不进版本库
 docs/acceptance-*/
 
+# 爆款学习的 Markdown 技法卡与汇总需要沉淀；原始拆解和 storyboard 只留本机/OSS
+/docs/learned/**/_raw/
+/docs/learned/**/*.jpg
+
 # 会话内临时构建目录（javac 增量编译与测试运行器）
 .tmpbuild/

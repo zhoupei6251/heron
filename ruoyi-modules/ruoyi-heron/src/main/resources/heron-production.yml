@@ -54,6 +54,12 @@ heron:
     newsnow-article-body-allowed: false
     # 来源逐条人工核对与安全验证通过后再逐条开启；总开关只控制是否跑采集
     collection-enabled: true
+    # 爆款学习只由 /heron/trend/learn 手动触发；体积上限独立于参考素材
+    trend-learn-batch-size: 10
+    trend-learn-max-bytes: 104857600
+    trend-learn-command: rea-video
+    trend-learn-timeout-seconds: 600
+    trend-learn-output-dir: ./docs/learned
     # 模板、渲染器、字体与音色都锁定后才注册新闻流水线 bean
     pipeline-enabled: false
     # 自动产出：关闭时既不装配调度也不做自动确认；slots 是 cron 列表，几条就是每天最多几条

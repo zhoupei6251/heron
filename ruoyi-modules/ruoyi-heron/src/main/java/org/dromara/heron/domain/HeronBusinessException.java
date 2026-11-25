@@ -22,4 +22,10 @@ public class HeronBusinessException extends RuntimeException {
         this.status = status;
         this.code = code;
     }
+
+    public HeronBusinessException(int status, String code, String message, Throwable cause) {
+        super(message, cause);
+        this.status = status;
+        this.code = code;
+    }
 }

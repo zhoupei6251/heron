@@ -8,6 +8,7 @@ import org.dromara.common.log.annotation.Log;
 import org.dromara.common.log.enums.BusinessType;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
+import org.dromara.common.redis.annotation.RepeatSubmit;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.domain.HeronTrendHotword;
@@ -17,6 +18,7 @@ import org.dromara.heron.domain.vo.TrendVideoVo;
 import org.dromara.heron.mapper.HeronTrendHotwordMapper;
 import org.dromara.heron.mapper.HeronTrendVideoMapper;
 import org.dromara.heron.service.impl.TrendCollectService;
+import org.dromara.heron.service.impl.TrendLearnService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -38,6 +40,7 @@ public class TrendVideoController extends BaseController {
     private final HeronTrendVideoMapper videos;
     private final HeronTrendHotwordMapper hotwords;
     private final TrendCollectService collect;
+    private final TrendLearnService learn;
     private final HeronNewsProperties news;
 
     /** 热度候选分页。onlyShort=true 只看够短的，够短才算可拆解的候选。 */
@@ -74,5 +77,14 @@ public class TrendVideoController extends BaseController {
     @PostMapping("/collect")
     public R<Integer> collect() {
         return R.ok(collect.collect());
+    }
+
+    /** 手动跑一轮爆款学习；允许 0 条，单条失败不阻塞同批其他样本。 */
+    @SaCheckPermission("heron:newsWork:publish")
+    @RepeatSubmit
+    @Log(title = "爆款学习闭环", businessType = BusinessType.OTHER, isSaveRequestData = false)
+    @PostMapping("/learn")
+    public R<TrendLearnService.Report> learn() {
+        return R.ok(learn.run());
     }
 }

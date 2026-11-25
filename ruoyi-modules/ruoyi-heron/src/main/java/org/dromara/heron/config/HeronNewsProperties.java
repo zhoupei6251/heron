@@ -1,8 +1,10 @@
 package org.dromara.heron.config;
 
 import lombok.Data;
+import lombok.ToString;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,8 +40,29 @@ public class HeronNewsProperties {
     /** 自动模式写库时代表系统的操作人；默认 admin（userId=1）。 */
     private Long autoActorId = 1L;
 
-    /** 发布出口：sandbox 只跑通链路；douyin-cli 调 social-auto-upload 的 sau 命令。默认沙箱，换出口必须显式配置。 */
+    /** 发布出口：sandbox 只跑通链路；douyin-cli 调 social-auto-upload 的 sau 命令；youtube 走 Data API v3。默认沙箱，换出口必须显式配置。 */
     private String publishAdapter = "sandbox";
+
+    /** YouTube 独立开关；默认关闭，打开仍需补齐 OAuth 凭据。 */
+    private boolean youtubeEnabled;
+
+    /** Google OAuth 客户端 ID；由部署环境注入，不写进仓库。 */
+    @ToString.Exclude
+    private String youtubeClientId;
+
+    /** Google OAuth 客户端密钥；禁止日志输出。 */
+    @ToString.Exclude
+    private String youtubeClientSecret;
+
+    /** 已取得 offline access 的 OAuth refresh token；禁止日志输出。 */
+    @ToString.Exclude
+    private String youtubeRefreshToken;
+
+    /** YouTube 新视频可见性；默认 private，显式开启出口也不默认公开。 */
+    private String youtubePrivacyStatus = "private";
+
+    /** 冻结在发布尝试里的账号标识；实际目标频道由 OAuth refresh token 授权决定。 */
+    private String youtubeAccount = "youtube";
 
     /** sau 可执行文件；用 social-auto-upload 的虚拟环境安装后指向其中的 sau.exe。 */
     private String publishCommand = "sau";
@@ -104,6 +127,21 @@ public class HeronNewsProperties {
      * 拆解一条要好几分钟，第一版先只处理短视频。0 表示不过滤。
      */
     private long trendMaxDurationMs = 90_000L;
+
+    /** 学习批次最多选几条；硬上限 10，允许模型一条不选。 */
+    private int trendLearnBatchSize = 10;
+
+    /** 学习原片独立体积上限，不复用参考素材与新闻正文的限制。 */
+    private long trendLearnMaxBytes = 100L * 1024 * 1024;
+
+    /** rea-video 可执行文件或脚本路径。 */
+    private String trendLearnCommand = "rea-video";
+
+    /** 单条视频拆解超时。 */
+    private int trendLearnTimeoutSeconds = 600;
+
+    /** 技法卡与横向汇总的本地目录。 */
+    private Path trendLearnOutputDir = Path.of("docs/learned");
 
     /** 单条参考视频上限；超限在读取前或流式写入时拒绝。 */
     private long referenceMaxBytes = 50L * 1024 * 1024;

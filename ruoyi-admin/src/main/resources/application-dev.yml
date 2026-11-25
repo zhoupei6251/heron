@@ -364,6 +364,12 @@ heron:
       - '0 0 7,13,19 * * *'
     # 只留 90 秒以内的作品：热榜里混着几分钟的长片，拆解一条要好几分钟
     trend-max-duration-ms: 90000
+    # 爆款学习手动入口 /heron/trend/learn；ReAct 归纳仍需显式开启 heron.agent.enabled
+    trend-learn-batch-size: 10
+    trend-learn-max-bytes: 104857600
+    trend-learn-command: ${HERON_REA_VIDEO:rea-video}
+    trend-learn-timeout-seconds: 600
+    trend-learn-output-dir: ${HERON_LEARN_OUTPUT:./docs/learned}
     allowed-hosts:
       - www.ithome.com
       - sspai.com
