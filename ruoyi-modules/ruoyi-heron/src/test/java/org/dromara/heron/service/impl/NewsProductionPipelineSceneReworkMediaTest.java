@@ -36,8 +36,8 @@ class NewsProductionPipelineSceneReworkMediaTest {
         RecordingProcesses processes = new RecordingProcesses(properties, artifacts);
         NewsProductionPipeline pipeline = new NewsProductionPipeline(null, null, processes, artifacts, properties,
             (run, stage, progress) -> true, null, null, null, null, null, null, null);
-        ProductionRunVo run = new ProductionRunVo(7201L, ProductionBizType.news_video, 10L, 4L, 1,
-            UUID.randomUUID().toString(), "{}", null);
+        ProductionRunVo run = new ProductionRunVo(7201L, ProductionBizType.news_explainer, 10L, 4L, 1,
+            UUID.randomUUID().toString(), "{}");
         Path work = artifacts.prepareWorkDirectory(run);
         ProductionProcessVo created = processes.run(run, new ProductionProcessBo("ffmpeg", List.of(
             "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=160x284:rate=30:duration=4",

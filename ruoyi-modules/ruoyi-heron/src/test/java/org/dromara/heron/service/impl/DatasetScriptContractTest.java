@@ -29,9 +29,9 @@ class DatasetScriptContractTest {
     private static String script(String sha, String chart, String secondBody) {
         return "{\"dataset_sha256\":\"" + sha + "\",\"source_key\":\"sina-gold-xau\",\"chart\":\"" + chart + "\","
             + "\"title\":\"金价再创新高\",\"scenes\":["
-            + "{\"lead\":\"金价站上关键位\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":15},"
-            + "{\"lead\":\"较区间起点走高\",\"body\":\"" + secondBody + "\",\"duration_s\":15},"
-            + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":15}],"
+            + "{\"lead\":\"金价站上关键位\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":10},"
+            + "{\"lead\":\"较区间起点走高\",\"body\":\"" + secondBody + "\",\"duration_s\":10},"
+            + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":10}],"
             + "\"closing\":\"关注接下来的走势。\",\"source_name\":\"来源：新浪财经\"}";
     }
 
@@ -44,6 +44,18 @@ class DatasetScriptContractTest {
     @DisplayName("合规脚本没有违例")
     void compliantPasses() {
         assertEquals(List.of(), DatasetScriptContract.violations(JSON.readTree(valid()), snapshot()));
+    }
+
+    @Test
+    @DisplayName("单段超过 12 秒退回，并指出第几段、多少秒、上限多少")
+    void rejectsOverlongScene() {
+        // 总量 40 秒仍在 30–75 内：只有单段上界能拒掉这份稿，证明这两道闸不是同一件事
+        String overlong = valid().replace("\"金价站上关键位\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":10}",
+            "\"金价站上关键位\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":20}");
+        List<String> items = DatasetScriptContract.violations(JSON.readTree(overlong), snapshot());
+        assertEquals(1, items.size(), items.toString());
+        assertTrue(items.get(0).contains("第 1 段") && items.get(0).contains("20 秒")
+            && items.get(0).contains("上限 12 秒"), items.get(0));
     }
 
     @Test
@@ -116,9 +128,9 @@ class DatasetScriptContractTest {
             "{\"dataset_sha256\":\"" + snapshot().path("data_sha256").asString()
                 + "\",\"source_key\":\"sina-gold-xau\",\"chart\":\"line\","
                 + "\"title\":\"金价再创新高\",\"scenes\":["
-                + "{\"lead\":\"金价最近很热闹\",\"body\":\"各方都在讨论。\",\"duration_s\":15},"
-                + "{\"lead\":\"市场情绪高涨\",\"body\":\"讨论的人越来越多。\",\"duration_s\":15},"
-                + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":15}],"
+                + "{\"lead\":\"金价最近很热闹\",\"body\":\"各方都在讨论。\",\"duration_s\":10},"
+                + "{\"lead\":\"市场情绪高涨\",\"body\":\"讨论的人越来越多。\",\"duration_s\":10},"
+                + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":10}],"
                 + "\"closing\":\"关注接下来的走势。\",\"source_name\":\"来源：新浪财经\"}"), snapshot());
         assertTrue(items.stream().anyMatch(item -> item.contains("前两屏")), items.toString());
     }
@@ -154,9 +166,9 @@ class DatasetScriptContractTest {
         return "{\"dataset_sha256\":\"" + snapshot().path("data_sha256").asString()
             + "\",\"source_key\":\"sina-gold-xau\",\"chart\":\"line\","
             + "\"title\":\"金价再创新高\",\"scenes\":["
-            + "{\"lead\":\"" + lead + "\",\"body\":\"" + body + "\",\"duration_s\":15},"
-            + "{\"lead\":\"较区间起点走高\",\"body\":\"上涨 {{facts.change}} 美元。\",\"duration_s\":15},"
-            + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":15}],"
+            + "{\"lead\":\"" + lead + "\",\"body\":\"" + body + "\",\"duration_s\":10},"
+            + "{\"lead\":\"较区间起点走高\",\"body\":\"上涨 {{facts.change}} 美元。\",\"duration_s\":10},"
+            + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":10}],"
             + "\"closing\":\"关注接下来的走势。\",\"source_name\":\"来源：新浪财经\"}";
     }
 

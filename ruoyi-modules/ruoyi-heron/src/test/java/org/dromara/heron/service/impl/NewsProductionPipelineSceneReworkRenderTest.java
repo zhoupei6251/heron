@@ -96,8 +96,8 @@ class NewsProductionPipelineSceneReworkRenderTest {
         NewsProductionPipeline pipeline = new NewsProductionPipeline(null, null, processes, artifacts, properties,
             (run, stage, progress) -> true, null, null, null, null, null, null, mock(FrozenContextService.class));
 
-        ProductionRunVo previousRun = new ProductionRunVo(7300L, ProductionBizType.news_video, 10L, 3L, 1,
-            UUID.randomUUID().toString(), "{}", null);
+        ProductionRunVo previousRun = new ProductionRunVo(7300L, ProductionBizType.news_explainer, 10L, 3L, 1,
+            UUID.randomUUID().toString(), "{}");
         Path previousWork = artifacts.prepareWorkDirectory(previousRun);
         ProductionProcessVo created = processes.run(previousRun, new ProductionProcessBo("ffmpeg", List.of(
             "-y", "-loglevel", "error",
@@ -137,8 +137,8 @@ class NewsProductionPipelineSceneReworkRenderTest {
             "templateKey", "news-9x16", "voiceKey", "zh-CN-XiaoxiaoNeural",
             "assetManifestSha256", DigestUtil.sha256Hex(template.resolve("assets-manifest.json").toFile()),
             "fontSha256", DigestUtil.sha256Hex(templateRoot.getParent().resolve("fonts/NotoSansSC-Regular.otf").toFile()))));
-        ProductionRunVo run = new ProductionRunVo(7301L, ProductionBizType.news_video, 10L, 4L, 1,
-            UUID.randomUUID().toString(), input, null);
+        ProductionRunVo run = new ProductionRunVo(7301L, ProductionBizType.news_explainer, 10L, 4L, 1,
+            UUID.randomUUID().toString(), input);
         ProductionResultVo result = pipeline.reworkScene(run, request);
         JsonNode content = JSON.readTree(result.resultJson());
         JsonNode rework = content.path("sceneRework");

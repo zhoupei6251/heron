@@ -86,9 +86,9 @@ class ProductionWorkerTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("成功流水线终结任务并写入业务结果")
     void successfulPipelineCompletesTask() {
-        submit(10, ProductionBizType.news_video);
+        submit(10, ProductionBizType.news_explainer);
 
-        assertTrue(runner.runOnce(ProductionBizType.news_video));
+        assertTrue(runner.runOnce(ProductionBizType.news_explainer));
 
         assertEquals("succeeded", taskStatus(10));
         assertEquals("true", jdbc.queryForObject(
@@ -101,12 +101,12 @@ class ProductionWorkerTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("流水线业务异常按自身错误码失败并释放对象")
     void pipelineFailureKeepsCodeAndReleasesObject() {
-        submit(10, ProductionBizType.news_video);
+        submit(10, ProductionBizType.news_explainer);
         pipeline.setAction(run -> {
             throw new HeronBusinessException(500, "tts_failed", "TTS 不可用");
         });
 
-        assertTrue(runner.runOnce(ProductionBizType.news_video));
+        assertTrue(runner.runOnce(ProductionBizType.news_explainer));
 
         assertEquals("failed", taskStatus(10));
         assertEquals("tts_failed", jdbc.queryForObject(
@@ -118,13 +118,13 @@ class ProductionWorkerTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("流水线内被取消时按取消终结，不覆盖为成功")
     void cancellationDuringPipelineEndsCancelled() {
-        submit(10, ProductionBizType.news_video);
+        submit(10, ProductionBizType.news_explainer);
         pipeline.setAction(run -> {
             productionService.cancel(run.taskId());
             return new ProductionResultVo(List.of(), "{\"late\":true}");
         });
 
-        assertTrue(runner.runOnce(ProductionBizType.news_video));
+        assertTrue(runner.runOnce(ProductionBizType.news_explainer));
 
         assertEquals("cancelled", taskStatus(10));
         assertNull(jdbc.queryForObject(
@@ -136,13 +136,13 @@ class ProductionWorkerTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("外部调用开始后流水线失败按结果未知记录")
     void startedUsageTurnsPipelineFailureIntoUnknownOutcome() {
-        submit(10, ProductionBizType.news_video);
+        submit(10, ProductionBizType.news_explainer);
         pipeline.setAction(run -> {
             usageService.start(run, "tts", UUID.randomUUID().toString(), "volc", "doubao-tts");
             throw new HeronBusinessException(500, "tts_failed", "TTS 不可用");
         });
 
-        assertTrue(runner.runOnce(ProductionBizType.news_video));
+        assertTrue(runner.runOnce(ProductionBizType.news_explainer));
 
         assertEquals("failed", taskStatus(10));
         assertEquals("external_outcome_unknown", jdbc.queryForObject(
@@ -155,12 +155,12 @@ class ProductionWorkerTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("产物缺失时成功落库被拒绝并转为失败")
     void missingArtifactRejectsSuccess() {
-        submit(10, ProductionBizType.news_video);
+        submit(10, ProductionBizType.news_explainer);
         pipeline.setAction(run -> new ProductionResultVo(List.of(new ProductionArtifactVo(
             UUID.randomUUID().toString(), "video", "videos/10/v1/missing.mp4", 10,
             "0".repeat(64), "video/mp4")), "{\"result\":true}"));
 
-        assertTrue(runner.runOnce(ProductionBizType.news_video));
+        assertTrue(runner.runOnce(ProductionBizType.news_explainer));
 
         assertEquals("failed", taskStatus(10));
         assertEquals("production_file_missing", jdbc.queryForObject(
@@ -168,13 +168,21 @@ class ProductionWorkerTest extends HeronMysqlTestSupport {
     }
 
     @Test
-    @DisplayName("缺少流水线实现时不领取任务")
+    @DisplayName("缺少流水线实现的线不领取任务")
     void missingPipelineDoesNotClaim() {
-        submit(20, ProductionBizType.prototype);
+        // music_video 还没有流水线，提交会在 domain 检查处被拒；这里直接落一行队列任务，
+        // 验证 worker 遇到没有 pipeline bean 的线是跳过而不是报错。
+        jdbc.update("""
+                INSERT INTO heron_production_task
+                  (task_id,biz_type,biz_id,version_id,owner_id,actor_id,request_key,request_hash,
+                   input_hash,input_snapshot,status,attempt_no,create_dept,create_by,create_time,update_by,update_time)
+                VALUES (?,?,?,?,?,?,?,?,?,?,'queued',0,NULL,?,UTC_TIMESTAMP(3),NULL,UTC_TIMESTAMP(3))
+                """,
+            200L, ProductionBizType.music_video.name(), 20L, 2000L, ADMIN, ADMIN,
+            "worker-music", "a".repeat(64), "b".repeat(64), "{}", ADMIN);
 
-        assertFalse(runner.runOnce(ProductionBizType.prototype));
-        assertEquals("queued", jdbc.queryForObject(
-            "SELECT status FROM heron_production_task WHERE biz_id=20", String.class));
+        assertFalse(runner.runOnce(ProductionBizType.music_video));
+        assertEquals("queued", taskStatus(20));
     }
 
     private void submit(long bizId, ProductionBizType type) {

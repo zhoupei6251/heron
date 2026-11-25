@@ -1,19 +1,30 @@
 package org.dromara.heron.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
 import org.dromara.heron.domain.HeronNewsWork;
 import org.dromara.heron.mapper.HeronNewsWorkMapper;
+import org.dromara.heron.service.INewsMetricService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 选排版：一次轻量模型调用 + 系统硬约束。
  * 约束比模型更可靠——最近两期用过的模板一律排除，模型失败或答非所问就退回「最久未用」。
+ *
+ * <p>表现回流也落在这一层：两套选择入口（线内编辑与人工认领）最后都到这里选版式，
+ * 样本足够时按历史表现带权抽样，只影响概率、不影响契约，也不拉黑任何一套模板。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class NewsTemplatePicker {
@@ -32,6 +43,14 @@ public class NewsTemplatePicker {
     private final NewsProductionDomain domain;
     private final ObjectProvider<OpenAiModelClient> modelProvider;
     private final HeronNewsWorkMapper workMapper;
+    /** 表现来源；不配置时为中性，选模板与没有这份偏好时完全一致。 */
+    private final ObjectProvider<INewsMetricService> metricsProvider;
+
+    /** 单测与无表现来源的构造：按中性偏好走原有路径。 */
+    NewsTemplatePicker(NewsProductionDomain domain, ObjectProvider<OpenAiModelClient> modelProvider,
+                       HeronNewsWorkMapper workMapper) {
+        this(domain, modelProvider, workMapper, null);
+    }
 
     /**
      * 按生产线收窄候选。判断依据是模板自己声明的 supportedLines，不是命名前缀——
@@ -100,6 +119,12 @@ public class NewsTemplatePicker {
             // 退回全量等于让风格随机轮换，正是这套规则要杜绝的。
             candidates = pool;
         }
+        // 有证据就先按证据抽：跑得好的那套下一期该被多抽到几次。
+        // 证据不足时 preferredPick 返回 null，下面的模型路径与不带偏好时逐字相同。
+        String preferred = preferredPick(candidates);
+        if (preferred != null) {
+            return preferred;
+        }
         String reply = null;
         OpenAiModelClient model = modelProvider.getIfAvailable();
         if (model != null) {
@@ -121,6 +146,96 @@ public class NewsTemplatePicker {
         }
         String trimmed = reply.strip();
         return candidates.contains(trimmed) ? trimmed : null;
+    }
+
+    /**
+     * 按表现偏好抽一套版式。
+     *
+     * <p>只做加权，不做一票否决：权重下限 0.5，表现差的模板只被少抽到，不会永久拉黑——
+     * 数据会变，选题也会变。证据不到 L4、样本不稳、取不到表现，或候选里一套有信号的都没有时
+     * 返回 null，交给下面的模型路径，选择结果与不带偏好完全一致。
+     *
+     * <p>有证据时不再问模型：模型挑的是「标题适配度」，样本给的是「这类画面真实跑出来的结果」，
+     * 两者都指向同一件事时用证据更硬的那份；证据不足时仍由模型决定。
+     */
+    private String preferredPick(List<NewsProductionDomain.TemplateInfo> candidates) {
+        MetricInsightAnalyzer.Preference preference = templatePreference();
+        if (preference == null || !preference.hasSignal()) {
+            return null;
+        }
+        Map<String, Double> weights = new LinkedHashMap<>();
+        boolean signal = false;
+        for (NewsProductionDomain.TemplateInfo item : candidates) {
+            double weight = preference.weightOf(item.key());
+            weights.put(item.key(), weight);
+            signal = signal || weight != 1d;
+        }
+        if (!signal) {
+            return null;
+        }
+        String picked = weightedPick(new ArrayList<>(weights.keySet()), weights, ThreadLocalRandom.current());
+        if (picked == null) {
+            return null;
+        }
+        log.info("按表现偏好选版式：{}（证据等级 {}，样本 {} 条，权重 {}）",
+            picked, preference.tier(), preference.samples(), weights.get(picked));
+        return picked;
+    }
+
+    /**
+     * 带权抽样：权重只改变概率，不改候选集合。
+     *
+     * <p>随机源由调用方传入，单测才能用固定种子跑出可复现的分布。
+     * 全部权重都不为正时返回 null——没有可抽的东西，不猜。
+     */
+    static String weightedPick(List<String> candidates, Map<String, Double> weights, Random random) {
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        double total = 0d;
+        for (String key : candidates) {
+            double weight = weights.getOrDefault(key, 1d);
+            if (weight > 0d) {
+                total += weight;
+            }
+        }
+        if (total <= 0d) {
+            return null;
+        }
+        double point = random.nextDouble() * total;
+        for (String key : candidates) {
+            double weight = weights.getOrDefault(key, 1d);
+            if (weight <= 0d) {
+                continue;
+            }
+            point -= weight;
+            if (point < 0d) {
+                return key;
+            }
+        }
+        // 浮点误差兜底：落到最后一个有权重的候选，不返回 null。
+        for (int index = candidates.size() - 1; index >= 0; index--) {
+            if (weights.getOrDefault(candidates.get(index), 1d) > 0d) {
+                return candidates.get(index);
+            }
+        }
+        return null;
+    }
+
+    /** 只按模板维度读偏好：表现数字全部来自人工回填的采样行，不引入第二套口径。 */
+    private MetricInsightAnalyzer.Preference templatePreference() {
+        if (metricsProvider == null) {
+            return null;
+        }
+        try {
+            INewsMetricService metrics = metricsProvider.getIfAvailable();
+            return metrics == null ? null
+                : MetricInsightAnalyzer.preferenceOf(metrics.performanceInsight("template"));
+        } catch (RuntimeException e) {
+            // 读不到表现就按中性处理：选版式不能因为归因查询失败而停摆，但原因要留痕。
+            log.warn("读表现偏好失败，本次按中性处理: {}", e.getMessage());
+            return null;
+        }
     }
 
     /** 从没用过的优先；都用过就取最久没用的那套。 */

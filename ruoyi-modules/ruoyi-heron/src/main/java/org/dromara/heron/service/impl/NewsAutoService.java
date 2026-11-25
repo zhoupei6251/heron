@@ -74,6 +74,13 @@ public class NewsAutoService {
     private static final int MAX_SLOT_RETRIES = 1;
     /** 补跑间隔：刚失败就重跑等于原地重试，原因没变。 */
     private static final int RETRY_DELAY_MINUTES = 30;
+    /**
+     * 连续这么多个槽位失败就自动暂停自动产出。
+     *
+     * <p>与 {@code DatasetFetchService.MAX_CONSECUTIVE_FAILURES} 同一条规矩：
+     * 连续失败够多次才处置，单次抖动只留痕。三个槽位一天全废，就不是抖动而是链路坏了。
+     */
+    static final int AUTO_STOP_FAILURE_STREAK = 3;
     /** RuoYi 的开关约定：'0' 是允许。 */
     private static final String AUTO_ALLOWED = "0";
     private static final String PROBE_OK = "ok";
@@ -157,7 +164,8 @@ public class NewsAutoService {
     }
 
     public void pause(boolean paused) {
-        pauseStore.pause(paused);
+        // 人按下的暂停也写原因：健康概览要能区分「人停了」和「刹车自己拉下来的」
+        pauseStore.pause(paused, paused ? "manual: 人工暂停自动产出" : null);
     }
 
     /** 回读今天某个槽位的结果；手动触发后用它给调用方一个确定的回答。 */
@@ -218,7 +226,7 @@ public class NewsAutoService {
             decision = editorial.decide(pools);
         } catch (RuntimeException e) {
             // 决策失败不产出：宁可空槽，也不按默认线硬发
-            finish(slot, "failed", "editorial_decision: " + e.getMessage(), null);
+            failed(slot, "editorial_decision: " + e.getMessage(), manual);
             return;
         }
         if (!decision.publish()) {
@@ -244,7 +252,7 @@ public class NewsAutoService {
                     attempt == 0 ? decision.focusCandidateId() : null,
                     attempt == 0 ? decision.focusOpportunityId() : null);
             } catch (RuntimeException e) {
-                finish(slot, "failed", "line_editor: " + e.getMessage(), null);
+                failed(slot, "line_editor: " + e.getMessage(), manual);
                 return;
             }
             if (choice.isEmpty()) {
@@ -253,7 +261,7 @@ public class NewsAutoService {
                     markDecision(slot, decision, pools, null);
                     finish(slot, "skipped", "no_fit: " + decision.selectedLine(), null);
                 } else {
-                    finish(slot, "failed", "retry_no_fit: 换选题后池子里已无可用素材", null);
+                    failed(slot, "retry_no_fit: 换选题后池子里已无可用素材", manual);
                 }
                 return;
             }
@@ -303,7 +311,7 @@ public class NewsAutoService {
                     }
                 }
                 if (!isEvidenceReviewFailure(e)) {
-                    finish(slot, "failed", e.getMessage(), null);
+                    failed(slot, e.getMessage(), manual);
                     return;
                 }
                 lastReason = e.getMessage();
@@ -311,8 +319,8 @@ public class NewsAutoService {
                     ? unverifiableStreak + 1 : 0;
                 if (unverifiableStreak >= UNVERIFIABLE_STREAK_LIMIT) {
                     // 停手的理由要说清楚：不是选题不好，是证据片段本身不够
-                    finish(slot, "failed", "evidence_fragment_poor: 连续 " + unverifiableStreak
-                        + " 个选题都核不住，换选题救不了；" + lastReason, null);
+                    failed(slot, "evidence_fragment_poor: 连续 " + unverifiableStreak
+                        + " 个选题都核不住，换选题救不了；" + lastReason, manual);
                     return;
                 }
                 if (picked.selection().candidateId() != null) {
@@ -324,8 +332,8 @@ public class NewsAutoService {
                 current = current.excluding(triedCandidates, triedSources);
             }
         }
-        finish(slot, "failed", "retry_exhausted: 已试 " + (MAX_REVIEW_RETRIES + 1)
-            + " 个选题仍未过审；" + lastReason, null);
+        failed(slot, "retry_exhausted: 已试 " + (MAX_REVIEW_RETRIES + 1)
+            + " 个选题仍未过审；" + lastReason, manual);
     }
 
     /** 审稿没过且是证据问题：换选题可能换得动，其余失败换不掉。 */
@@ -949,11 +957,23 @@ public class NewsAutoService {
         } else {
             trail.putNull("fallbackReason");
         }
+        // 选源理由：复盘的问题是「为什么是这个源」，只记 source_key 只能回答「是哪个源」
+        String sourceReason = choice == null || choice.selection() == null
+            ? null : choice.selection().sourceReason();
+        if (sourceReason == null || sourceReason.isBlank()) {
+            trail.putNull("sourceReason");
+        } else {
+            trail.put("sourceReason", clip(sourceReason, 300));
+        }
         return JSON.writeValueAsString(root);
     }
 
     private static String clip(String value, int max) {
         return value == null ? null : value.substring(0, Math.min(value.length(), max));
+    }
+
+    private LocalDateTime now() {
+        return LocalDateTime.now(clock);
     }
 
     private void finish(HeronAutoSlot slot, String status, String detail, Long workId) {
@@ -965,5 +985,71 @@ public class NewsAutoService {
             .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
             .eq(HeronAutoSlot::getSlotTime, slot.getSlotTime())
             .update();
+    }
+
+    /**
+     * 记一个失败槽位，并检查要不要自动刹车。
+     *
+     * <p>为什么人工触发不参与：人按下的那一次由人决定下一次。人白天连着试了三次都没成，
+     * 说明眼下这条片子有问题，不代表无人值守该停——停了反而会让人半夜发现今天没有产出。
+     */
+    private void failed(HeronAutoSlot slot, String detail, boolean manual) {
+        finish(slot, "failed", detail, null);
+        if (manual) {
+            return;
+        }
+        autoStopIfFailing(detail);
+    }
+
+    /**
+     * 连续失败够多就把自动产出停掉，并把原因写进暂停标记。
+     *
+     * <p>照 {@code DatasetFetchService} 的成熟模式：连续失败才判死，单次抖动只记计数。
+     * 不设冷却时间——自动暂停是要人确认的事，恢复必须是显式动作。
+     */
+    private void autoStopIfFailing(String lastDetail) {
+        if (paused()) {
+            return;
+        }
+        int streak = consecutiveFailedStreak(recentSlotStatuses(now()));
+        if (streak < AUTO_STOP_FAILURE_STREAK) {
+            return;
+        }
+        String reason = "auto_stop: 连续 " + streak + " 个槽位失败，已自动暂停自动产出（" + clip(lastDetail, 200)
+            + "）；确认原因后点「恢复」";
+        pauseStore.pause(true, reason);
+        log.warn("自动产出已自动暂停: {}", reason);
+    }
+
+    /** 今天最近几个槽位（含刚写完的这一行）的状态，按更新时间从近到远。 */
+    private List<String> recentSlotStatuses(LocalDateTime now) {
+        try {
+            return slotMapper.selectList(QueryBuilder.lambda(HeronAutoSlot.class)
+                .eq(HeronAutoSlot::getSlotDate, now.toLocalDate())
+                .orderByDesc(HeronAutoSlot::getUpdateTime)
+                .last("LIMIT " + AUTO_STOP_FAILURE_STREAK).build()).stream()
+                .map(HeronAutoSlot::getStatus)
+                .toList();
+        } catch (RuntimeException e) {
+            // 刹车读数失败不能让槽位本身失败：这一次产出该怎么收尾已经定了
+            log.warn("读取最近槽位状态失败，跳过自动刹车检查: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 末尾连续失败的个数。入参顺序是「从最近到更早」，遇到第一个非 failed 就停。
+     *
+     * <p>只数末尾：中间成功过一次，说明链路是通的，后面的失败各有各的原因，不该合并成一次刹车。
+     */
+    static int consecutiveFailedStreak(List<String> statusesNewestFirst) {
+        int streak = 0;
+        for (String status : statusesNewestFirst) {
+            if (!"failed".equals(status)) {
+                break;
+            }
+            streak++;
+        }
+        return streak;
     }
 }

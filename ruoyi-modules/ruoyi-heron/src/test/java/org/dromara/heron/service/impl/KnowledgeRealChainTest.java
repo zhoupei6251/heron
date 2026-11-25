@@ -126,8 +126,8 @@ class KnowledgeRealChainTest {
         tools.jackson.databind.node.ArrayNode ids = selection.putArray("sourceEvidenceIds");
         ENTRIES.forEach(ids::add);
 
-        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_video, 10L, 5L, 1,
-            UUID.randomUUID().toString(), JSON.writeValueAsString(input), null);
+        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_explainer, 10L, 5L, 1,
+            UUID.randomUUID().toString(), JSON.writeValueAsString(input));
         ProductionResultVo result = pipeline.execute(run);
 
         JsonNode content = JSON.readTree(result.resultJson());

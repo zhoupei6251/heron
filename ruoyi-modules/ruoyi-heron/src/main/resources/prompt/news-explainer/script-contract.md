@@ -16,7 +16,7 @@
 | `closing` | 是 | 结尾一句话 |
 | `source_name` | 是 | 画面「来源：xxx」文案 |
 
-- 每段 `lead` ≤ 20 字、`body` ≤ 70 字、`duration_s` 为正数秒；全部段落 `duration_s` 合计 30–75 秒。
+- 每段 `lead` ≤ 20 字、`body` ≤ 70 字、`duration_s` 为正数秒；全部段落 `duration_s` 合计 30–75 秒，单段不超过 12 秒。
 - 只允许上述字段。出现未知字段直接退回。
 - `title` 不得与任何一段的 `lead` 或 `body` 相同。
 

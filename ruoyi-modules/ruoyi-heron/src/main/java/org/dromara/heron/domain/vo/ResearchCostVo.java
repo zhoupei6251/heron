@@ -30,6 +30,10 @@ public class ResearchCostVo implements Serializable {
     private long outputTokens;
     /** 平均每次研究的 token。 */
     private long avgTokens;
+    /** 按当前单价折算的金额合计（元）。单价未配置时恒为 0。 */
+    private BigDecimal amount;
+    /** 金额是否可信：false 表示 {@code heron.model.price-in} / {@code price-out} 没配，金额没意义。 */
+    private boolean priced;
     /** 工具调用合计。 */
     private long toolCalls;
     /** 按等级汇总。 */

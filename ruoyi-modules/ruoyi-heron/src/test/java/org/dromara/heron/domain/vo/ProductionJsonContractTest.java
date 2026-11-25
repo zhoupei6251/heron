@@ -24,7 +24,7 @@ class ProductionJsonContractTest {
     void taskJsonUsesStringIdAndHidesInternalFields() {
         ProductionTaskVo task = new ProductionTaskVo();
         task.setId(9007199254740993L);
-        task.setBizType(ProductionBizType.prototype);
+        task.setBizType(ProductionBizType.news_explainer);
         task.setStatus(ProductionStatus.queued);
         task.setArtifacts(List.of(new ProductionFileVo(
             "artifact-1", "rp", 1024L, "sha256", "application/octet-stream", true)));

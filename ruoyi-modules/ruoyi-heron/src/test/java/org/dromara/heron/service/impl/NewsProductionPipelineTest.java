@@ -86,11 +86,11 @@ class NewsProductionPipelineTest {
     void articleStoryboardKeepsTitleAndBodyVariables() throws Exception {
         JsonNode script = JSON.readTree("""
             {"title":"独立标题","scenes":[
-              {"lead":"领句一","body":"完整正文一","duration_s":15,"scene_type":"headline",
+              {"lead":"领句一","body":"完整正文一","duration_s":10,"scene_type":"headline",
                "beat":"HOOK","on_screen_text":"屏幕短句一"},
-              {"lead":"领句二","body":"完整正文二","duration_s":15,"scene_type":"text",
+              {"lead":"领句二","body":"完整正文二","duration_s":10,"scene_type":"text",
                "beat":"EVIDENCE","on_screen_text":"屏幕短句二"},
-              {"lead":"领句三","body":"完整正文三","duration_s":15,"scene_type":"text",
+              {"lead":"领句三","body":"完整正文三","duration_s":10,"scene_type":"text",
                "beat":"CONCLUSION","on_screen_text":"屏幕短句三"}]}
             """);
         java.nio.file.Path template = java.nio.file.Path.of("..", "..", "data", "templates", "news-minimal-9x16")

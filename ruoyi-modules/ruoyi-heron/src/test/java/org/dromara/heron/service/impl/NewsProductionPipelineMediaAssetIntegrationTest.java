@@ -90,10 +90,10 @@ class NewsProductionPipelineMediaAssetIntegrationTest {
         JsonNode script = JSON.readTree("""
             {"source_url":"https://example.com/a","fetched_at":"2026-11-24","body_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
              "title":"示例标题","closing":"结论","source_name":"示例站","scenes":[
-              {"scene_id":"scene_001","lead":"第一屏","body":"正文一","duration_s":15,"scene_type":"image",
+              {"scene_id":"scene_001","lead":"第一屏","body":"正文一","duration_s":10,"scene_type":"image",
                "visual":{"mediaAssetId":"42","orientation":"PORTRAIT","keywords":["城市"]}},
-              {"scene_id":"scene_002","lead":"第二屏","body":"正文二","duration_s":15,"scene_type":"text"},
-              {"scene_id":"scene_003","lead":"第三屏","body":"正文三","duration_s":15,"scene_type":"text"}]}
+              {"scene_id":"scene_002","lead":"第二屏","body":"正文二","duration_s":10,"scene_type":"text"},
+              {"scene_id":"scene_003","lead":"第三屏","body":"正文三","duration_s":10,"scene_type":"text"}]}
             """);
         assertTrue(NewsScriptContract.violations(script).isEmpty());
         ObjectNode invalid = (ObjectNode) script.deepCopy();

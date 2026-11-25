@@ -89,7 +89,7 @@ class NewsWorkTransactionTest extends NewsMysqlTestSupport {
             () -> news.generate(work.getId(), new NewsGenerateBo("published", 1L))).getStatus());
         jdbc.update("UPDATE heron_news_candidate SET published_at=NULL WHERE candidate_id=?", work.getId());
         var receipt = news.generate(work.getId(), new NewsGenerateBo("valid", 1L));
-        var run = execution.claim(ProductionBizType.news_video).orElseThrow();
+        var run = execution.claim(ProductionBizType.news_explainer).orElseThrow();
         var files = fixtureFiles(run);
         assertThrows(HeronBusinessException.class,
             () -> execution.succeed(run, new ProductionResultVo(files.subList(0, 1), "{}")));
@@ -152,8 +152,8 @@ class NewsWorkTransactionTest extends NewsMysqlTestSupport {
         String original = jdbc.queryForObject("SELECT artifact_manifest FROM heron_video_version WHERE version_id=?", String.class, f.versionId());
         var task = context.getBean(org.dromara.heron.mapper.HeronProductionTaskMapper.class)
             .selectById(news.version(f.workId(), f.versionId()).getTaskId());
-        var late = new ProductionRunVo(task.getId(), ProductionBizType.news_video, task.getBizId(), task.getVersionId(),
-            task.getAttemptNo(), task.getRunToken(), task.getInputSnapshot(), null);
+        var late = new ProductionRunVo(task.getId(), ProductionBizType.news_explainer, task.getBizId(), task.getVersionId(),
+            task.getAttemptNo(), task.getRunToken(), task.getInputSnapshot());
         assertFalse(execution.succeed(late, new ProductionResultVo(List.of(), "{}")));
         assertEquals(original, jdbc.queryForObject("SELECT artifact_manifest FROM heron_video_version WHERE version_id=?", String.class, f.versionId()));
         jdbc.update("UPDATE heron_video_version SET checks='[]' WHERE version_id=?", f.versionId());
@@ -172,7 +172,7 @@ class NewsWorkTransactionTest extends NewsMysqlTestSupport {
         stale.setId(receipt.taskId() - 1);
         var tx = new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
         tx.executeWithoutResult(status -> {
-            context.getBean(org.dromara.heron.mapper.HeronProductionLaneMapper.class).lockByType(ProductionBizType.news_video);
+            context.getBean(org.dromara.heron.mapper.HeronProductionLaneMapper.class).lockByType(ProductionBizType.news_explainer);
             var domain = context.getBean("newsProductionDomain", IProductionDomain.class);
             domain.lockObject(work.getId());
             domain.release(stale);

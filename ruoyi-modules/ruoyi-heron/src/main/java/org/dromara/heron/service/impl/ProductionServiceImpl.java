@@ -40,6 +40,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 
@@ -49,7 +50,6 @@ import java.util.List;
 @Service
 public class ProductionServiceImpl implements IProductionService {
 
-    public static final int PROTOTYPE_CAPACITY = 3;
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final HeronProductionTaskMapper taskMapper;
@@ -94,11 +94,6 @@ public class ProductionServiceImpl implements IProductionService {
                     "同一请求键对应不同输入");
             }
             return receipt(existing);
-        }
-
-        if (type == ProductionBizType.prototype && taskMapper.countAdmitted(type) >= PROTOTYPE_CAPACITY) {
-            throw new org.dromara.heron.domain.HeronBusinessException(409, "production_capacity_full",
-                "原型生产线已满 3 个在途任务");
         }
 
         long taskId = IdUtil.getSnowflakeNextId();
@@ -166,16 +161,15 @@ public class ProductionServiceImpl implements IProductionService {
             .orderByDesc(HeronProductionTask::getCreateTime, HeronProductionTask::getId)
             .build();
         if (!LoginHelper.isSuperAdmin(actor)) {
-            boolean allNews = access.hasAllScope(ProductionBizType.news_video);
-            boolean allProto = access.hasAllScope(ProductionBizType.prototype);
-            if (!allNews || !allProto) {
+            // 四条视频线共用 newsWork:all，music_video 单独一套；按权限筛出本人可越权查看的线。
+            List<String> visible = Arrays.stream(ProductionBizType.values())
+                .filter(access::hasAllScope)
+                .map(Enum::name).toList();
+            if (visible.size() < ProductionBizType.values().length) {
                 wrapper.and(scope -> {
                     scope.eq(HeronProductionTask::getOwnerId, actor);
-                    if (allNews) {
-                        scope.or().eq(HeronProductionTask::getBizType, ProductionBizType.news_video.name());
-                    }
-                    if (allProto) {
-                        scope.or().eq(HeronProductionTask::getBizType, ProductionBizType.prototype.name());
+                    if (!visible.isEmpty()) {
+                        scope.or().in(HeronProductionTask::getBizType, visible);
                     }
                 });
             }
@@ -262,7 +256,11 @@ public class ProductionServiceImpl implements IProductionService {
     }
 
     private IProductionDomain domain(ProductionBizType type) {
-        String beanName = type == ProductionBizType.news_video ? "newsProductionDomain" : "prototypeProductionDomain";
+        String beanName = type.domainBean();
+        if (beanName == null) {
+            throw new org.dromara.heron.domain.HeronBusinessException(503, "production_capability_missing",
+                "生产线不可用: " + type);
+        }
         try {
             return domains.getBean(beanName, IProductionDomain.class);
         } catch (org.springframework.beans.BeansException e) {

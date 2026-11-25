@@ -4,7 +4,7 @@ INSERT INTO heron_production_task (
   status,stage,run_token,
   create_dept,create_by,create_time,update_by,update_time
 ) VALUES (
-  100,'prototype',10,1001,1,1,
+  100,'news_explainer',10,1001,1,1,
   'fixture-key',REPEAT('a',64),REPEAT('b',64),'{}',
   'queued',NULL,NULL,
   NULL,NULL,UTC_TIMESTAMP(3),NULL,UTC_TIMESTAMP(3)

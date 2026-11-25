@@ -40,7 +40,7 @@ class DatasetPlaceholdersTest {
     void resolvesScriptCopy() {
         JsonNode snapshot = dataset();
         JsonNode script = JSON.readTree("{\"title\":\"金价 {{facts.last.value}}\",\"scenes\":["
-            + "{\"lead\":\"站上关键位\",\"body\":\"收于 {{facts.last.value}} 美元。\",\"duration_s\":15}],"
+            + "{\"lead\":\"站上关键位\",\"body\":\"收于 {{facts.last.value}} 美元。\",\"duration_s\":10}],"
             + "\"closing\":\"区间最高 {{facts.max.value}} 美元。\",\"source_name\":\"来源：新浪财经\"}");
         JsonNode resolved = DatasetPlaceholders.resolve(script, snapshot);
         assertEquals("金价 4113.34", resolved.path("title").asString());

@@ -35,14 +35,13 @@ class ProductionArtifactTest {
     void setUp() {
         properties = new HeronProductionProperties();
         properties.setDataRoot(tempDir);
-        properties.setPrototypeMaxBytes(4);
         service = new ProductionArtifactService(properties, null);
     }
 
     @Test
     @DisplayName("尝试目录内的产物原子定稿并通过校验")
     void finalizeMovesAtomicallyAndVerifies() throws IOException {
-        ProductionRunVo run = run(ProductionBizType.news_video);
+        ProductionRunVo run = run(ProductionBizType.news_explainer);
         Path work = service.prepareWorkDirectory(run);
         Path file = Files.writeString(work.resolve("script.json"), "{\"scenes\":1}");
 
@@ -57,38 +56,8 @@ class ProductionArtifactTest {
     }
 
     @Test
-    @DisplayName("原型快照版本号缺失拒绝且最终键使用版本号")
-    void prototypeFinalizationRequiresSnapshotVersion() throws IOException {
-        ProductionRunVo run = run(ProductionBizType.prototype);
-        Path work = service.prepareWorkDirectory(run);
-        Path file = Files.writeString(work.resolve("page.rp"), "rp");
-
-        HeronBusinessException missing = assertThrows(HeronBusinessException.class, () ->
-            service.finalizeFile(run, "prototype", file, "application/octet-stream"));
-        assertEquals("production_invalid_version", missing.getCode());
-
-        ProductionArtifactVo artifact = service.finalizeFile(
-            run, "prototype", file, "application/octet-stream", 3L);
-        assertTrue(artifact.storageKey().startsWith("protos/10/v3/a1-"));
-        service.verify(artifact);
-    }
-
-    @Test
-    @DisplayName("原型清单契约要求的下划线产物类型可定稿")
-    void finalizesUnderscoreKindsRequiredByManifest() throws IOException {
-        ProductionRunVo run = run(ProductionBizType.prototype);
-        Path work = service.prepareWorkDirectory(run);
-
-        for (String kind : List.of("native_rp", "engine_check", "page_preview", "preview_summary")) {
-            Path file = Files.writeString(work.resolve(kind + ".png"), "x");
-
-            service.verify(service.finalizeFile(run, kind, file, "image/png", 3L));
-        }
-    }
-
-    @Test
     @DisplayName("尝试目录外的文件不可定稿")
-    void rejectsFileOutsideAttemptDirectory() throws IOException {        ProductionRunVo run = run(ProductionBizType.news_video);
+    void rejectsFileOutsideAttemptDirectory() throws IOException {        ProductionRunVo run = run(ProductionBizType.news_explainer);
         service.prepareWorkDirectory(run);
         Path outside = Files.writeString(tempDir.resolve("escape.json"), "{}");
 
@@ -100,17 +69,18 @@ class ProductionArtifactTest {
     }
 
     @Test
-    @DisplayName("空文件与超过原型上限的文件都拒绝")
+    @DisplayName("空文件与超过单文件上限的文件都拒绝")
     void rejectsEmptyAndOversizeFiles() throws IOException {
-        ProductionRunVo run = run(ProductionBizType.prototype);
+        properties.setNewsMaxBytes(4);
+        ProductionRunVo run = run(ProductionBizType.news_explainer);
         Path work = service.prepareWorkDirectory(run);
-        Path empty = Files.createFile(work.resolve("empty.rp"));
-        Path oversize = Files.writeString(work.resolve("big.rp"), "12345");
+        Path empty = Files.createFile(work.resolve("empty.json"));
+        Path oversize = Files.writeString(work.resolve("big.json"), "12345");
 
         HeronBusinessException emptyError = assertThrows(HeronBusinessException.class, () ->
-            service.finalizeFile(run, "prototype", empty, "application/octet-stream"));
+            service.finalizeFile(run, "script", empty, "application/json"));
         HeronBusinessException sizeError = assertThrows(HeronBusinessException.class, () ->
-            service.finalizeFile(run, "prototype", oversize, "application/octet-stream"));
+            service.finalizeFile(run, "script", oversize, "application/json"));
 
         assertEquals("production_file_invalid", emptyError.getCode());
         assertEquals("production_file_invalid", sizeError.getCode());
@@ -120,7 +90,7 @@ class ProductionArtifactTest {
     @Test
     @DisplayName("文件被改写后校验失败且不可删除")
     void detectsTamperedFile() throws IOException {
-        ProductionRunVo run = run(ProductionBizType.news_video);
+        ProductionRunVo run = run(ProductionBizType.news_explainer);
         Path work = service.prepareWorkDirectory(run);
         Path file = Files.writeString(work.resolve("video.mp4"), "payload");
         ProductionArtifactVo artifact = service.finalizeFile(run, "video", file, "video/mp4");
@@ -150,7 +120,7 @@ class ProductionArtifactTest {
     @Test
     @DisplayName("失败证据进入 .keep 且不进入成功产物目录")
     void failureEvidenceStaysUnderKeep() throws IOException {
-        ProductionRunVo run = run(ProductionBizType.news_video);
+        ProductionRunVo run = run(ProductionBizType.news_explainer);
         Path work = service.prepareWorkDirectory(run);
         Path file = Files.writeString(work.resolve("stderr.log"), "boom");
 
@@ -166,7 +136,7 @@ class ProductionArtifactTest {
     @Test
     @DisplayName("校验通过的产物可内部清理")
     void removesVerifiedArtifact() throws IOException {
-        ProductionRunVo run = run(ProductionBizType.news_video);
+        ProductionRunVo run = run(ProductionBizType.news_explainer);
         Path work = service.prepareWorkDirectory(run);
         Path file = Files.writeString(work.resolve("script.json"), "{}");
         ProductionArtifactVo artifact = service.finalizeFile(run, "script", file, "application/json");
@@ -180,14 +150,14 @@ class ProductionArtifactTest {
     @Test
     @DisplayName("尝试没落库就回收已定稿产物，落库了只清记账")
     void releasesUnlandedAttemptArtifacts() throws IOException {
-        ProductionRunVo landed = run(ProductionBizType.news_video);
+        ProductionRunVo landed = run(ProductionBizType.news_explainer);
         ProductionArtifactVo kept = service.finalizeFile(landed, "script",
             Files.writeString(service.prepareWorkDirectory(landed).resolve("a.json"), "{}"), "application/json");
         service.releaseAttempt(landed, true);
         assertTrue(Files.exists(tempDir.resolve(kept.storageKey())), "落库成功不能碰产物");
 
-        ProductionRunVo failed = new ProductionRunVo(9002L, ProductionBizType.news_video, 10L, 5L, 1,
-            UUID.randomUUID().toString(), null, null);
+        ProductionRunVo failed = new ProductionRunVo(9002L, ProductionBizType.news_explainer, 10L, 5L, 1,
+            UUID.randomUUID().toString(), null);
         ProductionArtifactVo dropped = service.finalizeFile(failed, "script",
             Files.writeString(service.prepareWorkDirectory(failed).resolve("b.json"), "{}"), "application/json");
         service.releaseAttempt(failed, false);
@@ -197,6 +167,6 @@ class ProductionArtifactTest {
 
     private ProductionRunVo run(ProductionBizType type) {
         return new ProductionRunVo(9001L, type, 10L, 5L, 1,
-            UUID.randomUUID().toString(), "{}", null);
+            UUID.randomUUID().toString(), "{}");
     }
 }

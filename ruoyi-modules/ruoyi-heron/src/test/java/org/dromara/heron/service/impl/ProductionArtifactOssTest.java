@@ -103,7 +103,7 @@ class ProductionArtifactOssTest {
         assertEquals("https://bucket.example/" + artifact.storageKey(), row.getUrl());
         JsonNode ext = JsonMapper.builder().build().readTree(row.getExt1());
         assertEquals("heron", ext.path("source").asString());
-        assertEquals("news_video", ext.path("bizType").asString());
+        assertEquals("news_explainer", ext.path("bizType").asString());
         assertEquals("10", ext.path("refId").asString());
         assertEquals(artifact.bytes(), ext.path("fileSize").asLong());
         assertEquals("application/json", ext.path("contentType").asString());
@@ -290,8 +290,8 @@ class ProductionArtifactOssTest {
     }
 
     private ProductionRunVo run() {
-        return new ProductionRunVo(9001L, ProductionBizType.news_video, 10L, 5L, 1,
-            UUID.randomUUID().toString(), "{}", null);
+        return new ProductionRunVo(9001L, ProductionBizType.news_explainer, 10L, 5L, 1,
+            UUID.randomUUID().toString(), "{}");
     }
 
     private static final class RecordingOssService implements OssService {

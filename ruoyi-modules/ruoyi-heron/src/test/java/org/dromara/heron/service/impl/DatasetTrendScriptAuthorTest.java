@@ -86,11 +86,11 @@ class DatasetTrendScriptAuthorTest {
     private static String reply(String middleBody, String closing) {
         return "{\"title\":\"涨得动吗\",\"scenes\":["
             + "{\"lead\":\"这轮抬升有多久\",\"body\":\"从 {{facts.first.date}} 到 {{facts.last.date}}，关注指数一路上升。\","
-            + "\"duration_s\":15,\"scene_type\":\"headline\",\"beat\":\"HOOK\",\"on_screen_text\":\"抬升持续多久\"},"
-            + "{\"lead\":\"区间首末差多少\",\"body\":\"" + middleBody + "\",\"duration_s\":15,"
+            + "\"duration_s\":10,\"scene_type\":\"headline\",\"beat\":\"HOOK\",\"on_screen_text\":\"抬升持续多久\"},"
+            + "{\"lead\":\"区间首末差多少\",\"body\":\"" + middleBody + "\",\"duration_s\":10,"
             + "\"scene_type\":\"chart\",\"beat\":\"EVIDENCE\"},"
             + "{\"lead\":\"还要观察什么\",\"body\":\"区间末值为 {{facts.last.value}} 点，是否走平仍待后续数据。\","
-            + "\"duration_s\":15,\"scene_type\":\"text\",\"beat\":\"CONCLUSION\"}],"
+            + "\"duration_s\":10,\"scene_type\":\"text\",\"beat\":\"CONCLUSION\"}],"
             + "\"closing\":\"" + closing + "\",\"source_name\":\"模型自述\"}";
     }
 
@@ -133,8 +133,8 @@ class DatasetTrendScriptAuthorTest {
             + "\"storyAngle\":\"先立区间，再讲斜率\"},"
             + "\"selection\":{\"candidateId\":1,\"dataSourceKey\":\"sample-attention\",\"digest\":false,"
             + "\"templateId\":\"news-trend-9x16\",\"storyAngle\":\"先立区间，再讲斜率\",\"sourceEvidenceIds\":[]}}";
-        return new ProductionRunVo(1L, org.dromara.heron.domain.ProductionBizType.news_video, 1L, 1L, 1,
-            "token", input, null);
+        return new ProductionRunVo(1L, org.dromara.heron.domain.ProductionBizType.news_explainer, 1L, 1L, 1,
+            "token", input);
     }
 
     @Test

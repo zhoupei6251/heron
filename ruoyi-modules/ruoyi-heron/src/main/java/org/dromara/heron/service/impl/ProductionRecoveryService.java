@@ -110,7 +110,7 @@ public class ProductionRecoveryService {
         }
         ProductionBizType type = ProductionBizType.valueOf(task.getBizType());
         ProductionRunVo run = new ProductionRunVo(task.getId(), type, task.getBizId(), task.getVersionId(),
-            task.getAttemptNo(), task.getRunToken(), task.getInputSnapshot(), null);
+            task.getAttemptNo(), task.getRunToken(), task.getInputSnapshot());
         // 无运行身份说明监护进程从未登记成功；启动阶段已保证这种情况不留下子进程。
         String identity = identities.latest(taskId, task.getAttemptNo());
         if (identity != null && !processes.stopAndConfirm(run)) {
@@ -139,8 +139,10 @@ public class ProductionRecoveryService {
     }
 
     private IProductionPipeline pipeline(ProductionBizType type) {
-        String beanName = type == ProductionBizType.news_video
-            ? "newsProductionPipeline" : "prototypeProductionPipeline";
+        String beanName = type.pipelineBean();
+        if (beanName == null) {
+            return null;
+        }
         try {
             return pipelines.getBean(beanName, IProductionPipeline.class);
         } catch (org.springframework.beans.BeansException e) {

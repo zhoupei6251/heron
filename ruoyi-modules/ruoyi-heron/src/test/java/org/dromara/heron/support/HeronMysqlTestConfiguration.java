@@ -27,6 +27,7 @@ import org.dromara.heron.service.impl.ProductionRecoveryService;
 import org.dromara.heron.service.impl.ProductionRuntimeIdentityService;
 import org.dromara.heron.service.impl.ProductionServiceImpl;
 import org.dromara.heron.service.impl.ProductionUsageService;
+import org.dromara.heron.service.impl.ModelPriceConfig;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -129,13 +130,14 @@ public class HeronMysqlTestConfiguration {
     public IProductionExecutionService productionExecutionService(HeronProductionTaskMapper taskMapper,
                                                                    HeronProductionLaneMapper laneMapper,
                                                                    HeronTaskStepMapper stepMapper,
+                                                                   HeronUsageRecordMapper usageMapper,
                                                                    ApplicationContext context,
                                                                    TransactionTemplate transactionTemplate,
                                                                    MutableClock clock,
                                                                    ProductionArtifactService artifacts,
                                                                    ProductionNotificationService notifications) {
-        return new ProductionExecutionServiceImpl(taskMapper, laneMapper, stepMapper, context,
-            transactionTemplate, clock, artifacts, notifications);
+        return new ProductionExecutionServiceImpl(taskMapper, laneMapper, stepMapper, usageMapper, context,
+            transactionTemplate, clock, artifacts, notifications, ModelPriceConfig.of(null, null));
     }
 
     @Bean
@@ -145,11 +147,6 @@ public class HeronMysqlTestConfiguration {
 
     @Bean("newsProductionDomain")
     public TestProductionDomain newsProductionDomain(JdbcTemplate jdbc) {
-        return new TestProductionDomain(jdbc);
-    }
-
-    @Bean("prototypeProductionDomain")
-    public TestProductionDomain prototypeProductionDomain(JdbcTemplate jdbc) {
         return new TestProductionDomain(jdbc);
     }
 

@@ -164,7 +164,7 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
     protected Completed completed(NewsWorkVo work) throws Exception {
         allowProduction();
         ProductionReceiptVo receipt = news.generate(work.getId(), new NewsGenerateBo(UUID.randomUUID().toString(), work.getRevision()));
-        ProductionRunVo run = execution.claim(ProductionBizType.news_video).orElseThrow();
+        ProductionRunVo run = execution.claim(ProductionBizType.news_explainer).orElseThrow();
         List<ProductionArtifactVo> files = fixtureFiles(run);
         String checks = checksJson();
         // 审稿记录现在是自动发布的必备条件，fixture 必须给一份干净的 PASS
@@ -223,9 +223,9 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         return """
             {"title":"测试新闻","closing":"结尾一句话","source_name":"测试来源",\
             "source_url":"https://feed.example.test/news/1","fetched_at":"2026-11-02T10:00:00Z","body_sha256":"%s",\
-            "scenes":[{"lead":"领句一","body":"正文一","duration_s":15},\
-            {"lead":"领句二","body":"正文二","duration_s":15},\
-            {"lead":"领句三","body":"正文三","duration_s":15}]}""".formatted("a".repeat(64));
+            "scenes":[{"lead":"领句一","body":"正文一","duration_s":10},\
+            {"lead":"领句二","body":"正文二","duration_s":10},\
+            {"lead":"领句三","body":"正文三","duration_s":10}]}""".formatted("a".repeat(64));
     }
 
     protected static String checksJson() {

@@ -8,7 +8,9 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -77,17 +79,19 @@ class ProductionSchemaTest extends HeronMysqlTestSupport {
     }
 
     @Test
-    @DisplayName("两条固定业务线已初始化")
-    void twoLanesSeeded() throws Exception {
+    @DisplayName("五条固定业务线已初始化，biz_type 足够容纳最长线名")
+    void lanesSeeded() throws Exception {
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement();
              ResultSet result = statement.executeQuery(
                  "SELECT biz_type FROM heron_production_lane ORDER BY biz_type")) {
-            assertTrue(result.next());
-            assertEquals("news_video", result.getString(1));
-            assertTrue(result.next());
-            assertEquals("prototype", result.getString(1));
-            assertFalse(result.next());
+            List<String> lanes = new ArrayList<>();
+            while (result.next()) {
+                lanes.add(result.getString(1));
+            }
+            assertEquals(
+                List.of("data_board", "knowledge_explainer", "music_video", "news_explainer", "trend_insight"),
+                lanes);
         }
     }
 }

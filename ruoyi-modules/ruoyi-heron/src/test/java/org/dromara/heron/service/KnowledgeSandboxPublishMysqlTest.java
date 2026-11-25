@@ -61,7 +61,7 @@ class KnowledgeSandboxPublishMysqlTest extends NewsMysqlTestSupport {
         var work = maintenance.claimForAuto(selection, OWNER);
         ProductionReceiptVo receipt = maintenance.generateForAuto(work.getId(),
             "auto:knowledge:" + UUID.randomUUID(), decision, selection);
-        ProductionRunVo run = execution.claim(ProductionBizType.news_video).orElseThrow();
+        ProductionRunVo run = execution.claim(ProductionBizType.news_explainer).orElseThrow();
         execution.succeed(run, new ProductionResultVo(knowledgeFiles(run), knowledgeResult(run)));
 
         NewsVideoVersionVo published = maintenance.confirmForAuto(work.getId(), receipt.versionId(), OWNER);
@@ -114,11 +114,11 @@ class KnowledgeSandboxPublishMysqlTest extends NewsMysqlTestSupport {
             "source_name":"高性价比人生指南",\
             "source_url":"https://github.com/eternity4719/HowToLiveBetter","fetched_at":"2026-11-20",\
             "body_sha256":"%s",\
-            "scenes":[{"lead":"押金条款先写清","body":"押金数额、退还时间和能扣的情形，签字前写进合同。","duration_s":15,\
+            "scenes":[{"lead":"押金条款先写清","body":"押金数额、退还时间和能扣的情形，签字前写进合同。","duration_s":10,\
             "entry_ids":["15-01"]},\
-            {"lead":"租金押金别转给中介","body":"房租和押金直接付给房东，付款前核对收款人。","duration_s":15,\
+            {"lead":"租金押金别转给中介","body":"房租和押金直接付给房东，付款前核对收款人。","duration_s":10,\
             "entry_ids":["15-03"]},\
-            {"lead":"租房也能提公积金","body":"租房属于可提取情形，受理后三个工作日答复。","duration_s":15,\
+            {"lead":"租房也能提公积金","body":"租房属于可提取情形，受理后三个工作日答复。","duration_s":10,\
             "entry_ids":["05-03"]}]}""".formatted(ATTRIBUTION, "c".repeat(64));
     }
 

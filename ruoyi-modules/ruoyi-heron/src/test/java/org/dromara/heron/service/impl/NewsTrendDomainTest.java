@@ -69,7 +69,7 @@ class NewsTrendDomainTest {
         task.setVersionId(11L);
         task.setBizId(22L);
         task.setOwnerId(44L);
-        task.setBizType(ProductionBizType.news_video.name());
+        task.setBizType(ProductionBizType.news_explainer.name());
         task.setAttemptNo(1);
         task.setRunToken("11111111-1111-1111-1111-111111111111");
         return task;

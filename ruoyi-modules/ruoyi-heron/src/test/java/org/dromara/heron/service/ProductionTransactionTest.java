@@ -62,11 +62,11 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("相同请求键重放返回原任务且不重复占版本")
     void sameRequestKeyReplaysOriginalTask() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo first = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
+            new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
         ProductionReceiptVo replay = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
+            new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
 
         assertEquals(first.taskId(), replay.taskId());
         assertEquals(1, count("heron_production_task"));
@@ -80,11 +80,11 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("同一请求键对应不同输入返回冲突")
     void sameRequestKeyDifferentInputConflicts() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
-        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
+        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
 
         HeronBusinessException error = assertThrows(HeronBusinessException.class, () ->
-            productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 2)));
+            productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 2)));
 
         assertEquals(409, error.getStatus());
         assertEquals("production_request_conflict", error.getCode());
@@ -92,61 +92,28 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     }
 
     @Test
-    @DisplayName("原型容量满 3 后拒绝第 4 个且回滚预留版本")
-    void prototypeCapacityRejectsFourthWithoutOrphanVersion() {
-        for (long id = 1; id <= 4; id++) {
-            insertObject(id, ProductionBizType.prototype, ADMIN);
-        }
-        ProductionReceiptVo first = null;
-        for (long id = 1; id <= 3; id++) {
-            ProductionReceiptVo receipt = productionService.submit(
-                new ProductionSubmitBo(ProductionBizType.prototype, id, "proto-" + id, 1));
-            if (first == null) {
-                first = receipt;
-            }
-        }
-        assertEquals(3, count("heron_production_task"));
-
-        HeronBusinessException error = assertThrows(HeronBusinessException.class, () ->
-            productionService.submit(new ProductionSubmitBo(ProductionBizType.prototype, 4, "proto-4", 1)));
-
-        assertEquals(409, error.getStatus());
-        assertEquals("production_capacity_full", error.getCode());
-        assertEquals(3, count("heron_test_version"));
-        assertEquals(3, count("heron_production_task"));
-        assertEquals(1L, jdbc.queryForObject(
-            "SELECT revision FROM heron_test_object WHERE object_id=4", Long.class));
-        assertNull(jdbc.queryForObject(
-            "SELECT active_task FROM heron_test_object WHERE object_id=4", Long.class));
-
-        ProductionReceiptVo replay = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.prototype, 1, "proto-1", 1));
-        assertEquals(first.taskId(), replay.taskId());
-    }
-
-    @Test
     @DisplayName("同一对象第二个请求键冲突且不产生孤儿版本")
     void sameObjectSecondRequestConflictsWithoutOrphanVersion() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo first = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
+            new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
 
         HeronBusinessException busy = assertThrows(HeronBusinessException.class, () ->
-            productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-b", 1)));
+            productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-b", 1)));
         assertEquals("production_object_busy", busy.getCode());
 
         loginAs(OTHER_USER);
         assertThrows(HeronAccessException.class, () ->
-            productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-d", 1)));
+            productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-d", 1)));
         loginAs(ALL_SCOPE_USER);
         HeronBusinessException otherActorBusy = assertThrows(HeronBusinessException.class, () ->
-            productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-d", 1)));
+            productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-d", 1)));
         assertEquals("production_object_busy", otherActorBusy.getCode());
         loginAs(ADMIN);
 
-        insertObject(11, ProductionBizType.news_video, ADMIN);
+        insertObject(11, ProductionBizType.news_explainer, ADMIN);
         HeronBusinessException stale = assertThrows(HeronBusinessException.class, () ->
-            productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 11, "key-c", 5)));
+            productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 11, "key-c", 5)));
         assertEquals("production_revision_conflict", stale.getCode());
 
         assertEquals(1, count("heron_test_version"));
@@ -160,9 +127,9 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("完成阶段异常的整单回滚保留执行中状态")
     void completeFailureRollsBackToRunning() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
-        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
-        ProductionRunVo run = executionService.claim(ProductionBizType.news_video).orElseThrow();
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
+        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
+        ProductionRunVo run = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
         assertTrue(executionService.beginStage(run, "scripting", 10));
 
         newsDomain.setFailOnComplete(true);
@@ -191,9 +158,9 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("排队取消释放对象且重复取消幂等")
     void queuedCancellationReleasesObjectAndIsIdempotent() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo receipt = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
+            new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
 
         ProductionTaskVo cancelled = productionService.cancel(receipt.taskId());
         assertEquals("cancelled", cancelled.getStatus().name());
@@ -208,10 +175,10 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("执行中取消进入中止态并由持有者收尾")
     void runningCancellationFinishesByLeaseHolder() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo receipt = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
-        ProductionRunVo run = executionService.claim(ProductionBizType.news_video).orElseThrow();
+            new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
+        ProductionRunVo run = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
 
         ProductionTaskVo cancelling = productionService.cancel(receipt.taskId());
         assertEquals("cancelling", cancelling.getStatus().name());
@@ -231,10 +198,10 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("外部结果未知的取消按失败终结")
     void unknownExternalOutcomeFailsCancellation() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo receipt = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
-        ProductionRunVo run = executionService.claim(ProductionBizType.news_video).orElseThrow();
+            new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
+        ProductionRunVo run = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
         productionService.cancel(receipt.taskId());
 
         assertTrue(executionService.finishCancellation(run, true, true));
@@ -248,9 +215,9 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("失败回执标记外部结果未知时统一错误码并释放占用")
     void externalUnknownFailureUsesCanonicalCodeAndReleasesObject() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
-        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
-        ProductionRunVo run = executionService.claim(ProductionBizType.news_video).orElseThrow();
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
+        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
+        ProductionRunVo run = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
         assertTrue(executionService.beginStage(run, "scripting", 10));
 
         assertTrue(executionService.fail(run, new ProductionFailureBo(
@@ -268,25 +235,25 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("同一条生产线同时只允许一个执行者")
     void oneLaneRunsOnlyOneTaskAtATime() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
-        insertObject(11, ProductionBizType.news_video, ADMIN);
-        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
-        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 11, "key-b", 1));
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
+        insertObject(11, ProductionBizType.news_explainer, ADMIN);
+        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
+        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 11, "key-b", 1));
 
-        ProductionRunVo first = executionService.claim(ProductionBizType.news_video).orElseThrow();
-        assertTrue(executionService.claim(ProductionBizType.news_video).isEmpty());
+        ProductionRunVo first = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
+        assertTrue(executionService.claim(ProductionBizType.news_explainer).isEmpty());
 
         executionService.fail(first, new ProductionFailureBo("boom", null, null, "失败", false));
         assertEquals("failed", taskStatus(first.taskId()));
-        assertTrue(executionService.claim(ProductionBizType.news_video).isPresent());
+        assertTrue(executionService.claim(ProductionBizType.news_explainer).isPresent());
     }
 
     @Test
     @DisplayName("重复开始同一阶段被拒且只留一条阶段记录")
     void duplicateStageIsRejected() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
-        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
-        ProductionRunVo run = executionService.claim(ProductionBizType.news_video).orElseThrow();
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
+        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
+        ProductionRunVo run = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
         assertTrue(executionService.beginStage(run, "scripting", 10));
 
         HeronBusinessException error = assertThrows(HeronBusinessException.class, () ->
@@ -300,9 +267,9 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("非所有者取消他人任务返回访问拒绝且状态不变")
     void nonOwnerCannotCancelTask() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo receipt = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
+            new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
 
         loginAs(OTHER_USER);
         assertThrows(HeronAccessException.class, () -> productionService.cancel(receipt.taskId()));
@@ -316,9 +283,9 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("超长失败诊断按列宽截断且不拆分代理对")
     void oversizedFailureDiagnosticsAreBounded() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
-        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
-        ProductionRunVo run = executionService.claim(ProductionBizType.news_video).orElseThrow();
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
+        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
+        ProductionRunVo run = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
         assertTrue(executionService.beginStage(run, "scripting", 10));
 
         assertTrue(executionService.fail(run, new ProductionFailureBo(
@@ -338,10 +305,10 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @RepeatedTest(20)
     @DisplayName("取消与成功竞争只有一方终结（重复 20 轮）")
     void cancelAndSucceedRaceHasSingleTerminalOutcome() throws Exception {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo receipt = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
-        ProductionRunVo run = executionService.claim(ProductionBizType.news_video).orElseThrow();
+            new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
+        ProductionRunVo run = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -380,8 +347,8 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @RepeatedTest(20)
     @DisplayName("并发领取只有唯一持有者（重复 20 轮）")
     void concurrentClaimHasSingleWinner() throws Exception {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
-        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
+        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         CountDownLatch ready = new CountDownLatch(2);
@@ -390,12 +357,12 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
             Future<Optional<ProductionRunVo>> left = pool.submit(() -> {
                 ready.countDown();
                 start.await(5, TimeUnit.SECONDS);
-                return executionService.claim(ProductionBizType.news_video);
+                return executionService.claim(ProductionBizType.news_explainer);
             });
             Future<Optional<ProductionRunVo>> right = pool.submit(() -> {
                 ready.countDown();
                 start.await(5, TimeUnit.SECONDS);
-                return executionService.claim(ProductionBizType.news_video);
+                return executionService.claim(ProductionBizType.news_explainer);
             });
             assertTrue(ready.await(5, TimeUnit.SECONDS));
             start.countDown();
@@ -413,9 +380,9 @@ class ProductionTransactionTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("非所有者看不到他人任务")
     void nonOwnerCannotReadTask() {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo receipt = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, 10, "key-a", 1));
+            new ProductionSubmitBo(ProductionBizType.news_explainer, 10, "key-a", 1));
 
         loginAs(OTHER_USER);
         assertThrows(HeronAccessException.class, () -> productionService.queryById(receipt.taskId()));

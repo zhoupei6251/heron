@@ -87,7 +87,7 @@ class ProductionRecoveryTest extends HeronMysqlTestSupport {
         assertEquals(1, jdbc.queryForObject(
             "SELECT COUNT(*) FROM heron_test_version WHERE object_id=10", Integer.class));
 
-        ProductionRunVo second = executionService.claim(ProductionBizType.news_video).orElseThrow();
+        ProductionRunVo second = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
         assertEquals(2, second.attemptNo());
         assertNotEquals(first.runToken(), second.runToken());
     }
@@ -156,7 +156,7 @@ class ProductionRecoveryTest extends HeronMysqlTestSupport {
         executionService.recoverExpired();
         assertEquals(1, recoveryService.recoverCancelling());
 
-        ProductionRunVo second = executionService.claim(ProductionBizType.news_video).orElseThrow();
+        ProductionRunVo second = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
         assertNotEquals(first.runToken(), second.runToken());
         assertFalse(executionService.succeed(first, result()));
         assertTrue(executionService.succeed(second, result()));
@@ -202,9 +202,9 @@ class ProductionRecoveryTest extends HeronMysqlTestSupport {
     }
 
     private ProductionRunVo submitAndClaim(String key) {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
-        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, 10, key, 1));
-        return executionService.claim(ProductionBizType.news_video).orElseThrow();
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
+        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, 10, key, 1));
+        return executionService.claim(ProductionBizType.news_explainer).orElseThrow();
     }
 
     private ProductionResultVo result() {

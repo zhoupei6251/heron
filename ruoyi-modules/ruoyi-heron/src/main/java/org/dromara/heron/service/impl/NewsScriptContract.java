@@ -45,6 +45,11 @@ public final class NewsScriptContract {
     private static final int MAX_SCENES = 6;
     private static final int MIN_TOTAL_SECONDS = 30;
     private static final int MAX_TOTAL_SECONDS = 75;
+    /**
+     * 单段时长上限。数字与 {@link QualityCriteria#LONG_SCENE_MS} 同源，不在契约里另起一个数：
+     * 同一段超过 12 秒，写稿阶段就该退，而不是渲染完再判节奏。
+     */
+    private static final double MAX_SCENE_SECONDS = QualityCriteria.LONG_SCENE_MS / 1000.0;
 
     private NewsScriptContract() { }
 
@@ -108,7 +113,15 @@ public final class NewsScriptContract {
             text(items, scene, "body", 70);
             JsonNode duration = scene.path("duration_s");
             if (!duration.isNumber() || duration.asDouble() <= 0) items.add("第 " + (index + 1) + " 段缺少正数 duration_s");
-            else total += duration.asDouble();
+            else {
+                total += duration.asDouble();
+                // 3 段 75 秒里可以藏一段 60 秒：总量合格、每段也「正数」，但观众半分钟等不到下一屏。
+                // 上界放在写稿闸而不是渲染后：那时钱已经花在配图和配音上。
+                if (duration.asDouble() > MAX_SCENE_SECONDS) {
+                    items.add("第 " + (index + 1) + " 段时长 " + trim(duration.asDouble()) + " 秒，超过单段上限 "
+                        + trim(MAX_SCENE_SECONDS) + " 秒");
+                }
+            }
             if (!title.isBlank() && (title.equals(scene.path("lead").asString("")) || title.equals(scene.path("body").asString("")))) {
                 items.add("第 " + (index + 1) + " 段与标题重复");
             }
@@ -245,5 +258,10 @@ public final class NewsScriptContract {
         int length = value.codePointCount(0, value.length());
         if (value.isBlank()) items.add(field + " 为空");
         else if (length > maxCodePoints) items.add(field + " " + length + " 字，超过上限 " + maxCodePoints + " 字");
+    }
+
+    /** 秒数展示：整数不带小数点，退回原因要能直接读。 */
+    private static String trim(double seconds) {
+        return seconds == Math.rint(seconds) ? String.valueOf((long) seconds) : String.valueOf(seconds);
     }
 }

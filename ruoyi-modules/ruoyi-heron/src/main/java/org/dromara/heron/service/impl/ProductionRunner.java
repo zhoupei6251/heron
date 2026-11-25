@@ -203,8 +203,10 @@ public class ProductionRunner {
     }
 
     private IProductionPipeline pipeline(ProductionBizType type) {
-        String beanName = type == ProductionBizType.news_video
-            ? "newsProductionPipeline" : "prototypeProductionPipeline";
+        String beanName = type.pipelineBean();
+        if (beanName == null) {
+            return null;
+        }
         try {
             return pipelines.getBean(beanName, IProductionPipeline.class);
         } catch (org.springframework.beans.BeansException e) {

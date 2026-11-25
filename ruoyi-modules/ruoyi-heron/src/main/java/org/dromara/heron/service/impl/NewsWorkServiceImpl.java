@@ -44,7 +44,8 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class NewsWorkServiceImpl implements INewsWorkService {
-    private static final ProductionBizType TYPE = ProductionBizType.news_video;
+    /** 四条视频线共用一套权限；容量锁行也只认其中一行，具体是哪一条不影响语义。 */
+    private static final ProductionBizType LANE = ProductionBizType.news_explainer;
     private static final int RETENTION_DAYS = 15;
     /** 自动发布只认这些审稿级别；白名单之外的拼写一律当非法，不猜风险高低。 */
     private static final java.util.Set<String> REVIEW_SEVERITIES = java.util.Set.of("BLOCKER", "MAJOR", "MINOR");
@@ -312,7 +313,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         access.requirePermission("heron:newsWork:list");
         var wrapper = QueryBuilder.lambda(HeronNewsWork.class).likeIfText(HeronNewsWork::getTitle, query.getTitle())
             .eqIfPresent(HeronNewsWork::getCandidateId, query.getCandidateId())
-            .eq(!access.hasAllScope(TYPE), HeronNewsWork::getOwnerId, access.requireActor())
+            .eq(!access.hasAllScope(LANE), HeronNewsWork::getOwnerId, access.requireActor())
             .betweenParams(HeronNewsWork::getUpdateTime, query.getParams(), "beginUpdateTime", "endUpdateTime")
             .orderByDesc(HeronNewsWork::getUpdateTime, HeronNewsWork::getId).build();
         Page<NewsWorkVo> page = workMapper.selectVoPage(query.build(), wrapper);
@@ -349,7 +350,8 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     public ProductionReceiptVo generate(long workId, NewsGenerateBo bo) {
         requireWork(workId, "generate");
         if (bo == null || bo.expectedRevision() == null || bo.requestKey() == null || !bo.requestKey().matches("[a-zA-Z0-9._:-]{1,64}")) throw invalid("生成请求不合法");
-        return production.submit(new ProductionSubmitBo(TYPE, workId, bo.requestKey(), bo.expectedRevision()));
+        return production.submit(new ProductionSubmitBo(laneOf(workMapper.selectById(workId)), workId,
+            bo.requestKey(), bo.expectedRevision()));
     }
 
     /** 自动模式提交：跳过对象级权限校验，决策与选择随提交一起进快照。 */
@@ -359,8 +361,9 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         HeronNewsWork work = workMapper.selectById(workId);
         if (work == null) throw new HeronAccessException();
         if (requestKey == null || !requestKey.matches("[a-zA-Z0-9._:-]{1,64}")) throw invalid("生成请求不合法");
-        return production.submit(new ProductionSubmitBo(TYPE, workId, requestKey, work.getRevision(),
-            decision, selection));
+        return production.submit(new ProductionSubmitBo(
+            ProductionBizType.fromKind(NewsProductionDomain.kindOf(selection)), workId, requestKey,
+            work.getRevision(), decision, selection));
     }
 
     /**
@@ -472,11 +475,21 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         // 改过的策划结论要能查出是谁改的。
         newEditorial.put("storyEditedBy", actor);
         newEditorial.put("storyEditedAt", now().toString());
-        return production.submit(new ProductionSubmitBo(TYPE, work.getId(), bo.requestKey(), bo.expectedRevision(),
-            null, null, new EditorialOverride(newSelection, newEditorial)));
+        return production.submit(new ProductionSubmitBo(
+            ProductionBizType.fromKind(NewsProductionDomain.kindOfLine(newSelection)), work.getId(),
+            bo.requestKey(), bo.expectedRevision(), null, null,
+            new EditorialOverride(newSelection, newEditorial)));
     }
 
     /** 当前版本的冻结快照版本；没有当前版本就是还没出片。 */
+    /** 手工路径没有 selection，线只能取已冻结的上一版；没有上一版就按解说线。 */
+    private ProductionBizType laneOf(HeronNewsWork work) {
+        if (work == null) return ProductionBizType.news_explainer;
+        HeronVideoVersion version = currentVersionOf(work);
+        if (version == null) return ProductionBizType.news_explainer;
+        return ProductionBizType.fromKind(JSON.readTree(version.getInputSnapshot()).path("kind").asString(""));
+    }
+
     private HeronVideoVersion currentVersionOf(HeronNewsWork work) {
         Long versionId = work.getCurrentVersionId();
         return versionId == null ? null : versionMapper.selectById(versionId);
@@ -506,7 +519,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         access.requirePermission("heron:newsWork:review");
         Page<HeronVideoVersion> page = versionMapper.selectPage(pageQuery.build(), QueryBuilder.lambda(HeronVideoVersion.class)
             .eq(HeronVideoVersion::getReviewStatus, "pending")
-            .eq(!access.hasAllScope(TYPE), HeronVideoVersion::getOwnerId, access.requireActor())
+            .eq(!access.hasAllScope(LANE), HeronVideoVersion::getOwnerId, access.requireActor())
             .orderByAsc(HeronVideoVersion::getCreateTime).build());
         List<Long> workIds = page.getRecords().stream().map(HeronVideoVersion::getWorkId).distinct().toList();
         Map<Long, String> titles = workIds.isEmpty() ? Map.of() : workMapper.selectByIds(workIds).stream()
@@ -524,7 +537,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     public PageResult<NewsVideoVersionVo> published(PageQuery pageQuery) {
         access.requirePermission("heron:newsWork:list");
         var query = QueryBuilder.lambda(HeronVideoVersion.class)
-            .eq(!access.hasAllScope(TYPE), HeronVideoVersion::getOwnerId, access.requireActor())
+            .eq(!access.hasAllScope(LANE), HeronVideoVersion::getOwnerId, access.requireActor())
             .orderByDesc(HeronVideoVersion::getUpdateTime).build();
         query.and(q -> q.isNotNull(HeronVideoVersion::getPublishAt).or().inSql(HeronVideoVersion::getId,
             "SELECT version_id FROM heron_news_publish_attempt WHERE status IN ('started','unknown','submitted')"));
@@ -1033,7 +1046,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         if (work.getActiveTaskId() != null || candidate.getActiveTaskId() != null) return false;
         HeronNewsPublishAttempt publishing = publishAttempts.active(work.getCandidateId());
         if (publishing != null && !"published".equals(publishing.getStatus())) return false;
-        if (taskMapper.selectCount(QueryBuilder.lambda(HeronProductionTask.class).eq(HeronProductionTask::getBizType, TYPE.name())
+        if (taskMapper.selectCount(QueryBuilder.lambda(HeronProductionTask.class).in(HeronProductionTask::getBizType, ProductionBizType.videoLanes().stream().map(Enum::name).toList())
             .eq(HeronProductionTask::getBizId, work.getId()).in(HeronProductionTask::getStatus, List.of("queued", "running", "cancelling")).build()) > 0) return false;
         HeronProductionTask task = taskMapper.selectById(version.getTaskId());
         domain.validateManifest(version, task, parseManifest(version), false);
@@ -1068,7 +1081,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private HeronNewsWork requireWork(long id, String action) {
         HeronNewsWork work = workMapper.selectById(id);
         if (work == null) throw new HeronAccessException();
-        access.requireObject(work.getOwnerId(), TYPE, "heron:newsWork:" + action);
+        access.requireObject(work.getOwnerId(), LANE, "heron:newsWork:" + action);
         return work;
     }
 
@@ -1114,7 +1127,8 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         }
         if (vo.getActiveTaskId() != null) {
             HeronProductionTask task = taskMapper.selectById(vo.getActiveTaskId());
-            if (task == null || !TYPE.name().equals(task.getBizType()) || !Objects.equals(task.getBizId(), vo.getId())
+            if (task == null || ProductionBizType.valueOf(task.getBizType()) == ProductionBizType.music_video
+                || !Objects.equals(task.getBizId(), vo.getId())
                 || !Objects.equals(task.getOwnerId(), vo.getOwnerId())) throw new HeronAccessException();
             vo.setActiveTask(MapstructUtils.convert(task, ProductionTaskVo.class));
         }
@@ -1162,7 +1176,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private ProductionArtifactVo byId(List<ProductionArtifactVo> files, String id) {
         return files.stream().filter(a -> a != null && Objects.equals(id, a.artifactId())).findFirst().orElseThrow(HeronAccessException::new);
     }
-    private void lockLane() { if (laneMapper.lockByType(TYPE) == null) throw new HeronBusinessException(503, "news_lane_missing", "新闻生产线未初始化"); }
+    private void lockLane() { if (laneMapper.lockByType(LANE) == null) throw new HeronBusinessException(503, "news_lane_missing", "新闻生产线未初始化"); }
     private LocalDateTime now() { return LocalDateTime.now(clocks.getIfAvailable(Clock::systemUTC)); }
     private boolean sha(String value) { return value != null && value.matches("[0-9a-f]{64}"); }
     /** 只认 douyin.com 的 https 作品链接，拒绝任何可伪装成它的形状。 */

@@ -82,7 +82,7 @@ class ProductionAccessTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("列表按对象范围过滤，跨用户按 ID 读取返回 404")
     void listIsScopedAndForeignTaskIsNotFound() throws Exception {
-        long ownNews = createTask(OWNER, ProductionBizType.news_video, 11, "access-own");
+        long ownNews = createTask(OWNER, ProductionBizType.news_explainer, 11, "access-own");
         grantPermissions(OWNER, "heron:production:list", "heron:production:query",
             "heron:newsWork:generate");
         loginAs(OWNER);
@@ -92,8 +92,8 @@ class ProductionAccessTest extends HeronMysqlTestSupport {
             .andExpect(jsonPath("$.data.rows[0].bizId").value(11));
         mvc.perform(get("/heron/production/{taskId}", ownNews)).andExpect(status().isOk());
 
-        long foreignNews = createTask(OTHER, ProductionBizType.news_video, 12, "access-foreign");
-        long foreignProto = createTask(OTHER, ProductionBizType.prototype, 13, "access-foreign-proto");
+        long foreignNews = createTask(OTHER, ProductionBizType.news_explainer, 12, "access-foreign");
+        long foreignBoard = createTask(OTHER, ProductionBizType.data_board, 13, "access-foreign-board");
         loginAs(OWNER);
         mvc.perform(get("/heron/production/{taskId}", foreignNews))
             .andExpect(status().isNotFound())
@@ -102,13 +102,13 @@ class ProductionAccessTest extends HeronMysqlTestSupport {
 
         loginAs(REVIEWER);
         grantPermissions(REVIEWER, "heron:production:list", "heron:production:query",
-            "heron:proto:all");
+            "heron:newsWork:all");
+        // newsWork:all 覆盖四条视频线，所以两条外部任务都能看，但总数里不该出现 music_video 之外的新线
         mvc.perform(get("/heron/production/list"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.total").value(1))
-            .andExpect(jsonPath("$.data.rows[0].bizId").value(13));
-        mvc.perform(get("/heron/production/{taskId}", foreignProto)).andExpect(status().isOk());
-        mvc.perform(get("/heron/production/{taskId}", foreignNews)).andExpect(status().isNotFound());
+            .andExpect(jsonPath("$.data.total").value(2));
+        mvc.perform(get("/heron/production/{taskId}", foreignBoard)).andExpect(status().isOk());
+        mvc.perform(get("/heron/production/{taskId}", foreignNews)).andExpect(status().isOk());
 
         loginAs(ADMIN);
         mvc.perform(get("/heron/production/list"))
@@ -120,9 +120,9 @@ class ProductionAccessTest extends HeronMysqlTestSupport {
     @Test
     @DisplayName("非发起人取消需要业务生成权限")
     void reviewerWithoutGenerateCannotCancel() throws Exception {
-        long taskId = createTask(OTHER, ProductionBizType.prototype, 14, "access-cancel");
+        long taskId = createTask(OTHER, ProductionBizType.data_board, 14, "access-cancel");
         grantPermissions(REVIEWER, "heron:production:query", "heron:production:cancel",
-            "heron:proto:all");
+            "heron:musicVideo:all");
         loginAs(REVIEWER);
         mvc.perform(post("/heron/production/{taskId}/cancel", taskId))
             .andExpect(status().isNotFound());
@@ -131,7 +131,7 @@ class ProductionAccessTest extends HeronMysqlTestSupport {
 
         loginAs(OTHER);
         grantPermissions(OTHER, "heron:production:query", "heron:production:cancel",
-            "heron:proto:generate");
+            "heron:newsWork:generate");
         mvc.perform(post("/heron/production/{taskId}/cancel", taskId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("cancelled"));
@@ -196,7 +196,7 @@ class ProductionAccessTest extends HeronMysqlTestSupport {
         mvc.perform(get("/heron/production/capabilities"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.news").exists())
-            .andExpect(jsonPath("$.data.prototype").exists());
+            .andExpect(jsonPath("$.data.musicVideo").exists());
 
         SaCheckPermission annotation = ProductionController.class
             .getMethod("list", ProductionQueryBo.class, PageQuery.class)
@@ -214,8 +214,8 @@ class ProductionAccessTest extends HeronMysqlTestSupport {
     }
 
     private EvidenceFixture createFailedEvidence(long owner, long bizId, String key) throws Exception {
-        long taskId = createTask(owner, ProductionBizType.news_video, bizId, key);
-        ProductionRunVo run = executionService.claim(ProductionBizType.news_video).orElseThrow();
+        long taskId = createTask(owner, ProductionBizType.news_explainer, bizId, key);
+        ProductionRunVo run = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
         assertEquals(taskId, run.taskId());
         jdbc.update("UPDATE heron_production_task SET status='failed', run_token=NULL, lease_until=NULL "
             + "WHERE task_id=?", taskId);
@@ -237,7 +237,7 @@ class ProductionAccessTest extends HeronMysqlTestSupport {
             IdUtil.getSnowflakeNextId(), taskId, run.attemptNo(), "render", "failed", evidence);
 
         Path keep = properties.getDataRoot().toAbsolutePath().normalize()
-            .resolve("work").resolve("news_video").resolve(Long.toString(taskId))
+            .resolve("work").resolve(ProductionBizType.news_explainer.name()).resolve(Long.toString(taskId))
             .resolve("a" + run.attemptNo() + "-" + run.runToken()).resolve(".keep");
         Files.createDirectories(keep);
         Path file = keep.resolve(artifactId + ".txt");

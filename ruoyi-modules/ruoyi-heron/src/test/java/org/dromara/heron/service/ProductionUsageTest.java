@@ -97,9 +97,9 @@ class ProductionUsageTest extends HeronMysqlTestSupport {
     }
 
     private ProductionRunVo submitAndClaim(String key) {
-        insertObject(10, ProductionBizType.news_video, ADMIN);
+        insertObject(10, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo receipt = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, 10, key, 1));
-        return executionService.claim(ProductionBizType.news_video).orElseThrow();
+            new ProductionSubmitBo(ProductionBizType.news_explainer, 10, key, 1));
+        return executionService.claim(ProductionBizType.news_explainer).orElseThrow();
     }
 }

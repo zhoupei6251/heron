@@ -77,24 +77,24 @@ class DatasetScriptAuthorTest {
 
     private static String storyReply() {
         return "{\"title\":\"金价再创新高\",\"scenes\":["
-            + "{\"lead\":\"金价末值与峰值只差一点\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":15,"
+            + "{\"lead\":\"金价末值与峰值只差一点\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":10,"
             + "\"scene_type\":\"headline\",\"beat\":\"HOOK\"},"
-            + "{\"lead\":\"区间末值高于起点\",\"body\":\"末值来到 {{facts.last.value}} 美元。\",\"duration_s\":15,"
+            + "{\"lead\":\"区间末值高于起点\",\"body\":\"末值来到 {{facts.last.value}} 美元。\",\"duration_s\":10,"
             + "\"scene_type\":\"chart\",\"beat\":\"EVIDENCE\"},"
-            + "{\"lead\":\"峰值出现在区间靠后位置\",\"body\":\"阶段高点为 {{facts.max.value}} 美元。\",\"duration_s\":15,"
+            + "{\"lead\":\"峰值出现在区间靠后位置\",\"body\":\"阶段高点为 {{facts.max.value}} 美元。\",\"duration_s\":10,"
             + "\"scene_type\":\"compare\",\"beat\":\"COMPARISON\"},"
-            + "{\"lead\":\"差距比看上去更小\",\"body\":\"峰值定格在 {{facts.max.value}} 美元。\",\"duration_s\":15,"
+            + "{\"lead\":\"差距比看上去更小\",\"body\":\"峰值定格在 {{facts.max.value}} 美元。\",\"duration_s\":10,"
             + "\"scene_type\":\"number\",\"beat\":\"CONCLUSION\"}],"
             + "\"closing\":\"区间最高 {{facts.last.value}} 美元，差距有限。\"}";
     }
 
     private static String reply(String secondBody) {
         return "{\"title\":\"金价再创新高\",\"scenes\":["
-            + "{\"lead\":\"金价站上关键位\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":15,"
+            + "{\"lead\":\"金价站上关键位\",\"body\":\"最新收于 {{facts.last.value}} 美元。\",\"duration_s\":10,"
             + "\"scene_type\":\"headline\",\"beat\":\"HOOK\",\"on_screen_text\":\"关键位\"},"
-            + "{\"lead\":\"较区间起点走高\",\"body\":\"" + secondBody + "\",\"duration_s\":15,"
+            + "{\"lead\":\"较区间起点走高\",\"body\":\"" + secondBody + "\",\"duration_s\":10,"
             + "\"scene_type\":\"chart\",\"beat\":\"EVIDENCE\"},"
-            + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":15,"
+            + "{\"lead\":\"创下阶段高点\",\"body\":\"区间最高 {{facts.max.value}} 美元。\",\"duration_s\":10,"
             + "\"scene_type\":\"number\",\"beat\":\"CONCLUSION\"}],"
             + "\"closing\":\"关注接下来的走势。\",\"source_name\":\"模型自述\"}";
     }
@@ -139,8 +139,8 @@ class DatasetScriptAuthorTest {
             + "\"storyAngle\":\"先破再立：用区间数据纠正单日暴跌的说法\"},"
             + "\"selection\":{\"candidateId\":1,\"dataSourceKey\":\"sina-gold-xau\",\"digest\":false,"
             + "\"templateId\":\"news-data-9x16\",\"storyAngle\":\"先破再立\",\"sourceEvidenceIds\":[]}}";
-        return new ProductionRunVo(1L, org.dromara.heron.domain.ProductionBizType.news_video, 1L, 1L, 1,
-            "token", input, null);
+        return new ProductionRunVo(1L, org.dromara.heron.domain.ProductionBizType.news_explainer, 1L, 1L, 1,
+            "token", input);
     }
 
     @Test

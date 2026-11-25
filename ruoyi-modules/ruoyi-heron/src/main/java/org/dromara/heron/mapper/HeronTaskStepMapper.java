@@ -15,16 +15,6 @@ public interface HeronTaskStepMapper extends BaseMapperPlus<HeronTaskStep, Produ
             .build());
     }
 
-    default HeronTaskStep selectLatestCheckpoint(long taskId, int attemptNo) {
-        return selectOne(QueryBuilder.lambda(HeronTaskStep.class)
-            .eq(HeronTaskStep::getTaskId, taskId)
-            .eq(HeronTaskStep::getAttemptNo, attemptNo)
-            .isNotNull(HeronTaskStep::getCheckpoint)
-            .orderByDesc(HeronTaskStep::getStartedAt)
-            .last("LIMIT 1")
-            .build());
-    }
-
     default HeronTaskStep selectLatestIdentity(long taskId, int attemptNo) {
         return selectOne(QueryBuilder.lambda(HeronTaskStep.class)
             .eq(HeronTaskStep::getTaskId, taskId)

@@ -66,7 +66,7 @@ class DataBoardPipelineRenderTest {
          "scenes":[
            {"lead":"先看最新一期","body":"演示快照最新收于 {{facts.last.value}} 美元，对应 {{facts.last.date}}。","duration_s":12,
             "scene_type":"headline","beat":"HOOK","on_screen_text":"最新一期"},
-           {"lead":"涨幅先别看错","body":"区间增加 {{facts.change}} 美元，涨幅 {{facts.change_pct}}%。这描述首末差异。","duration_s":16,
+           {"lead":"涨幅先别看错","body":"区间增加 {{facts.change}} 美元，涨幅 {{facts.change_pct}}%。这描述首末差异。","duration_s":12,
             "scene_type":"chart","beat":"EVIDENCE"},
            {"lead":"高低点在哪里","body":"区间最高 {{facts.max.value}} 美元，最低 {{facts.min.value}} 美元。","duration_s":12,
             "scene_type":"number","beat":"CONCLUSION"}],
@@ -156,8 +156,8 @@ class DataBoardPipelineRenderTest {
         input.put("kind", "data_board");
         input.put("title", "四期金价区间变化");
         input.put("draft", "固定示例快照的区间比较与统计口径。");
-        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_video, 10L, 5L, 1,
-            UUID.randomUUID().toString(), JSON.writeValueAsString(input), null);
+        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_explainer, 10L, 5L, 1,
+            UUID.randomUUID().toString(), JSON.writeValueAsString(input));
         ProductionResultVo result = pipeline.execute(run);
 
         JsonNode content = JSON.readTree(result.resultJson());

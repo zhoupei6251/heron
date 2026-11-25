@@ -36,7 +36,7 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class NewsCandidateCollector {
 
-    private static final ProductionBizType TYPE = ProductionBizType.news_video;
+    private static final ProductionBizType LANE = ProductionBizType.news_explainer;
     private final HeronProductionLaneMapper laneMapper;
     private final HeronNewsSourceMapper sourceMapper;
     private final HeronNewsCandidateMapper candidateMapper;
@@ -44,7 +44,7 @@ public class NewsCandidateCollector {
 
     @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
     public void collect(long sourceId, String fetchToken, List<NewsFeedItem> items) {
-        if (laneMapper.lockByType(TYPE) == null) {
+        if (laneMapper.lockByType(LANE) == null) {
             throw new HeronBusinessException(503, "news_lane_missing", "新闻生产线未初始化");
         }
         HeronNewsSource source = sourceMapper.lockById(sourceId);

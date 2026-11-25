@@ -97,11 +97,11 @@ class SceneReworkServiceTest {
             artifacts, notifications, transactions);
 
         String input = "{\"kind\":\"article\"}";
-        run = new ProductionRunVo(90L, ProductionBizType.news_video, 7L, 4L, 1,
-            UUID.randomUUID().toString(), input, null);
+        run = new ProductionRunVo(90L, ProductionBizType.news_explainer, 7L, 4L, 1,
+            UUID.randomUUID().toString(), input);
         task = new HeronProductionTask();
         task.setId(90L);
-        task.setBizType(ProductionBizType.news_video.name());
+        task.setBizType(ProductionBizType.news_explainer.name());
         task.setBizId(7L);
         task.setVersionId(4L);
         task.setOwnerId(12L);
@@ -112,7 +112,7 @@ class SceneReworkServiceTest {
         task.setInputSnapshot(input);
         HeronProductionTask oldTask = new HeronProductionTask();
         oldTask.setId(80L);
-        oldTask.setBizType(ProductionBizType.news_video.name());
+        oldTask.setBizType(ProductionBizType.news_explainer.name());
         oldTask.setBizId(7L);
         oldTask.setVersionId(3L);
         oldTask.setOwnerId(12L);
@@ -210,8 +210,8 @@ class SceneReworkServiceTest {
     @Test
     @DisplayName("客户端伪造的 runToken 或非 running 任务不能进入渲染")
     void rejectsUntrustedRunBeforeRender() {
-        ProductionRunVo forged = new ProductionRunVo(90L, ProductionBizType.news_video, 7L, 4L, 1,
-            UUID.randomUUID().toString(), run.inputJson(), null);
+        ProductionRunVo forged = new ProductionRunVo(90L, ProductionBizType.news_explainer, 7L, 4L, 1,
+            UUID.randomUUID().toString(), run.inputJson());
 
         assertThrows(HeronBusinessException.class,
             () -> service.rework(forged, "scene_001", JSON.readTree("{\"scene_id\":\"scene_001\"}")));

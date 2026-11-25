@@ -61,25 +61,25 @@ class ProductionCleanupTest extends HeronMysqlTestSupport {
     }
 
     @Test
-    @DisplayName("只列已取消新闻任务的过期尝试，跳过失败、原型与保留证据")
+    @DisplayName("只列已取消新闻任务的过期尝试，跳过失败、其他线与保留证据")
     void listsOnlyExpiredCancelledNewsAttempts() throws IOException {
         Instant old = clock.instant().minus(Duration.ofDays(8));
 
         long cancelledTask = cancelledNewsTask(10);
-        Path candidate = attemptDir("news_video", cancelledTask, old);
+        Path candidate = attemptDir(ProductionBizType.news_explainer.name(), cancelledTask, old);
 
         long failedTask = failedNewsTask(11);
-        attemptDir("news_video", failedTask, old);
+        attemptDir(ProductionBizType.news_explainer.name(), failedTask, old);
 
         long keptTask = cancelledNewsTask(12);
-        Path kept = attemptDir("news_video", keptTask, old);
+        Path kept = attemptDir(ProductionBizType.news_explainer.name(), keptTask, old);
         Files.writeString(kept.resolve(".keep"), "evidence");
 
         long recentTask = cancelledNewsTask(13);
-        attemptDir("news_video", recentTask, clock.instant());
+        attemptDir(ProductionBizType.news_explainer.name(), recentTask, clock.instant());
 
-        long prototypeTask = cancelledPrototypeTask(30);
-        attemptDir("prototype", prototypeTask, old);
+        long dataBoardTask = cancelledDataBoardTask(30);
+        attemptDir(ProductionBizType.data_board.name(), dataBoardTask, old);
 
         List<String> candidates = cleanupService.dryRun(Duration.ofDays(7));
 
@@ -99,25 +99,25 @@ class ProductionCleanupTest extends HeronMysqlTestSupport {
     }
 
     private long cancelledNewsTask(long bizId) {
-        insertObject(bizId, ProductionBizType.news_video, ADMIN);
+        insertObject(bizId, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo receipt = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, bizId, "cleanup-" + bizId, 1));
+            new ProductionSubmitBo(ProductionBizType.news_explainer, bizId, "cleanup-" + bizId, 1));
         productionService.cancel(receipt.taskId());
         return receipt.taskId();
     }
 
     private long failedNewsTask(long bizId) {
-        insertObject(bizId, ProductionBizType.news_video, ADMIN);
-        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_video, bizId, "cleanup-" + bizId, 1));
-        ProductionRunVo run = executionService.claim(ProductionBizType.news_video).orElseThrow();
+        insertObject(bizId, ProductionBizType.news_explainer, ADMIN);
+        productionService.submit(new ProductionSubmitBo(ProductionBizType.news_explainer, bizId, "cleanup-" + bizId, 1));
+        ProductionRunVo run = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
         executionService.fail(run, new ProductionFailureBo("test_failed", null, null, "测试失败", false));
         return run.taskId();
     }
 
-    private long cancelledPrototypeTask(long bizId) {
-        insertObject(bizId, ProductionBizType.prototype, ADMIN);
+    private long cancelledDataBoardTask(long bizId) {
+        insertObject(bizId, ProductionBizType.data_board, ADMIN);
         ProductionReceiptVo receipt = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.prototype, bizId, "cleanup-" + bizId, 1));
+            new ProductionSubmitBo(ProductionBizType.data_board, bizId, "cleanup-" + bizId, 1));
         productionService.cancel(receipt.taskId());
         return receipt.taskId();
     }

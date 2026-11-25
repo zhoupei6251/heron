@@ -30,4 +30,13 @@ public class HeronHealthVo implements Serializable {
     private long monthTasks;
     private long monthInputTokens;
     private long monthOutputTokens;
+
+    /**
+     * 自动产出当前是否被暂停，以及为什么。
+     *
+     * <p>「今天没产出」有两种完全不同的原因：链路坏了，或者刹车被人（或自动止损）拉了下来。
+     * 只给数字不给这两个字段，看板只能看到一个没有解释的 0。
+     */
+    private boolean autoPaused;
+    private String autoPauseReason;
 }

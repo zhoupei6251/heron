@@ -37,8 +37,20 @@ public class DatasetRouter {
     private final HeronDataSourceMapper dataSourceMapper;
     private final HeronDatasetUsageMapper usageMapper;
 
-    /** digest=true 表示没有热点匹配，按最新更新的源出「数据速览」。 */
-    public record Route(String sourceKey, boolean digest) { }
+    /**
+     * digest=true 表示没有热点匹配，按最新更新的源出「数据速览」。
+     *
+     * @param reason 为什么是这个源：热点命中带模型给的理由，降级速览说清是模型判 none 还是命中源已用过。
+     *               只进决策留痕（{@code heron_auto_slot.pool_json}），不进冻结快照——
+     *               快照只冻结「选了什么」，理由是人事后复盘用，生产不需要它。
+     */
+    public record Route(String sourceKey, boolean digest, String reason) {
+
+        /** 冻结快照只有 source_key 与 digest 两个事实，没有理由；补 null，不编一个出来。 */
+        public Route(String sourceKey, boolean digest) {
+            this(sourceKey, digest, null);
+        }
+    }
 
     /**
      * 发现：哪些源此刻有资格参与选择。只查库、不调模型。
@@ -74,36 +86,52 @@ public class DatasetRouter {
     /** 纯决策：热点命中出热点片；none 或命中近 7 天已用源时降级速览。 */
     static Route plan(String reply, List<HeronDataSource> eligible, Set<String> enabledKeys) {
         String key;
+        String why;
         try {
             JsonNode node = reply == null ? null : JSON.readTree(ModelJson.unwrap(reply));
             key = node == null ? "" : node.path("source_key").asString("");
+            // 理由是可选字段：模型偶尔只给 source_key，缺了就不留痕，不因此判整次失败
+            why = node == null ? "" : node.path("reason").asString("");
         } catch (RuntimeException e) {
             throw new HeronBusinessException(409, "dataset_route_invalid", "选源输出不是 JSON");
         }
         if (key.isBlank()) {
             throw new HeronBusinessException(409, "dataset_route_invalid", "选源输出缺少 source_key");
         }
-        if ("none".equals(key)) return digest(eligible);
+        if ("none".equals(key)) return digest(eligible, "模型判 none" + (why.isBlank() ? "" : "：" + why));
         if (!enabledKeys.contains(key)) {
             throw new HeronBusinessException(409, "dataset_route_invalid", "模型选了未启用的源：" + key);
         }
         if (eligible.stream().noneMatch(source -> source.getSourceKey().equals(key))) {
-            return digest(eligible);
+            return digest(eligible, "命中的源近 7 天已用过：" + key);
         }
-        return new Route(key, false);
+        return new Route(key, false, why.isBlank() ? "模型选中：" + key : why);
     }
 
     /** 速览按栏目权重轮换（20 期），栏内再按更新频率与最近更新选。 */
     static Route digest(List<HeronDataSource> eligible) {
+        return digest(eligible, null);
+    }
+
+    static Route digest(List<HeronDataSource> eligible, String why) {
         int start = Math.floorMod(LocalDate.now().getDayOfYear(), CYCLE.size());
         for (int offset = 0; offset < CYCLE.size(); offset++) {
             Column column = CYCLE.get((start + offset) % CYCLE.size());
             HeronDataSource pick = bestIn(eligible, column);
-            if (pick != null) return new Route(pick.getSourceKey(), true);
+            if (pick != null) {
+                return new Route(pick.getSourceKey(), true, digestReason(pick, column, why));
+            }
         }
         HeronDataSource any = bestIn(eligible, null);
         if (any == null) throw slotEmpty("没有可用的数据源");
-        return new Route(any.getSourceKey(), true);
+        return new Route(any.getSourceKey(), true, digestReason(any, null, why));
+    }
+
+    /** 降级的理由要能回答「为什么不是热点片」：栏目轮换 + 触发降级的原始判断。 */
+    private static String digestReason(HeronDataSource pick, Column column, String why) {
+        String base = "降级速览：" + (column == null ? "无可用栏目" : column.displayName() + " 当日轮换") + "（"
+            + pick.getSourceKey() + "，cadence=" + pick.getCadence() + "）";
+        return why == null || why.isBlank() ? base : base + "；" + why;
     }
 
     private static HeronDataSource bestIn(List<HeronDataSource> eligible, Column column) {

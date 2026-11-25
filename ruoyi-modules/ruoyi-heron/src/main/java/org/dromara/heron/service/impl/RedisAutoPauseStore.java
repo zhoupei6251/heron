@@ -10,6 +10,9 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class RedisAutoPauseStore implements AutoPauseStore {
     private static final String PAUSED_KEY = "heron:news:auto:paused";
+    private static final String REASON_KEY = "heron:news:auto:pause-reason";
+    /** reason 只给人看一句话：超长原因截断，别把 Redis 值堆成日志。 */
+    private static final int REASON_LIMIT = 500;
 
     /** 读到之前的进程内缓存；Redis 不可用时至少让当前进程的暂停立即生效。 */
     private volatile Boolean cached;
@@ -32,12 +35,44 @@ public class RedisAutoPauseStore implements AutoPauseStore {
 
     @Override
     public void pause(boolean paused) {
+        pause(paused, null);
+    }
+
+    @Override
+    public void pause(boolean paused, String reason) {
         cached = paused;
         try {
             RedisUtils.setCacheObject(PAUSED_KEY, paused);
+            if (paused) {
+                RedisUtils.setCacheObject(REASON_KEY, clip(reason));
+            } else {
+                // 恢复运行必须清掉上一次的暂停原因，否则看板会一直显示一条已经失效的解释
+                RedisUtils.deleteObject(REASON_KEY);
+            }
         } catch (RuntimeException e) {
             // 当前进程立即生效；重启后会回到运行中，日志里说清楚
             log.warn("暂停标记未能写进 Redis，重启后会恢复运行: {}", e.getMessage());
         }
+    }
+
+    @Override
+    public String pauseReason() {
+        if (!paused()) {
+            return null;
+        }
+        try {
+            String reason = RedisUtils.getCacheObject(REASON_KEY);
+            return reason == null || reason.isBlank() ? null : reason;
+        } catch (RuntimeException e) {
+            log.warn("读取暂停原因失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private static String clip(String reason) {
+        if (reason == null) {
+            return null;
+        }
+        return reason.length() <= REASON_LIMIT ? reason : reason.substring(0, REASON_LIMIT);
     }
 }

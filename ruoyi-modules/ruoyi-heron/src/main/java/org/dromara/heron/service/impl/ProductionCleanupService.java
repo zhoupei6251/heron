@@ -2,6 +2,7 @@ package org.dromara.heron.service.impl;
 
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.HeronProductionTask;
+import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.ProductionStatus;
 import org.dromara.heron.mapper.HeronProductionTaskMapper;
 import org.springframework.stereotype.Service;
@@ -50,19 +51,22 @@ public class ProductionCleanupService {
 
     public List<String> dryRun(Duration retention) {
         Path root = properties.getDataRoot().toAbsolutePath().normalize();
-        Path lane = root.resolve("work").resolve("news_video");
-        if (!Files.isDirectory(lane, LinkOption.NOFOLLOW_LINKS)) {
-            return List.of();
-        }
         Instant threshold = Instant.now(clock).minus(retention);
         List<String> candidates = new ArrayList<>();
-        try (Stream<Path> taskDirectories = Files.list(lane)) {
-            taskDirectories
-                .filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
-                .filter(path -> path.getFileName().toString().chars().allMatch(Character::isDigit))
-                .forEach(taskDirectory -> collect(taskDirectory, threshold, root, candidates));
-        } catch (IOException e) {
-            throw new IllegalStateException("扫描清理候选失败", e);
+        // 尝试目录按 biz_type 名分道，四条视频线各有自己的目录。
+        for (ProductionBizType lane : ProductionBizType.videoLanes()) {
+            Path laneRoot = root.resolve("work").resolve(lane.name());
+            if (!Files.isDirectory(laneRoot, LinkOption.NOFOLLOW_LINKS)) {
+                continue;
+            }
+            try (Stream<Path> taskDirectories = Files.list(laneRoot)) {
+                taskDirectories
+                    .filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+                    .filter(path -> path.getFileName().toString().chars().allMatch(Character::isDigit))
+                    .forEach(taskDirectory -> collect(taskDirectory, threshold, root, candidates));
+            } catch (IOException e) {
+                throw new IllegalStateException("扫描清理候选失败", e);
+            }
         }
         candidates.sort(Comparator.naturalOrder());
         return candidates.size() > MAX_CANDIDATES ? List.copyOf(candidates.subList(0, MAX_CANDIDATES)) : List.copyOf(candidates);

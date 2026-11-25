@@ -17,7 +17,14 @@ public record EditorialSelection(
     java.util.List<String> sourceEvidenceIds,
     Long opportunityId,
     Opportunity opportunity,
-    EditorialStory story
+    EditorialStory story,
+    /**
+     * 选源理由：模型命中的理由，或降级速览的触发原因。
+     *
+     * <p>只进决策留痕（{@code heron_auto_slot.pool_json}），不进生产冻结快照——
+     * 快照冻结的是「选了什么」，复盘要读的是「为什么」。
+     */
+    String sourceReason
 ) {
 
     public static final String DATA_BOARD = "DATA_BOARD";
@@ -50,14 +57,16 @@ public record EditorialSelection(
     /** 老入口：不是从数据机会来的（解说线、以及数据看板的旧选源路径）。 */
     public EditorialSelection(String line, Long candidateId, String dataSourceKey, boolean digest,
                               String templateId, String storyAngle, java.util.List<String> sourceEvidenceIds) {
-        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, null, null, null);
+        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, null, null, null,
+            null);
     }
 
     /** 从数据机会来的选择：还没有带取数口径的老调用。 */
     public EditorialSelection(String line, Long candidateId, String dataSourceKey, boolean digest,
                               String templateId, String storyAngle, java.util.List<String> sourceEvidenceIds,
                               Long opportunityId) {
-        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, opportunityId, null, null);
+        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, opportunityId, null,
+            null, null);
     }
 
     /** 带取数口径、但还没有策划结论的老调用。 */
@@ -65,7 +74,21 @@ public record EditorialSelection(
                               String templateId, String storyAngle, java.util.List<String> sourceEvidenceIds,
                               Long opportunityId, Opportunity opportunity) {
         this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, opportunityId,
-            opportunity, null);
+            opportunity, null, null);
+    }
+
+    /** 带策划结论、但还没补选源理由的老调用（理由只影响留痕，不影响任何生产判断）。 */
+    public EditorialSelection(String line, Long candidateId, String dataSourceKey, boolean digest,
+                              String templateId, String storyAngle, java.util.List<String> sourceEvidenceIds,
+                              Long opportunityId, Opportunity opportunity, EditorialStory story) {
+        this(line, candidateId, dataSourceKey, digest, templateId, storyAngle, sourceEvidenceIds, opportunityId,
+            opportunity, story, null);
+    }
+
+    /** 补上选源理由：线内编辑在选源成功的那一刻拿到它，晚于构造，所以单给一个入口。 */
+    public EditorialSelection withSourceReason(String reason) {
+        return new EditorialSelection(line, candidateId, dataSourceKey, digest, templateId, storyAngle,
+            sourceEvidenceIds, opportunityId, opportunity, story, reason);
     }
 
     public boolean dataBoard() {

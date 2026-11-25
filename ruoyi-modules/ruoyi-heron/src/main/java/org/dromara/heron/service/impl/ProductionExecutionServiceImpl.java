@@ -1,9 +1,11 @@
 package org.dromara.heron.service.impl;
 
 import cn.hutool.core.util.IdUtil;
+import org.dromara.common.mybatis.core.query.QueryBuilder;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.HeronProductionTask;
 import org.dromara.heron.domain.HeronTaskStep;
+import org.dromara.heron.domain.HeronUsageRecord;
 import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.ProductionStatus;
 import org.dromara.heron.domain.bo.ProductionFailureBo;
@@ -13,6 +15,7 @@ import org.dromara.heron.domain.vo.ProductionRunVo;
 import org.dromara.heron.mapper.HeronProductionLaneMapper;
 import org.dromara.heron.mapper.HeronProductionTaskMapper;
 import org.dromara.heron.mapper.HeronTaskStepMapper;
+import org.dromara.heron.mapper.HeronUsageRecordMapper;
 import org.dromara.heron.service.IProductionDomain;
 import org.dromara.heron.service.IProductionExecutionService;
 import org.springframework.context.ApplicationContext;
@@ -23,8 +26,8 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import lombok.extern.slf4j.Slf4j;
-import tools.jackson.databind.json.JsonMapper;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -43,46 +46,54 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
     private static final int ERROR_REASON_LIMIT = 2000;
     private static final int ERROR_CODE_LIMIT = 64;
     private static final int INPUT_LOCATOR_LIMIT = 256;
-    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final HeronProductionTaskMapper taskMapper;
     private final HeronProductionLaneMapper laneMapper;
     private final HeronTaskStepMapper stepMapper;
+    private final HeronUsageRecordMapper usageMapper;
     private final ApplicationContext domains;
     private final TransactionTemplate transactionTemplate;
     private final TransactionTemplate recoveryTemplate;
     private final Clock clock;
     private final ProductionArtifactService artifacts;
     private final ProductionNotificationService notifications;
+    /** 单价与单次 run 上限：没有读者时它就是一组空配置，闸不动。 */
+    private final ModelPriceConfig prices;
 
     @Autowired
     public ProductionExecutionServiceImpl(HeronProductionTaskMapper taskMapper,
                                           HeronProductionLaneMapper laneMapper,
                                           HeronTaskStepMapper stepMapper,
+                                          HeronUsageRecordMapper usageMapper,
                                           ApplicationContext domains,
                                           TransactionTemplate transactionTemplate,
                                           ProductionArtifactService artifacts,
-                                          ProductionNotificationService notifications) {
-        this(taskMapper, laneMapper, stepMapper, domains, transactionTemplate, Clock.systemUTC(), artifacts,
-            notifications);
+                                          ProductionNotificationService notifications,
+                                          ModelPriceConfig prices) {
+        this(taskMapper, laneMapper, stepMapper, usageMapper, domains, transactionTemplate, Clock.systemUTC(),
+            artifacts, notifications, prices);
     }
 
     public ProductionExecutionServiceImpl(HeronProductionTaskMapper taskMapper,
                                           HeronProductionLaneMapper laneMapper,
                                           HeronTaskStepMapper stepMapper,
+                                          HeronUsageRecordMapper usageMapper,
                                           ApplicationContext domains,
                                           TransactionTemplate transactionTemplate,
                                           Clock clock,
                                           ProductionArtifactService artifacts,
-                                          ProductionNotificationService notifications) {
+                                          ProductionNotificationService notifications,
+                                          ModelPriceConfig prices) {
         this.taskMapper = taskMapper;
         this.laneMapper = laneMapper;
         this.stepMapper = stepMapper;
+        this.usageMapper = usageMapper;
         this.domains = domains;
         this.transactionTemplate = transactionTemplate;
         this.clock = clock;
         this.artifacts = artifacts;
         this.notifications = notifications;
+        this.prices = prices;
         this.recoveryTemplate = new TransactionTemplate(transactionTemplate.getTransactionManager());
         this.recoveryTemplate.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
@@ -125,13 +136,8 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
             return Optional.empty();
         }
 
-        String checkpoint = null;
-        if (attempt > 1) {
-            HeronTaskStep previous = stepMapper.selectLatestCheckpoint(task.getId(), attempt - 1);
-            checkpoint = previous == null ? null : previous.getCheckpoint();
-        }
         return Optional.of(new ProductionRunVo(task.getId(), type, task.getBizId(), task.getVersionId(),
-            attempt, token, task.getInputSnapshot(), checkpoint));
+            attempt, token, task.getInputSnapshot()));
     }
 
     @Override
@@ -154,6 +160,7 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
         if (stage == null || stage.isBlank() || progress < 0 || progress > 99) {
             throw new HeronBusinessException(400, "production_invalid_stage", "阶段或进度不合法");
         }
+        enforceRunCost(run);
         LocalDateTime now = now();
         int affected = taskMapper.lambda()
             .set(HeronProductionTask::getStage, stage)
@@ -179,37 +186,6 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
         step.setStartedAt(now);
         stepMapper.insert(step);
         return true;
-    }
-
-    @Override
-    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
-    public boolean checkpoint(ProductionRunVo run, String stage, String checkpointJson,
-                              List<ProductionArtifactVo> evidence) {
-        if (stage == null || stage.isBlank()) {
-            throw new HeronBusinessException(400, "production_invalid_stage", "阶段不能为空");
-        }
-        LocalDateTime now = now();
-        int guard = taskMapper.lambda()
-            .set(HeronProductionTask::getUpdateTime, now)
-            .eq(HeronProductionTask::getId, run.taskId())
-            .eq(HeronProductionTask::getRunToken, run.runToken())
-            .eq(HeronProductionTask::getAttemptNo, run.attemptNo())
-            .eq(HeronProductionTask::getStatus, ProductionStatus.running.name())
-            .updateCount();
-        if (guard != 1) {
-            return false;
-        }
-        String evidenceJson = evidence == null || evidence.isEmpty() ? null : JSON.writeValueAsString(evidence);
-        int affected = stepMapper.lambda()
-            .set(HeronTaskStep::getCheckpoint, checkpointJson)
-            .set(evidenceJson != null, HeronTaskStep::getEvidence, evidenceJson)
-            .set(HeronTaskStep::getUpdateTime, now)
-            .eq(HeronTaskStep::getTaskId, run.taskId())
-            .eq(HeronTaskStep::getAttemptNo, run.attemptNo())
-            .eq(HeronTaskStep::getStage, stage)
-            .eq(HeronTaskStep::getStatus, ProductionStatus.running.name())
-            .updateCount();
-        return affected == 1;
     }
 
     @Override
@@ -433,6 +409,40 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
         return task;
     }
 
+    /**
+     * 单次 run 的钱天花板：同一 {@code (taskId, attemptNo)} 的花费累计到上限就抛，run 到这里终止。
+     *
+     * <p>为什么卡在阶段边界：一次阶段的模型调用次数不定，每个调用前都查一次账不值当；
+     * 阶段边界已经足够密——越界的那次检查后面跟着的正是「下一阶段的所有调用」。
+     *
+     * <p>为什么必须是终止而不是提醒：{@code ResearchBudget} 的教训就在这里。超限只让单次工具调用失败，
+     * run 照常往下走，模型换个工具继续烧，钱并没有被拦住。
+     *
+     * <p>抛出的异常由 {@code ProductionRunner} 转成 failed，error_code 为 {@link RunCostGuard#CODE}、
+     * error_reason 带上「累计多少、上限多少」，不是静默跳过。
+     */
+    private void enforceRunCost(ProductionRunVo run) {
+        BigDecimal max = prices.maxCost();
+        ModelPrice price = prices.price();
+        // 上限或单价没配时连账都不用查：闸不生效是配置的结果，不是数据的问题
+        if (max == null || !price.priced()) {
+            return;
+        }
+        List<HeronUsageRecord> records = usageMapper.selectList(QueryBuilder.lambda(HeronUsageRecord.class)
+            .eq(HeronUsageRecord::getTaskId, run.taskId())
+            .eq(HeronUsageRecord::getAttemptNo, run.attemptNo()).build());
+        long input = 0;
+        long output = 0;
+        for (HeronUsageRecord record : records) {
+            input += record.getInputTokens() == null ? 0 : record.getInputTokens();
+            output += record.getOutputTokens() == null ? 0 : record.getOutputTokens();
+        }
+        String breach = RunCostGuard.breach(input, output, price, max);
+        if (breach != null) {
+            throw new HeronBusinessException(409, RunCostGuard.CODE, breach);
+        }
+    }
+
     private void interruptRunningSteps(ProductionRunVo run, LocalDateTime now) {
         stepMapper.lambda()
             .set(HeronTaskStep::getStatus, ProductionStatus.failed.name())
@@ -513,7 +523,10 @@ public class ProductionExecutionServiceImpl implements IProductionExecutionServi
     }
 
     private IProductionDomain domain(ProductionBizType type) {
-        String beanName = type == ProductionBizType.news_video ? "newsProductionDomain" : "prototypeProductionDomain";
+        String beanName = type.domainBean();
+        if (beanName == null) {
+            throw new HeronBusinessException(503, "production_capability_missing", "生产线不可用: " + type);
+        }
         try {
             return domains.getBean(beanName, IProductionDomain.class);
         } catch (org.springframework.beans.BeansException e) {

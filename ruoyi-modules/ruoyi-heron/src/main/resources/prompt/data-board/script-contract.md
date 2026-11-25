@@ -19,7 +19,7 @@
 | `story_plan` | 系统覆盖 | 正式写稿前冻结的故事计划，不要输出或改写 |
 | `scene_id` | 系统覆盖 | v2 每段由系统按顺序写为 `scene_001`…`scene_006`，模型不要填写或依赖它 |
 
-- 每段 `lead` ≤ 20 字、`body` ≤ 70 字、`duration_s` 为正数秒；全部段落合计 30–75 秒。
+- 每段 `lead` ≤ 20 字、`body` ≤ 70 字、`duration_s` 为正数秒；全部段落合计 30–75 秒，单段不超过 12 秒。
 - 只允许上述字段。出现未知字段直接退回。
 - v2 的 `story_plan.scenes` 与 `scenes` 逐屏对位：每屏旁白必须使用计划中的全部 `evidenceRefs`，不得引用计划外路径；`beat` 与 `scene_type` 必须分别等于计划的 `beat` 与 `expectedVisual.sceneType`。标题的钩子类型必须等于计划的 `hookType`。
 

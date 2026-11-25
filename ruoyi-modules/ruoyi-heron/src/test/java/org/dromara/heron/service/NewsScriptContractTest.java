@@ -35,9 +35,9 @@ class NewsScriptContractTest {
     static JsonNode script() {
         return JSON.readTree("{\"source_url\":\"https://feed.example.test/news/1\",\"fetched_at\":\"2026-11-02T10:00:00Z\","
             + "\"body_sha256\":\"" + SHA + "\",\"title\":\"测试新闻\",\"closing\":\"结尾一句话\",\"source_name\":\"测试来源\","
-            + "\"scenes\":[{\"lead\":\"领句一\",\"body\":\"正文一\",\"duration_s\":15},"
-            + "{\"lead\":\"领句二\",\"body\":\"正文二\",\"duration_s\":15},"
-            + "{\"lead\":\"领句三\",\"body\":\"正文三\",\"duration_s\":15}]}");
+            + "\"scenes\":[{\"lead\":\"领句一\",\"body\":\"正文一\",\"duration_s\":10},"
+            + "{\"lead\":\"领句二\",\"body\":\"正文二\",\"duration_s\":10},"
+            + "{\"lead\":\"领句三\",\"body\":\"正文三\",\"duration_s\":10}]}");
     }
 
     @Test
@@ -47,24 +47,35 @@ class NewsScriptContractTest {
     }
 
     @Test
+    @DisplayName("单段超过 12 秒退回，并指出第几段、多少秒、上限多少")
+    void rejectsOverlongScene() {
+        // 合计 40 秒仍在 30–75 内，这条只能被单段上界拒掉
+        List<String> items = NewsScriptContract.violations(JSON.readTree(
+            script().toString().replace("\"正文一\",\"duration_s\":10", "\"正文一\",\"duration_s\":20")));
+        assertEquals(1, items.size(), items.toString());
+        assertTrue(items.get(0).contains("第 1 段") && items.get(0).contains("20 秒")
+            && items.get(0).contains("上限 12 秒"), items.get(0));
+    }
+
+    @Test
     @DisplayName("逐条列出缺失出处、时长合计、段落数、重复与未知字段")
     void listsEveryViolationWithoutFixingThem() {
         List<String> missingProvenance = NewsScriptContract.violations(JSON.readTree(
             "{\"title\":\"测试新闻\",\"closing\":\"结尾\",\"source_name\":\"来源\","
-                + "\"scenes\":[{\"lead\":\"一\",\"body\":\"正文\",\"duration_s\":15},{\"lead\":\"二\",\"body\":\"正文\",\"duration_s\":15},"
-                + "{\"lead\":\"三\",\"body\":\"正文\",\"duration_s\":15}]}"));
+                + "\"scenes\":[{\"lead\":\"一\",\"body\":\"正文\",\"duration_s\":10},{\"lead\":\"二\",\"body\":\"正文\",\"duration_s\":10},"
+                + "{\"lead\":\"三\",\"body\":\"正文\",\"duration_s\":10}]}"));
         assertTrue(missingProvenance.contains("缺字段 source_url"), missingProvenance.toString());
         assertTrue(missingProvenance.contains("缺字段 body_sha256"), missingProvenance.toString());
 
         List<String> tooShort = NewsScriptContract.violations(
-            JSON.readTree(script().toString().replace("\"duration_s\":15", "\"duration_s\":5")));
+            JSON.readTree(script().toString().replace("\"duration_s\":10", "\"duration_s\":5")));
         assertTrue(tooShort.stream().anyMatch(item -> item.contains("总时长")), tooShort.toString());
 
         List<String> tooManyScenes = NewsScriptContract.violations(JSON.readTree(script().toString().replace(
-            "{\"lead\":\"领句三\",\"body\":\"正文三\",\"duration_s\":15}",
-            "{\"lead\":\"领句三\",\"body\":\"正文三\",\"duration_s\":15},{\"lead\":\"四\",\"body\":\"正文\",\"duration_s\":15},"
-                + "{\"lead\":\"五\",\"body\":\"正文\",\"duration_s\":15},{\"lead\":\"六\",\"body\":\"正文\",\"duration_s\":15},"
-                + "{\"lead\":\"七\",\"body\":\"正文\",\"duration_s\":15}")));
+            "{\"lead\":\"领句三\",\"body\":\"正文三\",\"duration_s\":10}",
+            "{\"lead\":\"领句三\",\"body\":\"正文三\",\"duration_s\":10},{\"lead\":\"四\",\"body\":\"正文\",\"duration_s\":10},"
+                + "{\"lead\":\"五\",\"body\":\"正文\",\"duration_s\":10},{\"lead\":\"六\",\"body\":\"正文\",\"duration_s\":10},"
+                + "{\"lead\":\"七\",\"body\":\"正文\",\"duration_s\":10}")));
         assertTrue(tooManyScenes.stream().anyMatch(item -> item.contains("段落数")), tooManyScenes.toString());
 
         List<String> duplicatedTitle = NewsScriptContract.violations(
@@ -79,8 +90,8 @@ class NewsScriptContractTest {
     @DisplayName("作者分送契约与需求，出处事实取抓取而非模型自述")
     void authorInjectsFetchedProvenance() {
         ScriptClient client = new ScriptClient("{\"title\":\"测试新闻\",\"closing\":\"结尾\",\"source_name\":\"测试来源\","
-            + "\"scenes\":[{\"lead\":\"一\",\"body\":\"正文\",\"duration_s\":15},{\"lead\":\"二\",\"body\":\"正文\",\"duration_s\":15},"
-            + "{\"lead\":\"三\",\"body\":\"正文\",\"duration_s\":15}]}");
+            + "\"scenes\":[{\"lead\":\"一\",\"body\":\"正文\",\"duration_s\":10},{\"lead\":\"二\",\"body\":\"正文\",\"duration_s\":10},"
+            + "{\"lead\":\"三\",\"body\":\"正文\",\"duration_s\":10}]}");
         JsonNode node = JSON.readTree(author(client).author(run()));
 
         assertEquals("script", client.stage);
@@ -99,7 +110,7 @@ class NewsScriptContractTest {
     @DisplayName("契约不过先定向修复一次，仍不过就退回写稿并列条目")
     void authorRepairsOnceThenFailsWithItemList() {
         ScriptClient client = new ScriptClient("{\"title\":\"很短\",\"closing\":\"结尾\",\"source_name\":\"来源\","
-            + "\"scenes\":[{\"lead\":\"一\",\"body\":\"正文\",\"duration_s\":15}]}");
+            + "\"scenes\":[{\"lead\":\"一\",\"body\":\"正文\",\"duration_s\":10}]}");
         HeronBusinessException error = assertThrows(HeronBusinessException.class,
             () -> author(client).author(run()));
         assertEquals("news_script_contract", error.getCode());
@@ -116,7 +127,7 @@ class NewsScriptContractTest {
         ScriptClient client = new ScriptClient("{}");
         HeronBusinessException error = assertThrows(HeronBusinessException.class,
             () -> author(client).author(
-                new ProductionRunVo(1L, ProductionBizType.news_video, 7L, 9L, 1, "token", input, null)));
+                new ProductionRunVo(1L, ProductionBizType.news_explainer, 7L, 9L, 1, "token", input)));
         assertEquals("news_script_source", error.getCode());
         assertEquals(0, client.calls);
     }
@@ -132,7 +143,7 @@ class NewsScriptContractTest {
             "title", "测试新闻标题", "draft", "来源事实与授权待人工核对",
             "evidence", Map.of("items", List.of(Map.of("sourceUrl", "https://feed.example.test/news/1", "title", "测试新闻标题"))),
             "assets", Map.of("templateKey", "default", "voiceKey", "default")));
-        return new ProductionRunVo(1L, ProductionBizType.news_video, 7L, 9L, 1, "token", input, null);
+        return new ProductionRunVo(1L, ProductionBizType.news_explainer, 7L, 9L, 1, "token", input);
     }
 
     /** 只记录提示词，不参与 HTTP。 */

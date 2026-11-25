@@ -30,11 +30,11 @@ class NewsModelScriptAuthorTest {
         "https://example.com/a", LocalDateTime.of(2026, 11, 12, 8, 0), "<html>正文</html>", "a".repeat(64));
     private static final String STORYBOARD_SCRIPT = """
         {"title":"金价再创新高","closing":"先看后续证据。","source_name":"示例站","scenes":[
-          {"scene_id":"scene_001","lead":"金价站上关键位","body":"最新收于四千美元。","duration_s":15,
+          {"scene_id":"scene_001","lead":"金价站上关键位","body":"最新收于四千美元。","duration_s":10,
            "scene_type":"headline","beat":"HOOK","on_screen_text":"关键位已站上"},
-          {"scene_id":"scene_002","lead":"涨幅集中在下半年","body":"下半年累计抬升一百美元。","duration_s":15,
+          {"scene_id":"scene_002","lead":"涨幅集中在下半年","body":"下半年累计抬升一百美元。","duration_s":10,
            "scene_type":"text","beat":"EVIDENCE","on_screen_text":"下半年抬升"},
-          {"scene_id":"scene_003","lead":"拐点看下一期斜率","body":"本期数据暂不支持反转。","duration_s":15,
+          {"scene_id":"scene_003","lead":"拐点看下一期斜率","body":"本期数据暂不支持反转。","duration_s":10,
            "scene_type":"text","beat":"CONCLUSION","on_screen_text":"反转仍待证据"}]}
         """;
 
@@ -267,9 +267,9 @@ class NewsModelScriptAuthorTest {
     }
 
     private static ProductionRunVo run(String templateKey) {
-        return new ProductionRunVo(1L, ProductionBizType.news_video, 7L, 9L, 1, "token",
+        return new ProductionRunVo(1L, ProductionBizType.news_explainer, 7L, 9L, 1, "token",
             "{\"title\":\"金价再创新高\",\"draft\":\"草稿\",\"assets\":{\"templateKey\":\""
-                + templateKey + "\"}}", null);
+                + templateKey + "\"}}");
     }
 
     private static final class StoryboardClient extends OpenAiModelClient {

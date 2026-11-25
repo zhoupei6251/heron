@@ -61,7 +61,7 @@ class ModelClientTest {
         StandardEnvironment environment = new StandardEnvironment();
         environment.getPropertySources().addFirst(new MapPropertySource("test", fallbacks));
         client = new OpenAiModelClient(new ConfigStub(configValues), environment, usage);
-        run = new ProductionRunVo(1L, ProductionBizType.prototype, 7L, 9L, 1, "token", "{}", null);
+        run = new ProductionRunVo(1L, ProductionBizType.news_explainer, 7L, 9L, 1, "token", "{}");
     }
 
     @AfterEach

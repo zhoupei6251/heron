@@ -61,7 +61,7 @@ public class SceneReworkService implements ISceneReworkService {
 
     @Override
     public ProductionResultVo rework(ProductionRunVo run, String sceneId, JsonNode replacementScene) {
-        if (run == null || run.bizType() != ProductionBizType.news_video || sceneId == null || sceneId.isBlank()
+        if (run == null || run.bizType() == ProductionBizType.music_video || sceneId == null || sceneId.isBlank()
             || replacementScene == null || !replacementScene.isObject()) {
             throw new HeronBusinessException(400, "scene_rework_invalid", "返工运行上下文、scene_id 或替换场景不完整");
         }
@@ -222,7 +222,7 @@ public class SceneReworkService implements ISceneReworkService {
         workMapper.lambda().set(HeronNewsWork::getActiveTaskId, null)
             .set(HeronNewsWork::getUpdateBy, task.getActorId()).set(HeronNewsWork::getUpdateTime, now)
             .eq(HeronNewsWork::getId, work.getId()).eq(HeronNewsWork::getActiveTaskId, task.getId()).update();
-        notifications.terminal(task.getId(), ProductionBizType.news_video, task.getActorId(), task.getOwnerId(),
+        notifications.terminal(task.getId(), ProductionBizType.valueOf(task.getBizType()), task.getActorId(), task.getOwnerId(),
             ProductionStatus.succeeded);
     }
 
@@ -258,8 +258,8 @@ public class SceneReworkService implements ISceneReworkService {
     }
 
     private ProductionRunVo taskRun(HeronProductionTask task) {
-        return new ProductionRunVo(task.getId(), ProductionBizType.news_video, task.getBizId(), task.getVersionId(),
-            task.getAttemptNo(), task.getRunToken(), task.getInputSnapshot(), null);
+        return new ProductionRunVo(task.getId(), ProductionBizType.valueOf(task.getBizType()), task.getBizId(), task.getVersionId(),
+            task.getAttemptNo(), task.getRunToken(), task.getInputSnapshot());
     }
 
     private static List<ProductionArtifactVo> readArtifacts(String manifest) {
@@ -294,7 +294,7 @@ public class SceneReworkService implements ISceneReworkService {
     }
 
     private static void requireOwnedTask(HeronProductionTask task, ProductionRunVo run) {
-        if (task == null || !ProductionBizType.news_video.name().equals(task.getBizType())
+        if (task == null || ProductionBizType.music_video.name().equals(task.getBizType())
             || !Objects.equals(task.getBizId(), run.bizId()) || !Objects.equals(task.getVersionId(), run.versionId())
             || !ProductionStatus.running.name().equals(task.getStatus())
             || !Objects.equals(task.getRunToken(), run.runToken()) || task.getAttemptNo() != run.attemptNo()) {

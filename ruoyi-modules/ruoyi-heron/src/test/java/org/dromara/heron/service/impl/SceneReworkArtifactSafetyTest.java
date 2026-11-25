@@ -95,14 +95,14 @@ class SceneReworkArtifactSafetyTest {
         });
 
         String input = "{\"kind\":\"article\"}";
-        ProductionRunVo run = new ProductionRunVo(90L, ProductionBizType.news_video, 7L, 4L, 1,
-            UUID.randomUUID().toString(), input, null);
+        ProductionRunVo run = new ProductionRunVo(90L, ProductionBizType.news_explainer, 7L, 4L, 1,
+            UUID.randomUUID().toString(), input);
         HeronProductionTask task = new HeronProductionTask();
-        task.setId(90L); task.setBizType("news_video"); task.setBizId(7L); task.setVersionId(4L);
+        task.setId(90L); task.setBizType(ProductionBizType.news_explainer.name()); task.setBizId(7L); task.setVersionId(4L);
         task.setOwnerId(12L); task.setActorId(12L); task.setStatus("running"); task.setAttemptNo(1);
         task.setRunToken(run.runToken()); task.setInputSnapshot(input);
         HeronProductionTask oldTask = new HeronProductionTask();
-        oldTask.setId(80L); oldTask.setBizType("news_video"); oldTask.setBizId(7L); oldTask.setVersionId(3L);
+        oldTask.setId(80L); oldTask.setBizType(ProductionBizType.news_explainer.name()); oldTask.setBizId(7L); oldTask.setVersionId(3L);
         oldTask.setOwnerId(12L);
         HeronNewsWork work = new HeronNewsWork();
         work.setId(7L); work.setOwnerId(12L); work.setCandidateId(6L); work.setCurrentVersionId(3L); work.setActiveTaskId(90L);
@@ -158,7 +158,7 @@ class SceneReworkArtifactSafetyTest {
             assertTrue(concurrent.get());
             assertTrue(duplicate.get());
             ProductionRunVo forged = new ProductionRunVo(run.taskId(), run.bizType(), run.bizId(), run.versionId(),
-                run.attemptNo(), UUID.randomUUID().toString(), input, null);
+                run.attemptNo(), UUID.randomUUID().toString(), input);
             assertThrows(HeronBusinessException.class, () -> service.rework(forged, "scene_001", replacement));
 
             verify(oss, never()).delete(anyString());

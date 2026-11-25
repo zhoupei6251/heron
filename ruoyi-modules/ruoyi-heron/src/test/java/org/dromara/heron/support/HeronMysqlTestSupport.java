@@ -44,7 +44,7 @@ public abstract class HeronMysqlTestSupport {
     public static final long ALL_SCOPE_USER = 3L;
     private static final List<String> ALL_SCOPE_PERMISSIONS = List.of(
         "heron:newsWork:all", "heron:newsWork:generate",
-        "heron:proto:all", "heron:proto:generate");
+        "heron:musicVideo:all", "heron:musicVideo:generate");
     private static final java.util.concurrent.ConcurrentMap<Long, List<String>> PERMISSIONS =
         new java.util.concurrent.ConcurrentHashMap<>(Map.of(ALL_SCOPE_USER, ALL_SCOPE_PERMISSIONS));
 
@@ -100,7 +100,7 @@ public abstract class HeronMysqlTestSupport {
                 statement.execute("""
                     CREATE TABLE heron_test_object (
                       object_id bigint NOT NULL,
-                      biz_type varchar(16) NOT NULL,
+                      biz_type varchar(32) NOT NULL,
                       owner_id bigint NOT NULL,
                       revision bigint NOT NULL,
                       next_version bigint NOT NULL,
@@ -125,9 +125,28 @@ public abstract class HeronMysqlTestSupport {
                     """);
             }
             ScriptUtils.executeSqlScript(connection, new ClassPathResource("production-fixture.sql"));
+            reseedLanes(connection);
             extendSchema(connection);
         } catch (SQLException e) {
             throw new IllegalStateException("初始化隔离测试库失败", e);
+        }
+    }
+
+    /**
+     * 001-production.sql 是历史基线，里面只有 news_video 与 prototype 两行；
+     * 枚举已按视频四线拆开，测试库按当前口径重播容量锁行。
+     */
+    private static void reseedLanes(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("DELETE FROM heron_production_lane");
+            statement.execute("""
+                INSERT INTO heron_production_lane (biz_type,create_time,update_time) VALUES
+                  ('news_explainer',UTC_TIMESTAMP(3),UTC_TIMESTAMP(3)),
+                  ('data_board',UTC_TIMESTAMP(3),UTC_TIMESTAMP(3)),
+                  ('trend_insight',UTC_TIMESTAMP(3),UTC_TIMESTAMP(3)),
+                  ('knowledge_explainer',UTC_TIMESTAMP(3),UTC_TIMESTAMP(3)),
+                  ('music_video',UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))
+                """);
         }
     }
 

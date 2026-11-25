@@ -25,9 +25,15 @@ class ResearchCostServiceTest {
 
     @SuppressWarnings("unchecked")
     private static ResearchCostService service(HeronResearchTaskMapper tasks, HeronContentDecisionMapper decisions) {
+        return service(tasks, decisions, new ModelPriceConfig(key -> null));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ResearchCostService service(HeronResearchTaskMapper tasks, HeronContentDecisionMapper decisions,
+                                               ModelPriceConfig prices) {
         ObjectProvider<Clock> clocks = mock(ObjectProvider.class);
         when(clocks.getIfAvailable()).thenReturn(null);
-        return new ResearchCostService(tasks, decisions, clocks);
+        return new ResearchCostService(tasks, decisions, prices, clocks);
     }
 
     private static HeronResearchTask task(String grade, long in, long out, String decision) {
@@ -119,5 +125,42 @@ class ResearchCostServiceTest {
         assertEquals(30, vo.getDays(), "非法窗口回落到 30 天");
         assertEquals(0, vo.getAvgTokens());
         assertNull(vo.getAcceptanceRate());
+    }
+
+    @Test
+    @DisplayName("已知 token 与单价，折算金额与手算一致")
+    void amountMultipliesTokensByPrice() {
+        HeronResearchTaskMapper tasks = mock(HeronResearchTaskMapper.class);
+        when(tasks.selectList(any())).thenReturn(List.of(
+            task("L2", 120_000, 40_000, "PRODUCE"),
+            task("L1", 80_000, 10_000, null)));
+        HeronContentDecisionMapper decisions = mock(HeronContentDecisionMapper.class);
+        when(decisions.selectList(any())).thenReturn(List.of());
+        // 0.002 元 / 千输入、0.006 元 / 千输出
+        ModelPriceConfig prices = new ModelPriceConfig(key -> switch (key) {
+            case ModelPriceConfig.PRICE_IN_KEY -> "0.002";
+            case ModelPriceConfig.PRICE_OUT_KEY -> "0.006";
+            default -> null;
+        });
+
+        var vo = service(tasks, decisions, prices).overview(30);
+
+        // (200000 × 0.002 + 50000 × 0.006) / 1000 = (400 + 300) / 1000 = 0.7000
+        assertEquals(new BigDecimal("0.7000"), vo.getAmount());
+        assertTrue(vo.isPriced());
+    }
+
+    @Test
+    @DisplayName("单价没配时金额为 0，并明确标记这个数不可信")
+    void unpricedOverviewSaysSo() {
+        HeronResearchTaskMapper tasks = mock(HeronResearchTaskMapper.class);
+        when(tasks.selectList(any())).thenReturn(List.of(task("L2", 120_000, 40_000, "PRODUCE")));
+        HeronContentDecisionMapper decisions = mock(HeronContentDecisionMapper.class);
+        when(decisions.selectList(any())).thenReturn(List.of());
+
+        var vo = service(tasks, decisions).overview(30);
+
+        assertEquals(0, vo.getAmount().signum(), "没配单价不该凭空给出金额");
+        assertFalse(vo.isPriced(), "0 元不等于没花钱，界面要能看出这个数不可信");
     }
 }

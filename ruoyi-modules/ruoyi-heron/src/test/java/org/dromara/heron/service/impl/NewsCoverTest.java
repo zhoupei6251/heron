@@ -88,7 +88,7 @@ class NewsCoverTest {
 
     private static final class Fixture {
         private final ProductionRunVo run = new ProductionRunVo(9100L, ProductionBizType.news_explainer, 7L, 4L, 1,
-            UUID.randomUUID().toString(), "{}", null);
+            UUID.randomUUID().toString(), "{}");
         private final Path work;
         private final ProductionProcessService processes;
         private final List<Integer> candidateTimes = new java.util.ArrayList<>();

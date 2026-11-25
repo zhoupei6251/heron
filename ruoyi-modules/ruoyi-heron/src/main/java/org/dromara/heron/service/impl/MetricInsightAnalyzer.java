@@ -30,6 +30,19 @@ public final class MetricInsightAnalyzer {
     /** 桶里保留的原始样本条数上限。再多对页面没有意义，只会拖慢响应。 */
     static final int RAW_SAMPLE_LIMIT = 20;
 
+    /** 偏好生效的最小同组样本数。少于这个数一律中性：三个样本就调权重，等于把噪声当规律。 */
+    public static final int MIN_PREFERENCE_SAMPLES = 8;
+
+    /** 中位数偏离基准多少才算「显著」；低于这个幅度一律中性，一次小胜不算规律。 */
+    static final double SIGNIFICANT_RATIO = 0.15d;
+
+    /** 权重上下限：只做加权，不做一票否决——表现差可以降权，但不能永久拉黑。 */
+    static final double WEIGHT_FLOOR = 0.5d;
+    static final double WEIGHT_CEIL = 2.0d;
+
+    /** 偏离幅度到权重的斜率：中位数高出基准一倍即顶到上限。 */
+    static final double WEIGHT_SLOPE = 1.0d;
+
     private static final List<String> WEEKDAYS =
         List.of("周一", "周二", "周三", "周四", "周五", "周六", "周日");
 
@@ -169,6 +182,84 @@ public final class MetricInsightAnalyzer {
         vo.setRawSamples(rawSamples(samples));
         vo.setNotice(notice(vo.getTier()));
         return vo;
+    }
+
+    /**
+     * 一份可被选线读到的偏好：分组 → 权重。
+     *
+     * <p>它是归因结论的压缩，不是另一套指标：权重全部由同一份采样行算出来，
+     * 证据不够就返回空表，调用方按原样选择。
+     */
+    public record Preference(String dimension, Map<String, Double> weights, int samples, String tier) {
+
+        public Preference {
+            weights = weights == null ? Map.of() : Map.copyOf(weights);
+        }
+
+        /** 有没有能影响选择的分组；没有就说明证据只够看，不够用。 */
+        public boolean hasSignal() {
+            return !weights.isEmpty();
+        }
+
+        /** 某分组的权重；不在偏好表里的分组一律 1.0（中性）。 */
+        public double weightOf(String bucket) {
+            Double weight = bucket == null ? null : weights.get(bucket);
+            return weight == null ? 1d : weight;
+        }
+    }
+
+    /** 按维度直接算偏好。 */
+    public static Preference preference(String dimension, List<Sample> samples) {
+        return preferenceOf(analyze(dimension, samples));
+    }
+
+    /**
+     * 把归因结论压成偏好：样本足够且显著更好的分组权重抬高，显著更差的降权。
+     *
+     * <p>三条门槛都读现有判定，不另立阈值：分组必须 {@code strategyEligible}（L4 且稳定）、
+     * 同组样本不少于 {@link #MIN_PREFERENCE_SAMPLES} 条、偏离基准超过 {@link #SIGNIFICANT_RATIO}。
+     * 少一条就保持中性——不到 L4 或样本不稳时，选择结果与不带偏好完全一致。
+     *
+     * <p>基准取可信分组自己的中位数：拿全样本中位数做基准，会把「未记录」和样本不足的分组
+     * 也算进比较里，等于用噪声定标准。
+     */
+    public static Preference preferenceOf(NewsPerformanceInsightVo insight) {
+        if (insight == null) {
+            return new Preference(null, Map.of(), 0, "L0");
+        }
+        Map<String, Double> medians = new LinkedHashMap<>();
+        for (NewsPerformanceInsightVo.Bucket bucket : insight.getBuckets()) {
+            if (usable(bucket)) {
+                medians.put(bucket.getBucket(), bucket.getMedianPlays());
+            }
+        }
+        // 只有一个可信分组时没有可比对象：抬高它就是拿一条规律去赌，一律中性。
+        if (medians.size() < 2) {
+            return new Preference(insight.getDimension(), Map.of(), insight.getTotalSamples(), insight.getTier());
+        }
+        double baseline = median(new ArrayList<>(medians.values()));
+        if (Double.isNaN(baseline) || baseline <= 0) {
+            return new Preference(insight.getDimension(), Map.of(), insight.getTotalSamples(), insight.getTier());
+        }
+        Map<String, Double> weights = new LinkedHashMap<>();
+        for (Map.Entry<String, Double> entry : medians.entrySet()) {
+            double ratio = entry.getValue() / baseline;
+            if (Math.abs(ratio - 1d) < SIGNIFICANT_RATIO) {
+                continue;
+            }
+            double weight = Math.min(WEIGHT_CEIL, Math.max(WEIGHT_FLOOR, 1d + (ratio - 1d) * WEIGHT_SLOPE));
+            weights.put(entry.getKey(), Math.round(weight * 100d) / 100d);
+        }
+        return new Preference(insight.getDimension(), weights, insight.getTotalSamples(), insight.getTier());
+    }
+
+    /** 这一桶够不够格进偏好：证据等级、样本量、能对应到具体取值，三条都要。 */
+    private static boolean usable(NewsPerformanceInsightVo.Bucket bucket) {
+        return bucket != null
+            && bucket.getBucket() != null && !UNKNOWN.equals(bucket.getBucket())
+            && bucket.isStrategyEligible()
+            && bucket.getSamples() >= MIN_PREFERENCE_SAMPLES
+            && bucket.getMedianPlays() != null && bucket.getMedianPlays() > 0;
     }
 
     private static NewsPerformanceInsightVo.Bucket summarize(String bucket, List<Sample> group,

@@ -155,4 +155,40 @@ class NewsAutoDecisionTrailTest {
         assertEquals(EditorialDecisionService.NO_PUBLISH, noPublishTrail.path("decision").path("originalLine").asString());
         assertEquals(EditorialDecisionService.NO_PUBLISH, noPublishTrail.path("decision").path("finalLine").asString());
     }
+
+    @Test
+    @DisplayName("pool_json 的 decision 里带选源理由，没有理由就显式 null")
+    void trailCarriesSourceReason() {
+        EditorialCandidatePool pool = EditorialCandidatePool.of(
+            List.of(candidate(101L, "正文A")), item -> true,
+            List.of(dataset("sina-gold-xau", "新浪黄金")), List.of(), List.of());
+        EditorialDecisionService.Pools pools = NewsAutoService.pools(pool);
+        EditorialDecisionService.Decision decision = decision(EditorialDecisionService.DATA_BOARD);
+
+        EditorialSelection withReason = new EditorialSelection(EditorialDecisionService.DATA_BOARD, null,
+            "sina-gold-xau", false, "data-9x16", "金价站上关键位", List.of(), null, null, null)
+            .withSourceReason("降级速览：市场 当日轮换（sina-gold-xau，cadence=daily）；模型判 none");
+        JsonNode trail = JSON.readTree(NewsAutoService.decisionTrail(pools, decision,
+            new EditorialChoice(withReason, EditorialDecisionService.DATA_BOARD, false, null)));
+        assertEquals("降级速览：市场 当日轮换（sina-gold-xau，cadence=daily）；模型判 none",
+            trail.path("decision").path("sourceReason").asString());
+
+        // 解说线没有选源这回事：给 null 而不是留一句空话
+        JsonNode explainerTrail = JSON.readTree(NewsAutoService.decisionTrail(pools, decision,
+            new EditorialChoice(explainer(), EditorialDecisionService.NEWS_EXPLAINER, false, null)));
+        assertTrue(explainerTrail.path("decision").path("sourceReason").isNull());
+    }
+
+    @Test
+    @DisplayName("只数末尾连续失败：中间成功过一次就不合并成一次刹车")
+    void autoStopStreakCountsOnlyTrailingFailures() {
+        assertEquals(0, NewsAutoService.consecutiveFailedStreak(List.of()), "没有槽位就没有连败");
+        assertEquals(0, NewsAutoService.consecutiveFailedStreak(List.of("produced", "failed", "failed")));
+        assertEquals(2, NewsAutoService.consecutiveFailedStreak(List.of("failed", "failed", "produced")));
+        assertEquals(3, NewsAutoService.consecutiveFailedStreak(List.of("failed", "failed", "failed")));
+        assertEquals(2, NewsAutoService.consecutiveFailedStreak(List.of("failed", "failed")));
+        assertEquals(NewsAutoService.AUTO_STOP_FAILURE_STREAK,
+            NewsAutoService.consecutiveFailedStreak(List.of("failed", "failed", "failed")),
+            "恰好到阈值就该刹车");
+    }
 }

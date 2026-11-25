@@ -25,7 +25,7 @@ public class HeronAccessService {
         if (LoginHelper.isSuperAdmin(actor)) {
             return;
         }
-        boolean scope = actor.equals(ownerId) || StpUtil.hasPermission(allPermission(type));
+        boolean scope = actor.equals(ownerId) || StpUtil.hasPermission(type.allPermission());
         if (!scope || !StpUtil.hasPermission(action)) {
             throw new HeronAccessException();
         }
@@ -57,7 +57,7 @@ public class HeronAccessService {
     }
 
     public boolean hasAllScope(ProductionBizType type) {
-        return hasPermission(requireActor(), allPermission(type));
+        return hasPermission(requireActor(), type.allPermission());
     }
 
     /**
@@ -67,15 +67,11 @@ public class HeronAccessService {
         if (!hasPermission(actorId, "heron:production:query")) {
             return false;
         }
-        return actorId == ownerId || hasPermission(actorId, allPermission(type));
+        return actorId == ownerId || hasPermission(actorId, type.allPermission());
     }
 
     public static String generatePermission(ProductionBizType type) {
-        return type == ProductionBizType.news_video ? "heron:newsWork:generate" : "heron:proto:generate";
-    }
-
-    public static String allPermission(ProductionBizType type) {
-        return type == ProductionBizType.news_video ? "heron:newsWork:all" : "heron:proto:all";
+        return type.generatePermission();
     }
 
     private static boolean hasPermission(long userId, String permission) {

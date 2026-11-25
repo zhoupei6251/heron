@@ -1,10 +1,12 @@
 package org.dromara.heron.service.impl;
 
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,13 +23,21 @@ import java.util.Set;
  */
 final class QualityRepairPlanner {
 
+    private static final JsonMapper JSON = JsonMapper.builder().build();
+
+    /** 一处改动涉及原稿里的哪个字段；抄回修复稿时按它取数，别按模型自己给的结构。 */
+    private static final String CLOSING = "closing";
+    private static final String HOOK_LEAD = "scenes[0].lead";
+    private static final String SCENE_BODY = "scenes[].body";
+    private static final String SCENE_DURATION = "scenes[].duration_s";
+
     /** 修复规则：编号 → 允许改的字段。 */
     private static final Map<String, String> WHITELIST = Map.of(
-        "hook_3s", "scenes[0].lead",
-        "closing_value", "closing",
-        "mid_progression", "scenes[].body",
-        "no_redundancy", "scenes[].body",
-        "pacing_variation", "scenes[].duration_s");
+        "hook_3s", HOOK_LEAD,
+        "closing_value", CLOSING,
+        "mid_progression", SCENE_BODY,
+        "no_redundancy", SCENE_BODY,
+        "pacing_variation", SCENE_DURATION);
 
     /** 修复次数上限。与写稿契约的修复轮次不叠加。 */
     static final int MAX_ATTEMPTS = 1;
@@ -72,29 +82,191 @@ final class QualityRepairPlanner {
         if (!"draft".equals(mode) && !"sample".equals(mode)) {
             return Optional.empty();
         }
+        return planOf(collect(report));
+    }
+
+    /**
+     * 正式成片的重生产计划。
+     *
+     * <p>final 报告不打补丁（见 {@link #plan}），但可以按同一份白名单改稿后重生产一个新版本：
+     * 动作与草稿态逐条相同，区别在执行方式——冻结修复稿、跑整条流水线、再复检一次。
+     * 白名单外一律不修，与草稿态同一条规矩。
+     */
+    static Optional<RepairPlan> planForReproduction(JsonNode report) {
+        if (report == null || !report.isObject()) {
+            return Optional.empty();
+        }
+        return planOf(collect(report));
+    }
+
+    private static Optional<RepairPlan> planOf(List<Action> actions) {
+        if (actions.isEmpty()) return Optional.empty();
+        return Optional.of(new RepairPlan(List.copyOf(actions)));
+    }
+
+    /** 报告里所有够格进入修复的判据，转成动作。 */
+    private static List<Action> collect(JsonNode report) {
         List<Action> actions = new ArrayList<>();
+        if (report == null || !report.isObject()) {
+            return actions;
+        }
         for (JsonNode item : report.path("criteria")) {
             String id = item.path("id").asString("");
             if (!WHITELIST.containsKey(id)) continue;
             if (!item.path("repairable").asBoolean(false)) continue;
             String verdict = item.path("verdict").asString("");
             if (!"minor".equals(verdict) && !"fail".equals(verdict)) continue;
-            String field = WHITELIST.get(id);
-            String instruction = switch (id) {
-                case "hook_3s" -> "重写第 1 屏开场口播，让它先给出可验证的具体信息；"
-                    + "不得新增或删除事实引用，不得改动其余字段";
-                case "closing_value" -> "重写结尾，给出一个结论或值得开口的问题；"
-                    + "不得引入新事实，不得改成关注引导";
-                case "mid_progression", "no_redundancy" -> "重写相邻两段中靠后那一段的正文，"
-                    + "让它带来新的信息；保留该段原有的事实引用集合不变";
-                case "pacing_variation" -> "调整该段声明时长，使其与实测时长接近；"
-                    + "不得改动总时长区间与段落数量";
-                default -> "按报告所述问题改写对应字段，其余字段原样保留";
-            };
-            actions.add(new Action("R-" + id, id, field, instruction));
+            actions.add(new Action("R-" + id, id, WHITELIST.get(id), instructionOf(id)));
         }
-        if (actions.isEmpty()) return Optional.empty();
-        return Optional.of(new RepairPlan(List.copyOf(actions)));
+        return actions;
+    }
+
+    private static String instructionOf(String id) {
+        return switch (id) {
+            case "hook_3s" -> "重写第 1 屏开场口播，让它先给出可验证的具体信息；"
+                + "不得新增或删除事实引用，不得改动其余字段";
+            case "closing_value" -> "重写结尾，给出一个结论或值得开口的问题；"
+                + "不得引入新事实，不得改成关注引导";
+            case "mid_progression", "no_redundancy" -> "重写相邻两段中靠后那一段的正文，"
+                + "让它带来新的信息；保留该段原有的事实引用集合不变";
+            case "pacing_variation" -> "调整该段声明时长，使其与实测时长接近；"
+                + "不得改动总时长区间与段落数量";
+            default -> "按报告所述问题改写对应字段，其余字段原样保留";
+        };
+    }
+
+    /** 计划里点到的问题，一行一条，交给写稿链路当修复提示。 */
+    static List<String> notes(RepairPlan plan) {
+        List<String> notes = new ArrayList<>();
+        for (Action action : plan.actions()) {
+            notes.add(action.criterionId() + "：" + action.instruction());
+        }
+        return List.copyOf(notes);
+    }
+
+    /** 计划点到的问题编号，复检时只查这几条。 */
+    static List<String> criterionIds(RepairPlan plan) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (Action action : plan.actions()) {
+            ids.add(action.criterionId());
+        }
+        return List.copyOf(ids);
+    }
+
+    /** 计划允许改动的字段，去重后的清单。 */
+    static List<String> allowedFields(RepairPlan plan) {
+        Set<String> fields = new LinkedHashSet<>();
+        for (Action action : plan.actions()) {
+            fields.add(action.field());
+        }
+        return List.copyOf(fields);
+    }
+
+    /**
+     * 只把白名单字段从修复稿抄回原稿。
+     *
+     * <p>模型改稿不保证守规矩：它常常顺手润色别的段落、动一下标题。信任它等于让
+     * 「只改点名的地方」变成一句口号。所以不比对、不校验它的省心，而是按原稿深拷贝，
+     * 只把允许改的字段从修复稿里搬过来——白名单之外的任何改动都在这里消失。
+     */
+    static Narrowed narrow(String originalJson, String repairedJson, RepairPlan plan) {
+        List<String> violations = new ArrayList<>();
+        List<String> changed = new ArrayList<>();
+        JsonNode original = read(originalJson);
+        JsonNode repaired = read(repairedJson);
+        if (original == null || !original.isObject()) {
+            violations.add("原稿不是对象");
+            return new Narrowed(originalJson, List.of(), List.copyOf(violations));
+        }
+        if (repaired == null || !repaired.isObject()) {
+            violations.add("修复稿不是对象");
+            return new Narrowed(originalJson, List.of(), List.copyOf(violations));
+        }
+        ObjectNode merged = ((ObjectNode) original).deepCopy();
+        Set<String> fields = new LinkedHashSet<>(allowedFields(plan));
+        JsonNode originalScenes = original.path("scenes");
+        boolean touchesScenes = fields.stream().anyMatch(field -> field.startsWith("scenes"));
+        if (touchesScenes) {
+            JsonNode repairedScenes = repaired.path("scenes");
+            if (!originalScenes.isArray() || !repairedScenes.isArray()) {
+                violations.add("修复稿或原稿缺少段落数组");
+            } else if (originalScenes.size() != repairedScenes.size()) {
+                // 段落数量是受保护字段：数量变了就不是「改写某一段」，是重写了结构。
+                violations.add("修复稿的段落数量与原稿不一致");
+            }
+        }
+        if (violations.isEmpty() && originalScenes.isArray()) {
+            JsonNode repairedScenes = repaired.path("scenes");
+            JsonNode mergedScenes = merged.path("scenes");
+            for (int index = 0; index < originalScenes.size(); index++) {
+                if (!repairedScenes.path(index).isObject() || !mergedScenes.path(index).isObject()) {
+                    violations.add("第 " + (index + 1) + " 段不是对象");
+                    break;
+                }
+                String base = "scenes[" + index + "]";
+                ObjectNode target = (ObjectNode) mergedScenes.get(index);
+                if (fields.contains(HOOK_LEAD) && index == 0) {
+                    copyText(originalScenes.get(0), repairedScenes.path(0), target, "lead", base + ".lead", changed);
+                }
+                if (fields.contains(SCENE_BODY)) {
+                    copyText(originalScenes.get(index), repairedScenes.path(index), target, "body",
+                        base + ".body", changed);
+                }
+                if (fields.contains(SCENE_DURATION)) {
+                    copyNumber(originalScenes.get(index), repairedScenes.path(index), target, "duration_s",
+                        base + ".duration_s", changed);
+                }
+            }
+        }
+        // 先段落再结尾：留痕里的改动顺序与稿子读下来的顺序一致。
+        if (violations.isEmpty() && fields.contains(CLOSING)) {
+            copyText(original, repaired, merged, "closing", "closing", changed);
+        }
+        return new Narrowed(merged.toString(), List.copyOf(changed), List.copyOf(violations));
+    }
+
+    /** 只抄字符串字段：修复稿给了非文本就算没给，保留原值。 */
+    private static void copyText(JsonNode from, JsonNode to, ObjectNode target, String field,
+                                 String path, List<String> changed) {
+        JsonNode value = to.path(field);
+        if (!value.isString() || value.asString("").isBlank()) {
+            return;
+        }
+        if (!from.path(field).asString("").equals(value.asString(""))) {
+            changed.add(path);
+        }
+        target.put(field, value.asString(""));
+    }
+
+    /** 只抄数值字段：类型不对就保留原值，不替模型做单位换算。 */
+    private static void copyNumber(JsonNode from, JsonNode to, ObjectNode target, String field,
+                                   String path, List<String> changed) {
+        JsonNode value = to.path(field);
+        if (!value.isNumber()) {
+            return;
+        }
+        if (from.path(field).asDouble(Double.NaN) != value.asDouble(Double.NaN)) {
+            changed.add(path);
+        }
+        target.set(field, value);
+    }
+
+    private static JsonNode read(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return JSON.readTree(json);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** 抄回白名单字段后的稿子；changedFields 是真正变了的字段路径。 */
+    record Narrowed(String script, List<String> changedFields, List<String> violations) {
+        boolean changed() {
+            return changedFields != null && !changedFields.isEmpty();
+        }
     }
 
     /**

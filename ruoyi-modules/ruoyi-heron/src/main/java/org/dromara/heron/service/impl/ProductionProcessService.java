@@ -33,7 +33,7 @@ import java.util.stream.Stream;
 @Service
 public class ProductionProcessService {
 
-    private static final Set<String> TOOLS = Set.of("node", "ffmpeg", "ffprobe", "python", "zee-rp");
+    private static final Set<String> TOOLS = Set.of("node", "ffmpeg", "ffprobe", "python");
     private static final int MAX_OUTPUT_BYTES = 1024 * 1024;
     private static final int MAX_ARGUMENTS = 64;
     private static final int MAX_ARGUMENT_LENGTH = 2048;
@@ -291,8 +291,7 @@ public class ProductionProcessService {
             case "node" -> properties.getNode();
             case "ffmpeg" -> properties.getFfmpeg();
             case "ffprobe" -> properties.getFfprobe();
-            case "python" -> properties.getPython();
-            default -> properties.getZeeRp();
+            default -> properties.getPython();
         };
     }
 

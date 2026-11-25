@@ -34,6 +34,11 @@ public final class DatasetScriptContract {
     private static final int MAX_SCENES = 6;
     private static final int MIN_TOTAL_SECONDS = 30;
     private static final int MAX_TOTAL_SECONDS = 75;
+    /**
+     * 单段时长上限。数字与 {@link QualityCriteria#LONG_SCENE_MS} 同源：
+     * 总量合格不等于节奏合格，一段 60 秒的片子观众等不到第二个信息点。
+     */
+    private static final double MAX_SCENE_SECONDS = QualityCriteria.LONG_SCENE_MS / 1000.0;
     private static final Pattern PERIOD_CHANGE = Pattern.compile("\\{\\{facts\\.change(?:_pct)?}}");
     private static final Pattern DAILY_CHANGE = Pattern.compile(
         "(?:较|比)(?:前一日|上一日|昨日|昨天|上一交易日|前一交易日)|单日(?:上涨|下跌|涨幅|跌幅|变化|涨跌)");
@@ -203,6 +208,11 @@ public final class DatasetScriptContract {
                 items.add("第 " + (index + 1) + " 段缺少正数 duration_s");
             } else {
                 total += duration.asDouble();
+                // 与解说线同一口径：超长段在写稿闸退回，不留到渲染后才发现
+                if (duration.asDouble() > MAX_SCENE_SECONDS) {
+                    items.add("第 " + (index + 1) + " 段时长 " + trim(duration.asDouble()) + " 秒，超过单段上限 "
+                        + trim(MAX_SCENE_SECONDS) + " 秒");
+                }
             }
             if (!title.isBlank()
                 && (title.equals(scene.path("lead").asString("")) || title.equals(scene.path("body").asString("")))) {
@@ -280,5 +290,10 @@ public final class DatasetScriptContract {
         int length = value.codePointCount(0, value.length());
         if (value.isBlank()) items.add(field + " 为空");
         else if (length > maxCodePoints) items.add(field + " " + length + " 字，超过上限 " + maxCodePoints + " 字");
+    }
+
+    /** 秒数展示：整数不带小数点，退回原因要能直接读。 */
+    private static String trim(double seconds) {
+        return seconds == Math.rint(seconds) ? String.valueOf((long) seconds) : String.valueOf(seconds);
     }
 }

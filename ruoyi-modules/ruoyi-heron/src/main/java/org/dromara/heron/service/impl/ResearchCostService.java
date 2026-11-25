@@ -27,6 +27,10 @@ import java.util.Map;
  *
  * <p>为什么把等级、决策类型分开汇总：总量看不出来「钱花在哪些机会上」。
  * L1 和 L3 的单次成本差一个数量级，混在一起的平均值没有意义。
+ *
+ * <p>金额在读侧按当前单价折算（{@link ModelPrice}），不写进账本：历史记录跟着单价走，
+ * 免得为「冻结当时单价」多一次迁移。单价没配时金额是 0，同时把 {@code priced=false} 交出去，
+ * 让界面能说「这个数不可信」而不是假装花了 0 元。
  */
 @Service
 @RequiredArgsConstructor
@@ -34,6 +38,7 @@ public class ResearchCostService {
 
     private final HeronResearchTaskMapper researchTaskMapper;
     private final HeronContentDecisionMapper decisionMapper;
+    private final ModelPriceConfig prices;
     private final ObjectProvider<Clock> clocks;
 
     /**
@@ -80,6 +85,10 @@ public class ResearchCostService {
         vo.setToolCalls(toolCalls);
         vo.setDecidedCount(decided);
         vo.setAvgTokens(tasks.isEmpty() ? 0 : (input + output) / tasks.size());
+        // 金额与 token 用同一批数算出来：两处各算一遍迟早对不上
+        ModelPrice price = prices.price();
+        vo.setAmount(price.amount(input, output));
+        vo.setPriced(price.priced());
         vo.setByGrade(gradeCosts(gradeAgg));
 
         List<HeronContentDecision> decisions = decisionMapper.selectList(QueryBuilder

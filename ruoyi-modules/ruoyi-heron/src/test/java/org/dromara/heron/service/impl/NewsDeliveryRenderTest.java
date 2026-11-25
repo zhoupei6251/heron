@@ -37,7 +37,7 @@ class NewsDeliveryRenderTest {
         NewsProductionPipeline pipeline = new NewsProductionPipeline(null, null, processes, artifacts, properties,
             (run, stage, progress) -> true, null, null, null, null, null, null, null);
         ProductionRunVo run = new ProductionRunVo(9200L, ProductionBizType.news_explainer, 7L, 4L, 1,
-            UUID.randomUUID().toString(), "{}", null);
+            UUID.randomUUID().toString(), "{}");
         Path work = artifacts.prepareWorkDirectory(run);
         Path composition = Files.createDirectories(work.resolve("composition"));
         Path fonts = Files.createDirectories(composition.resolve("fonts"));

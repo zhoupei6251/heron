@@ -84,8 +84,8 @@ class QualityReviewerTest {
     }
 
     private static ProductionRunVo run() {
-        return new ProductionRunVo(1L, org.dromara.heron.domain.ProductionBizType.news_video, 1L,
-            1900000000000000001L, 1, "token", "{}", null);
+        return new ProductionRunVo(1L, org.dromara.heron.domain.ProductionBizType.news_explainer, 1L,
+            1900000000000000001L, 1, "token", "{}");
     }
 
     private static final String MODEL_REPLY = """

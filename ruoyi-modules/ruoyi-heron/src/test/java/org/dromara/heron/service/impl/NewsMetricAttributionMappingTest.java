@@ -132,7 +132,7 @@ class NewsMetricAttributionMappingTest {
         EditorialDecisionService.Decision decision = new EditorialDecisionService.Decision(
             "PUBLISH", selection.line(), "走数据看板线", "用图表讲清增速", 42L, 7L);
         ProductionSubmitBo command = new ProductionSubmitBo(
-            ProductionBizType.news_video, 1L, "req-1", 1L, decision, selection);
+            ProductionBizType.news_explainer, 1L, "req-1", 1L, decision, selection);
 
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("kind", NewsProductionDomain.kindOf(selection));

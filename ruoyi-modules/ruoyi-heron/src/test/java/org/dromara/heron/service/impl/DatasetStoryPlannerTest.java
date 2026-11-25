@@ -48,7 +48,7 @@ class DatasetStoryPlannerTest {
         usageMapper = mock(HeronDatasetUsageMapper.class);
         dataSourceMapper = mock(HeronDataSourceMapper.class);
         planner = new DatasetStoryPlanner(model, datasets, usageMapper, dataSourceMapper);
-        run = new ProductionRunVo(0, ProductionBizType.news_video, 0L, 0L, 0, "story-test", "{}", null);
+        run = new ProductionRunVo(0, ProductionBizType.news_explainer, 0L, 0L, 0, "story-test", "{}");
         when(usageMapper.recentSourceKeys(any())).thenReturn(Set.of());
         when(dataSourceMapper.enabledSources()).thenReturn(List.of());
     }

@@ -92,8 +92,8 @@ class NewsProductionPipelineRenderTest {
             new NewsSourceFetcher(null, null, newsProperties),
             org.mockito.Mockito.mock(FrozenContextService.class), null, newsProperties);
 
-        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_video, 10L, 5L, 1,
-            UUID.randomUUID().toString(), lockedAssets(template), null);
+        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_explainer, 10L, 5L, 1,
+            UUID.randomUUID().toString(), lockedAssets(template));
         ProductionResultVo result = pipeline.execute(run);
 
         JsonNode content = JSON.readTree(result.resultJson());
@@ -227,8 +227,8 @@ class NewsProductionPipelineRenderTest {
                 (run, stage, progress) -> true, null, null, null, passingReview(), null, stubFetcher,
                 org.mockito.Mockito.mock(FrozenContextService.class), mediaAssets);
 
-            ProductionRunVo run = new ProductionRunVo(7002L, ProductionBizType.news_video, 10L, 5L, 1,
-                UUID.randomUUID().toString(), lockedAssets(template), null);
+            ProductionRunVo run = new ProductionRunVo(7002L, ProductionBizType.news_explainer, 10L, 5L, 1,
+                UUID.randomUUID().toString(), lockedAssets(template));
             result = pipeline.execute(run);
             assertEquals("scene1.png", JSON.readTree(result.resultJson()).path("mediaSelections")
                 .get(0).path("imageValue").asString());

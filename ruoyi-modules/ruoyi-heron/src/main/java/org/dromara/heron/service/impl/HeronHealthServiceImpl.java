@@ -12,6 +12,7 @@ import org.dromara.heron.mapper.HeronNewsCandidateMapper;
 import org.dromara.heron.mapper.HeronNewsSourceMapper;
 import org.dromara.heron.mapper.HeronProductionTaskMapper;
 import org.dromara.heron.mapper.HeronUsageRecordMapper;
+import org.dromara.heron.service.AutoPauseStore;
 import org.dromara.heron.service.IHeronHealthService;
 import org.springframework.stereotype.Service;
 
@@ -35,21 +36,24 @@ public class HeronHealthServiceImpl implements IHeronHealthService {
     private final HeronNewsCandidateMapper candidateMapper;
     private final HeronProductionTaskMapper taskMapper;
     private final HeronUsageRecordMapper usageMapper;
+    private final AutoPauseStore pauseStore;
     private final Clock clock;
 
     @org.springframework.beans.factory.annotation.Autowired
     public HeronHealthServiceImpl(HeronNewsSourceMapper sourceMapper, HeronNewsCandidateMapper candidateMapper,
-                                  HeronProductionTaskMapper taskMapper, HeronUsageRecordMapper usageMapper) {
-        this(sourceMapper, candidateMapper, taskMapper, usageMapper, Clock.systemUTC());
+                                  HeronProductionTaskMapper taskMapper, HeronUsageRecordMapper usageMapper,
+                                  AutoPauseStore pauseStore) {
+        this(sourceMapper, candidateMapper, taskMapper, usageMapper, pauseStore, Clock.systemUTC());
     }
 
     public HeronHealthServiceImpl(HeronNewsSourceMapper sourceMapper, HeronNewsCandidateMapper candidateMapper,
                                   HeronProductionTaskMapper taskMapper, HeronUsageRecordMapper usageMapper,
-                                  Clock clock) {
+                                  AutoPauseStore pauseStore, Clock clock) {
         this.sourceMapper = sourceMapper;
         this.candidateMapper = candidateMapper;
         this.taskMapper = taskMapper;
         this.usageMapper = usageMapper;
+        this.pauseStore = pauseStore;
         this.clock = clock;
     }
 
@@ -65,16 +69,33 @@ public class HeronHealthServiceImpl implements IHeronHealthService {
 
         vo.setTodayCandidates(candidateMapper.selectCount(
             QueryBuilder.lambda(HeronNewsCandidate.class).ge(HeronNewsCandidate::getFirstSeenAt, dayStart).build()));
+        List<String> lanes = ProductionBizType.videoLanes().stream().map(Enum::name).toList();
         vo.setTodayTasks(taskMapper.selectCount(QueryBuilder.lambda(HeronProductionTask.class)
             .ge(HeronProductionTask::getCreateTime, dayStart)
-            .eq(HeronProductionTask::getBizType, ProductionBizType.news_video.name()).build()));
+            .in(HeronProductionTask::getBizType, lanes).build()));
         vo.setTodayFailed(taskMapper.selectCount(QueryBuilder.lambda(HeronProductionTask.class)
             .ge(HeronProductionTask::getCreateTime, dayStart)
-            .eq(HeronProductionTask::getBizType, ProductionBizType.news_video.name())
+            .in(HeronProductionTask::getBizType, lanes)
             .eq(HeronProductionTask::getStatus, ProductionStatus.failed.name()).build()));
 
         fillUsage(vo, monthStart);
+        fillAutoState(vo);
         return vo;
+    }
+
+    /**
+     * 自动产出的开关状态与暂停原因。
+     *
+     * <p>读失败按「未暂停」处理：健康概览是只读看板，读不出状态不能反过来把看板打挂。
+     */
+    private void fillAutoState(HeronHealthVo vo) {
+        try {
+            vo.setAutoPaused(pauseStore.paused());
+            vo.setAutoPauseReason(pauseStore.pauseReason());
+        } catch (RuntimeException e) {
+            vo.setAutoPaused(false);
+            vo.setAutoPauseReason(null);
+        }
     }
 
     private void fillSources(HeronHealthVo vo) {

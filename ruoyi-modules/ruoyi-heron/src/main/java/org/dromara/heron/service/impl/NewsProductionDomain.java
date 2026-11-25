@@ -202,7 +202,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         HeronNewsWork work = workMapper.selectById(command.bizId());
         if (work == null) throw new HeronAccessException();
         HeronNewsCandidate candidate = candidateMapper.selectById(work.getCandidateId());
-        if (command.bizType() != ProductionBizType.news_video || candidate == null) throw new HeronAccessException();
+        if (command.bizType() == ProductionBizType.music_video || candidate == null) throw new HeronAccessException();
         if (!Objects.equals(work.getRevision(), command.expectedRevision())) throw conflict("revision_conflict", "草稿版本已变化");
         if (work.getActiveTaskId() != null || candidate.getActiveTaskId() != null) throw conflict("inflight", "该候选已有在途任务");
         if (candidate.getPublishedAt() != null) throw conflict("published", "该候选已实际发布，不可重复生产");
@@ -226,7 +226,14 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         // 反推等于让命名决定业务，改模板名就会改出片逻辑。
         EditorialSelection selection = command.selection();
         EditorialOverride override = command.override();
-        snapshot.put("kind", override == null ? kindOf(selection) : kindOfLine(override.selectionNode()));
+        // 没有 selection 也没有 override 的手工重出：线由提交方给，kind 跟着线走。
+        String kind = override != null ? kindOfLine(override.selectionNode())
+            : selection != null ? kindOf(selection) : command.bizType().kind();
+        // 有选择时复核一遍：不一致会让 lane 容量统计与产物闸门对不上。
+        if (ProductionBizType.fromKind(kind) != command.bizType()) {
+            throw conflict("news_line_conflict", "业务线与冻结输入不一致：" + command.bizType());
+        }
+        snapshot.put("kind", kind);
         if (override != null) {
             // 人工编辑策划结论：沿用上一版冻结的节点，只换 story 一个键。
             // 逐字沿用是有意的——重建节点要还原取数口径，还原错一个字段就是按另一条口径取数。
@@ -443,7 +450,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
 
     /** 查询、审核、下载均核对版本与任务的不可变归属。 */
     public void requireTask(HeronVideoVersion version, HeronProductionTask task) {
-        if (version == null || task == null || !ProductionBizType.news_video.name().equals(task.getBizType())
+        if (version == null || task == null || ProductionBizType.music_video.name().equals(task.getBizType())
             || !Objects.equals(version.getTaskId(), task.getId()) || !Objects.equals(version.getId(), task.getVersionId())
             || !Objects.equals(version.getWorkId(), task.getBizId()) || !Objects.equals(version.getOwnerId(), task.getOwnerId())) {
             throw new HeronAccessException();
@@ -612,11 +619,13 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
                 path = path.getParent();
             }
         }
-        Path taskRoot = properties.getDataRoot().toAbsolutePath().normalize().resolve("work/news_video/" + task.getId());
-        for (Path parent = taskRoot; parent != null; parent = parent.getParent()) {
+        Path work = properties.getDataRoot().toAbsolutePath().normalize().resolve("work");
+        // 尝试目录按 biz_type 名分道；任务属于哪条线就查哪条线的目录。
+        Path taskRoot = work.resolve(task.getBizType()).resolve(Long.toString(task.getId()));
+        if (!Files.exists(taskRoot, LinkOption.NOFOLLOW_LINKS)) return false;
+        for (Path parent = taskRoot; parent != null && parent.startsWith(work); parent = parent.getParent()) {
             if (Files.isSymbolicLink(parent) || Files.exists(parent.resolve(".keep"), LinkOption.NOFOLLOW_LINKS)) return true;
         }
-        if (!Files.exists(taskRoot, LinkOption.NOFOLLOW_LINKS)) return false;
         try (var paths = Files.walk(taskRoot, 3)) {
             return paths.anyMatch(path -> Files.isSymbolicLink(path) || ".keep".equals(path.getFileName().toString()));
         } catch (IOException e) { throw conflict("keep_unreadable", "无法确认人工保留标记"); }

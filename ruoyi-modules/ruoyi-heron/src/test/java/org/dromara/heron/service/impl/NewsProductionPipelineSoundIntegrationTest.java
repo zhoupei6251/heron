@@ -234,7 +234,7 @@ class NewsProductionPipelineSoundIntegrationTest {
     }
 
     private static ProductionRunVo run() {
-        return new ProductionRunVo(8100L, ProductionBizType.news_video, 7L, 4L, 1,
-            UUID.randomUUID().toString(), "{}", null);
+        return new ProductionRunVo(8100L, ProductionBizType.news_explainer, 7L, 4L, 1,
+            UUID.randomUUID().toString(), "{}");
     }
 }

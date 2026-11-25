@@ -38,12 +38,13 @@ final class QualityCriteria {
     /** 机器只提供证据、结论由模型给的两条。 */
     static final Set<String> MODEL_DECIDED = Set.of("peak_focus", "pacing_variation");
 
-    /** 单段超过这个长度即视为节奏上的超长段。 */
+    /**
+     * 单段超过这个长度即视为节奏上的超长段。
+     *
+     * <p>唯一消费者是两份稿件契约（{@code NewsScriptContract} / {@code DatasetScriptContract}）：
+     * 超长段在写稿阶段就被退回，不用等渲染完钱花出去才发现。
+     */
     static final long LONG_SCENE_MS = 12_000L;
-    /** 短于这个长度即视为碎段。 */
-    static final long SHORT_SCENE_MS = 4_000L;
-    /** 最长段与最短段的时长比超过这个值即视为节奏塌陷。 */
-    static final double PACING_RATIO = 3.0d;
     /** 声明时长与实测时长差过这个值即算对不上。 */
     static final long DURATION_TOLERANCE_MS = 2_500L;
     /** 同一个数据路径在这么多段里反复出现即判冗余。 */

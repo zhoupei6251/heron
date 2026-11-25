@@ -173,7 +173,7 @@ class ProductionProcessTest {
     }
 
     private ProductionRunVo run() {
-        return new ProductionRunVo(9001L, ProductionBizType.news_video, 10L, 5L, 1,
-            UUID.randomUUID().toString(), "{}", null);
+        return new ProductionRunVo(9001L, ProductionBizType.news_explainer, 10L, 5L, 1,
+            UUID.randomUUID().toString(), "{}");
     }
 }

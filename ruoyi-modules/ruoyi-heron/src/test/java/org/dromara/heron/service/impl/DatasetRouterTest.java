@@ -37,6 +37,26 @@ class DatasetRouterTest {
     }
 
     @Test
+    @DisplayName("命中带模型的理由；降级带降级理由，复盘要能看出为什么不是热点片")
+    void routeCarriesReason() {
+        DatasetRouter.Route hot = DatasetRouter.plan(
+            "{\"source_key\":\"sina-gold-xau\",\"reason\":\"金价是可日更的量化指标\"}",
+            List.of(source("sina-gold-xau", OLD)), ENABLED);
+        assertEquals("金价是可日更的量化指标", hot.reason());
+
+        DatasetRouter.Route digest = DatasetRouter.plan(
+            "{\"source_key\":\"none\",\"reason\":\"题材是政策解读\"}",
+            List.of(source("sina-oil-cl", NEW)), ENABLED);
+        assertTrue(digest.digest());
+        assertTrue(digest.reason().startsWith("降级速览"), digest.reason());
+        assertTrue(digest.reason().contains("题材是政策解读"), "模型判 none 的理由要跟着留下来");
+
+        // 模型没给 reason 也不能让整次选源失败，只是留痕里少一句
+        assertNotNull(DatasetRouter.plan("{\"source_key\":\"sina-gold-xau\"}",
+            List.of(source("sina-gold-xau", OLD)), ENABLED).reason());
+    }
+
+    @Test
     @DisplayName("模型说 none 时降级速览，取最近更新的源")
     void noneFallsBackToDigest() {
         DatasetRouter.Route route = DatasetRouter.plan("{\"source_key\":\"none\"}",

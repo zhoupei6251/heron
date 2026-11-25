@@ -40,6 +40,11 @@ public class HeronTaskStep extends BaseEntity {
 
     private String evidence;
 
+    /**
+     * 阶段续跑检查点：列保留（历史数据仍可查），但写入路径已删除。
+     *
+     * <p>生产链路从来没有调用方，一个「看起来像已实现、其实没人用」的续跑能力比明说没有更危险。
+     */
     private String checkpoint;
 
     private String runtimeIdentity;

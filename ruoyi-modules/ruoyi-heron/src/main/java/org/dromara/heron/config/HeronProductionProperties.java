@@ -16,8 +16,6 @@ public class HeronProductionProperties {
 
     private long newsMaxBytes = 200L * 1024 * 1024;
 
-    private long prototypeMaxBytes = 50L * 1024 * 1024;
-
     private boolean workerEnabled;
 
     /** 文章新闻路径开关；关闭后只允许数据看板模板，文章模板与文章分支一律拒绝。 */
@@ -32,8 +30,6 @@ public class HeronProductionProperties {
     private String ffmpeg = "ffmpeg";
 
     private String ffprobe = "ffprobe";
-
-    private String zeeRp = "zee-rp";
 
     private String hyperframes;
 
@@ -53,8 +49,6 @@ public class HeronProductionProperties {
 
     /** Windows 开发机上 Linux 监护脚本跑不起来，只能显式关掉；关掉就没有 rlimit 三项，不做平台自动探测。 */
     private boolean guardEnabled = true;
-
-    private Path prototypeTemplate;
 
     private Path newsTemplate;
 

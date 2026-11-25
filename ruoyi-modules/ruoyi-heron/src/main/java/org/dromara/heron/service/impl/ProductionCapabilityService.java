@@ -28,19 +28,17 @@ public class ProductionCapabilityService {
     public ProductionCapabilitiesVo getCapabilities() {
         return new ProductionCapabilitiesVo(
             capability("newsProductionPipeline", List.of("node", "python", "ffmpeg", "ffprobe", "hyperframes"),
-                properties.getNewsTemplate(), 1, null),
-            capability("prototypeProductionPipeline", List.of("python", "zee-rp"),
-                properties.getPrototypeTemplate(), ProductionServiceImpl.PROTOTYPE_CAPACITY,
-                context.getEnvironment().getProperty("heron.prototype.target-axure-version", "")));
+                properties.getNewsTemplate(), 1),
+            capability(null, List.of(), null, 0));
     }
 
     private ProductionCapabilitiesVo.Capability capability(String pipelineBean, List<String> tools,
-                                                           Path template, int capacity, String targetAxureVersion) {
+                                                           Path template, int capacity) {
         List<String> reasons = new ArrayList<>();
         if (!properties.isWorkerEnabled()) {
             reasons.add("worker_disabled");
         }
-        if (!context.containsBean(pipelineBean)) {
+        if (pipelineBean == null || !context.containsBean(pipelineBean)) {
             reasons.add("pipeline_missing");
         }
         for (String tool : tools) {
@@ -48,7 +46,7 @@ public class ProductionCapabilityService {
                 reasons.add("tool_missing:" + tool);
             }
         }
-        // 两条线都从锁定模板渲染：原型是一个 .rp 文件，新闻是一个 composition 目录。
+        // 新闻线从锁定模板渲染 composition 目录，模板缺失即不可用。
         if (template == null || !Files.exists(template)) {
             reasons.add("template_missing");
         }
@@ -59,8 +57,7 @@ public class ProductionCapabilityService {
             reasons.add("data_root_unavailable");
         }
         boolean available = configured && reasons.isEmpty();
-        return new ProductionCapabilitiesVo.Capability(configured, available, List.copyOf(reasons), capacity,
-            targetAxureVersion);
+        return new ProductionCapabilitiesVo.Capability(configured, available, List.copyOf(reasons), capacity);
     }
 
     private boolean resolvable(String tool) {
@@ -70,16 +67,12 @@ public class ProductionCapabilityService {
             case "ffprobe" -> properties.getFfprobe();
             case "python" -> properties.getPython();
             case "hyperframes" -> properties.getHyperframes();
-            default -> properties.getZeeRp();
+            default -> null;
         };
         if (configured == null || configured.isBlank()) {
             return false;
         }
         Path path = Path.of(configured);
-        // 引擎与渲染器都只作 oracle，调用形态固定为 node <入口>，所以按入口文件所在根判定。
-        if ("zee-rp".equals(tool)) {
-            return Files.isRegularFile(path.resolve("scripts").resolve("proto.mjs"));
-        }
         boolean posix = File.separatorChar == '/';
         if (path.isAbsolute() || configured.indexOf('/') >= 0 || configured.indexOf('\\') >= 0) {
             return Files.isRegularFile(path) && (!posix || Files.isExecutable(path));

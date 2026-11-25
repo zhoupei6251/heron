@@ -92,14 +92,6 @@ public class ProductionArtifactService {
     }
 
     public ProductionArtifactVo finalizeFile(ProductionRunVo run, String kind, Path file, String mediaType) {
-        return finalizeFile(run, kind, file, mediaType, null);
-    }
-
-    /**
-     * 原型版本号来自快照，必须由调用方显式给出；新闻线以版本记录 ID 定稿。
-     */
-    public ProductionArtifactVo finalizeFile(ProductionRunVo run, String kind, Path file, String mediaType,
-                                             Long versionNo) {
         if (kind == null || !SAFE_KIND.matcher(kind).matches()
             || mediaType == null || !SAFE_MEDIA_TYPE.matcher(mediaType).matches()) {
             throw new HeronBusinessException(400, "production_invalid_artifact", "产物类型或媒体类型不合法");
@@ -111,21 +103,16 @@ public class ProductionArtifactService {
         }
         String extension = extensionOf(source);
         long size = sizeOf(source);
-        long limit = run.bizType() == ProductionBizType.prototype
-            ? properties.getPrototypeMaxBytes() : properties.getNewsMaxBytes();
+        long limit = properties.getNewsMaxBytes();
         if (size <= 0) {
             throw new HeronBusinessException(409, "production_file_invalid", "空产物不可定稿");
         }
         if (size > limit) {
             throw new HeronBusinessException(409, "production_file_invalid", "产物超过单文件上限");
         }
-        if (run.bizType() == ProductionBizType.prototype && (versionNo == null || versionNo < 1)) {
-            throw new HeronBusinessException(400, "production_invalid_version", "缺少原型快照版本号");
-        }
-
         String artifactId = UUID.randomUUID().toString();
         String sha256 = sha256(source);
-        Path targetDirectory = finalDirectory(run, versionNo);
+        Path targetDirectory = finalDirectory(run);
         Path target = targetDirectory.resolve(artifactId + "." + extension);
         try {
             Files.createDirectories(targetDirectory);
@@ -309,7 +296,7 @@ public class ProductionArtifactService {
 
     private void cleanupUploaded(String configKey, String storageKey) {
         storageCandidate(storageKey);
-        if (!storageKey.startsWith("videos/") && !storageKey.startsWith("protos/")) {
+        if (!storageKey.startsWith("videos/")) {
             throw new HeronBusinessException(409, "production_invalid_artifact", "云端产物路径不合法");
         }
         OssClient oss = oss();
@@ -541,12 +528,10 @@ public class ProductionArtifactService {
         return run.taskId() + ":" + run.attemptNo() + ":" + run.runToken();
     }
 
-    private Path finalDirectory(ProductionRunVo run, Long versionNo) {
-        boolean news = run.bizType() == ProductionBizType.news_video;
-        String lane = news ? "videos" : "protos";
-        String versionKey = "v" + (news ? run.versionId() : versionNo);
+    private Path finalDirectory(ProductionRunVo run) {
+        String versionKey = "v" + run.versionId();
         return dataRoot()
-            .resolve(lane)
+            .resolve("videos")
             .resolve(Long.toString(run.bizId()))
             .resolve(versionKey)
             .resolve("a" + run.attemptNo() + "-" + UUID.fromString(run.runToken()));

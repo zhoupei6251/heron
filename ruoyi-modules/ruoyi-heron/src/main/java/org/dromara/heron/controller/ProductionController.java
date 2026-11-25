@@ -59,7 +59,7 @@ public class ProductionController {
 
     @GetMapping("/capabilities")
     public R<ProductionCapabilitiesVo> capabilities() {
-        access.requireAnyPermission("heron:newsWork:query", "heron:proto:query");
+        access.requireAnyPermission("heron:newsWork:query", "heron:musicVideo:query");
         return R.ok(capabilities.getCapabilities());
     }
 

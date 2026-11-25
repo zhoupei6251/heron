@@ -3,7 +3,6 @@ heron:
     # 任务卷与产物同卷；相对路径以应用工作目录为基准
     data-root: ./data
     news-max-bytes: 209715200
-    prototype-max-bytes: 52428800
     # 平台门禁未通过前保持关闭，只有受控 Linux 环境显式打开
     worker-enabled: false
     # 文章解说线与数据看板线并行：模板根下的 news-* 与 news-data-* 都参与生产
@@ -14,23 +13,14 @@ heron:
     node: node
     ffmpeg: ffmpeg
     ffprobe: ffprobe
-    # zee-rp 引擎根目录（内含 scripts/proto.mjs），不是可执行文件名；部署侧覆盖为镜像内绝对路径
-    zee-rp: zee-rp
     # hyperframes 以 node <入口.mjs> 调用；未配置时能力检查报 tool_missing:hyperframes
     hyperframes: null
     # 监护脚本只在 Linux 生效；Windows 开发机必须显式设 false，不做平台自动探测
     guard-enabled: true
-    # Axure RP9 空白模板未提供时原型线报告不可用
-    prototype-template: null
     # 新闻 composition 模板根目录（不进 Git，部署侧放只读卷）；每个子目录是一套模板，各自带 LOCK.json
     news-template: ./data/templates
     # 指向基座 sys_oss_config 的 config_key；留空即本地产物盘模式（渲染工作区与失败证据始终留在本地）
     oss-config-key: null
-  prototype:
-    # 原生闸比对基准；本产品只有 RP9（zee-rp 两个后端都出不了 RP11，见需求文档 §4.1），留空则永远判不过
-    target-axure-version: Axure RP 9
-    # 装配流水线只在引擎根、模板卷与模型配置都齐备的部署里打开
-    engine-enabled: false
   news:
     # 采集白名单只接受部署侧精确主机名；空清单表示不开放任何网络来源
     # 开关打开后仍必须在下面补齐具体主机名，否则采集没有任何可用来源

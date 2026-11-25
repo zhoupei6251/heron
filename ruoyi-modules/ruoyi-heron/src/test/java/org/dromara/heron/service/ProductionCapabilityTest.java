@@ -39,9 +39,6 @@ class ProductionCapabilityTest {
         properties.setFfmpeg(tempDir.resolve("ffmpeg").toString());
         properties.setFfprobe(tempDir.resolve("ffprobe").toString());
         properties.setPython(tempDir.resolve("python3").toString());
-        Files.createDirectories(tempDir.resolve("zee-rp").resolve("scripts"));
-        Files.createFile(tempDir.resolve("zee-rp").resolve("scripts").resolve("proto.mjs"));
-        properties.setZeeRp(tempDir.resolve("zee-rp").toString());
         Files.createFile(tempDir.resolve("hyperframes.mjs"));
         properties.setHyperframes(tempDir.resolve("hyperframes.mjs").toString());
         Files.createDirectories(tempDir.resolve("templates").resolve("news-9x16"));
@@ -96,59 +93,14 @@ class ProductionCapabilityTest {
     }
 
     @Test
-    @DisplayName("原型缺 Axure 空白模板时配置不完整")
-    void prototypeReportsMissingTemplate() {
-        ProductionCapabilitiesVo.Capability prototype =
-            new ProductionCapabilityService(context, properties).getCapabilities().prototype();
+    @DisplayName("音乐视频线还没有流水线，能力项给出 pipeline_missing")
+    void musicVideoReportsMissingPipeline() {
+        ProductionCapabilitiesVo.Capability musicVideo =
+            new ProductionCapabilityService(context, properties).getCapabilities().musicVideo();
 
-        assertFalse(prototype.configured());
-        assertFalse(prototype.available());
-        assertTrue(prototype.reasons().contains("template_missing"));
-        assertEquals(3, prototype.capacity());
-    }
-
-    @Test
-    @DisplayName("关闭 worker 与缺少工具都报告为原因")
-    void workerAndToolGapsAreReported() {
-        properties.setWorkerEnabled(false);
-        properties.setFfmpeg(tempDir.resolve("missing-ffmpeg").toString());
-
-        ProductionCapabilitiesVo.Capability news =
-            new ProductionCapabilityService(context, properties).getCapabilities().news();
-
-        assertFalse(news.configured());
-        assertFalse(news.available());
-        assertTrue(news.reasons().contains("worker_disabled"));
-        assertTrue(news.reasons().contains("tool_missing:ffmpeg"));
-    }
-
-    @Test
-    @DisplayName("zee-rp 按引擎根判定：没有 scripts/proto.mjs 就不算具备")
-    void engineRootWithoutProtoScriptIsNotConfigured() {
-        properties.setZeeRp(tempDir.resolve("empty-engine").toString());
-
-        ProductionCapabilitiesVo.Capability prototype =
-            new ProductionCapabilityService(context, properties).getCapabilities().prototype();
-
-        assertFalse(prototype.configured());
-        assertTrue(prototype.reasons().contains("tool_missing:zee-rp"), prototype.reasons().toString());
-    }
-
-    @Test
-    @DisplayName("引擎根、模板与流水线齐备时原型线可用")
-    void prototypeAvailableWhenEngineTemplateAndPipelinePresent() throws IOException {
-        properties.setPrototypeTemplate(Files.createFile(tempDir.resolve("blank-rp9.rp")));
-        GenericApplicationContext engine = new GenericApplicationContext();
-        engine.registerBean("prototypeProductionPipeline", IProductionPipeline.class, () -> run -> null);
-        engine.refresh();
-        try {
-            ProductionCapabilitiesVo.Capability prototype =
-                new ProductionCapabilityService(engine, properties).getCapabilities().prototype();
-
-            assertTrue(prototype.configured());
-            assertTrue(prototype.available(), prototype.reasons().toString());
-        } finally {
-            engine.close();
-        }
+        assertFalse(musicVideo.configured());
+        assertFalse(musicVideo.available());
+        assertTrue(musicVideo.reasons().contains("pipeline_missing"), musicVideo.reasons().toString());
+        assertEquals(0, musicVideo.capacity());
     }
 }

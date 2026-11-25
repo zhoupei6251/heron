@@ -538,8 +538,8 @@ class NewsProductionPipelineSceneReworkTest {
                 "templateKey", "news-9x16", "voiceKey", "zh-CN-XiaoxiaoNeural",
                 "assetManifestSha256", DigestUtil.sha256Hex(template.resolve("assets-manifest.json").toFile()),
                 "fontSha256", DigestUtil.sha256Hex(template.resolve("fonts/NotoSansSC-Regular.otf").toFile()))));
-            run = new ProductionRunVo(99L, ProductionBizType.news_video, 7L, 4L, 1,
-                UUID.randomUUID().toString(), input, null);
+            run = new ProductionRunVo(99L, ProductionBizType.news_explainer, 7L, 4L, 1,
+                UUID.randomUUID().toString(), input);
             JsonNode replacement = JSON.readTree(SCRIPT).path("scenes").get(1).deepCopy();
             ((ObjectNode) replacement).putObject("visual").put("layout", "quote");
             ObjectNode previousResult = JSON.createObjectNode();

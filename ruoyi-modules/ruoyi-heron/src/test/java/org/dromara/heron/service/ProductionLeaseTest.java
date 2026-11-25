@@ -4,7 +4,6 @@ import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.bo.ProductionFailureBo;
 import org.dromara.heron.domain.bo.ProductionSubmitBo;
-import org.dromara.heron.domain.vo.ProductionArtifactVo;
 import org.dromara.heron.domain.vo.ProductionReceiptVo;
 import org.dromara.heron.domain.vo.ProductionResultVo;
 import org.dromara.heron.domain.vo.ProductionRunVo;
@@ -82,15 +81,10 @@ class ProductionLeaseTest extends HeronMysqlTestSupport {
     void expiredRunIsRecoveredAndOldTokenLosesWrites() {
         ProductionRunVo run = submitAndClaim(10);
         assertTrue(executionService.beginStage(run, "scripting", 10));
-        assertTrue(executionService.checkpoint(run, "scripting", "{\"cursor\":1}",
-            List.of(new ProductionArtifactVo("artifact-1", "script", "test/script.json",
-                12, "sha256-value", "application/json"))));
 
         ProductionTaskVo detail = productionService.queryById(run.taskId());
         assertEquals(1, detail.getSteps().size());
         assertEquals("running", detail.getSteps().getFirst().getStatus());
-        assertEquals("artifact-1", detail.getSteps().getFirst().getEvidence().getFirst().artifactId());
-        assertTrue(detail.getSteps().getFirst().getEvidence().getFirst().available());
 
         clock.advanceSeconds(61);
         executionService.recoverExpired();
@@ -103,7 +97,6 @@ class ProductionLeaseTest extends HeronMysqlTestSupport {
 
         assertFalse(executionService.heartbeat(run.taskId(), run.runToken()));
         assertFalse(executionService.beginStage(run, "rendering", 20));
-        assertFalse(executionService.checkpoint(run, "scripting", "{\"cursor\":2}", null));
         assertFalse(executionService.succeed(run, new ProductionResultVo(List.of(), "{}")));
         assertFalse(executionService.fail(run,
             new ProductionFailureBo("pipeline_error", "scripting", null, "失败", false)));
@@ -111,7 +104,7 @@ class ProductionLeaseTest extends HeronMysqlTestSupport {
         assertEquals("cancelling", taskStatus(run.taskId()));
 
         ProductionRunVo recovered = new ProductionRunVo(run.taskId(), run.bizType(), run.bizId(),
-            run.versionId(), run.attemptNo(), newToken, run.inputJson(), null);
+            run.versionId(), run.attemptNo(), newToken, run.inputJson());
         assertTrue(executionService.finishCancellation(recovered, true, false));
         assertEquals("cancelled", taskStatus(run.taskId()));
         assertEquals("cancelled", jdbc.queryForObject(
@@ -119,11 +112,10 @@ class ProductionLeaseTest extends HeronMysqlTestSupport {
     }
 
     @Test
-    @DisplayName("再次领取沿用上一尝试的检查点")
-    void reclaimedAttemptResumesCheckpoint() {
+    @DisplayName("再次领取换新令牌，不沿用上一尝试的阶段状态")
+    void reclaimedAttemptStartsFromScratch() {
         ProductionRunVo run = submitAndClaim(10);
         assertTrue(executionService.beginStage(run, "scripting", 10));
-        assertTrue(executionService.checkpoint(run, "scripting", "{\"cursor\":1}", null));
 
         jdbc.update("""
             UPDATE heron_production_task
@@ -131,19 +123,22 @@ class ProductionLeaseTest extends HeronMysqlTestSupport {
             WHERE task_id=?
             """, run.taskId());
 
-        ProductionRunVo resumed = executionService.claim(ProductionBizType.news_video).orElseThrow();
+        ProductionRunVo resumed = executionService.claim(ProductionBizType.news_explainer).orElseThrow();
         assertEquals(2, resumed.attemptNo());
         assertNotEquals(run.runToken(), resumed.runToken());
-        assertEquals("{\"cursor\": 1}", resumed.resumeCheckpointJson());
+        // 阶段续跑已删除：新尝试不携带上一尝试的检查点，也不复用它的阶段行
+        assertEquals(run.inputJson(), resumed.inputJson());
+        assertEquals(0, jdbc.queryForObject(
+            "SELECT COUNT(*) FROM heron_task_step WHERE task_id=? AND attempt_no=2", Integer.class, run.taskId()));
     }
 
     @Test
     @DisplayName("过期回收使用 READ-COMMITTED 且单个任务失败不阻断其余任务")
     void recoveryIsolatesFailuresAndUsesReadCommitted() {
         ProductionRunVo first = submitAndClaim(10);
-        insertObject(11, ProductionBizType.news_video, ADMIN);
+        insertObject(11, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo secondReceipt = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, 11, "lease-key-11", 1));
+            new ProductionSubmitBo(ProductionBizType.news_explainer, 11, "lease-key-11", 1));
         LocalDateTime expired = LocalDateTime.now(Clock.systemUTC()).minusSeconds(5);
         jdbc.update("""
             UPDATE heron_production_task
@@ -161,10 +156,10 @@ class ProductionLeaseTest extends HeronMysqlTestSupport {
     }
 
     private ProductionRunVo submitAndClaim(long bizId) {
-        insertObject(bizId, ProductionBizType.news_video, ADMIN);
+        insertObject(bizId, ProductionBizType.news_explainer, ADMIN);
         ProductionReceiptVo receipt = productionService.submit(
-            new ProductionSubmitBo(ProductionBizType.news_video, bizId, "lease-key-" + bizId, 1));
-        return executionService.claim(ProductionBizType.news_video).orElseThrow();
+            new ProductionSubmitBo(ProductionBizType.news_explainer, bizId, "lease-key-" + bizId, 1));
+        return executionService.claim(ProductionBizType.news_explainer).orElseThrow();
     }
 
     private LocalDateTime leaseUntil(long taskId) {

@@ -356,7 +356,7 @@ public class EditorialLineEditor {
         }
         return new DatasetPlan(Optional.of(new EditorialSelection(line,
             null, route.sourceKey(), route.digest(), template, storyAngle(story), List.of(),
-            null, null, story)), rejects);
+            null, null, story).withSourceReason(route.reason())), rejects);
     }
 
     /** 趋势线的兜底：没有能算出判定的机会时走选源器，稿子不带策划结论。 */
@@ -381,7 +381,7 @@ public class EditorialLineEditor {
         }
         return Optional.of(new EditorialSelection(line,
             null, route.sourceKey(), route.digest(), template, text(DatasetStoryAngle.DIGEST_ANGLE, true),
-            List.of()));
+            List.of()).withSourceReason(route.reason()));
     }
 
     /** 池子里的数据源：机会与兜底都要按 sourceKey 找到它才能拿到类别与许可口径。 */
@@ -493,8 +493,8 @@ public class EditorialLineEditor {
 
     /** DatasetRouter 要 run 才能记用量；这里用 0 任务号，只做纯决策。 */
     private static ProductionRunVo decisionRun() {
-        return new ProductionRunVo(NO_TASK, ProductionBizType.news_video, 0L, 0L, 0, "line-editor",
-            "{}", null);
+        return new ProductionRunVo(NO_TASK, ProductionBizType.news_explainer, 0L, 0L, 0, "line-editor",
+            "{}");
     }
 
     /** 路由只需要 limit 与标题上下文。 */

@@ -237,7 +237,7 @@ class SoundCueMixerRenderTest {
     private final String runToken = UUID.randomUUID().toString();
 
     private ProductionRunVo run() {
-        return new ProductionRunVo(1, ProductionBizType.news_video, 1, 1, 1, runToken, "{}", null);
+        return new ProductionRunVo(1, ProductionBizType.news_explainer, 1, 1, 1, runToken, "{}");
     }
 
     private LocalProduction production(ProductionRunVo run) {

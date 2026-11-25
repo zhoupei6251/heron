@@ -38,16 +38,6 @@ public interface HeronProductionTaskMapper extends BaseMapperPlus<HeronProductio
             .build());
     }
 
-    default long countAdmitted(ProductionBizType bizType) {
-        return lambda()
-            .eq(HeronProductionTask::getBizType, bizType.name())
-            .in(HeronProductionTask::getStatus,
-                ProductionStatus.queued.name(),
-                ProductionStatus.running.name(),
-                ProductionStatus.cancelling.name())
-            .count();
-    }
-
     default long countExecuting(ProductionBizType bizType) {
         return lambda()
             .eq(HeronProductionTask::getBizType, bizType.name())
