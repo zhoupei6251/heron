@@ -1,5 +1,9 @@
 # VisualRecipe 配方库字段设计初稿（V1）
 
+> **【已否决 2026-11-26】** 前提（模板场景实现存在）随《视频导演系统 ADR（V2）》的模板拆除
+> 裁决消失，本文不再执行。配方卡思路由 creative-knowledge/ 与 registry 组件库承接。
+> `docs/architecture/heron-video-director-adr.md`
+
 > 2026-11-26。上游：`docs/architecture/heron-visual-agent-adr.md`（架构定案）。
 > 词汇真源盘点 + 配方 JSON 字段设计 + 首批建工路径。参照 video-talkcraft 配方卡格式
 > （`D:\zhoupei\repo-refs\video-talkcraft`，124 卡，格式已迭代三轮）。
@@ -88,7 +92,7 @@ V1 词量刻意小（构图 4、动效 6）：**词汇是给 7 套模板现有�
 
 ## 四、首批建工路径（V1 落地工作清单）
 
-1. **盘点建卡**：8 套模板 × 各自 supportedSceneTypes，每格一张配方卡（约 30 张）。sceneType/rendererBindings/constraints 是机械活；`hint`/`narratives`/`pitfalls` 需要看渲染样例逐格判定——这是「人建工」的本体，也是配方质量的根。
+1. **盘点建卡**：8 套模板 × 各自 supportedSceneTypes，每格一张配方卡（约 30 张）。**参考母本优先从 talkcraft 108 卡按 sceneType 映射**（数据信息图 14→chart/number/compare；字幕花字 22→headline/text；强调标注 14/运镜 8→text/image），映射完逐格重皮建接口，比从零写快。sceneType/rendererBindings/constraints 是机械活；`hint`/`narratives`/`pitfalls` 需要看渲染样例逐格判定——这是「人建工」的本体，也是配方质量的根。
 2. **vocab.json 定版**：按盘点结果收词，宁可先窄后宽。
 3. **Java 侧**：`RecipeRegistry` 加载 + `resolve(recipeId, compositionId, compositionVersion)` 校验链（sceneType ∈ supportedSceneTypes → bindings 含锚定模板 → inputs ⊆ 本片可用素材 → constraints 过时长闸）；JEV 留痕。
 4. **StoryPlanContract 演进**：锚点提议字段 + 逐镜头 recipeId 字段。
@@ -97,7 +101,8 @@ V1 词量刻意小（构图 4、动效 6）：**词汇是给 7 套模板现有�
 
 ### video-talkcraft（124 卡）
 - **能抄**：卡 frontmatter 字段集（输入/语义/位置/props/优先级）；「已知坑」一节——每条坑都是具体翻车形态而非抽象警告；「动效范围」（属于/不属于本卡 + 迁移接口）——这是防配方漂移的关键结构；输入类型索引作为**选卡第一道过滤**（本设计 `inputs` 字段的直接来源）；两条通用规律：入场→hold→出场三段式（入场 0.2~0.8s 固定、出场 0.15~0.5s 固定、hold 可伸缩）、**同屏重音同一时刻只能有一个**；转场选型口诀（递进 push-through / 翻页 overexpose-flip / 并列 whip-pan / 最大反转 black-slam 全片限一次）。
-- **不能抄**：108 卡本身——heron 场景长在模板里不是独立组件，搬卡没有实现载体；人物互动类整类（heron 无真人出镜）；demo HTML + tsx 双形态（heron 单一 HTML 实现）；卡内写死的 GSAP 代码（heron 动效在模板实现里）。
+- **修正：108 卡能抄，但每张抄进来是一张「建工单」不是搬运单**。知识层（意图/参数表/坑/动效范围）直接翻译进配方卡与 Playbook；实现层有载体（每卡自带自包含 HTML demo，heron 场景同为 HTML），但要过四道适配：①按锚定模板令牌**重皮**（卡自带 talkcraft 设计语言，直接搬违反片级锚定）；②**建内容接口**（大量卡标 ◦ 无可换 prop，heron 场景数据驱动）；③**改时序模型**（词级节拍硬编码帧号 → 场景窗内相对时序）；④**过骨架闸**（字幕带/badge/keepsMoving）。tsx 形态与卡内 GSAP 写法不搬（heron 动效在模板实现里）。整类排除的只有人物互动 10 张（无真人出镜）。
+- 另一条路（产品决策非架构决策）：把 talkcraft 设计语言（design-language.md / G0 风格档）整体作为一个**新 composition** 引入，此后 108 卡批量移植免逐张重皮。代价是多养一套模板族。
 
 ### anything2explainer
 - **能抄**：八条硬性原则里的视觉纪律——「闪烁只给重点（每镜头 ≤1 处）」「持续动作 + 落位停留：入场即停和落位即切都是缺陷」「最长静止 ≤3s、末拍稳定期 ≥30 帧（有 `motion_check.py` 量化）」「镜头按画面单元分不按句分」「字幕带与进度条带禁放内容、入场轨迹不得穿过」。这批直接进 heron Playbook，其中量化判据可接进现有质量闸。
