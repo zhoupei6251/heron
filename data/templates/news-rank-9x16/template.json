@@ -1,0 +1,36 @@
+{
+  "name": "冲刺榜",
+  "description": "冲刺榜：排行是一场冲刺，不是一张表。条目按名次从起跑线弹射入位，领跑者戴冠定格；无主图表区，座次即画面；1080×1920，数据由 dataset/1 快照驱动。",
+  "style": {
+    "key": "sprint-board",
+    "name": "Sprint Board",
+    "label": "冲刺榜",
+    "role": "排行与座次：一场冲刺，不是一张表",
+    "narratives": [
+      "rank_competition"
+    ],
+    "bg": "#1a1512",
+    "fg": "#f5efe4",
+    "accent": "#f5c85a"
+  },
+  "supportedLines": [
+    "DATA_BOARD"
+  ],
+  "supportedSceneTypes": [
+    "headline",
+    "text",
+    "number",
+    "compare"
+  ],
+  "aspectRatio": "9:16",
+  "recommendedDuration": {
+    "min": 40,
+    "max": 65
+  },
+  "requiredAssets": [],
+  "requiredFields": [
+    "title",
+    "scenes"
+  ],
+  "version": "1.0.0"
+}

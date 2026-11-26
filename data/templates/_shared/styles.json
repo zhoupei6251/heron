@@ -1,4 +1,16 @@
 {
+  "mood": {
+    "name": "Mood Story",
+    "label": "情绪短片",
+    "role": "歌词与情绪叙事：色彩随段落流转的剪影场景；不参加叙事选模板",
+    "narratives": []
+  },
+  "sprint-board": {
+    "name": "Sprint Board",
+    "label": "冲刺榜",
+    "role": "排行与座次：一场冲刺，不是一张表",
+    "narratives": ["rank_competition"]
+  },
   "data-investigation": {
     "name": "Data Investigation",
     "label": "数据调查",
@@ -9,7 +21,7 @@
     "name": "Dynamic Data Explainer",
     "label": "动态数据解释",
     "role": "数据看板解读、指标变化、排行与趋势",
-    "narratives": ["trend_reversal", "numeric_contrast", "rank_competition", "time_change"]
+    "narratives": ["trend_reversal", "numeric_contrast", "time_change"]
   },
   "article": {
     "name": "Editorial",

@@ -65,10 +65,24 @@
 
 > 观察：video-shotcraft（124 卡）→ video-talkcraft（109 卡）→ anything2explainer 同一位作者，
 > 配方卡格式已在三个仓库里迭代过三轮，**抄格式认准这一族**，别自己发明。
+>
+> **许可警示（2026-11-26 审计）**：video-talkcraft 与 anything2explainer 是 **PolyForm Noncommercial**——
+> 商业使用需作者授权，heron **不收录其任何文件**（卡格式知识已通过设计文档合法消化）。
+> 合法可收的是同作者的 video-shotcraft（Apache-2.0）、huashu-art-motion（MIT）、openmotion（Apache-2.0，
+> 与 openmotion 同源的 **hyperframes 官方 registry** 448 组件也已直接 vendor）。
+
+### 已收录（2026-11-26，进 `data/reference-cards/`，见该目录 ATTRIBUTION.md）
+
+| 收录物 | 许可 | 对 heron 的用途 |
+| --- | --- | --- |
+| hyperframes 官方 registry 31 件（16 block + 15 component） | Apache-2.0 | **人物互动 6 张的等价物全齐**：lt-* 信息条 8 变体、news-ticker、social-proof-card、cta-lockup（talkcraft 的 subscribe-cta / lower-third / 关注卡在此有 Apache 版）；数据卡 bar-chart-race / data-chart / chart-story / count-up / number-wheel / 三张地图直接是 heron 缺的场景实现候选 |
+| video-shotcraft 125 张镜头卡 + taxonomy + aesthetic-rules | Apache-2.0 | 产品片配方母本池（data/typography/ui-entrance/transition 各类），卡格式源头 |
+| huashu-art-motion 57 张风格配方 + 9 份解说语法 | MIT | 风格卡格式第三家范本；解说语法（3b1b/Vox/Kurzgesagt）是 Playbook 的直接素材 |
+| openmotion registry（catalog.json 已留在原克隆，未全量收录） | Apache-2.0 | 448 组件含 catalog 索引，与 hyperframes registry 同源；按需再从 `hyperframes catalog` 拉 |
 
 ### 能抄 / 不能抄（2026-11-26 读源码结论）
 
-**video-talkcraft 能抄**：卡字段集（输入/语义/位置/props）；「已知坑」写法（具体翻车形态，不写抽象警告）；「动效范围」（属于/不属于本卡）；输入类型索引作选卡第一道过滤；两条通用规律——入场→hold→出场三段式、同屏重音同一时刻只能一个；转场口诀（最大反转 black-slam 全片限一次）。**不能抄**：108 卡本体（heron 场景长在模板里，搬卡无实现载体）；人物互动类（无真人出镜）。
+**video-talkcraft 能抄**：卡字段集（输入/语义/位置/props）；「已知坑」写法（具体翻车形态，不写抽象警告）；「动效范围」（属于/不属于本卡）；输入类型索引作选卡第一道过滤；两条通用规律——入场→hold→出场三段式、同屏重音同一时刻只能一个；转场口诀（最大反转 black-slam 全片限一次）。**108 卡的知识层能合法抄（方法范畴，已进设计文档）；实现层文件因 PolyForm NC 不可收录**——实现等价物改从 hyperframes 官方 registry（Apache-2.0）取，lt-* 信息条/news-ticker/social-proof-card/cta-lockup 覆盖人物互动 6 张中不需要真人的全部场景；真正不可替代的只有 4 张需真人出镜的卡（behind-text-title、host-shrink-to-chip、parallel-items-with-host、host-card-glass-board），heron 现在也产不了人物画面。另一条路：取得作者授权后按 talkcraft 设计语言整体引入新 composition——产品决策非架构决策。
 
 **anything2explainer 能抄**：视觉纪律进 Playbook——闪烁只给重点（每镜头 ≤1 处）；持续动作+落位停留，入场即停/落位即切都是缺陷；最长静止 ≤3s、末拍稳定期 ≥30 帧（有量化脚本）；镜头按画面单元分不按句分；字幕带禁放内容。**不能抄**：黑底视觉体系本体；四个人工确认点（heron 全自动）；Remotion 工程结构（heron 走 hyperframes HTML）。
 

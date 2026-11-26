@@ -10,6 +10,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 
@@ -110,8 +112,10 @@ class StrategyReferenceServiceTest {
     @Test
     @DisplayName("被锁定的维度保留卡，但不给聚合结论")
     void lockedDimensionKeepsCardButHidesConclusion() {
+        // 生效中的锁必须真的在未来：写死日期的夹具到点就会翻车（11-26 就翻过一次）
+        String until = LocalDateTime.now(ZoneOffset.UTC).plusDays(7).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         String override = "{\"action\":\"lock\",\"scope\":\"column:全球市场\",\"reason\":\"上周三条完播都低\","
-            + "\"decidedBy\":1,\"decidedAt\":\"2026-11-19T10:00:00\",\"scopeUntil\":\"2026-11-26T00:00:00\"}";
+            + "\"decidedBy\":1,\"decidedAt\":\"2026-11-19T10:00:00\",\"scopeUntil\":\"" + until + "\"}";
         StrategyReferenceService service = new StrategyReferenceService(
             new StubMetricService(insight("L4", 100.0, 30)), stubSlots(List.of(slot(override))));
 
@@ -193,8 +197,9 @@ class StrategyReferenceServiceTest {
     @Test
     @DisplayName("当前生效的锁能被单独读出来")
     void activeLocksAreListed() {
+        String until = LocalDateTime.now(ZoneOffset.UTC).plusDays(7).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         String override = "{\"action\":\"lock\",\"scope\":\"column:全球市场\",\"reason\":\"理由\","
-            + "\"decidedBy\":1,\"decidedAt\":\"2026-11-19T10:00:00\",\"scopeUntil\":\"2026-11-26T00:00:00\"}";
+            + "\"decidedBy\":1,\"decidedAt\":\"2026-11-19T10:00:00\",\"scopeUntil\":\"" + until + "\"}";
         StrategyReferenceService service = new StrategyReferenceService(
             new StubMetricService(insight("L4", 100.0, 30)), stubSlots(List.of(slot(override))));
 

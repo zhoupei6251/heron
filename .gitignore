@@ -68,6 +68,8 @@ application-ga.yml
 !/data/audio/
 # 知识包是固定 commit 下的素材与结构化条目，引用要能重放，必须进仓库
 !/data/knowledge/
+# 参考配方库（Apache-2.0 / MIT 收录，见 data/reference-cards/ATTRIBUTION.md），建工母本必须可重放
+!/data/reference-cards/
 # data/tools 只放行 node 依赖清单；node_modules 与第三方工具靠 npm ci / 单独安装还原
 !/data/tools/
 /data/tools/*
@@ -125,3 +127,6 @@ docs/acceptance-*/
 
 # 会话内临时构建目录（javac 增量编译与测试运行器）
 .tmpbuild/
+
+# HyperFrames studio 的预览缩略图，本地缓存不入库
+data/templates/**/.thumbnails/

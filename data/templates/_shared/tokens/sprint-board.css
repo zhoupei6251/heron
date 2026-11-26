@@ -1,0 +1,72 @@
+/* 风格 D · Sprint Board 冲刺榜：暖沙底、跑道质感、大号名次徽标、行式榜单。
+   定位：rank_competition——座次即画面。与 data-board（看板/图表主角）、
+   data-investigation（时间轴调查）的分工写在 styles.json 的 role 里。
+   注意：--accent 不在这里定义——它由 HyperFrames 从 composition 的
+   color 类型变量自动注入为同名 CSS 自定义属性，手写会与之冲突。 */
+:root {
+  --bg: #1a1512;
+  --fg: #f5efe4;
+  --muted: #a08e78;
+  --muted-2: #bda892;
+  --body: #d3c4b0;
+  --legend: #e8dcc8;
+  --down: #d9574a;
+
+  --rule-faint: rgba(245, 239, 228, 0.10);
+  --rule-soft: rgba(245, 239, 228, 0.14);
+  --rule-strong: rgba(245, 239, 228, 0.30);
+  --panel: rgba(245, 239, 228, 0.05);
+  --glow-color: rgba(245, 200, 90, 0.16);
+  --accent-glow: rgba(245, 200, 90, 0.30);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 92px;
+  --fs-title-lg: 76px;
+  --fs-title-sm: 68px;
+  --fs-data: 64px;
+  --fs-data-sm: 34px;
+  --fs-lead: 54px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 28px;
+
+  --pad-frame: 84px;
+  --rule-width: 3px;
+  --radius: 6px;
+  --track-kicker: 0.20em;
+
+  /* 环境层：跑道横线给「赛道」的结构感，暖光晕给领跑者，颗粒给纸质质感。 */
+  --grid-size: 120px;
+  --grid-opacity: 0.35;
+  --glow-x: 50%;
+  --glow-y: 12%;
+  --glow-spread: 55%;
+  --glow-opacity: 0.8;
+  --grain-opacity: 0.2;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.32s;
+  --dur-ambient: 7s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+
+  /* 镜头与转场：榜单是行式阅读，推近 1.04 保持行高不裁字；
+     换屏位移 150px——比看板系大，冲刺的进出要更有速度感。 */
+  --cam-push: 1.04;
+  --cam-origin: 50% 42%;
+  --slide-shift: 150px;
+
+  /* 图表语义（D · 座次）：没有主图表区，语义令牌退到行尾 sparkline——
+     折线最细（3px），面积全收（座次只讲当下，不讲区间体量），
+     极值标注只保留最高（领跑者高亮），焦点环最重（每行都是独立可读单元）。 */
+  --chart-line-width: 3px;
+  --chart-area-alpha: 0;
+  --chart-max-annot: var(--accent);
+  --chart-min-annot: var(--down);
+  --chart-min-size: 20px;
+  --focus-dim: 0.45;
+  --focus-ring-width: 8px;
+  --focus-ring-dash: none;
+}

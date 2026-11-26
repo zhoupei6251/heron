@@ -36,7 +36,7 @@ const STAGE_OUT = value('--out');
 
 const CAPABILITIES = new Set(['chart', 'image', 'globe']);
 // 模板能声明的编辑线，取值与 EditorialSelection 的线常量一致。
-const LINES = new Set(['NEWS_EXPLAINER', 'DATA_BOARD', 'TREND_INSIGHT', 'KNOWLEDGE_EXPLAINER']);
+const LINES = new Set(['NEWS_EXPLAINER', 'DATA_BOARD', 'TREND_INSIGHT', 'KNOWLEDGE_EXPLAINER', 'MUSIC_VIDEO']);
 const RATIOS = {
   '9x16': { width: 1080, height: 1920 },
   '16x9': { width: 1920, height: 1080 },
@@ -177,6 +177,16 @@ function buildJobs() {
 
 function variables(cfg) {
   const d = cfg.defaults;
+  // 情绪短片：三句歌词就是全部内容变量，没有场景文字层
+  if (cfg.mood) {
+    return [
+      { id: 'line1', type: 'string', label: '第一幕歌词', maxLength: 24, default: d.line1 ?? '' },
+      { id: 'line2', type: 'string', label: '第二幕歌词', maxLength: 24, default: d.line2 ?? '' },
+      { id: 'line3', type: 'string', label: '第三幕歌词', maxLength: 24, default: d.line3 ?? '' },
+      { id: 'source_name', type: 'string', label: '来源名称', maxLength: 80, default: d.sourceName ?? '' },
+      { id: 'accent', type: 'color', label: '光源色', default: d.accent ?? '#ffd98c' },
+    ];
+  }
   const scenes = d.scenes ?? [];
   // fixture：每一屏的画面依据与场景类型。生产期这两项由 Java 注入
   // （NewsProductionPipeline.dataTemplateVariables），模板里的默认值是给本地
@@ -249,6 +259,110 @@ function variables(cfg) {
 
 /** 片尾留给结尾口播的时间窗。和最后一屏共用窗口会让两块文字互相遮挡。 */
 const closingTail = (slot) => Math.min(6, Math.max(3, Math.round(slot * 0.5)));
+
+/** 冲刺榜的编译期榜单：行 DOM 必须在 HTML 里，引擎只渲带时间窗的编译期元素，
+ * 脚本运行时建的自由 DOM 进不了成片（实测）。数据取 config.defaults.dataset.facts，
+ * 与 race.js 读取的是同一份——脚本只做动画，不做 DOM。 */
+function boardBlock(cfg) {
+  if (!cfg.race) return '';
+  const items = ((((cfg.defaults || {}).dataset || {}).facts || {}).items || [])
+    .filter((entry) => entry && Number.isFinite(Number(entry.value))).slice(0, 5);
+  if (items.length < 2) {
+    fail(`${cfg.key}: race 模板的 dataset.facts.items 至少要 2 条事实，榜单没有可画的内容`);
+  }
+  const firstScene = (cfg.defaults.scenes ?? [])[0] ?? [];
+  const firstStart = 0;
+  const sceneSpan = num(cfg.duration / cfg.activeScenes);
+  const unit = ((((cfg.defaults || {}).dataset || {}).metric || {}).unit) || '';
+  const rows = items.map((entry, index) => {
+    const rank = String(index + 1).padStart(2, '0');
+    return `        <div class="row${index === 0 ? ' row-1' : ''}" data-rank="${index + 1}">
+          <span class="rank-no">${rank}</span>
+          <span class="row-name">${escapeHtml(String(entry.label ?? entry.name ?? entry.location ?? ''))}</span>
+          <span class="row-value" data-value="${num(Number(entry.value))}">0</span>
+          <svg class="row-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+            <polyline points="${index === 0 ? '0,40 40,32 80,20 120,8' : '0,30 120,18'}" fill="none"
+              stroke="${index === 0 ? 'var(--accent)' : 'var(--muted-2)'}" stroke-width="6"/>
+          </svg>
+        </div>`;
+  }).join('\n');
+  const crown = `        <div class="crown" aria-hidden="true"><span>领</span></div>\n`;
+  return `
+      <section id="board" class="clip" data-start="${firstStart}" data-duration="${num(cfg.duration / cfg.activeScenes)}" data-track-index="2" aria-label="排行榜">
+${crown}${rows}
+      </section>
+      <span id="board-unit" class="clip" data-start="${firstStart}" data-duration="${sceneSpan}" data-track-index="2">${escapeHtml(unit)}</span>
+      <!-- 场景 1 的文字窗口让给榜单：首屏领句压在榜单上方当钩子，正文藏掉 -->
+`;
+}
+
+/** 情绪短片的三幕场景：剪影地形 + 天空渐变 + 光源粒子，全部编译期写入。
+ * 每幕一个 clip（同一轨道先后接管），幕与幕的色彩由各幕容器自己的 --mood-sky 渐变决定；
+ * mood.js 只做氛围动效（视差、光晕呼吸、天灯上浮、歌词逐句），不改结构。 */
+function moodBlock(cfg) {
+  if (!cfg.mood) return '';
+  const acts = cfg.moodActs ?? [
+    { id: 'night', sky: ['#0b1626', '#16283e', '#1d2f4a'], ground: '#0a0f18', moon: 0.86 },
+    { id: 'dusk', sky: ['#3a2b48', '#5a3d5c', '#7a4b62'], ground: '#1a1420', moon: 0.18 },
+    { id: 'lantern', sky: ['#241a10', '#4a3218', '#7a4d20'], ground: '#160f08', moon: 0 },
+  ];
+  const span = cfg.duration / (cfg.moodActs ? cfg.moodActs.length : 3);
+  const scenes = acts.map((act, index) => {
+    const start = index * span;
+    const last = index === acts.length - 1;
+    const dur = last ? cfg.duration - start : span;
+    return `      <section id="mood-${act.id}" class="clip mood-act" data-start="${num(start)}" data-duration="${num(dur)}" data-track-index="1" data-act="${act.id}"
+        style="--mood-sky-top:${act.sky[0]};--mood-sky-mid:${act.sky[1]};--mood-sky-end:${act.sky[2]};--mood-ground:${act.ground};">
+        <svg class="mood-scene" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+          <defs>
+            <linearGradient id="sky-${act.id}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--mood-sky-top)"/>
+              <stop offset="55%" stop-color="var(--mood-sky-mid)"/>
+              <stop offset="100%" stop-color="var(--mood-sky-end)"/>
+            </linearGradient>
+            <radialGradient id="halo-${act.id}">
+              <stop offset="0%" stop-color="var(--mood-light)" stop-opacity="0.9"/>
+              <stop offset="45%" stop-color="var(--mood-light)" stop-opacity="0.28"/>
+              <stop offset="100%" stop-color="var(--mood-light)" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <rect class="mood-sky" width="1080" height="1920" fill="url(#sky-${act.id})"/>
+          ${act.moon > 0 ? `<circle class="mood-moon" cx="${820}" cy="${330}" r="${Math.round(120 * act.moon / 0.86)}" fill="#e8e4d8" opacity="${act.moon}"/>
+          <circle class="mood-moonhalo" cx="${820}" cy="${330}" r="${Math.round(220 * act.moon / 0.86)}" fill="url(#halo-${act.id})" opacity="${0.5 * act.moon}"/>` : ''}
+          <g class="mood-stars" data-ambient="flicker"></g>
+          <ellipse class="mood-glow" cx="${index === 2 ? 420 : 380}" cy="${index === 2 ? 1560 : 1520}" rx="300" ry="200" fill="url(#halo-${act.id})" opacity="${index === 2 ? 0.8 : 0.55}"/>
+          <g class="mood-terrain">
+            <path class="mood-hill mood-hill-far" d="M0,1560 Q270,1470 540,1540 T1080,1500 L1080,1920 L0,1920 Z" fill="var(--mood-ground)" opacity="0.55"/>
+            <path class="mood-hill mood-hill-near" d="M0,1680 Q330,1600 640,1670 T1080,1650 L1080,1920 L0,1920 Z" fill="var(--mood-ground)"/>
+          </g>
+          ${index === 0 ? `<g class="mood-figure">
+            <circle class="mood-head" cx="380" cy="1482" r="26" fill="var(--mood-figure)"/>
+            <path class="mood-body" d="M354,1512 Q380,1494 406,1512 L400,1616 L360,1616 Z" fill="var(--mood-figure)"/>
+            <g class="mood-lantern"><line x1="352" y1="1516" x2="330" y2="1560" stroke="var(--mood-figure)" stroke-width="6"/>
+              <rect class="mood-lantern-body" x="308" y="1560" width="44" height="56" rx="10" fill="var(--mood-light)"/>
+              <circle class="mood-lantern-halo" cx="330" cy="1588" r="90" fill="url(#halo-${act.id})"/></g>
+          </g>` : ''}
+          ${index === 1 ? `<g class="mood-boat">
+            <path class="mood-boat-hull" d="M700,1642 Q780,1672 860,1642 L820,1680 Q780,1694 740,1680 Z" fill="var(--mood-figure)"/>
+            <g class="mood-figure mood-sitter"><circle class="mood-head" cx="780" cy="1612" r="22" fill="var(--mood-figure)"/>
+              <path class="mood-body" d="M760,1636 Q780,1622 800,1636 L796,1646 L764,1646 Z" fill="var(--mood-figure)"/>
+              <g class="mood-lantern"><circle class="mood-lantern-body" cx="818" cy="1630" r="16" fill="var(--mood-light)"/>
+                <circle class="mood-lantern-halo" cx="818" cy="1630" r="70" fill="url(#halo-${act.id})"/></g>
+            </g>
+          </g>` : ''}
+          ${index === 2 ? `<g class="mood-sky-lanterns"></g>
+          <g class="mood-figure">
+            <circle class="mood-head" cx="420" cy="1500" r="26" fill="var(--mood-figure)"/>
+            <path class="mood-body" d="M394,1530 Q420,1512 446,1530 L440,1634 L400,1634 Z" fill="var(--mood-figure)"/>
+            <g class="mood-lantern mood-raising"><circle class="mood-lantern-body" cx="470" cy="1560" r="18" fill="var(--mood-light)"/>
+              <circle class="mood-lantern-halo" cx="470" cy="1560" r="80" fill="url(#halo-${act.id})"/></g>
+          </g>` : ''}
+        </svg>
+        <p class="mood-lyric" data-var-text="line${index + 1}"></p>
+      </section>`;
+  });
+  return '\n' + scenes.join('\n') + '\n';
+}
 
 function sceneBlocks(cfg) {
   const slot = cfg.duration / cfg.activeScenes;
@@ -351,6 +465,8 @@ function behaviorFiles(cfg) {
   const afterMotion = [];
   if ((cfg.supportedSceneTypes || []).includes('compare')) afterMotion.push(path.join(GEN, 'behaviors', 'compare.js'));
   if (cfg.skeletons) afterMotion.push(path.join(GEN, 'behaviors', 'skeleton.js'));
+  if (cfg.race) afterMotion.push(path.join(GEN, 'behaviors', 'race.js'));
+  if (cfg.mood) afterMotion.push(path.join(GEN, 'behaviors', 'mood.js'));
   files.push(...afterMotion);
   return files;
 }
@@ -439,6 +555,8 @@ function render(cfg) {
     STYLES: styles(cfg),
     KPI_BLOCK: kpiBlock(cfg),
     CHART_SLOT: chartSlot(cfg),
+    BOARD_BLOCK: boardBlock(cfg),
+    MOOD_BLOCK: moodBlock(cfg),
     SCENES_BLOCK: sceneBlocks(cfg),
     DEFAULT_TITLE: escapeHtml(cfg.defaults.title),
     DEFAULT_KICKER: escapeHtml(cfg.defaults.kicker ?? ''),
@@ -603,6 +721,13 @@ const SKELETON_INVARIANTS = {
     ['../layouts/data-board/news-data-9x16.css', '.scene', 'right'],
     ['../layouts/data-board/news-data-9x16.css', '#closing', 'border-left'],
   ],
+  // 冲刺榜：座次即画面——行式全宽榜单（无左右分栏），领跑者行有冠标定位。
+  // 「.row 全宽」+「.crown 绝对定位」是这套骨架的身份签名。
+  'sprint-board': [
+    ['../layouts/sprint-board/news-rank-9x16.css', '.row', 'left'],
+    ['../layouts/sprint-board/news-rank-9x16.css', '.row', 'right'],
+    ['../layouts/sprint-board/news-rank-9x16.css', '.crown', 'position'],
+  ],
 };
 
 // 图表语义令牌：三套各自必须定义，缺一个就会回落到 chart.css 的默认值，
@@ -674,7 +799,9 @@ function ruleBlock(css, selector) {
 const SCENE_TYPE_EVIDENCE = {
   headline: { files: () => [path.join(GEN, 'behaviors', 'headline.js')], pattern: /headlineSlots|takeover/ },
   chart: { files: () => [path.join(GEN, 'behaviors', 'chart.css')], pattern: /#chart-slot/ },
-  number: { files: (cfg) => cfg.skeletons ? [path.join(GEN, 'behaviors', 'skeleton.js')] : [], pattern: /number\s*:/ },
+  number: { files: (cfg) => cfg.skeletons
+    ? [{ file: path.join(GEN, 'behaviors', 'skeleton.js'), pattern: /number\s*:/ }]
+    : cfg.race ? [{ file: path.join(GEN, 'behaviors', 'race.js'), pattern: /row-value|toFixed/ }] : [] },
   compare: { files: () => [path.join(GEN, 'behaviors', 'compare.js')], pattern: /compareFacts|compareDataset/ },
   // 图位靠版式自己声明：fill.js 只是往槽位里塞图，所有模板都挂它
   image: { files: (cfg) => [path.join(LAYOUTS, cfg.style, `${cfg.layout}.css`)], pattern: /\.scene-figure\b|\.has-image\b/,
@@ -688,9 +815,12 @@ function checkSceneTypes(cfg) {
     const evidence = SCENE_TYPE_EVIDENCE[type];
     // 表里没有的类型直接拒：新类型先在这里登记它的实现痕迹，闸才认
     if (!evidence) fail(`${cfg.key}: 未知场景类型「${type}」，先在 build-templates.mjs 的 SCENE_TYPE_EVIDENCE 登记`);
-    const files = evidence.files(cfg);
-    const hasEvidence = files.length > 0 && (!evidence.require || evidence.require(cfg))
-      && files.every((file) => evidence.pattern.test(read(file)));
+    // files 可以返回 {file, pattern} 列表（同一类型在不同装配里有不同痕迹），
+    // 也可以是纯文件列表配表上的公共 pattern——两种都认。
+    const entries = evidence.files(cfg).map((item) =>
+      typeof item === 'string' ? { file: item, pattern: evidence.pattern } : item);
+    const hasEvidence = entries.length > 0 && (!evidence.require || evidence.require(cfg))
+      && entries.every((entry) => entry.pattern.test(read(entry.file)));
     if (!hasEvidence) {
       fail(`${cfg.key}: 声明了场景类型「${type}」，但这份模板没有装配它的实现`);
     }

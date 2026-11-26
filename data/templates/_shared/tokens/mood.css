@@ -1,0 +1,72 @@
+/* 风格 E · Mood Story 情绪短片：三幕色彩流转的剪影场景。
+   幕与幕之间的底色由各场景自己的容器变量接管（--mood-sky 等），
+   这份令牌只提供跨幕恒定的那一层：歌词排版、动效节奏、环境兜底。
+   注意：--accent 不在这里定义——它由 HyperFrames 从 composition 的
+   color 类型变量自动注入为同名 CSS 自定义属性，手写会与之冲突。 */
+:root {
+  /* 剪影与光的固定语义：人物永远全黑，光源永远暖黄——幕与幕之间只有天空在变 */
+  --mood-figure: #10131a;
+  --mood-light: #ffd98c;
+  --mood-light-soft: rgba(255, 217, 140, 0.55);
+
+  --fg: #f3f0e8;
+  --muted: #8a94a6;
+  --muted-2: #9fb0b6;
+  --body: #c2d1dd;
+  --down: #e06c5a;
+
+  --rule-faint: rgba(243, 240, 232, 0.12);
+  --rule-soft: rgba(243, 240, 232, 0.14);
+  --rule-strong: rgba(243, 240, 232, 0.28);
+  --panel: rgba(243, 240, 232, 0.06);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 92px;
+  --fs-title-lg: 76px;
+  --fs-title-sm: 68px;
+  --fs-data: 64px;
+  --fs-data-sm: 34px;
+  --fs-lyric: 52px;
+  --fs-lead: 54px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 28px;
+
+  --pad-frame: 84px;
+  --rule-width: 3px;
+  --radius: 8px;
+  --track-kicker: 0.16em;
+
+  /* 环境层在情绪片里退场：星空是场景自己的元素，网格/颗粒会破坏剪影的干净 */
+  --grid-size: 72px;
+  --grid-opacity: 0;
+  --glow-x: 50%;
+  --glow-y: 20%;
+  --glow-spread: 60%;
+  --glow-opacity: 0.5;
+  --grain-opacity: 0;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.32s;
+  --dur-ambient: 7s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+
+  /* 镜头：情绪片要「沉」——几乎不推近，换幕用缓慢交叉溶解而不是位移 */
+  --cam-push: 1.02;
+  --cam-origin: 50% 45%;
+  --slide-shift: 90px;
+
+  /* 图表语义令牌：情绪片没有图表，仍按约定给全 8 个——值全部取「最不干预」的形态，
+     避免风格检查器要求的三套手法退化问题（mood 不与数据系比较图表手法） */
+  --chart-line-width: 3px;
+  --chart-area-alpha: 0;
+  --chart-max-annot: var(--mood-light);
+  --chart-min-annot: var(--muted);
+  --chart-min-size: 20px;
+  --focus-dim: 1;
+  --focus-ring-width: 0px;
+  --focus-ring-dash: none;
+}

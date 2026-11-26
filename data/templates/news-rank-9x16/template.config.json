@@ -1,0 +1,120 @@
+{
+  "key": "news-rank-9x16",
+  "name": "冲刺榜",
+  "pageTitle": "Heron 冲刺榜竖版",
+  "line": "DATA_BOARD",
+  "style": "sprint-board",
+  "layout": "news-rank-9x16",
+  "width": 1080,
+  "height": 1920,
+  "duration": 50,
+  "scenes": 4,
+  "activeScenes": 4,
+  "capabilities": [],
+  "supportedSceneTypes": [
+    "headline",
+    "text",
+    "number",
+    "compare"
+  ],
+  "storyboard": true,
+  "description": "冲刺榜：排行是一场冲刺，不是一张表。条目按名次从起跑线弹射入位，领跑者戴冠定格；无主图表区，座次即画面；1080×1920，数据由 dataset/1 快照驱动。",
+  "recommendedDuration": {
+    "min": 40,
+    "max": 65
+  },
+  "version": "1.0.0",
+  "defaults": {
+    "title": "全球黄金储备五强",
+    "kicker": "座次速览",
+    "closing": "以上只描述示例快照的座次，不构成任何投资建议。",
+    "sourceName": "来源：示例数据集",
+    "accent": "#f5c85a",
+    "scenes": [
+      [
+        "",
+        ""
+      ],
+      [
+        "德国与意大利的名次之争",
+        "德国 3352 吨、意大利 2452 吨，两者相差 900 吨；欧洲央行体系整体增持的背景下，第三名的追赶并不现实。"
+      ],
+      [
+        "俄罗斯与中国的位次",
+        "俄罗斯 2330 吨位列第四，中国 2264 吨紧随其后；两者差距不足 3%，是榜单上最接近的一对。"
+      ],
+      [
+        "座次之外看增量",
+        "近五年增持最多的是俄罗斯与 中国；榜单的座次稳定，但增量上的追逐没有停。"
+      ]
+    ],
+    "dataset": {
+      "contract": "dataset/1",
+      "source_key": "sample-gold-reserves",
+      "source_name": "示例数据集",
+      "cadence": "yearly",
+      "shape": "rows",
+      "columns": [
+        "country",
+        "tonnes"
+      ],
+      "metric": {
+        "key": "gold_tonnes",
+        "label": "官方黄金储备",
+        "unit": "吨",
+        "precision": 0
+      },
+      "rows": [
+        [
+          "美国",
+          8133
+        ],
+        [
+          "德国",
+          3352
+        ],
+        [
+          "意大利",
+          2452
+        ],
+        [
+          "俄罗斯",
+          2330
+        ],
+        [
+          "中国",
+          2264
+        ]
+      ],
+      "facts": {
+        "items": [
+          {
+            "label": "美国",
+            "value": 8133
+          },
+          {
+            "label": "德国",
+            "value": 3352
+          },
+          {
+            "label": "意大利",
+            "value": 2452
+          },
+          {
+            "label": "俄罗斯",
+            "value": 2330
+          },
+          {
+            "label": "中国",
+            "value": 2264
+          }
+        ],
+        "leader": {
+          "label": "美国",
+          "value": 8133
+        }
+      }
+    }
+  },
+  "race": true
+}

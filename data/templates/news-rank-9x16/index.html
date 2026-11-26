@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='[{"id":"title","type":"string","label":"标题","maxLength":15,"default":"全球黄金储备五强"},{"id":"kicker","type":"string","label":"栏目标签","maxLength":12,"default":"座次速览"},{"id":"scene1_lead","type":"string","label":"第1屏领句","maxLength":40,"default":""},{"id":"scene1_body","type":"string","label":"第1屏正文","maxLength":600,"default":""},{"id":"scene2_lead","type":"string","label":"第2屏领句","maxLength":40,"default":"德国与意大利的名次之争"},{"id":"scene2_body","type":"string","label":"第2屏正文","maxLength":600,"default":"德国 3352 吨、意大利 2452 吨，两者相差 900 吨；欧洲央行体系整体增持的背景下，第三名的追赶并不现实。"},{"id":"scene3_lead","type":"string","label":"第3屏领句","maxLength":40,"default":"俄罗斯与中国的位次"},{"id":"scene3_body","type":"string","label":"第3屏正文","maxLength":600,"default":"俄罗斯 2330 吨位列第四，中国 2264 吨紧随其后；两者差距不足 3%，是榜单上最接近的一对。"},{"id":"scene4_lead","type":"string","label":"第4屏领句","maxLength":40,"default":"座次之外看增量"},{"id":"scene4_body","type":"string","label":"第4屏正文","maxLength":600,"default":"近五年增持最多的是俄罗斯与 中国；榜单的座次稳定，但增量上的追逐没有停。"},{"id":"closing","type":"string","label":"结尾口播","maxLength":200,"default":"以上只描述示例快照的座次，不构成任何投资建议。"},{"id":"source_name","type":"string","label":"来源名称","maxLength":80,"default":"来源：示例数据集"},{"id":"accent","type":"color","label":"品牌色","default":"#f5c85a"},{"id":"scene_count","type":"number","label":"场景数","min":3,"max":4,"default":4},{"id":"scene1_type","type":"string","label":"场景类型","default":""},{"id":"scene2_type","type":"string","label":"场景类型","default":""},{"id":"scene3_type","type":"string","label":"场景类型","default":""},{"id":"scene4_type","type":"string","label":"场景类型","default":""},{"id":"scene1_beat","type":"string","label":"叙事节点","default":""},{"id":"scene1_text","type":"string","label":"上屏文字","default":""},{"id":"scene2_beat","type":"string","label":"叙事节点","default":""},{"id":"scene2_text","type":"string","label":"上屏文字","default":""},{"id":"scene3_beat","type":"string","label":"叙事节点","default":""},{"id":"scene3_text","type":"string","label":"上屏文字","default":""},{"id":"scene4_beat","type":"string","label":"叙事节点","default":""},{"id":"scene4_text","type":"string","label":"上屏文字","default":""}]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Heron 冲刺榜竖版</title>
+    <style>
+/* 所有模板共享的画布基础。令牌由 _shared/tokens 下的同名样式文件提供。
+   注意：注释里不要出现 style 标签的字面写法，它会被 HTML 解析器当成真的开始标签。 */
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("fonts/NotoSansSC-Regular.otf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+}
+#root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+.clip { position: absolute; inset: 0; }
+
+/* 镜头层：整幅内容在这个容器里进推出画框，幅度由 --cam-push 控制（1 即镜头不动）。
+   下三分之一与进度条留在容器外——那是播出界面，不该跟着镜头晃。
+   画面被推出去的部分由 #root 的 overflow 裁掉，这正是推近该有的裁切。 */
+#camera { position: absolute; inset: 0; z-index: 1; }
+
+/* 纵深：环境层是最远的一层，永远在内容之下、永远在动。
+   三层各自可开关（透明度为 0 即视为关闭），但网格与光晕是默认配置。 */
+.ambient { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.ambient > div { position: absolute; inset: 0; }
+.ambient-grid {
+  background-image:
+    linear-gradient(to right, var(--rule-faint) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule-faint) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  opacity: var(--grid-opacity);
+}
+.ambient-glow {
+  background: radial-gradient(circle at var(--glow-x) var(--glow-y),
+              var(--glow-color) 0%, transparent var(--glow-spread));
+  opacity: var(--glow-opacity);
+}
+.ambient-grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.55'/></svg>");
+  background-size: 140px 140px;
+  opacity: var(--grain-opacity);
+}
+/* 内容层压在环境层之上：骨架里的每块都自己定位，这里只统一抬 z-index。 */
+#title-card, #chart-slot, .scene, #closing-slot, #bottom-bar { z-index: 1; }
+
+/* 场景序号：给画面一个「第几拍」的锚点，避免每屏长得一样。 */
+.scene-no {
+  display: block;
+  font-family: var(--font-num);
+  font-size: var(--fs-note);
+  font-weight: 700;
+  letter-spacing: var(--track-kicker);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 硬规则 1：视频字号下限 24px，竖屏 32px。这条不能靠 CSS 强制，只作为约定写在这里，由构建期校验兜底。 */
+/* 风格 D · Sprint Board 冲刺榜：暖沙底、跑道质感、大号名次徽标、行式榜单。
+   定位：rank_competition——座次即画面。与 data-board（看板/图表主角）、
+   data-investigation（时间轴调查）的分工写在 styles.json 的 role 里。
+   注意：--accent 不在这里定义——它由 HyperFrames 从 composition 的
+   color 类型变量自动注入为同名 CSS 自定义属性，手写会与之冲突。 */
+:root {
+  --bg: #1a1512;
+  --fg: #f5efe4;
+  --muted: #a08e78;
+  --muted-2: #bda892;
+  --body: #d3c4b0;
+  --legend: #e8dcc8;
+  --down: #d9574a;
+
+  --rule-faint: rgba(245, 239, 228, 0.10);
+  --rule-soft: rgba(245, 239, 228, 0.14);
+  --rule-strong: rgba(245, 239, 228, 0.30);
+  --panel: rgba(245, 239, 228, 0.05);
+  --glow-color: rgba(245, 200, 90, 0.16);
+  --accent-glow: rgba(245, 200, 90, 0.30);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 92px;
+  --fs-title-lg: 76px;
+  --fs-title-sm: 68px;
+  --fs-data: 64px;
+  --fs-data-sm: 34px;
+  --fs-lead: 54px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 28px;
+
+  --pad-frame: 84px;
+  --rule-width: 3px;
+  --radius: 6px;
+  --track-kicker: 0.20em;
+
+  /* 环境层：跑道横线给「赛道」的结构感，暖光晕给领跑者，颗粒给纸质质感。 */
+  --grid-size: 120px;
+  --grid-opacity: 0.35;
+  --glow-x: 50%;
+  --glow-y: 12%;
+  --glow-spread: 55%;
+  --glow-opacity: 0.8;
+  --grain-opacity: 0.2;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.32s;
+  --dur-ambient: 7s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+
+  /* 镜头与转场：榜单是行式阅读，推近 1.04 保持行高不裁字；
+     换屏位移 150px——比看板系大，冲刺的进出要更有速度感。 */
+  --cam-push: 1.04;
+  --cam-origin: 50% 42%;
+  --slide-shift: 150px;
+
+  /* 图表语义（D · 座次）：没有主图表区，语义令牌退到行尾 sparkline——
+     折线最细（3px），面积全收（座次只讲当下，不讲区间体量），
+     极值标注只保留最高（领跑者高亮），焦点环最重（每行都是独立可读单元）。 */
+  --chart-line-width: 3px;
+  --chart-area-alpha: 0;
+  --chart-max-annot: var(--accent);
+  --chart-min-annot: var(--down);
+  --chart-min-size: 20px;
+  --focus-dim: 0.45;
+  --focus-ring-width: 8px;
+  --focus-ring-dash: none;
+}
+/* 分镜：这一屏用什么画面、承担什么叙事节点、上屏写哪句话。
+   三套数据风格共用这一份规则——字号差异由令牌承担，版式差异由各自的 layout 负责。
+   变量落到 DOM 属性上的位置在 fill.js：只声明变量不写属性，这些变体就是死代码。 */
+
+/* 上屏文字与旁白解耦：屏幕文字节点同时带 lead 类，直接继承领句的排版，
+   这里只藏掉原来那条领句。三套版式的领句排版各不相同（flex / grid / 缩进），
+   另写一份屏幕文字样式等于把三套版式再抄一遍。 */
+.scene.has-screen-text .lead:not(.screen-text) { display: none; }
+
+/* headline：一屏一句话。领句顶到标题级，正文让位。 */
+.scene[data-scene-type="headline"] .lead {
+  font-size: var(--fs-title-sm);
+  max-height: 212px;
+}
+.scene[data-scene-type="headline"] .body { display: none; }
+
+/* number：这一屏就是一个数。正文让位，数字交给常驻的 KPI 头。 */
+.scene[data-scene-type="number"] .body { display: none; }
+
+/* compare：结论卡。正文垫一层面板，读起来是对照关系而不是流水句。
+   用面板而不是左边框：播报版式整屏本来就挂着一条强调竖条，再加一条会变成双线。 */
+.scene[data-scene-type="compare"] .body {
+  background: var(--panel);
+  padding: 18px 22px;
+  border-radius: var(--radius);
+}
+
+/* compare：真正两栏对照。数字与标签来自数据事实（compare.js 建的 .compare-pairs），
+   正文让位——两栏已经把「谁比谁、差多少」说完了，留着正文只是重复。
+   有事实才画这一栏，没事实时正文照旧（见 .scene[data-scene-type="compare"] .body）。 */
+#root .scene.has-compare .body { display: none; }
+#root .scene.has-compare .compare-pairs {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 20px;
+  align-items: stretch;
+  /* 播报版式的 .scene 是两栏 grid（编号列 + 内容列），对照块要横跨整行 */
+  grid-column: 1 / -1;
+  margin-top: 4px;
+}
+#root .scene.has-compare .compare-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 20px 22px;
+  background: var(--panel);
+  border-radius: var(--radius);
+}
+#root .scene.has-compare .compare-tag {
+  font-size: var(--fs-note);
+  color: var(--muted-2);
+  letter-spacing: 0.06em;
+}
+#root .scene.has-compare .compare-number {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+#root .scene.has-compare .compare-value {
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--fg);
+}
+#root .scene.has-compare .compare-unit {
+  font-style: normal;
+  font-size: var(--fs-body);
+  color: var(--muted-2);
+}
+#root .scene.has-compare .compare-label {
+  font-size: var(--fs-note);
+  line-height: 1.35;
+  color: var(--muted-2);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+#root .scene.has-compare .compare-vs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: var(--fs-body);
+  color: var(--muted-2);
+}
+#root .scene.has-compare .compare-delta {
+  font-size: var(--fs-label);
+  color: var(--accent);
+}
+
+/* 冲击屏：headline 屏接管整幅画面——图表与常驻标题让位，这一屏只有一句话。
+   口径 docs/2026-11-20-storyboard-and-visual-signal-report.md §六.2。
+   选择器带 #root：版式里有 #scene-N 这类 ID 规则（news-trend 用 ID 定位当前屏），
+   权重比类选择器高，不压过去就接管不了整幅画面。 */
+/* 特异性要压过版式的 .scene：storyboard.css 在版式 CSS 之前加载，
+   而横版版式把 .scene 钉在右半栏（left:44% / width:46% / border-right）。
+   只写 left/top/bottom/right 不够——left 与 right 同时给值时，只要版式还留着
+   width，宽度就按 width 算，元素仍停在半栏；边框也要整体清零，版式用的是
+   border-right 而不是 border-left。.takeover.takeover 提高一级特异性，
+   不依赖文件顺序。 */
+#root .scene.takeover.takeover {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  /* 版式的固定宽度会压过 left+right，必须显式回到 auto */
+  width: auto;
+  padding: 0 var(--pad-frame);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  /* 版式给 .scene 挂了底色与强调条（播报色带、趋势刻度、调查竖线、横版的右边框），
+     满幅接管时这些是残留装饰：整条边框清零，这一屏只剩一句话。 */
+  background: none;
+  border: 0;
+}
+#root .scene.takeover::before,
+#root .scene.takeover::after { display: none; }
+#root .scene.takeover .scene-no,
+#root .scene.takeover .body,
+#root .scene.takeover .scene-figure { display: none; }
+#root .scene.takeover .lead {
+  font-size: var(--fs-title);
+  line-height: 1.24;
+  max-height: none;
+  margin: 0;
+  -webkit-line-clamp: 3;
+}
+/* news-rank-9x16 的版式（风格 D · 冲刺榜）。令牌见 _shared/tokens/sprint-board.css。
+   纵向预算（1080×1920）：标题区 0–430 / 主区 450–1560 / 底栏 1620 以下。
+   首屏是榜单（race.js 弹射入位），场景 2–4 与片尾口播在同一主区走大字排版。
+
+   本套骨架不变量（改版式必须保住，否则 D 就不再像冲刺）：
+   1. .row 通栏（left:0 / right:0），行式全宽榜单，无左右分栏——座次横向铺开没有意义
+   2. .crown 绝对定位在行首——领跑者的冠标是这套版式的签名元素 */
+#title-card { padding: 96px var(--pad-frame) 0 var(--pad-frame); }
+#kicker { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+#kicker-flag { width: 56px; height: 8px; background: var(--accent); border-radius: 0 4px 4px 0; }
+#kicker-text { font-size: var(--fs-note); font-weight: 700; letter-spacing: var(--track-kicker); color: var(--muted-2); }
+#title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 800;
+  line-height: 1.16;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+#rule { margin-top: 24px; width: 100%; height: var(--rule-width); background: var(--accent); transform-origin: left center; }
+
+/* 榜单轨道：从画面左缘伸进来的跑道。行从左轨弹射入位（race.js），
+   起跑线用一条竖向强调色细条标出。 */
+#board {
+  position: absolute;
+  top: 450px;
+  bottom: 500px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 18px;
+  padding-left: var(--pad-frame);
+}
+#board::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--pad-frame) - 14px);
+  top: 6px;
+  bottom: 6px;
+  width: 6px;
+  background: var(--rule-strong);
+  border-radius: 3px;
+}
+.row {
+  position: relative;
+  left: 0;
+  right: 0;
+  flex: none;
+  height: 150px;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  padding: 0 28px 0 34px;
+  background: var(--panel);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+/* 领跑者行只靠底色区分：粗边条重复起跑线的职责，视觉上互相抢 */
+.row-1 { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.rank-no {
+  flex: none;
+  font-size: var(--fs-data);
+  font-weight: 800;
+  color: var(--muted-2);
+  min-width: 86px;
+  line-height: 1;
+}
+.row-1 .rank-no { color: var(--accent); }
+.row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-lead);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row-value {
+  flex: none;
+  font-size: var(--fs-data-sm);
+  font-weight: 800;
+  color: var(--legend);
+  font-variant-numeric: tabular-nums;
+}
+.row-spark {
+  flex: none;
+  width: 120px;
+  height: 44px;
+  transform-origin: left center;
+}
+/* 领跑者冠标：绝对定位在第一行行首外侧，race.js 弹出它。 */
+.crown {
+  position: absolute;
+  left: calc(var(--pad-frame) - 44px);
+  top: -2px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50% 50% 50% 0;
+  background: var(--accent);
+  transform: rotate(-45deg);
+}
+.crown::after {
+  content: '领';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(45deg);
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--bg);
+}
+
+/* 文字屏（text/number/compare 场景）：榜单只在首屏（race.js 在场景 1 的窗口弹射入位），
+   后续场景走大字排版，占据榜单退场后的主区。纵向预算：主区 450–1560。 */
+.scene {
+  top: 450px;
+  bottom: 460px;
+  left: 0;
+  right: 0;
+  padding: 0 var(--pad-frame);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.scene-no { flex: none; color: var(--accent); margin-bottom: 12px; }
+.lead { flex: none; margin: 0 0 16px; font-size: var(--fs-lead); font-weight: 700; line-height: 1.5; color: var(--fg);
+        max-height: 164px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.body { flex: none; margin: 0; font-size: var(--fs-body); font-weight: 400; line-height: 1.7; color: var(--body);
+        max-height: 198px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+
+#closing-slot { top: 450px; bottom: 460px; padding: 0 var(--pad-frame); display: flex; align-items: center; }
+/* 片尾横幅：冲刺的收尾是「冲线」——底边就是终点线，压在榜单落定的画面上。 */
+#closing { margin: 0; padding: 22px 28px 32px; font-size: var(--fs-body); font-weight: 600; line-height: 1.6; color: var(--bg);
+           background: var(--accent); border-bottom: 12px solid var(--fg);
+           display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+
+#bottom-bar { position: absolute; left: 0; right: 0; bottom: 300px; padding: 0 var(--pad-frame); }
+#progress { display: block; height: 6px; border-radius: 3px; background: var(--accent);
+            transform-origin: left center; margin-bottom: 28px; }
+#meta-row { display: flex; align-items: center; justify-content: space-between; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-style="sprint-board" data-start="0" data-width="1080" data-height="1920" data-duration="50">
+
+      <div class="ambient" aria-hidden="true">
+        <div class="ambient-grid" data-ambient="drift"></div>
+        <div class="ambient-glow" data-ambient="pulse"></div>
+        <div class="ambient-grain" data-ambient="flicker"></div>
+      </div>
+
+      <audio id="narration" class="clip" src="narration.mp3" data-start="0" data-duration="50" data-track-index="9"></audio>
+
+      <div id="camera">
+      <header id="title-card" class="clip" data-start="0" data-duration="50" data-track-index="0">
+        <div id="kicker">
+          <span id="kicker-flag"></span>
+          <span id="kicker-text" data-var-text="kicker">座次速览</span>
+        </div>
+        <h1 id="title" data-var-text="title">全球黄金储备五强</h1>
+        <div id="rule"></div>
+
+      </header>
+
+
+      <section id="board" class="clip" data-start="0" data-duration="12.5" data-track-index="2" aria-label="排行榜">
+        <div class="crown" aria-hidden="true"><span>领</span></div>
+        <div class="row row-1" data-rank="1">
+          <span class="rank-no">01</span>
+          <span class="row-name">美国</span>
+          <span class="row-value" data-value="8133">0</span>
+          <svg class="row-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+            <polyline points="0,40 40,32 80,20 120,8" fill="none"
+              stroke="var(--accent)" stroke-width="6"/>
+          </svg>
+        </div>
+        <div class="row" data-rank="2">
+          <span class="rank-no">02</span>
+          <span class="row-name">德国</span>
+          <span class="row-value" data-value="3352">0</span>
+          <svg class="row-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+            <polyline points="0,30 120,18" fill="none"
+              stroke="var(--muted-2)" stroke-width="6"/>
+          </svg>
+        </div>
+        <div class="row" data-rank="3">
+          <span class="rank-no">03</span>
+          <span class="row-name">意大利</span>
+          <span class="row-value" data-value="2452">0</span>
+          <svg class="row-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+            <polyline points="0,30 120,18" fill="none"
+              stroke="var(--muted-2)" stroke-width="6"/>
+          </svg>
+        </div>
+        <div class="row" data-rank="4">
+          <span class="rank-no">04</span>
+          <span class="row-name">俄罗斯</span>
+          <span class="row-value" data-value="2330">0</span>
+          <svg class="row-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+            <polyline points="0,30 120,18" fill="none"
+              stroke="var(--muted-2)" stroke-width="6"/>
+          </svg>
+        </div>
+        <div class="row" data-rank="5">
+          <span class="rank-no">05</span>
+          <span class="row-name">中国</span>
+          <span class="row-value" data-value="2264">0</span>
+          <svg class="row-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+            <polyline points="0,30 120,18" fill="none"
+              stroke="var(--muted-2)" stroke-width="6"/>
+          </svg>
+        </div>
+      </section>
+      <span id="board-unit" class="clip" data-start="0" data-duration="12.5" data-track-index="2">吨</span>
+      <!-- 场景 1 的文字窗口让给榜单：首屏领句压在榜单上方当钩子，正文藏掉 -->
+
+
+      <section id="scene-1" class="clip scene" data-start="0" data-duration="12.5" data-track-index="2" data-scene-index="1">
+        <span class="scene-no">01</span>
+        <p class="lead" data-var-text="scene1_lead"></p>
+        <p class="body" data-var-text="scene1_body"></p>
+      </section>
+      <section id="scene-2" class="clip scene" data-start="12.5" data-duration="12.5" data-track-index="2" data-scene-index="2">
+        <span class="scene-no">02</span>
+        <p class="lead" data-var-text="scene2_lead">德国与意大利的名次之争</p>
+        <p class="body" data-var-text="scene2_body">德国 3352 吨、意大利 2452 吨，两者相差 900 吨；欧洲央行体系整体增持的背景下，第三名的追赶并不现实。</p>
+      </section>
+      <section id="scene-3" class="clip scene" data-start="25" data-duration="12.5" data-track-index="2" data-scene-index="3">
+        <span class="scene-no">03</span>
+        <p class="lead" data-var-text="scene3_lead">俄罗斯与中国的位次</p>
+        <p class="body" data-var-text="scene3_body">俄罗斯 2330 吨位列第四，中国 2264 吨紧随其后；两者差距不足 3%，是榜单上最接近的一对。</p>
+      </section>
+      <section id="scene-4" class="clip scene" data-start="37.5" data-duration="6.5" data-track-index="2" data-scene-index="4">
+        <span class="scene-no">04</span>
+        <p class="lead" data-var-text="scene4_lead">座次之外看增量</p>
+        <p class="body" data-var-text="scene4_body">近五年增持最多的是俄罗斯与 中国；榜单的座次稳定，但增量上的追逐没有停。</p>
+      </section>
+
+      <section id="closing-slot" class="clip" data-start="44" data-duration="6" data-track-index="2">
+        <p id="closing" data-var-text="closing">以上只描述示例快照的座次，不构成任何投资建议。</p>
+      </section>
+      </div>
+
+      <div id="bottom-bar">
+        <div id="progress"></div>
+        <div id="meta-row">
+          <span id="aigc-badge">内容由 AI 生成</span>
+          <span id="source-line" data-var-text="source_name">来源：示例数据集</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="gsap.min.js"></script><script src="SplitText.min.js"></script>
+    <script>
+// 变量注入与通用填充。所有模板共用，必须最先执行。
+const declared = window.__hyperframes && window.__hyperframes.getVariables
+  ? window.__hyperframes.getVariables()
+  : {};
+const root = document.getElementById("root");
+const tl = gsap.timeline({ paused: true });
+const total = parseFloat(root.dataset.duration);
+
+// 模板里的尺寸一律来自令牌，避免 JS 和 CSS 各写一份而漂移
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// 标题按字数降档：92px → 76px → 68px
+const titleEl = document.getElementById("title");
+const titleLen = Array.from(declared.title || titleEl.textContent || "").length;
+if (titleLen > 11) titleEl.style.fontSize = cssVar("--fs-title-sm");
+else if (titleLen > 9) titleEl.style.fontSize = cssVar("--fs-title-lg");
+
+// 实际播几屏由稿件决定，模板只负责准备好槽位
+const sceneCount = Number.isFinite(Number(declared.scene_count)) ? Number(declared.scene_count) : 3;
+
+// 屏次编号与配图同理：槽位先备好，有没有编号和有没有图由稿件与模板能力决定。
+document.querySelectorAll(".scene").forEach((slot) => {
+  const index = slot.dataset.sceneIndex;
+  const no = slot.querySelector(".scene-no");
+  if (no) no.textContent = String(index).padStart(2, "0");
+  // 场景类型落到属性上：quote / rank 这类版式靠 [data-scene-type] 选择器换排版，
+  // 只声明变量不写属性，那些变体就是死代码。
+  const type = declared["scene" + index + "_type"];
+  if (type) slot.dataset.sceneType = type;
+  // 叙事节点给版式一条辅线
+  const beat = declared["scene" + index + "_beat"];
+  if (beat) slot.dataset.beat = beat;
+  // 上屏文字与旁白解耦：屏幕文字节点同时带 lead 类，继承三套版式各自的领句排版。
+  // 原来的领句由 .has-screen-text 藏掉，两条不会同时上屏。
+  const screen = declared["scene" + index + "_text"];
+  if (screen && String(screen).trim()) {
+    const text = document.createElement("p");
+    text.className = "lead screen-text";
+    text.textContent = screen;
+    const lead = slot.querySelector(".lead");
+    if (lead) lead.after(text);
+    else slot.appendChild(text);
+    slot.classList.add("has-screen-text");
+  }
+  const figure = slot.querySelector(".scene-figure");
+  const src = declared["scene" + index + "_image"];
+  if (!figure || !src) return;
+  // has-image 让版式知道这一屏真的有图：文稿线用它把图位展开、同时把正文压回两行
+  slot.classList.add("has-image");
+  // img 由脚本创建而不是写在 HTML 里：静态 <img> 会被版式闸判成同组重复媒体节点
+  const img = document.createElement("img");
+  img.alt = "";
+  img.src = src;
+  figure.appendChild(img);
+});
+
+// 冲击屏：headline 屏接管整幅画面——图表与常驻标题让位，这一屏只有一句话。
+// 口径：docs/2026-11-20-storyboard-and-visual-signal-report.md §六.2「冲击屏」。
+// 屏次窗口取渲染期改写过的 data-start/data-duration（与真实口播对齐），不另建时间轴：
+// 这套模板只有一条时间轴，多一条就会和口播对不齐。
+const sceneSlots = Array.from(document.querySelectorAll(".scene"));
+const headlineSlots = sceneSlots.filter((slot) => {
+  // 超出实际播出的屏次没有窗口，motion.js 会把它们整块藏掉
+  if (slot.dataset.sceneType !== "headline") return false;
+  return Number(slot.dataset.sceneIndex) <= sceneCount;
+});
+
+const headlineWindows = headlineSlots
+  .map((slot) => {
+    const start = Number(slot.dataset.start);
+    const duration = Number(slot.dataset.duration);
+    if (!Number.isFinite(start) || !Number.isFinite(duration) || duration <= 0) return null;
+    return { slot, start, end: start + duration };
+  })
+  .filter(Boolean);
+
+if (headlineWindows.length) {
+  // 冲击屏最多接管这么久。窗口来自真实口播，一屏常到 10 秒以上；
+  // 整段都让常驻层退场，等于用十几秒白板换一句钩子——冲击只在开头成立，
+  // 之后观众需要数据接住。超出部分把常驻层放回来，这一屏退回普通版式。
+  const MAX_TAKEOVER = 4.5;
+  // 相邻的 headline 屏之间不把常驻层放回来：放回来再藏一次等于抖一下
+  const merged = [];
+  headlineWindows.forEach((win) => {
+    const last = merged[merged.length - 1];
+    const end = Math.min(win.end, win.start + MAX_TAKEOVER);
+    if (last && win.start <= last.end + 0.8) last.end = Math.max(last.end, end);
+    else merged.push({ start: win.start, end });
+  });
+
+  const layers = ["#title-card", "#chart-slot"]
+    .map((selector) => document.querySelector(selector))
+    .filter(Boolean);
+  const FADE = 0.4;
+  merged.forEach((win) => {
+    const fadeOutAt = Math.max(0, win.start - 0.35);
+    // 冲击屏就是片头时，常驻层一开始就不该露脸。
+    // set 之外再压一次 inline：渲染是逐帧 seek，零时长补间在第 0 帧偶尔不落值。
+    if (fadeOutAt <= 0) {
+      tl.set(layers, { opacity: 0 }, 0);
+      layers.forEach((el) => { el.style.opacity = "0"; });
+    } else {
+      tl.to(layers, { opacity: 0, duration: FADE, ease: "sine.inOut" }, fadeOutAt);
+    }
+    // 收尾不越片长：越界的补间会把时间轴拖长，渲染帧数跟着变
+    const fadeInDur = Math.min(FADE, Math.max(0, total - win.end));
+    if (fadeInDur > 0.05) tl.to(layers, { opacity: 1, duration: fadeInDur, ease: "sine.inOut" }, win.end);
+  });
+
+  // 上屏文字按「排不排得下一行」定字号，不按字数猜：各风格的 --fs-title 与可用宽度都不同
+  // （调查线 100px + 窄边距，播报线 86px + 通栏），猜出来的档位迟早在某个风格上挤成孤字。
+  headlineWindows.forEach((win) => {
+    // 上屏文字才看得见（.lead.screen-text），原领句被 CSS 藏了——按看得见的那句定字号
+    const lead = win.slot.querySelector(".lead.screen-text") || win.slot.querySelector(".lead");
+    if (!lead) return;
+    const style = getComputedStyle(win.slot);
+    const avail = win.slot.clientWidth
+      - parseFloat(style.paddingLeft || 0)
+      - parseFloat(style.paddingRight || 0);
+    const len = Array.from((lead.textContent || "").trim()).length;
+    if (!Number.isFinite(avail) || avail <= 0 || !len) return;
+    let picked = null;
+    for (const token of ["--fs-title", "--fs-title-lg", "--fs-title-sm"]) {
+      const px = parseFloat(cssVar(token));
+      if (!Number.isFinite(px) || px <= 0) continue;
+      picked = token;
+      if (len * px <= avail) break;
+    }
+    if (picked) lead.style.fontSize = cssVar(picked);
+  });
+
+  // 接管期间这一屏占满整幅画面。类名按时间轴绝对时间算：seek 到哪一帧都对。
+  // 窗口用 merged（已按时长上限截断），与常驻层的进出保持同一份时间窗；
+  // 用原始窗口会让文字继续满屏居中，而标题卡已经放回来了。
+  const takeoverClock = { time: 0 };
+  tl.to(takeoverClock, {
+    time: total,
+    duration: total,
+    ease: "none",
+    onUpdate: () => {
+      const t = tl.time();
+      headlineWindows.forEach((win) => {
+        const capped = Math.min(win.end, win.start + MAX_TAKEOVER);
+        win.slot.classList.toggle("takeover", t >= win.start && t < capped);
+      });
+    },
+  }, 0);
+}
+
+// 全局时间线与场景进出。所有模板共用，必须在 chart 之后执行。
+// 只有五个动作：enter / enterChars / ambient / camera / swap。参数全部来自令牌，
+// 风格差异靠改令牌而不是另写一套动画——否则三套风格很快就会长成三份真相。
+// 数字滚动不在这里：KPI 的小数位与单位随数据集变化，由 chart.js 按 precision 驱动。
+const has = (selector) => document.querySelector(selector) !== null;
+const numberVar = (name, fallback) => {
+  const value = parseFloat(cssVar(name));
+  return Number.isFinite(value) ? value : fallback;
+};
+const EASE_OUT = cssVar("--ease-out") || "power3.out";
+const EASE_IN = cssVar("--ease-in") || "power2.in";
+const DUR = {
+  entrance: numberVar("--dur-entrance", 0.5),
+  swap: numberVar("--dur-swap", 0.3),
+  ambient: numberVar("--dur-ambient", 7),
+};
+const FROM = { up: { y: 30 }, down: { y: -30 }, left: { x: 46 }, right: { x: -46 }, none: {} };
+// 屏间位移的距离。太小读不出方向，太大等于把画面甩出去。
+const SHIFT = numberVar("--slide-shift", 130);
+
+// immediateRender：动画排在中段时 GSAP 默认不提前写起始值，元素会先裸着露出来
+function enter(targets, { dir = "up", at = 0, stagger = 0 } = {}) {
+  const list = queryList(targets);
+  if (!list) return;
+  tl.from(list, { ...FROM[dir], opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger, immediateRender: true }, at);
+}
+
+function queryList(targets) {
+  if (!targets) return null;
+  const list = typeof targets === "string" ? document.querySelectorAll(targets) : targets;
+  return list && (list.nodeType || list.length) ? list : null;
+}
+
+// 逐字入场：只给「标题型」文字用——主标题、屏头编号、引句、片尾口播。
+// 正文不拆：一段话逐字进场会拖长入场时间，也把该一眼扫过的句子打散成一串字。
+// 拆字之后每个字符是绝对定位的 span，autoSplit 让它在宽度变化时重新分行，
+// 而不是按拆字那一刻的排版钉死。
+function enterChars(targets, { at = 0, stagger = 0.025, duration = DUR.entrance } = {}) {
+  const list = queryList(targets);
+  if (!list) return;
+  // 插件没加载时退回整段淡入：少一个文件不该让模板白屏
+  if (typeof SplitText === "undefined") {
+    enter(targets, { at });
+    return;
+  }
+  const split = SplitText.create(list, { type: "chars,lines", mask: "lines", autoSplit: true });
+  tl.from(split.chars, { yPercent: 55, opacity: 0, duration, ease: EASE_OUT, stagger }, at);
+}
+
+function ambient(scope = document) {
+  scope.querySelectorAll("[data-ambient]").forEach((el) => {
+    const base = parseFloat(getComputedStyle(el).opacity);
+    const dim = Number.isFinite(base) ? base : 1;
+    const kind = el.dataset.ambient;
+    const nominal = DUR.ambient * (kind === "pulse" ? 0.8 : kind === "flicker" ? 0.35 : 1);
+    const cycles = Math.max(1, Math.ceil(total / nominal));
+    const duration = total / cycles;
+    if (kind === "drift") {
+      tl.to(el, { x: 18, y: -14, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    } else if (kind === "pulse") {
+      tl.to(el, { opacity: dim * 0.55, scale: 1.06, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    } else if (kind === "flicker") {
+      tl.to(el, { opacity: dim * 0.7, duration, ease: "sine.inOut", repeat: cycles - 1, yoyo: true }, 0);
+    }
+  });
+}
+
+// 镜头：全片一条补间——钩子段快推、中段几乎匀速、片尾回拉半格。
+// 三条独立补间会在同一个 scale 上互相抢值，所以用 keyframes 串成一条。
+// 推近的裁切交给 #root 的 overflow：推出去的部分本就该看不见。
+function camera() {
+  const el = document.getElementById("camera");
+  const push = numberVar("--cam-push", 1.05);
+  if (!el || push <= 1) return;
+  el.style.transformOrigin = cssVar("--cam-origin") || "50% 50%";
+  const hook = Math.min(2.2, total * 0.2);
+  const tail = Math.min(2.4, total * 0.16);
+  const mid = Math.max(0.1, total - hook - tail);
+  tl.to(el, {
+    keyframes: [
+      { scale: 1 + (push - 1) * 0.6, duration: hook, ease: "power2.out" },
+      { scale: push, duration: mid, ease: "none" },
+      { scale: 1 + (push - 1) * 0.4, duration: tail, ease: "power2.inOut" },
+    ],
+  }, 0);
+}
+
+function swap(slot, start, outAt) {
+  const parts = slot.querySelectorAll(".scene-no, .lead, .body");
+  if (!parts.length) return;
+  // 屏与屏之间是硬切：同轨 clip 的时间窗不重叠，没有可以交叉淡入的两帧。
+  // 改成整屏内容位移——逐屏换向地推进、向另一侧退出，切点因此读作一次移镜。
+  // 位移必须落在子元素上：带 data-start 的 clip 元素由引擎接管 transform，
+  // 对 section 本身 set x 会被忽略（实测 tl.set(section,{x:300}) 不动，子元素能动能）。
+  // 不用全帧遮罩：浅色纸面的版式各自刷底色，幕布要么盖错颜色，要么被审计判成遮挡文字。
+  const dir = Number(slot.dataset.sceneIndex) % 2 ? 1 : -1;
+  tl.fromTo(parts, { x: SHIFT * dir }, { x: 0, duration: DUR.entrance, ease: EASE_OUT }, start);
+  // 屏头编号与引句逐字，正文整段：正文是给人读的，拆成字只会读得更慢
+  enterChars(slot.querySelectorAll(".scene-no, .lead"), { at: start });
+  const body = slot.querySelectorAll(".body");
+  if (body.length) {
+    tl.from(body, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, start + 0.12);
+  }
+  // 短屏时退场不能排在入场之前
+  const outStart = Math.max(start + DUR.entrance, outAt);
+  tl.to(parts, { x: -SHIFT * 0.6 * dir, y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN, stagger: 0.04 }, outStart);
+}
+
+ambient();
+camera();
+
+tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: total, ease: "none" }, 0);
+enter("#kicker", { dir: "left", at: 0.1 });
+enterChars("#title", { at: 0.2 });
+tl.from("#rule", { scaleX: 0, duration: DUR.entrance, ease: EASE_OUT, immediateRender: true }, 0.45);
+if (has("#kpi")) enter("#kpi", { dir: "up", at: 0.35 });
+enter("#aigc-badge", { dir: "none", at: 0.2 });
+// 数据图表常驻时保留选题标题，避免后半片只剩孤立数字；文稿线沿用原退场。
+if (!has("#chart")) tl.to("#title, #rule", { opacity: 0, duration: 0.6, ease: "sine.inOut" }, 3.6);
+
+// 版式自带的静态装饰（#plate / #rail / #tick）。它们不来自数据，
+// 但各自有动画：没有动画的装饰层等于死图层。
+if (has("#plate")) {
+  tl.fromTo("#plate", { scaleY: 0 }, { scaleY: 1, duration: 0.8, ease: "power3.inOut" }, 0.05);
+}
+if (has("#rail")) {
+  tl.fromTo("#rail", { scaleY: 0 }, { scaleY: 1, duration: total, ease: "none" }, 0);
+}
+const tick = document.getElementById("tick");
+if (tick) {
+  // 不能用 tl.call 逐屏写：按帧 seek 时回调会一次跑完，tick 停在最后一屏。
+  // 从时间线时间反推屏次，seek 到哪一帧都对。
+  const pad = (n) => String(n).padStart(2, "0");
+  const starts = [...document.querySelectorAll(".scene")]
+    .filter((slot) => Number(slot.dataset.sceneIndex) <= sceneCount)
+    .map((slot) => parseFloat(slot.dataset.start));
+  tl.to(tick, {
+    duration: total,
+    ease: "none",
+    onUpdate: () => {
+      const t = tl.time();
+      const hit = starts.filter((start) => start <= t).length;
+      tick.textContent = pad(Math.max(hit, 1)) + " / " + pad(sceneCount);
+    },
+  }, 0);
+}
+
+// 结尾口播独占片尾一段窗口（生成器已把最后一屏的窗口切短），这里只需按窗口起点进场
+const closingSlot = document.getElementById("closing-slot");
+const closingAt = closingSlot ? parseFloat(closingSlot.dataset.start) : NaN;
+const hasClosing = Number.isFinite(closingAt) && closingAt < total - 0.1;
+
+document.querySelectorAll(".scene").forEach((slot) => {
+  if (Number(slot.dataset.sceneIndex) > sceneCount) {
+    slot.hidden = true;
+    slot.style.display = "none";
+    return;
+  }
+  const start = parseFloat(slot.dataset.start);
+  const end = start + parseFloat(slot.dataset.duration);
+  swap(slot, start, end - DUR.swap);
+});
+
+if (hasClosing) {
+  enterChars(closingSlot.querySelector("#closing"), { at: closingAt });
+}
+
+window.__timelines["main"] = tl;
+
+// compare 屏做成真正两栏对照：左边起点、右边对照项，数字与标签都来自数据事实，不来自文案。
+// 事实口径由 Java 侧 DatasetFacts 决定（wide / long / rows / geo 四种 shape），这里只取数并呈现：
+//   rows、geo：首条 vs 最高
+//   wide：起点 vs 最新
+//   long：同一对象的起点 vs 最新；焦点指了两个对象就照焦点来
+// 事实不够就不画这一栏——宁可这一屏只有文案，也不要摆一个空框。
+// 这一段必须排在 motion.js 之后：要借它的 DUR / EASE 与同一条时间轴。
+const compareDataset = JSON.parse(declared.dataset_json || "{}");
+const compareFacts = compareDataset.facts || {};
+const compareUnit = (compareDataset.metric && compareDataset.metric.unit) || "";
+const comparePrecision = Number.isFinite(Number(compareDataset.metric && compareDataset.metric.precision))
+  ? Number(compareDataset.metric.precision)
+  : 2;
+const compareNumber = (value) => Number(value).toFixed(comparePrecision);
+const compareOf = (entry) => {
+  if (!entry) return null;
+  const value = typeof entry.value === "number" ? entry.value
+    : typeof entry.last === "number" ? entry.last : NaN;
+  if (!Number.isFinite(value)) return null;
+  return { value, label: String(entry.label || entry.name || entry.location || entry.date || "") };
+};
+const comparePool = () => {
+  const list = [];
+  (compareFacts.series || []).forEach((entry) => list.push({ value: entry.last, label: String(entry.name || "") }));
+  (compareFacts.items || []).forEach((entry) => list.push({ value: entry.value, label: String(entry.label || entry.location || "") }));
+  return list;
+};
+const comparePair = (focus) => {
+  const labels = (focus && focus.labels) || [];
+  if (labels.length >= 2) {
+    const pool = comparePool();
+    const picked = labels.map((label) => pool.find((entry) => entry.label === label)).filter(Boolean);
+    if (picked.length >= 2) {
+      return { left: { ...picked[0], tag: picked[0].label }, right: { ...picked[1], tag: picked[1].label } };
+    }
+  }
+  const items = compareFacts.items || [];
+  if (items.length) {
+    const first = compareOf(items[0]);
+    const leader = compareOf(compareFacts.leader) || compareOf(items.reduce((best, entry) =>
+      (Number(entry.value) > Number(best.value) ? entry : best), items[0]));
+    if (first && leader && first.label !== leader.label) {
+      return { left: { ...first, tag: "首条" }, right: { ...leader, tag: "最高" } };
+    }
+    // 首条就是最高时这组对照塌了，退到最高 vs 最低：对照屏总要有个对照。
+    if (leader) {
+      const lowest = compareOf(items.reduce((best, entry) =>
+        (Number(entry.value) < Number(best.value) ? entry : best), items[0]));
+      if (lowest && lowest.label !== leader.label) {
+        return { left: { ...leader, tag: "最高" }, right: { ...lowest, tag: "最低" } };
+      }
+    }
+  }
+  if (compareFacts.first && compareFacts.last) {
+    const left = compareOf(compareFacts.first);
+    const right = compareOf(compareFacts.last);
+    if (left && right && left.label !== right.label) {
+      return { left: { ...left, tag: "起点" }, right: { ...right, tag: "最新" } };
+    }
+  }
+  const series = compareFacts.series || [];
+  if (series.length) {
+    const leaderName = compareFacts.leader && compareFacts.leader.name;
+    const entry = series.find((item) => item.name === leaderName) || series[0];
+    const left = { value: entry.first, label: String(entry.name || ""), tag: "起点" };
+    const right = { value: entry.last, label: String(entry.name || ""), tag: "最新" };
+    if (Number.isFinite(left.value) && Number.isFinite(right.value)) return { left, right };
+  }
+  return null;
+};
+// 字号按这一栏实际能放下的宽度降档，不按字数猜：各风格栏宽与字号都不同。
+const compareTextWidth = (text, px) => Array.from(String(text)).reduce((sum, ch) =>
+  sum + (/[一-鿿]/.test(ch) ? px : (/[0-9]/.test(ch) ? px * 0.62 : px * 0.42)), 0);
+// 单位跟在数字右侧同一行（.compare-number 是 flex），量宽度时漏掉它，
+// 「4113.34」会刚好占满整栏，把 USD/oz 顶到中间列去压住差值。按单位自身字号量。
+const compareNumberWidth = (text, px, unit) => {
+  if (!unit) return compareTextWidth(text, px);
+  const unitPx = parseFloat(cssVar("--fs-body")) || px;
+  return compareTextWidth(text, px) + parseFloat(cssVar("--fs-note") || 0) + compareTextWidth(unit, unitPx);
+};
+const compareFitSize = (text, width) => {
+  const ladder = ["--fs-title-sm", "--fs-lead", "--fs-body"];
+  for (const token of ladder) {
+    const px = parseFloat(cssVar(token));
+    if (Number.isFinite(px) && compareNumberWidth(text, px, compareUnit) <= width) return token;
+  }
+  return "--fs-body";
+};
+const compareClip = (text, max) => {
+  const list = Array.from(String(text));
+  return list.length > max ? list.slice(0, max - 1).join("") + "…" : String(text);
+};
+const compareElement = (name, className, text) => {
+  const node = document.createElement(name);
+  node.className = className;
+  node.textContent = text;
+  return node;
+};
+document.querySelectorAll(".scene").forEach((slot) => {
+  if (Number(slot.dataset.sceneIndex) > sceneCount) return;
+  if (slot.dataset.sceneType !== "compare") return;
+  const focus = JSON.parse(declared["scene" + slot.dataset.sceneIndex + "_focus"] || "{}");
+  const pair = comparePair(focus);
+  if (!pair) return;
+  const leftText = compareNumber(pair.left.value);
+  const rightText = compareNumber(pair.right.value);
+  const style = getComputedStyle(slot);
+  const inner = slot.clientWidth - parseFloat(style.paddingLeft || 0) - parseFloat(style.paddingRight || 0);
+  const column = Math.max(120, (inner - 40 - 72) / 2);
+  const size = compareFitSize(leftText.length >= rightText.length ? leftText : rightText, column);
+  const pairs = compareElement("div", "compare-pairs", "");
+  const left = compareElement("div", "compare-col", "");
+  left.appendChild(compareElement("span", "compare-tag", pair.left.tag));
+  const leftNumber = compareElement("span", "compare-number", "");
+  const leftValue = compareElement("b", "compare-value", leftText);
+  leftValue.style.fontSize = cssVar(size);
+  leftNumber.appendChild(leftValue);
+  if (compareUnit) leftNumber.appendChild(compareElement("i", "compare-unit", compareUnit));
+  left.appendChild(leftNumber);
+  left.appendChild(compareElement("span", "compare-label", compareClip(pair.left.label, 22)));
+  const middle = compareElement("div", "compare-vs", "");
+  middle.appendChild(compareElement("span", "compare-vs-mark", "vs"));
+  const delta = Math.abs(pair.right.value - pair.left.value);
+  if (Number.isFinite(delta)) {
+    middle.appendChild(compareElement("span", "compare-delta", "差 " + compareNumber(delta)));
+  }
+  const right = compareElement("div", "compare-col", "");
+  right.appendChild(compareElement("span", "compare-tag", pair.right.tag));
+  const rightNumber = compareElement("span", "compare-number", "");
+  const rightValue = compareElement("b", "compare-value", rightText);
+  rightValue.style.fontSize = cssVar(size);
+  rightNumber.appendChild(rightValue);
+  if (compareUnit) rightNumber.appendChild(compareElement("i", "compare-unit", compareUnit));
+  right.appendChild(rightNumber);
+  right.appendChild(compareElement("span", "compare-label", compareClip(pair.right.label, 22)));
+  pairs.append(left, middle, right);
+  slot.appendChild(pairs);
+  slot.classList.add("has-compare");
+  const start = Number(slot.dataset.start);
+  const outAt = Math.max(start + DUR.entrance, start + Number(slot.dataset.duration) - DUR.swap);
+  tl.from(pairs, { y: 26, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, immediateRender: true }, start);
+  tl.to(pairs, { y: -14, opacity: 0, duration: DUR.swap, ease: EASE_IN }, outAt);
+});
+
+// 冲刺榜：排行是一场冲刺，不是一张表。配方卡见同目录 race.card.md——
+// 意图、动作阶段、参数手感与已知坑都写在卡上，改参数先读卡。
+// 取数口径与 compare.js 一致：事实来自 dataset_json.facts（items / leader）。
+// 榜单 DOM 由生成器编译期写入（boardBlock）——引擎只渲带时间窗的编译期元素，
+// 脚本运行时建的自由 DOM 进不了成片（实测）。脚本只做动画：事实不足就不接管，
+// 榜单退回普通文字屏（#board 在 HTML 里但版式闸要求事实由脚本核对）。
+// 必须排在 motion.js 之后：借它的 DUR / EASE 与同一条时间轴。
+const raceDataset = JSON.parse(declared.dataset_json || "{}");
+const raceFacts = raceDataset.facts || {};
+const raceBoard = document.getElementById("board");
+
+if (raceBoard) {
+  const raceValues = raceBoard.querySelectorAll(".row-value");
+  const raceItems = (raceFacts.items || []).filter((e) => e && Number.isFinite(Number(e.value))).slice(0, 5);
+  // HTML 里的 0 占位按事实回填：生成器写的是 defaults 的静态值，
+  // 真实渲染时 dataset_json 是运行时变量，两处可能不同，事实优先。
+  raceValues.forEach((el, index) => {
+    const target = Number(raceItems[index]?.value ?? el.dataset.value ?? 0);
+    const counter = { v: 0 };
+    tl.to(counter, {
+      v: target, duration: 1.1, ease: "power1.out",
+      onUpdate: () => { el.textContent = Number(target).toFixed(racePrecisionOf(raceDataset)); },
+    }, 0.7 + index * 0.08);
+  });
+
+  // 阶段 1：弹射入位，错峰即名次（配方卡 §动作阶段 1）
+  tl.from(raceBoard.querySelectorAll(".row"), { x: -120, opacity: 0, duration: DUR.entrance, ease: EASE_OUT, stagger: 0.08, immediateRender: true }, 0.55);
+  // 阶段 3：戴冠（配方卡 §动作阶段 3）——第一名入位后才弹
+  const raceCrown = raceBoard.querySelector(".crown");
+  if (raceCrown) {
+    tl.fromTo(raceCrown, { scale: 0, opacity: 0 }, { scale: 1.06, opacity: 1, duration: 0.28, ease: "back.out(2)" }, 0.97);
+    tl.to(raceCrown, { scale: 1, duration: 0.12, ease: "power1.out" }, 1.25);
+  }
+  // 阶段 4：sparkline 生长，origin: left（配方卡 §动作阶段 4）
+  tl.from(raceBoard.querySelectorAll(".row-spark"), { scaleX: 0, duration: 1.2, ease: "power2.out", stagger: 0.08 }, 0.77);
+}
+
+function racePrecisionOf(dataset) {
+  const p = Number(dataset.metric && dataset.metric.precision);
+  return Number.isFinite(p) ? p : 0;
+}
+    </script>
+  </body>
+</html>
