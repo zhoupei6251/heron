@@ -1,6 +1,6 @@
 /* 风格 D · Sprint Board 冲刺榜：暖沙底、跑道质感、大号名次徽标、行式榜单。
    定位：rank_competition——座次即画面。与 data-board（看板/图表主角）、
-   data-investigation（时间轴调查）的分工写在 styles.json 的 role 里。
+   data-investigation（时间轴调查）的分工写在 creative-knowledge/styles/template-styles.json 的 role 里。
    注意：--accent 不在这里定义——它由 HyperFrames 从 composition 的
    color 类型变量自动注入为同名 CSS 自定义属性，手写会与之冲突。 */
 :root {

@@ -28,30 +28,25 @@ class TrendLearnToolsTest {
     @TempDir
     Path tempDir;
 
-    private Path templates;
+    private Path profiles;
     private Path breakdown;
     private Path storyboard;
     private TrendLearnTools tools;
 
     @BeforeEach
     void setUp() throws Exception {
-        templates = tempDir.resolve("templates");
-        Path shared = templates.resolve("_shared");
-        Files.createDirectories(shared.resolve("tokens"));
-        Files.writeString(shared.resolve("styles.json"), """
+        profiles = tempDir.resolve("profiles");
+        Path knowledge = tempDir.resolve("creative-knowledge");
+        Files.createDirectories(knowledge.resolve("styles"));
+        Files.writeString(knowledge.resolve("styles/template-styles.json"), """
             {"data-board":{"label":"动态数据解释","role":"排行与趋势"}}
             """);
-        Files.writeString(shared.resolve("tokens/data-board.css"), ":root { --accent: #18b7c9; }");
-        Path layout = templates.resolve("layouts/data-board");
-        Files.createDirectories(layout);
-        Files.writeString(layout.resolve("news-data-9x16.css"), "#title { font-size: 92px; }");
-        Path template = templates.resolve("news-data-9x16");
-        Files.createDirectories(template);
-        Files.writeString(template.resolve("template.config.json"), """
-            {"key":"news-data-9x16","name":"数据看板","style":"data-board","line":"DATA_BOARD",
-             "layout":"news-data-9x16","capabilities":["chart"],"supportedSceneTypes":["chart"],"storyboard":true}
+        Path profile = profiles.resolve("data-board");
+        Files.createDirectories(profile);
+        Files.writeString(profile.resolve("profile.json"), """
+            {"profileId":"data-board","bizLine":"data_board","canvas":{"width":1080,"height":1920}}
             """);
-        Files.writeString(template.resolve("template.json"), "{\"name\":\"数据看板\"}");
+        Files.writeString(profile.resolve("tokens.css"), ":root { --accent: #18b7c9; }");
         breakdown = tempDir.resolve("breakdown.json");
         Files.writeString(breakdown, "{\"shots\":[{\"duration\":2.4}]}");
         storyboard = tempDir.resolve("storyboard.jpg");
@@ -62,27 +57,27 @@ class TrendLearnToolsTest {
         ImageIO.write(image, "jpg", storyboard.toFile());
 
         HeronProductionProperties properties = new HeronProductionProperties();
-        properties.setNewsTemplate(templates);
+        properties.setNewsProfile(profiles);
         ResearchBudget budget = new ResearchBudget(10, 10_000, Duration.ofMinutes(1), Clock.systemUTC(), null);
         tools = new TrendLearnTools(properties, breakdown, storyboard, budget);
     }
 
     @Test
-    void listsTemplateCapabilitiesAndReadsTokensAndLayout() {
-        Map<String, Object> list = tools.listTemplates();
+    void listsProfileCapabilitiesAndReadsTokens() {
+        Map<String, Object> list = tools.listProfiles();
         assertEquals(1, list.get("count"));
-        assertTrue(tools.hasTemplate("news-data-9x16"));
-        assertFalse(tools.hasTemplate("missing"));
-        String template = tools.readTemplate("news-data-9x16");
+        assertTrue(tools.hasProfile("data-board"));
+        assertFalse(tools.hasProfile("missing"));
+        String profile = tools.readProfile("data-board");
 
-        assertTrue(template.contains("--accent"));
-        assertTrue(template.contains("#title"));
-        assertTrue(template.contains("动态数据解释"));
+        assertTrue(profile.contains("--accent"));
+        assertTrue(profile.contains("1080"));
+        assertTrue(profile.contains("动态数据解释"));
     }
 
     @Test
-    void rejectsTemplatePathTraversal() {
-        assertThrows(HeronBusinessException.class, () -> tools.readTemplate("../outside"));
+    void rejectsProfilePathTraversal() {
+        assertThrows(HeronBusinessException.class, () -> tools.readProfile("../outside"));
     }
 
     @Test
@@ -96,11 +91,11 @@ class TrendLearnToolsTest {
     void budgetRejectsExtraToolCalls() {
         ResearchBudget budget = new ResearchBudget(1, 10_000, Duration.ofMinutes(1), Clock.systemUTC(), null);
         HeronProductionProperties properties = new HeronProductionProperties();
-        properties.setNewsTemplate(templates);
+        properties.setNewsProfile(profiles);
         TrendLearnTools bounded = new TrendLearnTools(properties, breakdown, storyboard, budget);
         bounded.readBreakdown();
 
-        HeronBusinessException error = assertThrows(HeronBusinessException.class, bounded::listTemplates);
+        HeronBusinessException error = assertThrows(HeronBusinessException.class, bounded::listProfiles);
         assertEquals(ResearchBudget.TOOL_EXCEEDED, error.getCode());
     }
 }

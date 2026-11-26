@@ -40,23 +40,25 @@ public class TrendLearnTools {
 
     private final Path breakdown;
     private final Path storyboard;
-    private final Path templateRoot;
+    private final Path profileRoot;
+    private final Path knowledgeRoot;
     private final ResearchBudget budget;
 
     public TrendLearnTools(HeronProductionProperties properties, Path breakdown, Path storyboard,
                            ResearchBudget budget) {
         this.breakdown = breakdown;
         this.storyboard = storyboard;
-        this.templateRoot = properties.getNewsTemplate().toAbsolutePath().normalize();
+        this.profileRoot = properties.getNewsProfile().toAbsolutePath().normalize();
+        this.knowledgeRoot = profileRoot.resolveSibling("creative-knowledge");
         this.budget = budget;
     }
 
-    public boolean hasTemplate(String templateKey) {
-        if (templateKey == null || !templateKey.matches("[A-Za-z0-9_-]{1,80}")) {
+    public boolean hasProfile(String profileId) {
+        if (profileId == null || !profileId.matches("[A-Za-z0-9_-]{1,80}")) {
             return false;
         }
-        Path dir = templateRoot.resolve(templateKey);
-        return Files.isDirectory(dir) && Files.isRegularFile(dir.resolve("template.config.json"));
+        Path dir = profileRoot.resolve(profileId);
+        return Files.isDirectory(dir) && Files.isRegularFile(dir.resolve("profile.json"));
     }
 
     @Tool(name = "read_breakdown", description = "读取当前视频的 rea-video 拆解 JSON，含镜头、节奏、文字与运动信息", readOnly = true)
@@ -65,66 +67,48 @@ public class TrendLearnTools {
         return readText(breakdown, MAX_TEXT_CHARS);
     }
 
-    @Tool(name = "list_templates", description = "列出 Heron 现有模板及风格能力声明，用于判断技法可落到哪套模板", readOnly = true)
-    public Map<String, Object> listTemplates() {
+    @Tool(name = "list_profiles", description = "列出 Heron 现有视觉 Profile 及风格词汇，用于判断技法可挂到哪套画面语法", readOnly = true)
+    public Map<String, Object> listProfiles() {
         acquireBudget();
         Map<String, Object> styles = readStyles();
-        List<Map<String, Object>> templates = new ArrayList<>();
-        try (Stream<Path> dirs = Files.list(templateRoot)) {
+        List<Map<String, Object>> profiles = new ArrayList<>();
+        try (Stream<Path> dirs = Files.list(profileRoot)) {
             for (Path dir : dirs.filter(Files::isDirectory)
-                .filter(path -> Files.isRegularFile(path.resolve("template.config.json")))
+                .filter(path -> Files.isRegularFile(path.resolve("profile.json")))
                 .sorted(Comparator.comparing(path -> path.getFileName().toString())).toList()) {
-                JsonNode config = readJson(dir.resolve("template.config.json"));
+                JsonNode config = readJson(dir.resolve("profile.json"));
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("key", dir.getFileName().toString());
-                item.put("name", config.path("name").asString(dir.getFileName().toString()));
-                item.put("description", config.path("description").asString(""));
-                item.put("style", config.path("style").asString(""));
-                item.put("styleCapability", styles.get(config.path("style").asString("")));
-                item.put("layout", config.path("layout").asString(""));
-                item.put("capabilities", strings(config.path("capabilities")));
-                item.put("supportedSceneTypes", strings(config.path("supportedSceneTypes")));
-                item.put("storyboard", config.path("storyboard").asBoolean(false));
-                templates.add(item);
+                item.put("profileId", config.path("profileId").asString(dir.getFileName().toString()));
+                item.put("bizLine", config.path("bizLine").asString(""));
+                item.put("canvas", config.path("canvas"));
+                item.put("styleCapability", styles.get(dir.getFileName().toString()));
+                profiles.add(item);
             }
         } catch (IOException e) {
-            throw new HeronBusinessException(503, "trend_learn_templates_unavailable", "模板目录无法读取", e);
+            throw new HeronBusinessException(503, "trend_learn_templates_unavailable", "Profile 目录无法读取", e);
         }
-        return Map.of("count", templates.size(), "templates", templates, "styles", styles);
+        return Map.of("count", profiles.size(), "profiles", profiles, "styles", styles);
     }
 
-    @Tool(name = "read_template", description = "读取一套 Heron 模板的配置、风格声明、tokens 与布局 CSS；key 必须来自 list_templates", readOnly = true)
-    public String readTemplate(@ToolParam(name = "templateKey", description = "模板目录 key", required = true) String templateKey) {
+    @Tool(name = "read_profile", description = "读取一套 Heron 视觉 Profile 的元数据、风格词汇与令牌 CSS；key 必须来自 list_profiles", readOnly = true)
+    public String readProfile(@ToolParam(name = "profileId", description = "Profile 目录 key", required = true) String profileId) {
         acquireBudget();
-        if (templateKey == null || !templateKey.matches("[A-Za-z0-9_-]{1,80}")) {
-            throw new HeronBusinessException(400, "trend_learn_template_invalid", "模板 key 不合法");
+        if (profileId == null || !profileId.matches("[A-Za-z0-9_-]{1,80}")) {
+            throw new HeronBusinessException(400, "trend_learn_template_invalid", "Profile key 不合法");
         }
-        if (!hasTemplate(templateKey)) {
-            throw new HeronBusinessException(404, "trend_learn_template_missing", "模板不存在: " + templateKey);
+        if (!hasProfile(profileId)) {
+            throw new HeronBusinessException(404, "trend_learn_template_missing", "Profile 不存在: " + profileId);
         }
-        Path dir = templateRoot.resolve(templateKey);
-        Path configPath = dir.resolve("template.config.json");
+        Path dir = profileRoot.resolve(profileId);
+        Path configPath = dir.resolve("profile.json");
         JsonNode config = readJson(configPath);
-        String style = config.path("style").asString("");
-        String line = config.path("line").asString("");
-        String layout = config.path("layout").asString("");
-        if (!style.matches("[a-z0-9-]{1,80}") || !layout.matches("[A-Za-z0-9_-]{1,80}")) {
-            throw new HeronBusinessException(502, "trend_learn_template_invalid", "模板风格或布局声明不合法");
-        }
-        Path layoutFile = findLayout(layout);
         StringBuilder text = new StringBuilder();
-        text.append("## template.config.json\n").append(readText(configPath, MAX_TEXT_CHARS)).append("\n\n");
-        if (Files.isRegularFile(dir.resolve("template.json"))) {
-            text.append("## template.json\n").append(readText(dir.resolve("template.json"), MAX_TEXT_CHARS)).append("\n\n");
-        }
-        text.append("## styles.json\n").append(JSON.writeValueAsString(readStyles().get(style))).append("\n\n");
-        Path tokens = templateRoot.resolve("_shared/tokens").resolve(style + ".css");
+        text.append("## profile.json\n").append(readText(configPath, MAX_TEXT_CHARS)).append("\n\n");
+        text.append("## styles.json\n").append(JSON.writeValueAsString(readStyles().get(profileId))).append("\n\n");
+        Path tokens = dir.resolve("tokens.css");
         if (Files.isRegularFile(tokens)) {
-            text.append("## tokens/").append(style).append(".css\n").append(readText(tokens, MAX_TEXT_CHARS)).append("\n\n");
-        }
-        if (layoutFile != null) {
-            text.append("## layouts/").append(line).append('/').append(layout).append(".css\n")
-                .append(readText(layoutFile, MAX_TEXT_CHARS));
+            text.append("## tokens.css\n").append(readText(tokens, MAX_TEXT_CHARS)).append("\n\n");
         }
         return truncate(text.toString(), MAX_TEXT_CHARS * 2);
     }
@@ -158,22 +142,8 @@ public class TrendLearnTools {
         });
     }
 
-    private Path findLayout(String layout) {
-        Path root = templateRoot.resolve("layouts");
-        if (!Files.isDirectory(root)) {
-            return null;
-        }
-        try (Stream<Path> files = Files.walk(root, 4)) {
-            return files.filter(Files::isRegularFile)
-                .filter(path -> path.getFileName().toString().equals(layout + ".css"))
-                .findFirst().orElse(null);
-        } catch (IOException e) {
-            throw new HeronBusinessException(503, "trend_learn_layouts_unavailable", "模板布局目录无法读取", e);
-        }
-    }
-
     private Map<String, Object> readStyles() {
-        Path file = templateRoot.resolve("_shared/styles.json");
+        Path file = knowledgeRoot.resolve("styles/template-styles.json");
         if (!Files.isRegularFile(file)) {
             throw new HeronBusinessException(503, "trend_learn_styles_missing", "模板风格声明缺失");
         }

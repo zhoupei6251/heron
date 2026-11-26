@@ -66,7 +66,7 @@ public class TrendLearningAgent {
             Msg reply = agent.call(goal).block(maxDuration.plusSeconds(10));
             TrendTechniqueCard card = TrendTechniqueCard.parse(reply == null ? null : reply.getTextContent());
             requireEvidence(ledger.successfulTools());
-            validateTemplateFit(card, tools::hasTemplate);
+            validateTemplateFit(card, tools::hasProfile);
             return card;
         } catch (IllegalArgumentException e) {
             throw new HeronBusinessException(502, "trend_learn_card_invalid", "学习 Agent 未输出合法技法卡: " + e.getMessage(), e);
@@ -80,11 +80,11 @@ public class TrendLearningAgent {
         }
     }
 
-    static void validateTemplateFit(TrendTechniqueCard card, Predicate<String> templateExists) {
+    static void validateTemplateFit(TrendTechniqueCard card, Predicate<String> profileExists) {
         String fit = card.heronTemplateFit();
         if (fit.startsWith("无完全匹配")) {
             String[] parts = fit.split("[：:]", 3);
-            if (parts.length < 3 || parts[2].isBlank() || !templateExists.test(parts[1].trim())) {
+            if (parts.length < 3 || parts[2].isBlank() || !profileExists.test(parts[1].trim())) {
                 throw new IllegalArgumentException("无完全匹配时也必须给出真实的最接近模板 key");
             }
             return;
@@ -94,7 +94,7 @@ public class TrendLearningAgent {
             separator = fit.indexOf(':');
         }
         if (separator <= 0 || separator >= fit.length() - 1
-            || !templateExists.test(fit.substring(0, separator).trim())) {
+            || !profileExists.test(fit.substring(0, separator).trim())) {
             throw new IllegalArgumentException("heronTemplateFit 必须指向真实模板 key，或明确写无完全匹配");
         }
     }

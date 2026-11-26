@@ -113,41 +113,6 @@ class MetricInsightPreferenceTest {
         assertEquals(1d, preference.weightOf("good"));
     }
 
-    @Test
-    @DisplayName("带权抽样：固定种子下，表现好的那套被抽中的概率确实上升")
-    void weightedPickFavoursTheWinner() {
-        Map<String, Double> weights = new LinkedHashMap<>(Map.of("good", 1.43d, "bad", 0.57d));
-        List<String> candidates = List.of("good", "bad");
-        Random random = new Random(20261125L);
-        int good = 0;
-        for (int run = 0; run < 100; run++) {
-            String picked = NewsTemplatePicker.weightedPick(candidates, weights, random);
-            assertNotNull(picked, "100 次抽样都要落回候选里");
-            assertTrue(candidates.contains(picked));
-            if ("good".equals(picked)) {
-                good++;
-            }
-        }
-
-        assertTrue(good > 55, "表现好的那套要明显更常被选中，实际 " + good + " 次");
-    }
-
-    @Test
-    @DisplayName("没有权重信号时抽样退化成等概率，候选集合不变")
-    void neutralWeightsStayEqual() {
-        List<String> candidates = List.of("a", "b", "c");
-        Random random = new Random(7L);
-        Map<String, Integer> counts = new LinkedHashMap<>();
-        for (int run = 0; run < 300; run++) {
-            String picked = NewsTemplatePicker.weightedPick(candidates, Map.of(), random);
-            assertTrue(candidates.contains(picked), "只能从候选里抽");
-            counts.merge(picked, 1, Integer::sum);
-        }
-
-        assertEquals(3, counts.size(), "三套候选都应该被抽到过");
-        assertTrue(counts.values().stream().allMatch(count -> count > 60), counts.toString());
-    }
-
     private static NewsPerformanceInsightVo.Bucket bucket(String name, double medianPlays,
                                                           int samples, boolean eligible) {
         NewsPerformanceInsightVo.Bucket bucket = new NewsPerformanceInsightVo.Bucket();

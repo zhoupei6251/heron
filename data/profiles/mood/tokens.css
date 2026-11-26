@@ -9,6 +9,10 @@
   --mood-light: #ffd98c;
   --mood-light-soft: rgba(255, 217, 140, 0.55);
 
+  /* 画布兜底底色：三幕天空色由场景自己的容器变量（--mood-sky 等）接管，
+     这里的 --bg 只作为字幕烧录（ASS Outline/Back）与安全兜底的真源 */
+  --bg: #10131a;
+
   --fg: #f3f0e8;
   --muted: #8a94a6;
   --muted-2: #9fb0b6;

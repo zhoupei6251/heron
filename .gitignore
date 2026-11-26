@@ -61,9 +61,8 @@ application-ga.yml
 ######################################################################
 # Heron 产物与 Axure 素材
 # 产物目录只跟仓库根（data-root: ./data）；素材是商业软件产物，不进仓库
-# data/ 下只放行三类可复现资产：模板、共用字体与音效/BGM，换机器 clone 后无需另外下载
+# data/ 下只放行可复现资产：共用字体与音效/BGM，换机器 clone 后无需另外下载
 /data/*
-!/data/templates/
 !/data/fonts/
 !/data/audio/
 # 知识包是固定 commit 下的素材与结构化条目，引用要能重放，必须进仓库
@@ -77,8 +76,16 @@ application-ga.yml
 !/data/profiles/_shared/vendor/
 !/data/profiles/_shared/fonts/*
 !/data/profiles/_shared/vendor/*
-# 参考配方库（Apache-2.0 / MIT 收录，见 data/reference-cards/ATTRIBUTION.md），建工母本必须可重放
-!/data/reference-cards/
+# 每个 profile 目录整体进仓库（tokens.css / profile.json / 后续 caption.css、skeleton-rules.json）
+!/data/profiles/article/
+!/data/profiles/data-board/
+!/data/profiles/data-board-3d/
+!/data/profiles/data-investigation/
+!/data/profiles/mood/
+!/data/profiles/sprint/
+# 弹药库与知识底座：_gen/behaviors 已过闸动效手法 + reference-cards（Apache-2.0 / MIT，见其 ATTRIBUTION.md）
+# + styles.json 的叙事词汇与风格归属并入。参考配方库是建工母本，必须可重放
+!/data/creative-knowledge/
 # data/tools 只放行 node 依赖清单；node_modules 与第三方工具靠 npm ci / 单独安装还原
 !/data/tools/
 /data/tools/*
@@ -88,11 +95,6 @@ application-ga.yml
 # 抖音热点采集脚本是生产依赖：Java 侧 TrendCollectService 直接调它，漏了它自动采集就起不来
 !/data/tools/douyin-trend/
 !/data/tools/douyin-trend/trend.py
-# 模板生成器是模板的唯一真相，必须进仓库：漏了它，clone 下来只剩生成产物，
-# 改 template.config.json 也不会生效
-!/data/tools/build-templates.mjs
-# 模板里的 hyperframes 检查产物是生成的，不进仓库
-/data/templates/**/.hyperframes/
 *.rp
 *.rplib
 
@@ -136,6 +138,3 @@ docs/acceptance-*/
 
 # 会话内临时构建目录（javac 增量编译与测试运行器）
 .tmpbuild/
-
-# HyperFrames studio 的预览缩略图，本地缓存不入库
-data/templates/**/.thumbnails/

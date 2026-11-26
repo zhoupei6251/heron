@@ -65,7 +65,6 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private final PlatformTransactionManager transactionManager;
     private final ObjectProvider<Clock> clocks;
     private final IPublishAdapter publishAdapter;
-    private final NewsTemplatePicker templatePicker;
     private final HeronNewsProperties news;
     private final NewsPublishAttempts publishAttempts;
     private final QualityFrameService frameExtractor;
@@ -275,23 +274,16 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         work.setNextVersion(1);
         work.setAutoPublish(auto ? "0" : "1");
         Map<String, Object> locked = domain.lockedAssetsIfConfigured();
-        // 总编辑定的线优先：给了死模板就不再看配置里的默认模板
+        // 总编辑定的风格优先：给了死风格就不再看配置里的默认风格
         String pinned = forcedTemplate != null && !forcedTemplate.isBlank()
             ? forcedTemplate : news.getAutoTemplate();
+        // 导演架构 S1b：模板选择器已退役，认领只锁定风格 id（EditorialSelection.LineStyle 词汇）。
         String picked;
         if (auto && pinned != null && !pinned.isBlank()) {
-            if (!domain.availableTemplates().contains(pinned)) {
-                throw new HeronBusinessException(503, "auto_template_missing",
-                    "自动模板不存在或缺少 LOCK.json：" + pinned);
-            }
             picked = pinned;
         } else {
-            // 人工认领也按线路挑模板：候选都是新闻条目，走解说线。
-            // 之前用不传线路的两参版本，它会从全量模板里挑——一条有正文的文章候选
-            // 可能选中 news-data-*，而脚本仍按解说线写 text 场景，
-            // 契约校验当场炸（实测 error_code = scene_type_unsupported）。
-            picked = templatePicker.pick(candidate.getTitle(), candidate.getSummary(),
-                EditorialDecisionService.NEWS_EXPLAINER);
+            // 人工认领固定走解说线的 article 风格；数据线由线内编辑显式给出。
+            picked = EditorialSelection.LineStyle.EXPLAINER;
         }
         work.setTemplateKey(picked != null ? picked : (String) locked.getOrDefault("templateKey", "default"));
         work.setVoiceKey((String) locked.getOrDefault("voiceKey", "default"));

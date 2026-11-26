@@ -1,0 +1,75 @@
+/* data-board-3d：news-data-3d-9x16（三维地球变体）的令牌与 data-board 同源——
+   同一套 Dynamic Data Explainer 皮，三维差异在 visualMode 不在令牌。 */
+/* 风格 C · Dynamic Data Explainer：深底、高对比、等宽数字、网格装饰。
+   定位：数据看板解读、指标变化、排行与趋势。信息密度最高的一套。
+   注意：--accent 不在这里定义——它由 HyperFrames 从 composition 的
+   color 类型变量自动注入为同名 CSS 自定义属性，手写会与之冲突。 */
+:root {
+  --bg: #0c1417;
+  --fg: #f3f0e8;
+  --muted: #7f949b;
+  --muted-2: #9fb0b6;
+  --body: #b7c4c9;
+  --legend: #dde6e8;
+  --down: #e06c5a;
+
+  --rule-faint: rgba(243, 240, 232, 0.12);
+  --rule-soft: rgba(243, 240, 232, 0.14);
+  --rule-strong: rgba(243, 240, 232, 0.28);
+  --panel: rgba(243, 240, 232, 0.06);
+  --glow-color: rgba(24, 183, 201, 0.20);
+  --accent-glow: rgba(24, 183, 201, 0.35);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 92px;
+  --fs-title-lg: 76px;
+  --fs-title-sm: 68px;
+  --fs-data: 64px;
+  --fs-data-sm: 34px;
+  --fs-lead: 54px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 28px;
+
+  --pad-frame: 84px;
+  --rule-width: 3px;
+  --radius: 8px;
+  --track-kicker: 0.16em;
+
+  /* 环境层：网格给结构感，光晕给焦点，颗粒给质感。透明度不得低于 0.1，否则等于没有。 */
+  --grid-size: 72px;
+  --grid-opacity: 0.55;
+  --glow-x: 78%;
+  --glow-y: 18%;
+  --glow-spread: 62%;
+  --glow-opacity: 0.9;
+  --grain-opacity: 0.16;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.32s;
+  --dur-ambient: 7s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+
+  /* 镜头与转场：解释型信息密度最高，1.05 保住图表与极值标注的边距。
+     图表原先自带一个 4% 推近，现在由整帧统一推，那句已从 chart.js 删掉。
+     位移给 130px：图表占主视区，换屏时整屏一起走才不会被读成图表在跳。 */
+  --cam-push: 1.05;
+  --cam-origin: 50% 50%;
+  --slide-shift: 130px;
+
+  /* 图表语义（C · 解释）：图表是主角，占主视区。
+     面积保留 0.16（解释要让人看见「一段区间」的体量），折线 6px 居中。
+     极值双标注各用自己的语义色：最高随强调色，最低用 down 色系。
+     焦点压暗最轻（0.62）：解释要把整条曲线都留在可读范围，观众读的是关系不是某一点。 */
+  --chart-line-width: 6px;
+  --chart-area-alpha: 0.16;
+  --chart-max-annot: #18b7c9;
+  --chart-min-annot: #e06c5a;
+  --chart-min-size: 24px;
+  --focus-dim: 0.62;
+  --focus-ring-width: 6px;
+  --focus-ring-dash: none;
+}
