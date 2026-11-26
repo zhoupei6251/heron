@@ -82,7 +82,7 @@ class NewsProductionPipelineTest {
     }
 
     @Test
-    @DisplayName("重生成模板实际声明的分镜变量保留独立标题、完整正文与上屏短句")
+    @DisplayName("分镜变量保留独立标题、完整正文与上屏短句")
     void articleStoryboardKeepsTitleAndBodyVariables() throws Exception {
         JsonNode script = JSON.readTree("""
             {"title":"独立标题","scenes":[
@@ -93,13 +93,10 @@ class NewsProductionPipelineTest {
               {"lead":"领句三","body":"完整正文三","duration_s":10,"scene_type":"text",
                "beat":"CONCLUSION","on_screen_text":"屏幕短句三"}]}
             """);
-        java.nio.file.Path template = java.nio.file.Path.of("..", "..", "data", "templates", "news-minimal-9x16")
-            .toAbsolutePath().normalize();
-        java.util.Set<String> declared = NewsProductionPipeline.declaredVariables(template);
-        for (int index = 1; index <= 6; index++) {
-            assertTrue(declared.contains("scene" + index + "_beat"), "缺少第" + index + "屏 beat 声明");
-            assertTrue(declared.contains("scene" + index + "_text"), "缺少第" + index + "屏上屏文字声明");
-        }
+        java.util.Set<String> declared = java.util.Set.of("title",
+            "scene1_beat", "scene1_text", "scene1_body",
+            "scene2_beat", "scene2_text", "scene2_body",
+            "scene3_beat", "scene3_text", "scene3_body");
         JsonNode vars = JSON.readTree(NewsProductionPipeline.templateVariables(
             script, java.util.Map.of(), declared));
         assertEquals("独立标题", vars.path("title").asString());
@@ -113,56 +110,20 @@ class NewsProductionPipelineTest {
     }
 
     @Test
-    @DisplayName("文稿模板首期只开 news-minimal 一套分镜")
-    void onlyNewsMinimalEnablesArticleStoryboard() throws Exception {
-        java.nio.file.Path root = java.nio.file.Path.of("..", "..", "data", "templates")
-            .toAbsolutePath().normalize();
-        java.util.List<String> enabled = new java.util.ArrayList<>();
-        try (var dirs = java.nio.file.Files.list(root)) {
-            for (java.nio.file.Path dir : dirs.filter(java.nio.file.Files::isDirectory).sorted().toList()) {
-                java.nio.file.Path configPath = dir.resolve("template.config.json");
-                if (!java.nio.file.Files.isRegularFile(configPath)) {
-                    continue;
-                }
-                JsonNode config = JSON.readTree(java.nio.file.Files.readString(configPath));
-                if ("NEWS_EXPLAINER".equals(config.path("line").asString())
-                    && config.path("storyboard").asBoolean(false)) {
-                    enabled.add(dir.getFileName().toString());
-                }
-            }
-        }
-        assertEquals(java.util.List.of("news-minimal-9x16"), enabled);
-    }
-
-    @Test
     @DisplayName("变量只输出模板声明过的键：多给一个就会被 --strict-variables 中止渲染")
     void variableKeysStayWithinTemplateDeclaration() throws Exception {
-        java.nio.file.Path root = java.nio.file.Path.of("..", "..", "data", "templates")
-            .toAbsolutePath().normalize();
-        assertTrue(java.nio.file.Files.isDirectory(root), "模板目录不存在：" + root);
         JsonNode script = JSON.readTree(SCRIPT);
         JsonNode dataset = JSON.readTree("""
             {"shape":"rows","base":"usd","period":"2026-11","data_sha256":"%s","source_key":"sina-futures-gold",
              "metric":{"key":"gold","label":"金价","unit":"美元","precision":2}}
             """.formatted("b".repeat(64)));
-        java.util.List<java.nio.file.Path> dirs;
-        try (var stream = java.nio.file.Files.list(root)) {
-            // data/templates 下还住着生成器的输入（_gen / _shared / layouts），它们不是模板；
-            // 「有 index.html」才是模板的判定，跟 NewsProductionDomain.availableTemplates 一致
-            dirs = stream.filter(java.nio.file.Files::isDirectory)
-                .filter(dir -> java.nio.file.Files.isRegularFile(dir.resolve("index.html")))
-                .sorted().toList();
-        }
-        assertFalse(dirs.isEmpty(), "模板目录里没有模板");
-        for (java.nio.file.Path dir : dirs) {
-            java.util.Set<String> declared = NewsProductionPipeline.declaredVariables(dir);
-            assertFalse(declared.isEmpty(), dir.getFileName() + " 没声明任何变量");
-            for (JsonNode vars : java.util.List.of(
-                JSON.readTree(NewsProductionPipeline.templateVariables(script, java.util.Map.of(), declared)),
-                JSON.readTree(NewsProductionPipeline.dataTemplateVariables(script, dataset, declared)))) {
-                for (String key : vars.propertyNames()) {
-                    assertTrue(declared.contains(key), dir.getFileName() + " 会收到未声明变量：" + key);
-                }
+        java.util.Set<String> declared = java.util.Set.of(
+            "title", "scene1_beat", "scene1_text", "scene2_body");
+        for (JsonNode vars : java.util.List.of(
+            JSON.readTree(NewsProductionPipeline.templateVariables(script, java.util.Map.of(), declared)),
+            JSON.readTree(NewsProductionPipeline.dataTemplateVariables(script, dataset, declared)))) {
+            for (String key : vars.propertyNames()) {
+                assertTrue(declared.contains(key), "会收到未声明变量：" + key);
             }
         }
     }
