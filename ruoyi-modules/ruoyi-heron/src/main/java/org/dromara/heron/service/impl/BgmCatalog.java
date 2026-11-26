@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -173,37 +174,18 @@ final class BgmCatalog {
     /**
      * 选曲需要的三件事：编辑线、故事计划首屏的情绪与节奏。
      *
-     * <p>编辑线取自模板的 {@code supportedLines}，情绪节奏取自脚本里已冻结的故事计划。
-     * 两处都是生产已经定下的值，这里只读、不重新推导。
+     * <p>编辑线由管线传入（冻结快照的 line，不再从模板反查），情绪节奏取自脚本里
+     * 已冻结的故事计划。两处都是生产已经定下的值，这里只读、不重新推导。
      */
     record Story(String line, String emotion, String rhythm) { }
 
-    static Story storyOf(JsonNode script, Path templateDir) {
-        String line = templateLine(templateDir);
+    static Story storyOf(JsonNode script, String line) {
         JsonNode scenes = script == null ? null : script.path("story_plan").path("scenes");
         if (scenes == null || !scenes.isArray() || scenes.isEmpty()) {
             return new Story(line, null, null);
         }
         return new Story(line, scenes.get(0).path("emotion").asString(""),
             scenes.get(0).path("rhythm").asString(""));
-    }
-
-    /**
-     * 模板声明的编辑线。读不到就返回空串：模板没声明线时不做线过滤，
-     * 由情绪节奏与权重决定，而不是直接报错停线。
-     */
-    static String templateLine(Path templateDir) {
-        Path meta = templateDir.resolve("template.json");
-        if (!Files.isRegularFile(meta)) {
-            return "";
-        }
-        try {
-            JsonNode root = JSON.readTree(Files.readString(meta, StandardCharsets.UTF_8));
-            JsonNode lines = root.path("supportedLines");
-            return lines.isArray() && !lines.isEmpty() ? lines.get(0).asString("") : "";
-        } catch (IOException | RuntimeException e) {
-            return "";
-        }
     }
 
     private static Set<String> strings(JsonNode node) {
@@ -221,20 +203,13 @@ final class BgmCatalog {
     }
 
     /**
-     * 曲库目录：随模板根走，与配乐过去的位置一致。
+     * 曲库目录：data/audio/bgm（模板拆除后不再随模板根走）。
      *
      * <p>找不到就返回 {@code null}，由调用方退化成无配乐——目录缺失是部署侧的配置问题，
      * 不该让整条新闻线抛异常停摆，但要在闸报告里留下原因。
      */
-    static Path directory(Path templateRoot) {
-        if (templateRoot != null) {
-            Path parent = templateRoot.toAbsolutePath().normalize().getParent();
-            Path audio = parent == null ? null : parent.resolve("audio").resolve("bgm");
-            if (audio != null && Files.isDirectory(audio)) {
-                return audio;
-            }
-        }
-        Path fallback = Path.of("data", "audio", "bgm").toAbsolutePath().normalize();
-        return Files.isDirectory(fallback) ? fallback : null;
+    static Path directory() {
+        Path dir = Path.of("data", "audio", "bgm").toAbsolutePath().normalize();
+        return Files.isDirectory(dir) ? dir : null;
     }
 }

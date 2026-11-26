@@ -448,6 +448,13 @@ class NewsProductionPipelineSceneReworkTest {
                 :root { --font-body: "Noto Sans SC", sans-serif; --fs-body: 38px;
                         --fg: #ffffff; --bg: #000000; --pad-frame: 84px; }
                 """);
+            Path profile = Files.createDirectories(root.resolve("profiles/article"));
+            Files.writeString(profile.resolve("profile.json"),
+                "{\"profileId\":\"article\",\"canvas\":{\"width\":1080,\"height\":1920}}");
+            Files.writeString(profile.resolve("tokens.css"), """
+                :root { --font-body: "Noto Sans SC", sans-serif; --fs-body: 38px;
+                        --fg: #ffffff; --bg: #000000; --pad-frame: 84px; }
+                """);
             Files.writeString(template.resolve("index.motion.json"), "{\"assertions\":[]}");
             Files.writeString(template.resolve("index.html"), """
                 <html data-composition-variables='[
@@ -492,6 +499,7 @@ class NewsProductionPipelineSceneReworkTest {
             HeronProductionProperties properties = new HeronProductionProperties();
             properties.setDataRoot(dataRoot);
             properties.setNewsTemplate(templateRoot);
+            properties.setNewsProfile(root.resolve("profiles"));
             properties.setHyperframes(cli.toString());
             properties.setGuardEnabled(false);
             artifacts = spy(new ProductionArtifactService(properties, null));
@@ -535,7 +543,7 @@ class NewsProductionPipelineSceneReworkTest {
             previousManifestSha256 = DigestUtil.sha256Hex(JSON.writeValueAsString(previousArtifacts));
 
             String input = JSON.writeValueAsString(Map.of("kind", "article", "assets", Map.of(
-                "templateKey", "news-9x16", "voiceKey", "zh-CN-XiaoxiaoNeural",
+                "templateKey", "news-9x16", "voiceKey", "zh-CN-XiaoxiaoNeural", "styleKey", "article",
                 "assetManifestSha256", DigestUtil.sha256Hex(template.resolve("assets-manifest.json").toFile()),
                 "fontSha256", DigestUtil.sha256Hex(template.resolve("fonts/NotoSansSC-Regular.otf").toFile()))));
             run = new ProductionRunVo(99L, ProductionBizType.news_explainer, 7L, 4L, 1,

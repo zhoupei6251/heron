@@ -44,7 +44,6 @@ public class EditorialLineEditor {
         tools.jackson.databind.json.JsonMapper.builder().build();
 
     private final NewsCandidateScreener screener;
-    private final NewsTemplatePicker templatePicker;
     private final DatasetRouter datasetRouter;
     private final DatasetStoryPlanner storyPlanner;
 
@@ -138,13 +137,9 @@ public class EditorialLineEditor {
                 .filter(item -> picked.equals(item.getId())).findFirst().orElse(usable.get(0));
         }
         HeronNewsCandidate chosen = candidate;
-        String template = templatePicker.pick(chosen.getTitle(), chosen.getSummary(),
-            EditorialDecisionService.KNOWLEDGE_EXPLAINER);
-        if (template == null) {
-            return Optional.empty();
-        }
+        // 导演架构：视觉决策后移到 VisualTreatment/Storyboard，线内编辑只留风格 id 过渡值
         return Optional.of(new EditorialSelection(EditorialDecisionService.KNOWLEDGE_EXPLAINER,
-            chosen.getId(), chosen.getSourceKey(), false, template, intent, evidenceIds(chosen)));
+            chosen.getId(), chosen.getSourceKey(), false, EditorialSelection.LineStyle.KNOWLEDGE, intent, evidenceIds(chosen)));
     }
 
     /**
@@ -168,14 +163,9 @@ public class EditorialLineEditor {
                 .filter(item -> picked.equals(item.getId())).findFirst().orElse(withBody.get(0));
         }
         HeronNewsCandidate chosen = candidate;
-        String template = templatePicker.pick(chosen.getTitle(), chosen.getSummary(),
-            EditorialDecisionService.NEWS_EXPLAINER);
-        if (template == null) {
-            // 没有解说线模板就不该硬走这条线；交给调用方回退
-            return Optional.empty();
-        }
+        // 导演架构：视觉决策后移到 VisualTreatment/Storyboard，线内编辑只留风格 id 过渡值
         return Optional.of(new EditorialSelection(EditorialDecisionService.NEWS_EXPLAINER,
-            chosen.getId(), null, false, template, intent, evidenceIds(chosen)));
+            chosen.getId(), null, false, EditorialSelection.LineStyle.EXPLAINER, intent, evidenceIds(chosen)));
     }
 
     /**
@@ -269,18 +259,11 @@ public class EditorialLineEditor {
      */
     private Optional<EditorialSelection> trendSelection(String line, List<HeronDataSource> datasets,
                                                         HeronDataOpportunity chosen) {
-        HeronDataSource source = sourceOf(datasets, chosen.getSourceKey());
-        String sourceName = source == null ? null : source.getName();
-        String name = sourceName == null ? chosen.getHeadline() : sourceName;
-        String template = templatePicker.pick(name, "趋势洞察", line);
-        if (template == null) {
-            return Optional.empty();
-        }
         DatasetStoryAngle.Angle angle = DatasetStoryAngle.pick(chosen.getShape(),
             signalsOf(chosen.getSignals()), chosen.getPeriodStart(), chosen.getPeriodEnd());
         // digest=false：这是被机会明确选中的源，不是「没题材时的速览」
         return Optional.of(new EditorialSelection(line,
-            null, chosen.getSourceKey(), false, template, text(angle, true), List.of(),
+            null, chosen.getSourceKey(), false, EditorialSelection.LineStyle.TREND, text(angle, true), List.of(),
             chosen.getId(), opportunityOf(chosen)));
     }
 
@@ -303,18 +286,12 @@ public class EditorialLineEditor {
             rejects.add(candidate.getSourceKey() + ":" + result.rejectCode());
             return Optional.empty();
         }
-        // 先有故事，才知道该用哪套画面：叙事决定视觉风格，风格决定模板。
-        // 顺序反了就是先挑皮再编故事——同一套画面被塞进不相干的故事里。
-        // 视觉模式也由故事定：geo 数据只能进 3D 模板，2D 模板画不出经纬度。
-        String name = source.getName() == null ? candidate.getHeadline() : source.getName();
-        String template = templatePicker.pick(name, "数据看板", line, result.story().narrative(),
-            VisualMode.of(result.story()));
-        if (template == null) {
-            rejects.add(candidate.getSourceKey() + ":story_template_missing");
-            return Optional.empty();
-        }
+        // 导演架构：视觉决策后移到 VisualTreatment/Storyboard（Profile 锚定），线内编辑不再选模板。
+        // templateId 过渡为风格 id；geo 故事保留 3D 声明——2D 画不出经纬度，这个事实与渲染方式无关。
+        String styleId = VisualMode.of(result.story()) == VisualMode.THREE_D
+            ? EditorialSelection.LineStyle.DATA_BOARD_3D : EditorialSelection.LineStyle.DATA_BOARD;
         return Optional.of(new EditorialSelection(line,
-            null, candidate.getSourceKey(), false, template, storyAngle(result.story(), candidate),
+            null, candidate.getSourceKey(), false, styleId, storyAngle(result.story(), candidate),
             List.of(), candidate.getId(), opportunityOf(candidate), result.story()));
     }
 
@@ -340,7 +317,6 @@ public class EditorialLineEditor {
             rejects.add(route.sourceKey() + ":story_source_missing");
             return DatasetPlan.empty(rejects);
         }
-        String name = source.getName() == null ? route.sourceKey() : source.getName();
         DatasetStoryPlanner.Result result = storyPlanner.plan(decisionRun(), source,
             DatasetStoryPlanner.DEFAULT_POINTS, "digest", null, null, null);
         if (!result.accepted()) {
@@ -348,14 +324,11 @@ public class EditorialLineEditor {
             return DatasetPlan.empty(rejects);
         }
         EditorialStory story = result.story();
-        // 速览也得按故事选画面：叙事定了风格，风格才是模板；geo 故事同样只能进 3D
-        String template = templatePicker.pick(name, "数据看板", line, story.narrative(), VisualMode.of(story));
-        if (template == null) {
-            rejects.add(route.sourceKey() + ":story_template_missing");
-            return DatasetPlan.empty(rejects);
-        }
+        // 导演架构：速览同样不选模板，风格 id 过渡值由视觉模式决定（geo → 3D）
+        String styleId = VisualMode.of(story) == VisualMode.THREE_D
+            ? EditorialSelection.LineStyle.DATA_BOARD_3D : EditorialSelection.LineStyle.DATA_BOARD;
         return new DatasetPlan(Optional.of(new EditorialSelection(line,
-            null, route.sourceKey(), route.digest(), template, storyAngle(story), List.of(),
+            null, route.sourceKey(), route.digest(), styleId, storyAngle(story), List.of(),
             null, null, story).withSourceReason(route.reason())), rejects);
     }
 
@@ -373,14 +346,8 @@ public class EditorialLineEditor {
         if (route == null) {
             return Optional.empty();
         }
-        HeronDataSource source = sourceOf(datasets, route.sourceKey());
-        String name = source == null ? route.sourceKey() : source.getName();
-        String template = templatePicker.pick(name, "趋势洞察", line);
-        if (template == null) {
-            return Optional.empty();
-        }
         return Optional.of(new EditorialSelection(line,
-            null, route.sourceKey(), route.digest(), template, text(DatasetStoryAngle.DIGEST_ANGLE, true),
+            null, route.sourceKey(), route.digest(), EditorialSelection.LineStyle.TREND, text(DatasetStoryAngle.DIGEST_ANGLE, true),
             List.of()).withSourceReason(route.reason()));
     }
 

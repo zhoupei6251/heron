@@ -147,15 +147,14 @@ class NewsProductionPipelineSoundIntegrationTest {
 
     private static SubtitleBurn.Prepared subtitles(Path root, Path work) throws Exception {
         Files.createDirectories(work.resolve("composition"));
-        Path template = Files.createDirectories(root.resolve("templates/news"));
-        Files.writeString(template.resolve("template.config.json"),
-            "{\"key\":\"news\",\"style\":\"article\",\"layout\":\"news\",\"width\":1080,\"height\":1920}");
-        Path tokens = Files.createDirectories(root.resolve("templates/_shared/tokens"));
-        Files.writeString(tokens.resolve("article.css"), """
+        Path profile = Files.createDirectories(root.resolve("profiles/article"));
+        Files.writeString(profile.resolve("profile.json"),
+            "{\"profileId\":\"article\",\"canvas\":{\"width\":1080,\"height\":1920}}");
+        Files.writeString(profile.resolve("tokens.css"), """
             :root { --font-body: "Noto Sans SC", sans-serif; --fs-body: 38px;
                     --fg: #ffffff; --bg: #000000; --pad-frame: 84px; }
             """);
-        return SubtitleBurn.prepare(work, template, """
+        return SubtitleBurn.prepare(work, profile, """
             WEBVTT
 
             00:00:00.100 --> 00:00:02.000
@@ -229,6 +228,7 @@ class NewsProductionPipelineSoundIntegrationTest {
         HeronProductionProperties properties = new HeronProductionProperties();
         properties.setDataRoot(root.resolve("data"));
         properties.setNewsTemplate(root.resolve("templates"));
+        properties.setNewsProfile(root.resolve("profiles"));
         properties.setGuardEnabled(false);
         return properties;
     }

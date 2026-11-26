@@ -29,7 +29,7 @@ import java.util.regex.Pattern;
 public class AgentscopeResearchAgent implements IResearchAgent {
 
     private static final Duration GRACE = Duration.ofMinutes(1);
-    private static final String AGENT_VERSION = "agentscope-2.1.0-BETA1";
+    private static final String AGENT_VERSION = "agentscope-2.1.0-SNAPSHOT";
     /** 核验的账本尝试号偏移：与研究员的 attempt 分开，谁查了什么一眼可辨。 */
     private static final int VERIFY_ATTEMPT_OFFSET = 1000;
     /** 机会概要单字段上限：信号是整段 JSON，原样塞进去会挤掉判断本身的注意力。 */

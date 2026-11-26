@@ -94,7 +94,7 @@
 
 ## 施工顺序（每步可独立提交）
 
-1. **S0 · 资产抢救与去耦合先行**：提取 `NotoSansSC-Regular.otf` / `gsap.min.js` 到 `data/profiles/_shared/`；完成 `EditorialLineEditor`、`NewsCover`、`SubtitleBurn`、`BgmCatalog`、`SoundCue` 的去模板依赖改造（全部保留在 B 类）。
+1. **S0 · 资产抢救与去耦合先行**：提取 `NotoSansSC-Regular.otf` / `gsap.min.js` 到 `data/profiles/_shared/`；完成 `EditorialLineEditor`、`NewsCover`、`SubtitleBurn`、`BgmCatalog` 的去模板依赖改造（全部保留在 B 类）。**[已完成 2026-11-26]**（读源码后修正：`SoundCue` 无模板文件系统耦合，其 script schema 耦合随 S5 管线重构消亡，本步不动；`NewsTemplatePicker`/`NewsWorkServiceImpl` 的人工认领路径留待 S1b 一并处理；`EditorialSelection.templateId` 过渡为风格 id——`EditorialSelection.LineStyle` 五值，与 tokens CSS 文件名同源；冻结快照 assets 新增 `styleKey`，`HeronProductionProperties` 新增 `newsProfile` 根）
 2. **S1a · A2 → A1**：先删构建链（`build-templates.mjs` 及 4 个模板动效测试，**保留 `model-stub.mjs`**），再删 `data/templates/` 下 9 套模板及旧 `layouts`/`_tests`。
 3. **S1b · A3 + `heron-ui`**：删除 Java 模板耦合类与旧 `StoryboardContract`，同步清理 `heron-ui` 模板管理页/API，同时落位新六契约骨架以保持编译绿灯。
 4. **S1c · A4**：新增 Flyway 迁移（`drop` 模板表 + `news_work` 字段调整）。

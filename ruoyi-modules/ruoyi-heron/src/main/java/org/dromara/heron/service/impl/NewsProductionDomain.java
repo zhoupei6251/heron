@@ -234,6 +234,12 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
             throw conflict("news_line_conflict", "业务线与冻结输入不一致：" + command.bizType());
         }
         snapshot.put("kind", kind);
+        // 风格 id 随冻结输入落盘（导演架构 S0b）：字幕/封面令牌的真源从模板迁到 Profile 后，
+        // 管线按它定位 data/profiles/<styleKey>/。selection.templateId 现在过渡为风格 id。
+        String styleKey = selection != null ? selection.templateId() : null;
+        if (styleKey != null && styleKey.matches("[a-zA-Z0-9_-]{1,80}")) {
+            assets.put("styleKey", styleKey);
+        }
         if (override != null) {
             // 人工编辑策划结论：沿用上一版冻结的节点，只换 story 一个键。
             // 逐字沿用是有意的——重建节点要还原取数口径，还原错一个字段就是按另一条口径取数。

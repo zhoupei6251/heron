@@ -50,11 +50,11 @@ final class SubtitleBurn {
 
     record PixelDiff(long inside, long outside) { }
 
-    static Prepared prepare(Path work, Path templateDir, String vtt) {
-        return write(work, templateDir, cues(vtt), "subs.ass");
+    static Prepared prepare(Path work, Path profileDir, String vtt) {
+        return write(work, profileDir, cues(vtt), "subs.ass");
     }
 
-    static Prepared prepareJson(Path work, Path templateDir, JsonNode subtitles, NewsNarrationTiming.Span window) {
+    static Prepared prepareJson(Path work, Path profileDir, JsonNode subtitles, NewsNarrationTiming.Span window) {
         if (subtitles == null || !subtitles.isArray()) {
             throw new HeronBusinessException(409, "news_subtitles_burn_failed", "字幕 cue 清单不是数组");
         }
@@ -74,14 +74,14 @@ final class SubtitleBurn {
                 cues.add(new Cue(start, end, text));
             }
         }
-        return write(work, templateDir, cues, window == null ? "subs.ass" : "scene.ass");
+        return write(work, profileDir, cues, window == null ? "subs.ass" : "scene.ass");
     }
 
-    private static Prepared write(Path work, Path templateDir, List<Cue> cues, String fileName) {
+    private static Prepared write(Path work, Path profileDir, List<Cue> cues, String fileName) {
         if (cues.isEmpty()) {
             throw new HeronBusinessException(409, "news_subtitles_burn_failed", "subs.vtt 没有可烧录的 cue");
         }
-        Style style = styleOf(templateDir);
+        Style style = styleOf(profileDir);
         Path file = work.resolve("composition").resolve(fileName);
         try {
             Files.writeString(file, ass(cues, style));
@@ -190,17 +190,15 @@ final class SubtitleBurn {
         return Math.round(Double.parseDouble(matcher.group(1)) * 1000);
     }
 
-    private static Style styleOf(Path templateDir) {
+    private static Style styleOf(Path profileDir) {
         try {
-            JsonNode config = JSON.readTree(Files.readString(templateDir.resolve("template.config.json")));
-            int width = config.path("width").asInt(0);
-            int height = config.path("height").asInt(0);
-            String style = config.path("style").asString("");
-            if (width <= 0 || height <= 0 || width > 8192 || height > 8192 || !style.matches("[a-z0-9-]+")) {
-                throw new HeronBusinessException(409, "news_subtitles_burn_failed", "模板画布或字幕令牌样式声明不合法");
+            JsonNode config = JSON.readTree(Files.readString(profileDir.resolve("profile.json")));
+            int width = config.path("canvas").path("width").asInt(0);
+            int height = config.path("canvas").path("height").asInt(0);
+            if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
+                throw new HeronBusinessException(409, "news_subtitles_burn_failed", "Profile 画布声明不合法");
             }
-            Map<String, String> tokens = tokens(Files.readString(templateDir.getParent().resolve("_shared")
-                .resolve("tokens").resolve(style + ".css")));
+            Map<String, String> tokens = tokens(Files.readString(profileDir.resolve("tokens.css")));
             int tokenSize = px(tokens, "--fs-body");
             int referenceWidth = width >= height ? 1920 : 1080;
             int fontSize = Math.max(1, Math.round(tokenSize * width / (float) referenceWidth));
@@ -213,7 +211,7 @@ final class SubtitleBurn {
             if (e instanceof HeronBusinessException business) {
                 throw business;
             }
-            throw new HeronBusinessException(409, "news_subtitles_burn_failed", "模板字幕令牌不可读", e);
+            throw new HeronBusinessException(409, "news_subtitles_burn_failed", "Profile 字幕令牌不可读", e);
         }
     }
 

@@ -35,6 +35,24 @@ public record EditorialSelection(
     public static final String KNOWLEDGE_EXPLAINER = "KNOWLEDGE_EXPLAINER";
 
     /**
+     * 线内编辑写入 templateId 的风格 id 过渡值（导演架构 S0b）。
+     *
+     * <p>选模板已废除：视觉决策后移到 VisualTreatment/Storyboard，由 VisualDesignProfile 锚定。
+     * templateId 字段暂存风格 id（与 data/templates/_shared/tokens 的文件名同源），
+     * S2 ProfileRegistry 落地后本字段退役或改挂 profileId。
+     */
+    public static final class LineStyle {
+        public static final String EXPLAINER = "article";
+        public static final String DATA_BOARD = "data-board";
+        /** geo 故事的 3D 声明：2D 画不出经纬度，这条硬事实与渲染方式无关。 */
+        public static final String DATA_BOARD_3D = "data-board-3d";
+        public static final String TREND = "data-investigation";
+        public static final String KNOWLEDGE = "article";
+
+        private LineStyle() { }
+    }
+
+    /**
      * 选题上下文：机会自己的头线与信号，以及当时的取数口径。
      *
      * <p>认领时一次定完，冻结后生产只读这一份：机会表会在下一次分析时被更新，

@@ -30,11 +30,10 @@ class NewsCoverTest {
     @Test
     @DisplayName("在首屏中点正负六百毫秒内选相邻变化最大的一帧")
     void selectsMostChangedFrameInsideFirstScene(@TempDir Path root) throws Exception {
-        Path template = template(root);
         Fixture fixture = new Fixture(root, false);
 
         NewsCover.Result result = NewsCover.create(fixture.processes, fixture.run, fixture.work,
-            fixture.work.resolve("final.mp4"), template, new NewsNarrationTiming.Span("scene_001", 0, 3000, false));
+            fixture.work.resolve("final.mp4"), 160, 284, new NewsNarrationTiming.Span("scene_001", 0, 3000, false));
 
         assertEquals(1500L, result.gate().measured().get("atMs"));
         assertEquals(0L, result.gate().measured().get("startMs"));
@@ -54,12 +53,11 @@ class NewsCoverTest {
     @Test
     @DisplayName("方图是纯色时也不能通过交付闸")
     void rejectsSolidThumb(@TempDir Path root) throws Exception {
-        Path template = template(root);
         Fixture fixture = new Fixture(root, false, true);
 
         HeronBusinessException error = assertThrows(HeronBusinessException.class,
             () -> NewsCover.create(fixture.processes, fixture.run, fixture.work, fixture.work.resolve("final.mp4"),
-                template, new NewsNarrationTiming.Span("scene_001", 0, 3000, false)));
+                160, 284, new NewsNarrationTiming.Span("scene_001", 0, 3000, false)));
 
         assertEquals("news_cover_invalid", error.getCode());
     }
@@ -67,23 +65,14 @@ class NewsCoverTest {
     @Test
     @DisplayName("纯色封面不能通过交付闸")
     void rejectsSolidCover(@TempDir Path root) throws Exception {
-        Path template = template(root);
         Fixture fixture = new Fixture(root, true);
 
         HeronBusinessException error = assertThrows(HeronBusinessException.class,
             () -> NewsCover.create(fixture.processes, fixture.run, fixture.work, fixture.work.resolve("final.mp4"),
-                template, new NewsNarrationTiming.Span("scene_001", 0, 3000, false)));
+                160, 284, new NewsNarrationTiming.Span("scene_001", 0, 3000, false)));
 
         assertEquals("news_cover_invalid", error.getCode());
         assertTrue(error.getMessage().contains("纯色"));
-    }
-
-    private static Path template(Path root) throws Exception {
-        Path template = Files.createDirectories(root.resolve("templates/news"));
-        Files.writeString(template.resolve("template.config.json"), """
-            {"key":"news","width":160,"height":284}
-            """);
-        return template;
     }
 
     private static final class Fixture {

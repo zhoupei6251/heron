@@ -38,12 +38,12 @@ class SubtitleBurnTest {
     @Test
     @DisplayName("竖版字幕使用模板字号，并停在下三分之一之上")
     void burnsPortraitSubtitlesAboveLowerThird(@TempDir Path root) throws Exception {
-        Path template = template(root, 1080, 1920, 38);
+        Path profile = profile(root, 1080, 1920, 38);
         Path work = Files.createDirectories(root.resolve("work"));
         Files.createDirectories(work.resolve("composition"));
         Files.writeString(work.resolve("composition/subs.vtt"), VTT);
 
-        SubtitleBurn.Prepared prepared = SubtitleBurn.prepare(work, template, VTT);
+        SubtitleBurn.Prepared prepared = SubtitleBurn.prepare(work, profile, VTT);
         String ass = Files.readString(prepared.file());
 
         assertEquals(1080, prepared.style().width());
@@ -60,12 +60,12 @@ class SubtitleBurnTest {
     @Test
     @DisplayName("横版按 1920 参考宽读取横版令牌字号")
     void burnsLandscapeSubtitlesWithLandscapeTokens(@TempDir Path root) throws Exception {
-        Path template = template(root, 1920, 1080, 48);
+        Path profile = profile(root, 1920, 1080, 48);
         Path work = Files.createDirectories(root.resolve("work"));
         Files.createDirectories(work.resolve("composition"));
         Files.writeString(work.resolve("composition/subs.vtt"), VTT);
 
-        SubtitleBurn.Prepared prepared = SubtitleBurn.prepare(work, template, VTT);
+        SubtitleBurn.Prepared prepared = SubtitleBurn.prepare(work, profile, VTT);
         String ass = Files.readString(prepared.file());
 
         assertEquals(48, prepared.style().fontSize());
@@ -77,7 +77,7 @@ class SubtitleBurnTest {
     @Test
     @DisplayName("场景返工只烧目标窗内的 cue，并相对场景起点")
     void preparesOnlyTargetSceneCues(@TempDir Path root) throws Exception {
-        Path template = template(root, 1080, 1920, 38);
+        Path profile = profile(root, 1080, 1920, 38);
         Path work = Files.createDirectories(root.resolve("work"));
         Files.createDirectories(work.resolve("composition"));
         JsonNode subtitles = JsonMapper.builder().build().readTree("""
@@ -86,7 +86,7 @@ class SubtitleBurnTest {
              {"startMs":2500,"endMs":4000,"text":"后一段"}]
             """);
 
-        SubtitleBurn.Prepared prepared = SubtitleBurn.prepareJson(work, template, subtitles,
+        SubtitleBurn.Prepared prepared = SubtitleBurn.prepareJson(work, profile, subtitles,
             new NewsNarrationTiming.Span("scene_002", 1500, 2500, false));
         String ass = Files.readString(prepared.file());
 
@@ -100,12 +100,12 @@ class SubtitleBurnTest {
     @Test
     @DisplayName("没有 cue 的字幕不能生成空 ASS 冒充烧录成功")
     void rejectsEmptySubtitles(@TempDir Path root) throws Exception {
-        Path template = template(root, 1080, 1920, 38);
+        Path profile = profile(root, 1080, 1920, 38);
         Path work = Files.createDirectories(root.resolve("work"));
         Files.createDirectories(work.resolve("composition"));
 
         HeronBusinessException error = assertThrows(HeronBusinessException.class,
-            () -> SubtitleBurn.prepare(work, template, "WEBVTT\n"));
+            () -> SubtitleBurn.prepare(work, profile, "WEBVTT\n"));
 
         assertEquals("news_subtitles_burn_failed", error.getCode());
         assertTrue(error.getMessage().contains("cue"));
@@ -137,13 +137,12 @@ class SubtitleBurnTest {
         assertEquals(0, SubtitleBurn.compare(raw, raw, 200).inside());
     }
 
-    private static Path template(Path root, int width, int height, int fontSize) throws Exception {
-        Path template = Files.createDirectories(root.resolve("templates/news"));
-        Files.writeString(template.resolve("template.config.json"), """
-            {"key":"news","style":"article","layout":"news","width":%d,"height":%d}
+    private static Path profile(Path root, int width, int height, int fontSize) throws Exception {
+        Path profile = Files.createDirectories(root.resolve("profiles/article"));
+        Files.writeString(profile.resolve("profile.json"), """
+            {"profileId":"article","canvas":{"width":%d,"height":%d}}
             """.formatted(width, height));
-        Path tokens = Files.createDirectories(root.resolve("templates/_shared/tokens"));
-        Files.writeString(tokens.resolve("article.css"), """
+        Files.writeString(profile.resolve("tokens.css"), """
             :root {
               --font-body: "Noto Sans SC", sans-serif;
               --fs-body: %dpx;
@@ -152,6 +151,6 @@ class SubtitleBurnTest {
               --pad-frame: 84px;
             }
             """.formatted(fontSize));
-        return template;
+        return profile;
     }
 }

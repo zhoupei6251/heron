@@ -4,6 +4,7 @@ import cn.hutool.crypto.digest.DigestUtil;
 import cn.hutool.core.util.EscapeUtil;
 import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.config.HeronProductionProperties;
+import org.dromara.heron.domain.EditorialSelection;
 import org.dromara.heron.domain.EditorialStory;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.MediaAssetLicensePolicy;
@@ -290,7 +291,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
             Math.round(audioSeconds * 1000));
         gates.add(subtitleGate(composition.resolve(SUBTITLES_FILE), audioSeconds, timeline));
         SubtitleBurn.Prepared burnedSubtitles = newsProperties.getSubtitles().isBurn()
-            ? SubtitleBurn.prepare(work, templateDir, vtt) : null;
+            ? SubtitleBurn.prepare(work, profileDir(input), vtt) : null;
 
         stages.beginStage(run, "render", 45);
         JsonNode subtitleNodes = JSON.readTree(subtitles);
@@ -307,7 +308,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
 
         stages.beginStage(run, "finalize", 85);
         AudioMix audio = mixAndTag(run, work, timeline.get(timeline.size() - 1), sound.bed(), renderScript,
-            templateDir, burnedSubtitles);
+            input, burnedSubtitles);
         gates.add(audio.gate());
         Path finalFile = audio.finalFile();
         if (burnedSubtitles != null) {
@@ -318,7 +319,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         gates.add(visualGate(check, sheet));
         gates.add(videoSignalGate(run, work, finalFile));
         NewsCover.Result cover = newsProperties.getCover().isEnabled()
-            ? NewsCover.create(processes, run, work, finalFile, templateDir, timeline.get(0)) : null;
+            ? NewsCover.create(processes, run, work, finalFile, canvas[0], canvas[1], timeline.get(0)) : null;
         if (cover != null) {
             gates.add(cover.gate());
         }
@@ -546,7 +547,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
             previousBurned |= "subtitles_burn".equals(check.path("gate").asString(""));
         }
         SubtitleBurn.Prepared reworkSubtitles = newsProperties.getSubtitles().isBurn()
-            ? SubtitleBurn.prepareJson(work, templateDir, subtitleNodes, previousBurned ? target : null) : null;
+            ? SubtitleBurn.prepareJson(work, profileDir(input), subtitleNodes, previousBurned ? target : null) : null;
         int[] canvas = templateSize(templateDir);
         JsonNode renderScript = datasetLine ? DatasetPlaceholders.resolve(script, dataset, trend) : script;
         List<MediaAssetSelectionVo> mediaSelections = new ArrayList<>();
@@ -654,7 +655,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         gates.add(visualGate(check, sheet));
         gates.add(videoSignalGate(run, work, finalFile));
         NewsCover.Result cover = newsProperties.getCover().isEnabled()
-            ? NewsCover.create(processes, run, work, finalFile, templateDir, timeline.get(0)) : null;
+            ? NewsCover.create(processes, run, work, finalFile, canvas[0], canvas[1], timeline.get(0)) : null;
         if (cover != null) {
             gates.add(cover.gate());
         }
@@ -1945,11 +1946,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
      * 配乐导致超标则去掉配乐重混——音乐是加分项，不该为它卡住一条片子。
      */
     private AudioMix mixAndTag(ProductionRunVo run, Path work, NewsNarrationTiming.Span closing, Path sfxBed,
-                               JsonNode script, Path templateDir, SubtitleBurn.Prepared subtitles) {
+                               JsonNode script, JsonNode input, SubtitleBurn.Prepared subtitles) {
         // 测旁白：量的是渲染后成片里的那条音轨，不是工作目录里的配音文件
         AudioLoudness.Measurement voice = AudioLoudness.measureFile(processes, run, work, RAW_FILE);
         double voiceGain = AudioLoudness.voiceGain(voice);
-        BgmCatalog.Pick pick = pickBgm(script, templateDir, run);
+        BgmCatalog.Pick pick = pickBgm(script, input, run);
         Path bgm = pick.file();
         String envelope = bgmEnvelope(closing);
         AudioLoudness.Measurement bgmMeasured = null;
@@ -2141,12 +2142,12 @@ public class NewsProductionPipeline implements IProductionPipeline {
      * <p>曲库不可用（没有目录/没有清单/清单写坏）时退化成无配乐，
      * 并把原因写进闸报告——降级要留痕，不能静悄悄。
      */
-    private BgmCatalog.Pick pickBgm(JsonNode script, Path templateDir, ProductionRunVo run) {
-        Path dir = BgmCatalog.directory(properties.getNewsTemplate());
+    private BgmCatalog.Pick pickBgm(JsonNode script, JsonNode input, ProductionRunVo run) {
+        Path dir = BgmCatalog.directory();
         if (dir == null) {
             return new BgmCatalog.Pick(null, null, "配乐目录不存在，本期无配乐", new TreeMap<>());
         }
-        BgmCatalog.Story story = BgmCatalog.storyOf(script, templateDir);
+        BgmCatalog.Story story = BgmCatalog.storyOf(script, lineOf(input));
         return BgmCatalog.pick(BgmCatalog.load(dir), dir, story.line(), story.emotion(), story.rhythm(),
             run.inputJson());
     }
@@ -2622,6 +2623,33 @@ public class NewsProductionPipeline implements IProductionPipeline {
             throw new HeronBusinessException(503, "news_template_missing", "找不到锁定的 composition 模板目录：" + templateKey);
         }
         return dir;
+    }
+
+    /**
+     * Profile 根目录：字幕/封面画布与令牌的真源（导演架构 S0b）。
+     * 冻结快照 assets.styleKey 指向风格 id（article/data-board/...）；缺省回退 article（解说线既有令牌）。
+     */
+    private Path profileDir(JsonNode input) {
+        String styleKey = input.path("assets").path("styleKey").asString("article");
+        Path root = properties.getNewsProfile();
+        if (root == null || !styleKey.matches("[a-zA-Z0-9_-]{1,80}")) {
+            throw new HeronBusinessException(503, "news_profile_missing", "Profile 根目录未配置或风格 id 非法：" + styleKey);
+        }
+        Path dir = root.toAbsolutePath().normalize().resolve(styleKey).normalize();
+        if (!dir.startsWith(root.toAbsolutePath().normalize()) || !Files.isDirectory(dir)) {
+            throw new HeronBusinessException(503, "news_profile_missing", "找不到 Profile 目录：" + styleKey);
+        }
+        return dir;
+    }
+
+    /** 冻结快照 kind → 编辑线（BgmCatalog 按线过滤用），与 NewsProductionDomain.kindOfLine 同一口径。 */
+    private static String lineOf(JsonNode input) {
+        return switch (input.path("kind").asString("")) {
+            case "data_board" -> EditorialSelection.DATA_BOARD;
+            case "trend" -> EditorialSelection.TREND_INSIGHT;
+            case "knowledge_explainer" -> EditorialSelection.KNOWLEDGE_EXPLAINER;
+            default -> EditorialSelection.NEWS_EXPLAINER;
+        };
     }
 
     private static int[] templateSize(Path templateDir) {

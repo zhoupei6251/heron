@@ -46,14 +46,6 @@ class EditorialLineEditorFrozenPoolTest {
         return source;
     }
 
-    private static NewsTemplatePicker templatePicker() {
-        NewsTemplatePicker picker = mock(NewsTemplatePicker.class);
-        when(picker.pick(any(), any(), anyString())).thenReturn("news-9x16");
-        // 看板线带叙事选模板：叙事决定风格，风格决定模板
-        when(picker.pick(any(), any(), anyString(), any(), any())).thenReturn("news-data-9x16");
-        return picker;
-    }
-
     /**
      * 看板线「没故事就不做」：选源器兜底出来的速览同样要先有一份策划结论。
      * 这里只桩住通过路径，被否掉的路径由 StoryDecisionTest 覆盖。
@@ -82,7 +74,7 @@ class EditorialLineEditorFrozenPoolTest {
     void dataBoardUsesFrozenDatasets() {
         DatasetRouter router = mock(DatasetRouter.class);
         when(router.pick(any(), any(), anyList())).thenReturn(new DatasetRouter.Route("worldbank-gdp", false));
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
             List.of(dataset("worldbank-gdp")), List.of(), List.of());
 
@@ -100,7 +92,7 @@ class EditorialLineEditorFrozenPoolTest {
     @DisplayName("数据看板无源：回退解说线并写明原因")
     void dataBoardEmptyFallsBackWithReason() {
         DatasetRouter router = mock(DatasetRouter.class);
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
             List.of(), List.of(), List.of());
 
@@ -118,7 +110,7 @@ class EditorialLineEditorFrozenPoolTest {
     @DisplayName("总编辑锁定候选：解说线直接用那一条")
     void honoursFocusCandidate() {
         DatasetRouter router = mock(DatasetRouter.class);
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), router, storyPlanner());
         HeronNewsCandidate first = article(9L, "稿子A");
         HeronNewsCandidate second = article(10L, "稿子B");
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(first, second), item -> true,
@@ -136,7 +128,7 @@ class EditorialLineEditorFrozenPoolTest {
     void intentReachesRouterContext() {
         DatasetRouter router = mock(DatasetRouter.class);
         when(router.pick(any(), any(), anyList())).thenReturn(new DatasetRouter.Route("worldbank-gdp", false));
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(), item -> true,
             List.of(dataset("worldbank-gdp")), List.of(), List.of());
 
@@ -152,7 +144,7 @@ class EditorialLineEditorFrozenPoolTest {
     @DisplayName("数据线回退解说线：不带旧方向的角度，geo 意图不能塞进新闻片")
     void crossLineFallbackDropsStaleIntent() {
         DatasetRouter router = mock(DatasetRouter.class);
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
             List.of(), List.of(), List.of());
 
@@ -177,7 +169,7 @@ class EditorialLineEditorFrozenPoolTest {
     @DisplayName("总编辑锁定数据机会：直接用它的源，不再让选源器重挑")
     void focusedOpportunityLocksItsSource() {
         DatasetRouter router = mock(DatasetRouter.class);
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(), item -> true,
             List.of(dataset("frankfurter-audcny")), List.of(), List.of(),
             List.of(opportunity(900L, "frankfurter-audcny")));
@@ -197,7 +189,7 @@ class EditorialLineEditorFrozenPoolTest {
     @DisplayName("只有数据机会、没有数据源清单：出不了策划结论，看板线就不占槽位")
     void opportunityWithoutSourceKeepsDataBoardEmpty() {
         DatasetRouter router = mock(DatasetRouter.class);
-        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), templatePicker(), router, storyPlanner());
+        EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class), router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(), item -> true,
             List.of(), List.of(), List.of(), List.of(opportunity(900L, "frankfurter-audcny")));
 

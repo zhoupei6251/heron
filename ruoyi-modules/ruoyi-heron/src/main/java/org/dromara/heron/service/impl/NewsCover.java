@@ -4,8 +4,6 @@ import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.bo.ProductionProcessBo;
 import org.dromara.heron.domain.vo.ProductionProcessVo;
 import org.dromara.heron.domain.vo.ProductionRunVo;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -22,7 +20,6 @@ import java.util.TreeMap;
 
 /** 从首屏运动代表帧生成原比例封面与平台方图。 */
 final class NewsCover {
-    private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final Duration TIMEOUT = Duration.ofSeconds(120);
     private static final int THUMB_SIZE = 1080;
     private static final int CANDIDATES = 5;
@@ -32,8 +29,8 @@ final class NewsCover {
     record Result(Path cover, Path thumb, NewsProductionPipeline.Gate gate) { }
 
     static Result create(ProductionProcessService processes, ProductionRunVo run, Path work, Path finalFile,
-                         Path templateDir, NewsNarrationTiming.Span first) {
-        int[] size = sizeOf(templateDir);
+                         int width, int height, NewsNarrationTiming.Span first) {
+        int[] size = sizeOf(width, height);
         List<Long> times = candidateTimes(first);
         List<Candidate> candidates = new ArrayList<>();
         for (int index = 0; index < times.size(); index++) {
@@ -137,21 +134,11 @@ final class NewsCover {
         return Math.abs(lr - rr) + Math.abs(lg - rg) + Math.abs(lb - rb);
     }
 
-    private static int[] sizeOf(Path templateDir) {
-        try {
-            JsonNode config = JSON.readTree(Files.readString(templateDir.resolve("template.config.json")));
-            int width = config.path("width").asInt(0);
-            int height = config.path("height").asInt(0);
-            if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
-                throw new HeronBusinessException(409, "news_cover_invalid", "模板封面尺寸声明不合法");
-            }
-            return new int[]{width, height};
-        } catch (IOException | RuntimeException e) {
-            if (e instanceof HeronBusinessException business) {
-                throw business;
-            }
-            throw new HeronBusinessException(409, "news_cover_invalid", "模板尺寸声明不可读", e);
+    private static int[] sizeOf(int width, int height) {
+        if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
+            throw new HeronBusinessException(409, "news_cover_invalid", "封面画布尺寸声明不合法");
         }
+        return new int[]{width, height};
     }
 
     private static void extract(ProductionProcessService processes, ProductionRunVo run, Path work, Path input,

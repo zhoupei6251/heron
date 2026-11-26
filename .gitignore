@@ -68,6 +68,15 @@ application-ga.yml
 !/data/audio/
 # 知识包是固定 commit 下的素材与结构化条目，引用要能重放，必须进仓库
 !/data/knowledge/
+# 导演系统 VisualDesignProfile：令牌/骨架/字幕样式与公共字体、vendor 脚本，clone 后可重放
+!/data/profiles/
+/data/profiles/*
+!/data/profiles/_shared/
+/data/profiles/_shared/*
+!/data/profiles/_shared/fonts/
+!/data/profiles/_shared/vendor/
+!/data/profiles/_shared/fonts/*
+!/data/profiles/_shared/vendor/*
 # 参考配方库（Apache-2.0 / MIT 收录，见 data/reference-cards/ATTRIBUTION.md），建工母本必须可重放
 !/data/reference-cards/
 # data/tools 只放行 node 依赖清单；node_modules 与第三方工具靠 npm ci / 单独安装还原

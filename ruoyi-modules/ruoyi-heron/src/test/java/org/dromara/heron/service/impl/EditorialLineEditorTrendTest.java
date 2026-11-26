@@ -75,14 +75,6 @@ class EditorialLineEditorTrendTest {
         return item;
     }
 
-    private static NewsTemplatePicker templatePicker() {
-        NewsTemplatePicker picker = mock(NewsTemplatePicker.class);
-        when(picker.pick(any(), any(), anyString())).thenReturn("news-trend-9x16");
-        // 看板线带叙事选模板：叙事决定风格，风格决定模板
-        when(picker.pick(any(), any(), anyString(), any(), any())).thenReturn("news-data-9x16");
-        return picker;
-    }
-
     /**
      * 看板线现在「没故事就不做」：策划器必须给出通过的故事，机会才认。
      * 这里只桩住「通过」这一条路径，被否掉的路径由 StoryDecisionTest 单独覆盖。
@@ -111,7 +103,7 @@ class EditorialLineEditorTrendTest {
     void trendPicksRoutableOpportunity() {
         DatasetRouter router = mock(DatasetRouter.class);
         EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class),
-            templatePicker(), router, storyPlanner());
+            router, storyPlanner());
         HeronDataOpportunity routable = opportunity(11L, "sample-gold", "wide", 12, "daily");
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
             List.of(dataset("sample-gold", "wide"), dataset("worldbank-gdp", "rows")),
@@ -124,7 +116,7 @@ class EditorialLineEditorTrendTest {
         assertEquals(TREND, choice.get().finalLine());
         EditorialSelection selection = choice.get().selection();
         assertEquals("sample-gold", selection.dataSourceKey());
-        assertEquals("news-trend-9x16", selection.templateId());
+        assertEquals(EditorialSelection.LineStyle.TREND, selection.templateId(), "过渡值：线内编辑只给风格 id");
         assertTrue(selection.trendInsight());
         // 机会本身要冻结进输入，写稿与质量审稿都靠它对齐取数口径
         assertNotNull(selection.opportunity());
@@ -143,7 +135,7 @@ class EditorialLineEditorTrendTest {
         DatasetRouter router = mock(DatasetRouter.class);
         when(router.pick(any(), any(), anyList())).thenReturn(new DatasetRouter.Route("worldbank-gdp", false));
         EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class),
-            templatePicker(), router, storyPlanner());
+            router, storyPlanner());
         HeronDataOpportunity tooShort = opportunity(12L, "sample-gold", "wide", 5, "daily");
         HeronDataOpportunity rows = opportunity(13L, "sample-rows", "rows", 40, "daily");
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
@@ -164,7 +156,7 @@ class EditorialLineEditorTrendTest {
     void dataBoardStillTakesShortSeriesOpportunity() {
         DatasetRouter router = mock(DatasetRouter.class);
         EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class),
-            templatePicker(), router, storyPlanner());
+            router, storyPlanner());
         HeronDataOpportunity tooShort = opportunity(12L, "sample-gold", "wide", 5, "daily");
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
             List.of(dataset("sample-gold", "wide")),
@@ -186,7 +178,7 @@ class EditorialLineEditorTrendTest {
     void trendEmptyFallsBackWithReason() {
         DatasetRouter router = mock(DatasetRouter.class);
         EditorialLineEditor editor = new EditorialLineEditor(mock(NewsCandidateScreener.class),
-            templatePicker(), router, storyPlanner());
+            router, storyPlanner());
         EditorialCandidatePool pool = EditorialCandidatePool.of(List.of(article(9L, "稿子")), item -> true,
             List.of(), List.of(), List.of(),
             List.of(opportunity(14L, "sample-attention", "rows", 30, "daily")));

@@ -30,7 +30,6 @@ import static org.mockito.Mockito.when;
 class StoryDecisionTest {
 
     private NewsCandidateScreener screener;
-    private NewsTemplatePicker templatePicker;
     private DatasetRouter datasetRouter;
     private DatasetStoryPlanner storyPlanner;
     private EditorialLineEditor editor;
@@ -38,13 +37,9 @@ class StoryDecisionTest {
     @BeforeEach
     void setUp() {
         screener = mock(NewsCandidateScreener.class);
-        templatePicker = mock(NewsTemplatePicker.class);
         datasetRouter = mock(DatasetRouter.class);
         storyPlanner = mock(DatasetStoryPlanner.class);
-        editor = new EditorialLineEditor(screener, templatePicker, datasetRouter, storyPlanner);
-        when(templatePicker.pick(anyString(), anyString(), anyString())).thenReturn("news-data-9x16");
-        // 看板线带叙事选模板：叙事决定风格，风格决定模板
-        when(templatePicker.pick(anyString(), anyString(), anyString(), anyString(), any())).thenReturn("news-data-9x16");
+        editor = new EditorialLineEditor(screener, datasetRouter, storyPlanner);
     }
 
     private static HeronDataSource source(String key) {
@@ -133,21 +128,18 @@ class StoryDecisionTest {
     }
 
     @Test
-    @DisplayName("geo 故事按 3D 模式选模板：2D 模板画不出经纬度")
-    void geoStoryRequestsThreeDMode() {
+    @DisplayName("geo 故事声明 3D 风格：2D 画不出经纬度，这条硬事实与渲染方式无关")
+    void geoStoryRequestsThreeDStyle() {
         List<HeronDataSource> datasets = List.of(source("geo-src"));
         List<HeronDataOpportunity> opportunities = List.of(opportunity(1L, "geo-src"));
         when(storyPlanner.plan(any(ProductionRunVo.class), any(HeronDataSource.class), anyInt(),
             anyString(), any(), any(), any())).thenReturn(DatasetStoryPlanner.Result.accepted(geoStory()));
-        when(templatePicker.pick(anyString(), anyString(), anyString(), anyString(), eq(VisualMode.THREE_D)))
-            .thenReturn("news-data-3d-9x16");
 
         Optional<EditorialChoice> choice = editor.select(EditorialDecisionService.DATA_BOARD,
             pool(datasets, opportunities), "今天的意图", null, null);
 
         assertTrue(choice.isPresent());
-        assertEquals("news-data-3d-9x16", choice.orElseThrow().selection().templateId());
-        verify(templatePicker).pick(anyString(), anyString(), anyString(), anyString(), eq(VisualMode.THREE_D));
+        assertEquals(EditorialSelection.LineStyle.DATA_BOARD_3D, choice.orElseThrow().selection().templateId());
     }
 
     @Test

@@ -187,31 +187,13 @@ public class NewsMetricServiceImpl implements INewsMetricService {
     }
 
     /**
-     * 模板的视觉风格键。
+     * 视觉风格键（导演架构 S0b）。
      *
-     * <p>风格写在模板自己的 template.json 里，是确定性的映射，不需要另存一份。
-     * 读不到就归「未记录」，不猜——模板可能被换掉，也可能根本不是本地这套。
+     * <p>选模板废除后，selection.templateId 过渡为风格 id（article/data-board/...），
+     * 它本身就是风格键，直接返回；读不到就归「未记录」，不猜。
      */
     private String styleKey(String templateId) {
-        if (templateId == null || templateId.isBlank()) {
-            return null;
-        }
-        Path root = properties.getNewsTemplate();
-        if (root == null) {
-            return null;
-        }
-        Path meta = root.toAbsolutePath().normalize().resolve(templateId).resolve("template.json");
-        if (!Files.isRegularFile(meta)) {
-            return null;
-        }
-        try {
-            JsonNode node = JSON.readTree(Files.readString(meta, StandardCharsets.UTF_8));
-            String key = node.path("style").path("key").asString("");
-            return key.isBlank() ? null : key;
-        } catch (IOException | RuntimeException e) {
-            log.warn("模板 {} 的风格读不出来，归因按未记录处理: {}", templateId, e.getMessage());
-            return null;
-        }
+        return templateId == null || templateId.isBlank() ? null : templateId;
     }
 
     /**

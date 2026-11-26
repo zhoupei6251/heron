@@ -52,6 +52,9 @@ public class HeronProductionProperties {
 
     private Path newsTemplate;
 
+    /** 导演系统 VisualDesignProfile 根目录；默认 data/profiles。模板拆除后字幕/封面尺寸真源从这里取。 */
+    private Path newsProfile = Path.of("data", "profiles");
+
     /** 指向基座 sys_oss_config 的 config_key；留空即本地产物盘模式，测试与未接对象存储的部署行为不变。 */
     private String ossConfigKey;
 }

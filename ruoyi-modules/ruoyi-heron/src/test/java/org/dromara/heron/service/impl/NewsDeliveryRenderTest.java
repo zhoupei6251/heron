@@ -42,11 +42,10 @@ class NewsDeliveryRenderTest {
         Path composition = Files.createDirectories(work.resolve("composition"));
         Path fonts = Files.createDirectories(composition.resolve("fonts"));
         Files.copy(repository.resolve("data/fonts/NotoSansSC-Regular.otf"), fonts.resolve("NotoSansSC-Regular.otf"));
-        Path template = Files.createDirectories(root.resolve("templates/news"));
-        Files.writeString(template.resolve("template.config.json"),
-            "{\"key\":\"news\",\"style\":\"article\",\"layout\":\"news\",\"width\":160,\"height\":284}");
-        Path tokens = Files.createDirectories(root.resolve("templates/_shared/tokens"));
-        Files.writeString(tokens.resolve("article.css"), """
+        Path profile = Files.createDirectories(root.resolve("profiles/article"));
+        Files.writeString(profile.resolve("profile.json"),
+            "{\"profileId\":\"article\",\"canvas\":{\"width\":160,\"height\":284}}");
+        Files.writeString(profile.resolve("tokens.css"), """
             :root { --font-body: "Noto Sans SC", sans-serif; --fs-body: 256px;
                     --fg: #ffffff; --bg: #000000; --pad-frame: 12px; }
             """);
@@ -57,7 +56,7 @@ class NewsDeliveryRenderTest {
             字幕烧录验证。
             """;
         Files.writeString(composition.resolve("subs.vtt"), vtt);
-        SubtitleBurn.Prepared subtitles = SubtitleBurn.prepare(work, template, vtt);
+        SubtitleBurn.Prepared subtitles = SubtitleBurn.prepare(work, profile, vtt);
 
         ProductionProcessVo created = processes.run(run, new ProductionProcessBo("ffmpeg", List.of(
             "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=160x284:rate=30:duration=4",
@@ -81,7 +80,7 @@ class NewsDeliveryRenderTest {
         assertTrue(((Number) burnGate.measured().get("durationDeltaMs")).longValue() < 20);
         assertTrue(AudioLoudness.measureFile(processes, run, work, "final.mp4").deliveryOk());
 
-        NewsCover.Result cover = NewsCover.create(processes, run, work, work.resolve("final.mp4"), template,
+        NewsCover.Result cover = NewsCover.create(processes, run, work, work.resolve("final.mp4"), 160, 284,
             new NewsNarrationTiming.Span("scene_001", 0, 2500, false));
         assertEquals(160, ImageIO.read(cover.cover().toFile()).getWidth());
         assertEquals(284, ImageIO.read(cover.cover().toFile()).getHeight());
