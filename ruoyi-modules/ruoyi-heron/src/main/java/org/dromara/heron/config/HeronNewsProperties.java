@@ -40,6 +40,12 @@ public class HeronNewsProperties {
     /** 自动模式写库时代表系统的操作人；默认 admin（userId=1）。 */
     private Long autoActorId = 1L;
 
+    /**
+     * 选题评分。默认关：关时不查近 14 天发布、不写 scores，选线与现在相同。
+     * 打开后只把分数和门禁写进槽位留痕，BLOCK 的候选仍留在池里。
+     */
+    private OpportunityScoring opportunityScoring = new OpportunityScoring();
+
     /** 发布出口：sandbox 只跑通链路；douyin-cli 调 social-auto-upload 的 sau 命令；youtube 走 Data API v3。默认沙箱，换出口必须显式配置。 */
     private String publishAdapter = "sandbox";
 
@@ -113,6 +119,21 @@ public class HeronNewsProperties {
     public static class KnowledgeSource {
         private String sourceKey;
         private boolean auto;
+    }
+
+    /** 权重是起点，部署可以覆盖；不做配置中心。默认值与 OpportunityScoringConfig.defaults 保持一致。 */
+    @Data
+    public static class OpportunityScoring {
+        private boolean enabled;
+        /** 阶段 2 批量打分条数。阶段 1 不读。 */
+        private int topN = 12;
+        private int evidenceWeight = 20;
+        private int noveltyWeight = 15;
+        private int timelinessWeight = 10;
+        private int audienceWeight = 25;
+        private int tensionWeight = 20;
+        private int visualWeight = 10;
+        private List<String> blocklist = new ArrayList<>();
     }
 
     /**

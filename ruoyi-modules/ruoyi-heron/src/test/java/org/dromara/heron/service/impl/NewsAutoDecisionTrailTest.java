@@ -180,6 +180,92 @@ class NewsAutoDecisionTrailTest {
     }
 
     @Test
+    @DisplayName("开关关时不写 scores 键：pool_json 形状与接入前逐键相同")
+    void trailWithoutScoresKeepsLegacyShape() {
+        EditorialCandidatePool pool = EditorialCandidatePool.of(
+            List.of(candidate(101L, "正文A")), item -> true, List.of(), List.of(), List.of());
+        EditorialDecisionService.Pools pools = NewsAutoService.pools(pool);
+
+        JsonNode trail = JSON.readTree(NewsAutoService.decisionTrail(pools,
+            decision(EditorialDecisionService.NEWS_EXPLAINER),
+            new EditorialChoice(explainer(), EditorialDecisionService.NEWS_EXPLAINER, false, null)));
+
+        assertTrue(trail.has("hotHeadlines"));
+        assertTrue(trail.has("articleCandidates"));
+        assertTrue(trail.has("dataSources"));
+        assertTrue(trail.has("recentPublications"));
+        assertTrue(trail.has("poolId"));
+        assertTrue(trail.has("poolHash"));
+        assertTrue(trail.has("decision"));
+        assertFalse(trail.has("scores"), "开关关时不写 scores 键");
+    }
+
+    @Test
+    @DisplayName("scores 只进留痕：有没有评分都算出同一 poolHash")
+    void scoresDoNotEnterPoolDigest() {
+        EditorialCandidatePool pool = EditorialCandidatePool.of(
+            List.of(candidate(101L, "正文A")), item -> true, List.of(), List.of(), List.of());
+        EditorialDecisionService.Pools pools = NewsAutoService.pools(pool);
+        EditorialChoice choice = new EditorialChoice(explainer(), EditorialDecisionService.NEWS_EXPLAINER,
+            false, null);
+        OpportunityScore score = new OpportunityScore("candidate:101", "article", "正文A", 44,
+            new OpportunityScore.Dimensions(30, 100, 100, 50, 0, 0),
+            OpportunityScore.Gate.PASS, null);
+
+        JsonNode scored = JSON.readTree(NewsAutoService.decisionTrail(pools,
+            decision(EditorialDecisionService.NEWS_EXPLAINER), choice, List.of(score)));
+        JsonNode plain = JSON.readTree(NewsAutoService.decisionTrail(pools,
+            decision(EditorialDecisionService.NEWS_EXPLAINER), choice));
+
+        assertEquals(plain.path("poolHash").asString(), scored.path("poolHash").asString());
+        assertEquals(1, scored.path("scores").size());
+        JsonNode node = scored.path("scores").get(0);
+        assertEquals("candidate:101", node.path("refKey").asString());
+        assertEquals("article", node.path("sourceType").asString());
+        assertEquals(44, node.path("total").asInt());
+        assertEquals("PASS", node.path("gate").asString());
+        assertTrue(node.path("blockReason").isNull());
+        assertFalse(node.path("model_scored").asBoolean(), "阶段 1 不调模型，必须显式留 false");
+        assertEquals(30, node.path("dimensions").path("evidence").asInt());
+    }
+
+    @Test
+    @DisplayName("阶段 1 的 scores 覆盖候选与机会两类来源，BLOCK 也照常留在池里")
+    void scorePoolObservesBlockedCandidates() {
+        HeronNewsCandidate blocked = candidate(12L, "内幕消息");
+        blocked.setDedupKey("same-key");
+        blocked.setLastSeenAt(java.time.LocalDateTime.of(2026, 11, 25, 12, 0));
+        org.dromara.heron.domain.HeronDataOpportunity opportunity =
+            new org.dromara.heron.domain.HeronDataOpportunity();
+        opportunity.setId(12L);
+        opportunity.setHeadline("机会标题");
+        opportunity.setDedupKey("opportunity-key");
+        opportunity.setObservedAt(java.time.LocalDateTime.of(2026, 11, 25, 12, 0));
+        opportunity.setPoints(10);
+        opportunity.setWindowPoints(10);
+        opportunity.setSignals("{\"coverage\":0.9}");
+        EditorialCandidatePool pool = EditorialCandidatePool.of(
+            List.of(blocked), item -> false,
+            List.of(dataset("worldbank-gdp", "世界银行 GDP")), List.of(), List.of(), List.of(opportunity));
+        var config = OpportunityScorer.OpportunityScoringConfig
+            .defaults(java.time.LocalDateTime.of(2026, 11, 25, 12, 0));
+
+        List<OpportunityScore> scores = NewsAutoService.scorePool(pool,
+            List.of(new OpportunityFacts.Publication(77L, "另一条", "same-key",
+                java.time.LocalDateTime.of(2026, 11, 20, 12, 0))), config, List.of("内幕"));
+
+        assertEquals(2, scores.size());
+        assertEquals("candidate:12", scores.get(0).refKey());
+        assertEquals(OpportunityScore.Gate.BLOCK, scores.get(0).gate(),
+            "重复与合规都命中时优先报重复");
+        assertTrue(scores.get(0).blockReason().contains("duplicate_recent"));
+        assertEquals("hot", scores.get(0).sourceType());
+        assertEquals("opportunity:12", scores.get(1).refKey(), "同一 id 的机会是另一条对象");
+        assertEquals("opportunity", scores.get(1).sourceType());
+        assertEquals(OpportunityScore.Gate.PASS, scores.get(1).gate());
+    }
+
+    @Test
     @DisplayName("只数末尾连续失败：中间成功过一次就不合并成一次刹车")
     void autoStopStreakCountsOnlyTrailingFailures() {
         assertEquals(0, NewsAutoService.consecutiveFailedStreak(List.of()), "没有槽位就没有连败");

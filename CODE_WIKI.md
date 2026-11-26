@@ -1,6 +1,6 @@
 # CODE_WIKI — Heron
 
-> 一句话：Heron 是「新闻视频 + Axure 原型」两条生产线的单租户内容生产系统，后端是 RuoYi-Vue-Plus 6.1.0 的一个业务模块，前端是 plus-ui 的一个分支。
+> 一句话：Heron 是单租户内容生产系统，当前只有新闻视频一条业务线（下分文稿解说、数据看板、趋势洞察、知识解释四条子线，音乐视频线仅占位），后端是 RuoYi-Vue-Plus 6.1.0 的一个业务模块，前端是 plus-ui 的一个分支。
 >
 > 本文件回答**代码怎么组织、每块干什么、怎么跑起来、改哪里**。业务规则、角色权限细节、契约字段、阶段背景**不在这里重写**，见文末「文档索引」。
 >
@@ -16,7 +16,7 @@
 | --- | --- |
 | 第一次接手，想知道东西都在哪 | 第 1、2 节 |
 | 改一个后端接口/加字段 | 第 4、10 节 |
-| 搞懂新闻/原型两条线怎么跑 | 第 5 节 |
+| 搞懂新闻视频线怎么跑 | 第 5 节 |
 | 新增数据源、发布出口 | 第 5.4、5.5、10 节 |
 | 本地把系统跑起来 | 第 9.1 节 |
 | 部署到服务器 | 第 9.2、9.3 节 |
@@ -191,7 +191,7 @@ org.dromara.heron
 
 ## 5. 关键类与主链路
 
-先记住一个底层事实：**新闻线和原型线共用同一套「生产执行底座」**，只是插入不同的 domain 与 pipeline。
+先记住一个底层事实：**四条视频子线共用同一套「生产执行底座」**，靠冻结快照的 `kind` 分产物与闸门，枚举 `ProductionBizType` 只负责分 lane、worker 位与权限。
 
 ### 5.0 统一生产执行底座
 
@@ -213,7 +213,7 @@ flowchart TD
 
 | 组件 | 类 | 说明 |
 | --- | --- | --- |
-| 业务类型 | `ProductionBizType` | 只有 `news_video`、`prototype`，不接受任意字符串 |
+| 业务类型 | `ProductionBizType` | 五条线：`news_explainer`/`data_board`/`trend_insight`/`knowledge_explainer`（共用新闻流水线，靠冻结快照 `kind` 分支）+ `music_video`（仅占位），不接受任意字符串 |
 | 容量锁 | `HeronProductionLane` + `HeronProductionLaneMapper.lockByType` | 每条线一行，行锁即并发闸 |
 | 提交与查询 | `IProductionService` / `ProductionServiceImpl` | 按 `bizType` 取 domain Bean；任务不存在或线未初始化直接报错 |
 | 执行状态机 | `IProductionExecutionService` / `ProductionExecutionServiceImpl` | `claim/heartbeat/beginStage/checkpoint/succeed/fail/finishCancellation/requeueRecovered`；状态 `queued→running→succeeded/failed/cancelled`（`cancelling` 为过渡态） |
@@ -230,14 +230,16 @@ flowchart TD
 | 扩展点 | 接口 | 实现 | Bean 名 |
 | --- | --- | --- | --- |
 | 新闻领域 | `IProductionDomain` + `IProductionObjectScope` | `NewsProductionDomain` | `newsProductionDomain` |
-| 原型领域 | `IProductionDomain` + `IProductionObjectScope` | `ProtoProductionDomain` | `prototypeProductionDomain` |
 | 新闻流水线 | `IProductionPipeline` | `NewsProductionPipeline` | `newsProductionPipeline` |
-| 原型流水线 | `IProductionPipeline` | `ProtoProductionPipeline` | `prototypeProductionPipeline` |
 
-两个 pipeline Bean 都由 `HeronProductionConfiguration` 按开关条件注册：
+Bean 名由 `ProductionBizType.domainBean()` / `pipelineBean()` 给出，四处硬编码已收敛到枚举：
+
+- 四条视频线都返回 `newsProductionDomain` / `newsProductionPipeline`
+- `music_video` 返回 `null`：worker 跳过不轮询，提交时按 `production_capability_missing` 拒绝
+
+流水线 Bean 由 `HeronProductionConfiguration` 按开关条件注册：
 
 - `heron.news.pipeline-enabled=true` → `newsProductionPipeline`
-- `heron.prototype.engine-enabled=true` → `prototypeProductionPipeline`
 - `heron.production.worker-enabled=true` → 执行线程启动
 
 开关没开，接口不会 404，而是提交/执行时返回「生产线不可用」。**先查开关，再查代码**。
@@ -274,28 +276,6 @@ flowchart LR
 | 指标 | `INewsMetricService` / `NewsMetricServiceImpl` |
 
 `NewsWorkServiceImpl` 是新闻线的**聚合点**，注入：4 个 Mapper、`HeronAccessService`、`IProductionService`、`NewsProductionDomain`、`ProductionArtifactService`、`IPublishAdapter`、`NewsTemplatePicker`。改新闻流程先看它。
-
-### 5.2 原型线
-
-```mermaid
-flowchart LR
-  PROJ[("heron_proto_project")] -->|"generate"| TASK[("heron_production_task")]
-  TASK --> PIPE["ProtoProductionPipeline<br/>check → generate → finalize"]
-  PIPE -->|"node scripts/proto.mjs"| ENGINE["zee-rp 引擎"]
-  ENGINE --> VER[("heron_proto_version")]
-  VER -->|"review"| REVIEW[人工复核]
-  VER -->|"native-verifications"| NAT["Axure RP9 原生闸<br/>target-axure-version"]
-  VER -->|"deliver"| DELIVER[交付]
-```
-
-| 环节 | 关键类 |
-| --- | --- |
-| 项目管理 | `IProtoProjectService` / `ProtoProjectServiceImpl`（查询、创建、归档） |
-| 需求稿生成 | `ProtoRp1Author` → `ProtoModelRp1Author`（唯一实现） |
-| 领域与版本 | `ProtoProductionDomain`、`HeronProtoProject`、`HeronProtoVersion` |
-| 流水线 | `ProtoProductionPipeline`（阶段：`check` 35% → `generate` 55% → `finalize` 85%） |
-| 外部引擎 | `ProductionProcessService` 调 `node <zee-rp>/scripts/proto.mjs` |
-| 原生校验 | `heron.prototype.target-axure-version`（当前只支持 RP9）+ `prototype-template` 空白模板 |
 
 ### 5.3 自动调度
 
@@ -362,11 +342,10 @@ ruoyi-admin
 | --- | --- | --- |
 | MySQL 8 | 主库 `heron`，全部业务表 | 起不来 |
 | Redis | Sa-Token、缓存、锁、自动生产暂停位 | 起不来 |
-| 模型端点（OpenAI 兼容） | 写稿/选源/脚本生成 | 新闻与原型生产返回 `model_not_configured`/`model_failed` |
+| 模型端点（OpenAI 兼容） | 写稿/选源/脚本生成 | 新闻生产返回 `model_not_configured`/`model_failed` |
 | 新闻源 / 数据源 HTTP | 采集与数据集 | 对应来源拉空或报错 |
 | MinIO / OSS | 定稿产物外存 | 可留空，走本地产物盘 |
 | `sau` CLI | 真实抖音发布 | 仅 `douyin-cli` 出口需要 |
-| `zee-rp` + Node | 原型引擎 | 原型线报 `tool_missing` |
 | `ffmpeg/ffprobe`、`python` | 渲染与监护 | 新闻渲染阶段失败 |
 | `hyperframes` | 新闻 composition 渲染 | 能力检查报 `tool_missing:hyperframes` |
 
@@ -393,13 +372,11 @@ heron-ui/src
 │   ├── newsSource\    index.ts + types.ts
 │   ├── newsWork\      index.ts + types.ts
 │   ├── production\    index.ts + types.ts
-│   └── proto\         index.ts + types.ts
 ├── views\heron\
 │   ├── news\source\    来源管理
 │   ├── news\candidate\ 候选池
 │   ├── news\work\      稿件/版本/审片/发布（最重的页面）
 │   ├── production\     生产任务列表与证据
-│   └── proto\          原型项目、版本、复核、交付
 ├── router\            仅静态基础路由
 ├── store\modules\permission.ts   动态路由生成
 ├── permission.ts      路由守卫
@@ -454,19 +431,13 @@ profile 由 Maven 过滤 `@profiles.active@` 决定。
 | --- | --- | --- |
 | `heron.production.data-root` | `./data` | 任务工作区与产物根目录，相对应用工作目录 |
 | `heron.production.news-max-bytes` | `209715200` | 新闻任务产物上限（200 MB） |
-| `heron.production.prototype-max-bytes` | `52428800` | 原型任务产物上限（50 MB） |
 | `heron.production.worker-enabled` | `false` | **生产执行线程总开关** |
 | `heron.production.cleanup-retention-days` | `15` | 清理候选的保留天数（不自动删） |
 | `heron.production.python/node/ffmpeg/ffprobe` | `python3/node/ffmpeg/ffprobe` | 外部命令 |
-| `heron.production.zee-rp` | `zee-rp` | 原型引擎根目录（内含 `scripts/proto.mjs`） |
 | `heron.production.hyperframes` | `null` | 新闻渲染入口 `.mjs` |
 | `heron.production.guard-enabled` | `true` | 监护脚本，仅 Linux 生效；Windows 开发机必须设 `false` |
 | `heron.production.news-template` | `./data/templates` | 新闻 composition 模板根（每套带 `LOCK.json`） |
-| `heron.production.prototype-template` | `null` | Axure RP9 空白模板，缺了原型线报不可用 |
 | `heron.production.oss-config-key` | `null` | 指向 `sys_oss_config.config_key`；空 = 本地产物盘 |
-| `heron.prototype.target-axure-version` | `Axure RP 9` | 原生闸比对基准 |
-| `heron.prototype.engine-enabled` | `false` | **原型流水线装配开关** |
-| `heron.prototype.engine-assets` | 无 | 引擎能力声明（引擎提交号 + 支持的 widget 名单），启动时与引擎实际 HEAD/模板哈希比对 |
 | `heron.news.allowed-hosts` | `[]` | 采集白名单，空 = 不开放任何网络来源 |
 | `heron.news.collection-enabled` | `false` | **定时采集开关**（装配 `NewsSourceRunner`） |
 | `heron.news.pipeline-enabled` | `false` | **新闻流水线装配开关** |
@@ -489,13 +460,8 @@ heron:
     node: D:/Users/zhoupei/AppData/Local/nvm/v24.22.1/node.exe
     hyperframes: D:/zhoupei/heron/data/tools/node_modules/hyperframes/bin/hyperframes.mjs
     news-template: D:/zhoupei/heron/data/templates
-    zee-rp: D:/zhoupei/zee-rp-v0.2.1
-    prototype-template: D:/zhoupei/heron/axure/blank-rp9.rp
     worker-enabled: true          # 与 heron-production.yml 默认值相反
     oss-config-key: qiniu
-  prototype:
-    engine-enabled: true          # 同上
-    engine-assets: '{"engineCommit":"...","supportedWidgets":[...]}'
   news:
     pipeline-enabled: true
     collection-enabled: true
@@ -706,7 +672,7 @@ pnpm build                                       # vite build --mode production
 
 ### 11.3 验收提醒
 
-- 后端单测通过 ≠ 功能可用：流水线依赖外部命令（Node/ffmpeg/zee-rp/Axure 模板），这些在 CI 里通常没有。
+- 后端单测通过 ≠ 功能可用：流水线依赖外部命令（Node/ffmpeg/hyperframes），这些在 CI 里通常没有。
 - 前端改动要在浏览器里实际走一遍：登录 → 菜单 → 页面；只跑 lint/build 不能证明交互正确。
 
 ---
@@ -716,14 +682,14 @@ pnpm build                                       # vite build --mode production
 | 文档 | 内容 |
 | --- | --- |
 | [业务规格](docs/plans/2026-10-29-heron-business-spec.md) | 角色、业务流程、验收口径（**业务规则的唯一来源**） |
-| [双线需求](docs/plans/2026-11-02-heron-two-line-requirements.md) | 新闻线 + 原型线需求 |
+| [双线需求](docs/plans/2026-11-02-heron-two-line-requirements.md) | 历史需求（原型线部分已作废，见 [原型线作废设计](docs/plans/2026-11-25-prototype-line-removal-design.md)） |
 | [实现设计](docs/plans/2026-11-03-heron-implementation-design.md) | 生产底座、状态机、并发与恢复设计 |
 | [Dataset 契约](docs/plans/2026-11-10-dataset-contract.md) | 数据看板契约与产物格式 |
 | [后端仓库指令](AGENTS.md) / [CLAUDE.md](CLAUDE.md) | 后端编码规范与验证要求 |
 | [前端仓库指令](../heron-ui/AGENTS.md) / [CLAUDE.md](../heron-ui/CLAUDE.md) | 前端规范与组件约定 |
 | [产品定义](../heron-ui/PRODUCT.md) | 用户、角色、产品目的与边界 |
 | [UI 第二阶段报告](../docs/design/2026-11-04-heron-ui-phase2-report.md) | 「静默工业」方向与改造结论 |
-| 运行时契约 md | `ruoyi-modules/ruoyi-heron/src/main/resources/heron/*.md`（新闻/数据集/原型脚本契约、选材提示词、写作风格、dataset 路由） |
+| 运行时契约 md | `ruoyi-modules/ruoyi-heron/src/main/resources/heron/*.md`（新闻与数据集脚本契约、选材提示词、写作风格、dataset 路由） |
 
 ---
 

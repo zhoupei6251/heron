@@ -215,6 +215,7 @@ public class NewsAutoService {
         EditorialDecisionService.Pools pools;
         EditorialDecisionService.Decision decision;
         EditorialCandidatePool pool;
+        List<OpportunityScore> scores = null;
         try {
             BuiltPool built = buildPool(now, manual);
             pool = built.pool();
@@ -223,6 +224,8 @@ public class NewsAutoService {
                 return;
             }
             pools = pools(pool, lockedScopes());
+            // 阶段 1 只观察：分数写进留痕，不进提示词，BLOCK 也不出池。误杀看完再让它影响选线。
+            scores = observeScores(pool, now);
             decision = editorial.decide(pools);
         } catch (RuntimeException e) {
             // 决策失败不产出：宁可空槽，也不按默认线硬发
@@ -231,7 +234,7 @@ public class NewsAutoService {
         }
         if (!decision.publish()) {
             // NO_PUBLISH 也要留痕：空槽看起来像故障，必须有理由
-            markDecision(slot, decision, pools, null);
+            markDecision(slot, decision, pools, null, scores);
             finish(slot, "skipped", "no_publish: " + decision.reason(), null);
             return;
         }
@@ -258,7 +261,7 @@ public class NewsAutoService {
             if (choice.isEmpty()) {
                 if (attempt == 0) {
                     // 线内编辑找不到可用素材：不硬做，也不回问总编辑；原判线照旧留痕
-                    markDecision(slot, decision, pools, null);
+                    markDecision(slot, decision, pools, null, scores);
                     finish(slot, "skipped", "no_fit: " + decision.selectedLine(), null);
                 } else {
                     failed(slot, "retry_no_fit: 换选题后池子里已无可用素材", manual);
@@ -267,7 +270,7 @@ public class NewsAutoService {
             }
             EditorialChoice picked = choice.get();
             // 槽位记的是实际执行线：早写会把「总编辑想走数据看板、实际走了解说」写反
-            markDecision(slot, decision, pools, picked);
+            markDecision(slot, decision, pools, picked, scores);
             // 候选在最终选择确定后才记：之前记的是「预选候选」，会与实际生产的那条不符
             slotMapper.lambda().set(HeronAutoSlot::getCandidateId, picked.selection().candidateId())
                 .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
@@ -642,6 +645,101 @@ public class NewsAutoService {
             opportunities, recent, lockedScopes, knowledge);
     }
 
+    /** 关时返回 null：留痕不写 scores 键，和接入前的 pool_json 相同。 */
+    static boolean scoringEnabled(HeronNewsProperties properties) {
+        return properties.getOpportunityScoring() != null && properties.getOpportunityScoring().isEnabled();
+    }
+
+    private List<OpportunityScore> observeScores(EditorialCandidatePool pool, LocalDateTime now) {
+        if (!scoringEnabled(news)) {
+            return null;
+        }
+        try {
+            HeronNewsProperties.OpportunityScoring scoring = news.getOpportunityScoring();
+            var config = new OpportunityScorer.OpportunityScoringConfig(
+                scoring.getEvidenceWeight(), scoring.getNoveltyWeight(), scoring.getTimelinessWeight(),
+                scoring.getAudienceWeight(), scoring.getTensionWeight(), scoring.getVisualWeight(), now);
+            List<String> blocklist = scoring.getBlocklist() == null ? List.of() : scoring.getBlocklist();
+            return scorePool(pool, recentPublications(now), config, blocklist);
+        } catch (RuntimeException e) {
+            // 评分是观察，不是闸。查库或权重配错不能把整个槽位打成决策失败。
+            log.warn("机会评分失败，本期不写 scores、不改变选线: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    static List<OpportunityScore> scorePool(EditorialCandidatePool pool,
+                                            List<OpportunityFacts.Publication> publications,
+                                            OpportunityScorer.OpportunityScoringConfig config,
+                                            List<String> blocklist) {
+        // 视觉底分只看当前池里的数据源形态包不包含这条 shape（模板级形态留到阶段 2 再接）。
+        String shapes = pool.datasets().stream().map(HeronDataSource::getShapes)
+            .filter(value -> value != null && !value.isBlank())
+            .collect(Collectors.joining(","));
+        List<OpportunityScore> scores = new ArrayList<>();
+        pool.hot().forEach(item -> scores.add(scoreCandidate(item, "hot", publications, config, blocklist)));
+        pool.articles().forEach(item -> scores.add(scoreCandidate(item, "article", publications, config, blocklist)));
+        pool.knowledge().forEach(item -> scores.add(scoreCandidate(item, "knowledge", publications, config, blocklist)));
+        pool.opportunities().forEach(item -> scores.add(scoreOpportunity(item, shapes, publications, config, blocklist)));
+        return List.copyOf(scores);
+    }
+
+    private static OpportunityScore scoreCandidate(HeronNewsCandidate candidate, String fallback,
+                                                   List<OpportunityFacts.Publication> publications,
+                                                   OpportunityScorer.OpportunityScoringConfig config,
+                                                   List<String> blocklist) {
+        String sourceType = HeronNewsCandidate.SOURCE_RESEARCH.equals(candidate.getSourceKind())
+            ? "research" : fallback;
+        return scoreFacts(OpportunityFacts.fromCandidate(candidate, sourceType), publications, config, blocklist);
+    }
+
+    private static OpportunityScore scoreOpportunity(HeronDataOpportunity opportunity, String shapes,
+                                                     List<OpportunityFacts.Publication> publications,
+                                                     OpportunityScorer.OpportunityScoringConfig config,
+                                                     List<String> blocklist) {
+        return scoreFacts(OpportunityFacts.fromOpportunity(opportunity, shapes), publications, config, blocklist);
+    }
+
+    private static OpportunityScore scoreFacts(OpportunityFacts facts,
+                                               List<OpportunityFacts.Publication> publications,
+                                               OpportunityScorer.OpportunityScoringConfig config,
+                                               List<String> blocklist) {
+        return OpportunityScorer.score(facts,
+            OpportunityGate.evaluate(facts, publications, blocklist, config.now()),
+            publications, config);
+    }
+
+    private List<OpportunityFacts.Publication> recentPublications(LocalDateTime now) {
+        List<HeronVideoVersion> versions = versionMapper.selectList(QueryBuilder.lambda(HeronVideoVersion.class)
+            .isNotNull(HeronVideoVersion::getPublishAt)
+            .ge(HeronVideoVersion::getPublishAt, now.minusDays(14))
+            .orderByDesc(HeronVideoVersion::getPublishAt).build());
+        if (versions.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> workIds = versions.stream().map(HeronVideoVersion::getWorkId)
+            .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, HeronNewsWork> works = workIds.isEmpty() ? Map.of() : workMapper.selectList(
+            QueryBuilder.lambda(HeronNewsWork.class).in(HeronNewsWork::getId, workIds).build()).stream()
+            .filter(work -> work.getId() != null)
+            .collect(Collectors.toMap(HeronNewsWork::getId, work -> work, (left, right) -> left));
+        Set<Long> candidateIds = works.values().stream().map(HeronNewsWork::getCandidateId)
+            .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, HeronNewsCandidate> candidates = candidateIds.isEmpty() ? Map.of() : candidateMapper.selectList(
+            QueryBuilder.lambda(HeronNewsCandidate.class).in(HeronNewsCandidate::getId, candidateIds).build()).stream()
+            .filter(candidate -> candidate.getId() != null)
+            .collect(Collectors.toMap(HeronNewsCandidate::getId, candidate -> candidate, (left, right) -> left));
+        List<OpportunityFacts.Publication> publications = new ArrayList<>(versions.size());
+        for (HeronVideoVersion version : versions) {
+            HeronNewsWork work = works.get(version.getWorkId());
+            HeronNewsCandidate candidate = work == null ? null : candidates.get(work.getCandidateId());
+            publications.add(new OpportunityFacts.Publication(version.getId(),
+                work == null || work.getTitle() == null ? "" : work.getTitle(),
+                candidate == null ? null : candidate.getDedupKey(), version.getPublishAt()));
+        }
+        return publications;
+    }
+
     /** 知识候选摘要：标题 + 钩子，钩子过长只留前 80 字。 */
     static String knowledgeLabel(HeronNewsCandidate item) {
         String summary = item.getSummary();
@@ -885,12 +983,13 @@ public class NewsAutoService {
      * 总编辑原判线与回退原因放进 pool_json.decision，两者都留才谈得上追溯。
      */
     private void markDecision(HeronAutoSlot slot, EditorialDecisionService.Decision decision,
-                              EditorialDecisionService.Pools pools, EditorialChoice choice) {
+                              EditorialDecisionService.Pools pools, EditorialChoice choice,
+                              List<OpportunityScore> scores) {
         slotMapper.lambda()
             .set(HeronAutoSlot::getSelectedLine, executedLine(decision, choice))
             .set(HeronAutoSlot::getEditorialIntent, clip(decision.editorialIntent(), 500))
             .set(HeronAutoSlot::getDecisionReason, clip(decisionReason(decision, choice), 500))
-            .set(HeronAutoSlot::getPoolJson, decisionTrail(pools, decision, choice))
+            .set(HeronAutoSlot::getPoolJson, decisionTrail(pools, decision, choice, scores))
             .set(HeronAutoSlot::getUpdateTime, LocalDateTime.now(clock))
             .eq(HeronAutoSlot::getSlotDate, slot.getSlotDate())
             .eq(HeronAutoSlot::getSlotTime, slot.getSlotTime())
@@ -926,6 +1025,12 @@ public class NewsAutoService {
      */
     static String decisionTrail(EditorialDecisionService.Pools pools,
                                         EditorialDecisionService.Decision decision, EditorialChoice choice) {
+        return decisionTrail(pools, decision, choice, null);
+    }
+
+    static String decisionTrail(EditorialDecisionService.Pools pools,
+                                EditorialDecisionService.Decision decision, EditorialChoice choice,
+                                List<OpportunityScore> scores) {
         ObjectNode root = JSON.createObjectNode();
         ArrayNode hot = root.putArray("hotHeadlines");
         pools.hot().forEach(ref -> hot.add(ref.label()));
@@ -942,6 +1047,11 @@ public class NewsAutoService {
         ArrayNode storyRejects = root.putArray("storyRejects");
         if (choice != null) {
             choice.storyRejects().forEach(storyRejects::add);
+        }
+        // scores 为 null 表示开关关：不写这个键，pool_json 与接入前相同。
+        if (scores != null) {
+            ArrayNode scored = root.putArray("scores");
+            scores.forEach(score -> appendScore(scored, score));
         }
         root.put("poolId", pools.poolId());
         root.put("poolHash", pools.poolHash());
@@ -966,6 +1076,28 @@ public class NewsAutoService {
             trail.put("sourceReason", clip(sourceReason, 300));
         }
         return JSON.writeValueAsString(root);
+    }
+
+    private static void appendScore(ArrayNode scores, OpportunityScore score) {
+        ObjectNode node = scores.addObject();
+        node.put("refKey", score.refKey());
+        node.put("sourceType", score.sourceType());
+        node.put("label", score.label());
+        node.put("total", score.total());
+        node.put("gate", score.gate().name());
+        if (score.blockReason() == null) {
+            node.putNull("blockReason");
+        } else {
+            node.put("blockReason", score.blockReason());
+        }
+        node.put("model_scored", false);
+        ObjectNode dimensions = node.putObject("dimensions");
+        dimensions.put("evidence", score.dimensions().evidence());
+        dimensions.put("novelty", score.dimensions().novelty());
+        dimensions.put("timeliness", score.dimensions().timeliness());
+        dimensions.put("audience", score.dimensions().audience());
+        dimensions.put("tension", score.dimensions().tension());
+        dimensions.put("visual", score.dimensions().visual());
     }
 
     private static String clip(String value, int max) {

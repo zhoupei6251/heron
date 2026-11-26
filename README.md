@@ -1,6 +1,6 @@
 # Heron
 
-> 单租户、自部署的内容生产与原型工作台。热榜进、成片出、人确认；需求进、可交付原型出。
+> 单租户、自部署的内容生产工作台。热榜进、成片出、人确认。
 
 Heron 基于 RuoYi-Vue-Plus 6.1.0 构建，保留若依的账号、角色、菜单、审计、存储和任务能力，把业务集中在 `ruoyi-modules/ruoyi-heron`。它不是一套后台 CRUD 模板，而是一条可追踪、可审核、可恢复的内容生产链路。
 
@@ -12,24 +12,18 @@ Heron 基于 RuoYi-Vue-Plus 6.1.0 构建，保留若依的账号、角色、菜�
 
 从热点采集到发布回执，系统把每一步的状态、输入、产物和失败原因落到数据库。制作人可以认领候选、修改稿件、触发生成和重跑；审片人可以查看成片、联络表、分镜和质量报告，再决定确认或驳回。
 
-| 子线 | `kind` | 模板前缀 | 画面主体 | 生产链路 |
-| --- | --- | --- | --- | --- |
-| 文稿解说线 | `article` | `news-*` | 文字排版 | 热点 → 写稿 → 核查 → 套版渲染 |
-| 数据看板线 | `data_board` | `news-data-*` | 图表 | 热点 → 选源 → 数据集快照 → 写稿 → 出图渲染 |
+| 子线 | `ProductionBizType` | `kind` | 模板前缀 | 画面主体 | 生产链路 |
+| --- | --- | --- | --- | --- | --- |
+| 文稿解说线 | `news_explainer` | `article` | `news-*` | 文字排版 | 热点 → 写稿 → 核查 → 套版渲染 |
+| 数据看板线 | `data_board` | `data_board` | `news-data-*` | 图表 | 热点 → 选源 → 数据集快照 → 写稿 → 出图渲染 |
+| 趋势洞察线 | `trend_insight` | `trend` | `news-data-*` | 图表 | 同上，结论由 trend/1 机器判定驱动 |
+| 知识解释线 | `knowledge_explainer` | `knowledge_explainer` | `knowledge-*` | 文字排版 | 知识包 → 写稿 → 引用核查 → 套版渲染 |
 
-两条子线共用 `ProductionBizType.news_video`，由版本冻结输入里的 `kind` 区分。文稿解说线已启用（`heron.production.article-enabled=true`）；分镜按模板逐个开放，首期只开启 `news-minimal-9x16`，其余文稿模板保持关闭。这个开关只开放 article 分支，不代表后台 worker 或自动发布已开启。自动槽位默认使用数据看板模板 `news-data-9x16`；模板不存在时直接失败，不静默回退到其他模板。
+四条子线共用同一条新闻流水线，靠版本冻结输入里的 `kind` 决定产物清单与闸门；`ProductionBizType` 只用来分 lane 容量锁、worker 轮询位与权限。
+
+`music_video` 已作为第五条业务线预留（枚举值、容量锁行、`heron:musicVideo:*` 权限位），但**还没有 domain 与 pipeline Bean**：提交会确定性返回 `503 production_capability_missing`，worker 也不会轮询它。文稿解说线已启用（`heron.production.article-enabled=true`）；分镜按模板逐个开放，首期只开启 `news-minimal-9x16`，其余文稿模板保持关闭。这个开关只开放 article 分支，不代表后台 worker 或自动发布已开启。自动槽位默认使用数据看板模板 `news-data-9x16`；模板不存在时直接失败，不静默回退到其他模板。
 
 核心对象包括新闻来源、候选、作品、视频版本、生产任务、发布尝试、质量报告和表现指标。每次重渲都会产生新版本，旧版本不会被覆盖。
-
-### 原型工坊
-
-原型线把需求转成 RP/1 源码，再交给 `zee-rp` 做结构检查和原生 `.rp` 装配。流程是：
-
-```text
-需求 → RP/1 → check → compile → 预览与审计 → 人工审核 → Axure 原生验证 → 交付
-```
-
-每次生成保留独立版本，记录源码、引擎版本、模型用量、预览图、文件指纹和失败原因。系统不会伪造“已在 Axure 打开”的结论；未完成原生验证的版本会持续显示验证状态。
 
 ### 研究与决策支持
 
@@ -61,7 +55,6 @@ Heron 还包含一层辅助能力：
 | 认证与缓存 | Sa-Token 1.46.0、Redis、Redisson 4.8.0 |
 | 研究与模型 | AgentScope 2.1.0-BETA1、OpenAI 兼容协议 |
 | 新闻渲染 | Node.js 22+、HyperFrames、FFmpeg / FFprobe |
-| 原型装配 | zee-rp v0.2.1、Axure RP9 空白工程 |
 | 文件存储 | 本地产物盘或 S3 兼容 OSS，复用基座 `sys_oss_config` |
 
 ## 架构
