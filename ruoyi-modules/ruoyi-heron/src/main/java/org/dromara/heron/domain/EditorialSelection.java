@@ -47,7 +47,7 @@ public record EditorialSelection(
         /** geo 故事的 3D 声明：2D 画不出经纬度，这条硬事实与渲染方式无关。 */
         public static final String DATA_BOARD_3D = "data-board-3d";
         public static final String TREND = "data-investigation";
-        public static final String KNOWLEDGE = "article";
+        public static final String KNOWLEDGE = "knowledge";
 
         private LineStyle() { }
     }

@@ -12,6 +12,8 @@ import tools.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -28,8 +30,7 @@ import java.util.Set;
  * 模型输出里的客观条目一律丢弃——客观结论只能由代码给出，
  * 否则「算出来的」和「模型说的」就再也分不开了。
  *
- * <p>模型失败不阻塞生产：主观部分作废，客观部分照常落库。
- * L3 不是闸，一条审不出来的片子不该因此发不出去。
+ * <p>模型失败时仍交付草稿；已启用的视觉审稿记为未定，不替代客观检查。
  */
 @Service
 @RequiredArgsConstructor
@@ -48,10 +49,25 @@ public class QualityReviewer {
      * @return 报告 JSON；模型不可用时仍返回只有客观部分的报告
      */
     public String review(ProductionRunVo run, QualityCriteria.Context ctx) {
+        return review(run, ctx, null, 0, "");
+    }
+
+    String review(ProductionRunVo run, QualityCriteria.Context ctx, Path sheet, int tiles, String profileId) {
         List<QualityCriteria.Criterion> machine = QualityCriteria.judge(ctx);
-        String modelName = model.modelName();
+        String visionModel = sheet == null ? null : model.visionReviewModel();
+        String modelName = visionModel == null ? model.modelName() : visionModel;
         ObjectNode report = QualityReportContract.skeleton(ctx.versionId(), ctx.mode(),
-            modelName == null || modelName.isBlank() ? "unconfigured" : modelName);        List<ObjectNode> entries = new ArrayList<>();
+            modelName == null || modelName.isBlank() ? "unconfigured" : modelName);
+        ObjectNode screenshot = (ObjectNode) report.path("screenshot");
+        if (sheet != null) {
+            screenshot.put("reason", visionModel == null ? "未配置视觉审稿模型，本报告不评价成片画面"
+                : "视觉审稿未返回有效画面结论，请查看联络表");
+        }
+        if (visionModel != null) {
+            report.put("promptVersion", "quality-review-vision-v2");
+            screenshot.put("verdict", "undetermined");
+        }
+        List<ObjectNode> entries = new ArrayList<>();
         Map<String, ObjectNode> byId = new LinkedHashMap<>();
         for (QualityCriteria.Criterion criterion : machine) {
             ObjectNode entry = objectiveEntry(criterion);
@@ -64,13 +80,41 @@ public class QualityReviewer {
         List<String> notes = new ArrayList<>();
         if (!pending.isEmpty()) {
             try {
-                Map<String, ObjectNode> judged = askModel(run, ctx, pending, machine);
+                String userPrompt = prompt(ctx, pending, machine);
+                String reply = visionModel == null ? model.chat(run, STAGE, SYSTEM, userPrompt)
+                    : reviewSheet(run, visionModel, userPrompt + visualEvidence(ctx), sheet, tiles, profileId);
+                JsonNode answer = parseReply(reply);
+                Map<String, ObjectNode> judged = modelCriteria(answer, pending);
+                if (visionModel != null) {
+                    String visual = visualFeedback(answer.path("visualCraft"), tiles);
+                    if (visual != null) {
+                        JsonNode craft = answer.path("visualCraft");
+                        screenshot.put("frames", tiles);
+                        screenshot.put("reason", visual);
+                        screenshot.put("verdict", craft.path("verdict").asString());
+                        ArrayNode findings = screenshot.putArray("findings");
+                        for (JsonNode finding : craft.path("findings")) {
+                            findings.addObject().put("tile", finding.path("tile").asInt())
+                                .put("kind", switch (finding.path("kind").asString("")) {
+                                    case "readability", "hierarchy", "spacing", "fact" -> finding.path("kind").asString();
+                                    default -> "other";
+                                })
+                                .put("issue", boundedVisualText(finding.path("issue"), 120));
+                        }
+                    }
+                }
                 for (String id : pending) {
                     ObjectNode entry = judged.get(id);
                     if (entry == null) {
                         entries.add(unknownEntry(id, "模型未给出这一条的结论"));
                         notes.add("model_output_invalid");
                         continue;
+                    }
+                    try {
+                        entry = QualityReportContract.normalizeCriterion(entry, ctx);
+                    } catch (org.dromara.heron.domain.HeronBusinessException e) {
+                        entry = unknownEntry(id, "模型结论不符合质量报告契约");
+                        notes.add("model_output_invalid");
                     }
                     entries.add(entry);
                     byId.put(id, entry);
@@ -81,7 +125,7 @@ public class QualityReviewer {
                     entries.add(unknownEntry(id, "模型未给出这一条的结论"));
                 }
                 notes.add("model_output_invalid");
-            } catch (RuntimeException e) {
+            } catch (IOException | RuntimeException e) {
                 // 模型不可用：同样只丢主观部分，成片照常交付。
                 for (String id : pending) {
                     entries.add(unknownEntry(id, "模型未给出这一条的结论"));
@@ -177,15 +221,67 @@ public class QualityReviewer {
         }
     }
 
-    /**
-     * 问模型要那几条判不出来的。
-     *
-     * <p>模型给了客观条目或 blocker 一律丢弃：客观结论只能由代码给出，
-     * 主观意见不得升级成阻断。
-     */
-    private Map<String, ObjectNode> askModel(ProductionRunVo run, QualityCriteria.Context ctx,
-                                            Set<String> pending, List<QualityCriteria.Criterion> machine) {
-        String reply = model.chat(run, STAGE, SYSTEM, prompt(ctx, pending, machine));
+    private static String visualEvidence(QualityCriteria.Context ctx) {
+        if (ctx.dataset() == null || ctx.focus().isEmpty()) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder("\n可核对的冻结数据，单位：")
+            .append(ctx.dataset().path("metric").path("unit").asString(""));
+        ctx.focus().values().stream().flatMap(focus -> focus.refs().stream()).distinct().limit(16).forEach(ref -> {
+            JsonNode value = DatasetFacts.at(ctx.dataset(), "facts." + ref);
+            if (value != null && value.isValueNode() && value.toString().length() <= 180) {
+                out.append('\n').append("facts.").append(ref).append(" = ").append(value);
+            }
+        });
+        return out.toString();
+    }
+
+    private String reviewSheet(ProductionRunVo run, String visionModel, String prompt, Path sheet, int tiles,
+                               String profileId) throws IOException {
+        final int maxBytes = 6 * 1024 * 1024;
+        try (InputStream input = Files.newInputStream(sheet)) {
+            byte[] png = input.readNBytes(maxBytes + 1);
+            if (png.length == 0 || png.length > maxBytes) {
+                throw new IOException("联络表大小超出视觉审稿范围");
+            }
+            return model.chatWithContactSheet(run, STAGE, visionModel, SYSTEM, prompt
+                + "\n附有成片联络表，共 " + tiles + " 格，视觉 Profile：" + profileId, png);
+        }
+    }
+
+    static String visualFeedback(JsonNode review, int tiles) {
+        JsonNode feedback = review.path("findings");
+        String verdict = review.path("verdict").asString("");
+        if (tiles < 1 || !feedback.isArray()) {
+            return null;
+        }
+        if ("pass".equals(verdict) && feedback.isEmpty()) {
+            String observation = boundedVisualText(review.path("observation"), 180);
+            return observation == null ? null : "抽样画面未见明显构图或可读性问题：" + observation;
+        }
+        if (!"needs_review".equals(verdict) || feedback.isEmpty() || feedback.size() > 3) {
+            return null;
+        }
+        List<String> findings = new ArrayList<>();
+        for (JsonNode item : feedback) {
+            JsonNode tile = item.path("tile");
+            String issue = boundedVisualText(item.path("issue"), 120);
+            String fix = boundedVisualText(item.path("fix"), 120);
+            if (!tile.isIntegralNumber() || !tile.canConvertToInt() || tile.asInt() < 1 || tile.asInt() > tiles
+                || issue == null || fix == null) {
+                return null;
+            }
+            findings.add("联络表第 " + tile.asInt() + " 格：" + issue + "；建议 " + fix);
+        }
+        return "建议人工看画面：" + String.join("。", findings);
+    }
+
+    private static String boundedVisualText(JsonNode node, int max) {
+        String text = node.asString("").replaceAll("[\\p{Cntrl}\\p{Zl}\\p{Zp}]+", " ").strip();
+        return node.isString() && !text.isBlank() && text.length() <= max ? text : null;
+    }
+
+    private static JsonNode parseReply(String reply) {
         JsonNode node;
         try {
             node = JSON.readTree(ModelJson.unwrap(reply));
@@ -195,11 +291,15 @@ public class QualityReviewer {
         if (node == null || !node.isObject()) {
             throw new ModelOutputInvalid("质量审稿输出不是 JSON 对象");
         }
-        JsonNode list = node.path("criteria");
-        if (!list.isArray()) {
+        if (!node.path("criteria").isArray()) {
             throw new ModelOutputInvalid("质量审稿输出缺少 criteria");
         }
+        return node;
+    }
+
+    private static Map<String, ObjectNode> modelCriteria(JsonNode answer, Set<String> pending) {
         Map<String, ObjectNode> out = new LinkedHashMap<>();
+        JsonNode list = answer.path("criteria");
         for (JsonNode item : list) {
             if (!item.isObject()) continue;
             String id = item.path("id").asString("");

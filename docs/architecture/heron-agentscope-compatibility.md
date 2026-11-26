@@ -14,7 +14,7 @@
 | HarnessAgent 是否存在 | **存在**，`io.agentscope.harness.agent.HarnessAgent`，`HarnessAgent.builder()` | 源码片段已读取 |
 | JDK 21 是否满足 | **满足**，官方要求 JDK 17+ | 官方 quickstart |
 | Maven 坐标 | `io.agentscope:agentscope-harness`（另有 `agentscope-core`、`agentscope-dependencies-bom`） | README + pom 片段 |
-| 版本 | 稳定 2.0.x（README 示例用 `2.0.3`，上下文索引列出 `v2.0.4`）；`2.1.0-beta1` 为预发布 | 两处交叉 |
+| 版本 | 稳定 2.0.x（README 示例用 `2.0.3`，上下文索引列出 `v2.0.4`）；`2.1.0-SNAPSHOT` 为预发布 | 两处交叉 |
 | 能否用官方 Spring Boot starter | **不建议用**：starter 的 parent 钉 `spring-boot.version=4.0.3`，BOM 钉 `4.0.4`；本项目是 **4.1.2** | 两处 pom 片段 |
 | 不用 starter 能否工作 | **可以**：`agentscope-core` 的 pom 里**没有任何 Spring Boot 依赖**，只依赖 reactor-core 与 Jackson 2 | core pom 片段 |
 | 与本项目最大冲突 | **三处**：Reactor 线程模型、Jackson 2 与 Jackson 3 并存、ThreadLocal 上下文（Sa-Token / 租户 / 审计）跨线程丢失 | 分析结论，见 §4 |
@@ -29,7 +29,7 @@
 
 - 仓库：`agentscope-ai/agentscope-java`，README 自称 "AgentScope Java 2.0"，要求 **JDK 17+**，建议 Maven 3.9+。
 - README 出现的版本号：`1.1.0`、`2.0.0-RC1` ~ `RC5`、`2.0.0 GA`（首个生产可用版本）、`2.0.3`（Maven 示例）、`2.1.0-SNAPSHOT`。
-- 版本索引另列出 `v2.0.4`、`v2.1.0-beta1`。
+- 版本索引另列出 `v2.0.4`、`v2.1.0-SNAPSHOT`。
 
 **采用建议：** PoC 钉 `2.0.4`。不碰 `2.1.0-*`（beta/SNAPSHOT 不该进生产依赖）。`2.0.0` 标称 GA，但 `2.0.3/2.0.4` 是同一 minor 线上的修补版本，取最新 patch 更稳。
 

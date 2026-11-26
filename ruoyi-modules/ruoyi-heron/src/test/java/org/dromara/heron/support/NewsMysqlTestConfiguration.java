@@ -37,7 +37,7 @@ public class NewsMysqlTestConfiguration {
         return factory -> {
             BeanDefinitionRegistry registry = (BeanDefinitionRegistry) factory;
             registry.removeBeanDefinition("newsProductionDomain");
-            registry.removeBeanDefinition("newsProductionPipeline");
+            registry.removeBeanDefinition("newsExplainerPipeline");
             RootBeanDefinition definition = new RootBeanDefinition(NewsProductionDomain.class);
             definition.setAutowireMode(AbstractBeanDefinition.AUTOWIRE_CONSTRUCTOR);
             registry.registerBeanDefinition("newsProductionDomain", definition);

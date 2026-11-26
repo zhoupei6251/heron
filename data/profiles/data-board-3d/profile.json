@@ -1,4 +1,14 @@
 {
   "profileId": "data-board-3d",
-  "canvas": { "width": 1080, "height": 1920 }
+  "version": 1,
+  "bizLine": "data_board",
+  "visualMode": "3d",
+  "themeTone": "dark",
+  "canvas": { "width": 1080, "height": 1920 },
+  "fonts": ["Noto Sans SC"],
+  "accentDefault": "#18b7c9",
+  "motionDiscipline": { "maxStillSec": 3.0, "endStableFrames": 30, "maxFlashPerShot": 1 },
+  "caption": "caption.css",
+  "skeletonRules": "skeleton-rules.json",
+  "creativeVoice": "三维地理数据叙事，仅 geo 形态开启；镜头空间推进配合 2D 数据叠层"
 }

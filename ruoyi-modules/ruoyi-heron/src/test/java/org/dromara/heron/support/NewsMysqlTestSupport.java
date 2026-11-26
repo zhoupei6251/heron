@@ -80,7 +80,7 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
             ScriptUtils.executeSqlScript(connection, migrationDdl("V49__news_quality_and_content_profile.sql"));
         }
         var factory = (DefaultListableBeanFactory) context.getBeanFactory();
-        factory.destroySingleton("newsProductionPipeline");
+        ProductionBizType.videoLanes().forEach(line -> factory.destroySingleton(line.pipelineBean()));
         properties.setDataRoot(Files.createTempDirectory("heron_it_news_"));
         properties.setWorkerEnabled(true);
         // Capability checks only; no executable is invoked by the production services in these tests.
@@ -89,9 +89,10 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         properties.setNode(java);
         properties.setFfmpeg(java);
         properties.setFfprobe(java);
-        // 新闻线现在要求渲染器入口与模板目录在场，测试上下文同样只满足能力检查，不真的起进程。
         properties.setPython(java);
         properties.setHyperframes(java);
+        Path profiles = Path.of("../../data/profiles");
+        properties.setNewsProfile(Files.isDirectory(profiles) ? profiles : Path.of("data/profiles"));
         properties.setNewsTemplate(Files.createTempDirectory("heron_it_template_"));
         grantNews(OWNER);
         grantNews(OTHER);
@@ -141,10 +142,12 @@ public abstract class NewsMysqlTestSupport extends HeronMysqlTestSupport {
         } catch (IOException e) {
             throw new IllegalStateException("无法写入测试模板 LOCK.json", e);
         }
-        if (!context.containsBean("newsProductionPipeline")) {
-            context.getBeanFactory().registerSingleton("newsProductionPipeline", (IProductionPipeline) run -> {
-                throw new AssertionError("事务 fixture 不执行模型或流水线");
-            });
+        for (var line : ProductionBizType.videoLanes()) {
+            if (!context.containsBean(line.pipelineBean())) {
+                context.getBeanFactory().registerSingleton(line.pipelineBean(), (IProductionPipeline) run -> {
+                    throw new AssertionError("事务 fixture 不执行模型或流水线");
+                });
+            }
         }
     }
 

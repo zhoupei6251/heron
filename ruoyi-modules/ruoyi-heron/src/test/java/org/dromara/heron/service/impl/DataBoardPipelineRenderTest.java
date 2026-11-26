@@ -156,9 +156,9 @@ class DataBoardPipelineRenderTest {
         input.put("kind", "data_board");
         input.put("title", "四期金价区间变化");
         input.put("draft", "固定示例快照的区间比较与统计口径。");
-        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_explainer, 10L, 5L, 1,
+        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.data_board, 10L, 5L, 1,
             UUID.randomUUID().toString(), JSON.writeValueAsString(input));
-        ProductionResultVo result = pipeline.execute(run);
+        ProductionResultVo result = pipeline.dataBoard().execute(run);
 
         JsonNode content = JSON.readTree(result.resultJson());
         assertTrue(content.path("durationMs").asLong() >= 30_000, "时长不足");

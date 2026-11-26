@@ -1,0 +1,15 @@
+/* mood 字幕风格契约（V1 供 SubtitleBurn ASS 映射与安全带参考） */
+.heron-caption-band {
+  position: absolute;
+  left: var(--pad-frame, 120px);
+  right: var(--pad-frame, 120px);
+  top: 1200px;
+  bottom: 320px;
+  font-family: var(--font-body, "Noto Sans SC", sans-serif);
+  font-size: var(--fs-body, 36px);
+  font-weight: 300;
+  color: var(--fg, #f0eaf8);
+  text-align: center;
+  line-height: 1.55;
+  letter-spacing: 0.08em;
+}

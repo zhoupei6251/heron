@@ -204,8 +204,8 @@ public class HeronMysqlTestConfiguration {
         return new ProductionCleanupService(taskMapper, properties, clock);
     }
 
-    @Bean("newsProductionPipeline")
-    public TestProductionPipeline newsProductionPipeline() {
+    @Bean("newsExplainerPipeline")
+    public TestProductionPipeline newsExplainerPipeline() {
         return new TestProductionPipeline();
     }
 }

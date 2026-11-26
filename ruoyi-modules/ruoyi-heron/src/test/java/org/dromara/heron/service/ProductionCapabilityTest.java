@@ -41,10 +41,14 @@ class ProductionCapabilityTest {
         properties.setPython(tempDir.resolve("python3").toString());
         Files.createFile(tempDir.resolve("hyperframes.mjs"));
         properties.setHyperframes(tempDir.resolve("hyperframes.mjs").toString());
-        Files.createDirectories(tempDir.resolve("templates").resolve("news-9x16"));
-        properties.setNewsTemplate(tempDir.resolve("templates").resolve("news-9x16"));
+        Path profiles = tempDir.resolve("profiles");
+        Files.createDirectories(profiles.resolve("_shared/fonts"));
+        Files.createDirectories(profiles.resolve("_shared/vendor"));
+        Files.createFile(profiles.resolve("_shared/fonts/NotoSansSC-Regular.otf"));
+        Files.createFile(profiles.resolve("_shared/vendor/gsap.min.js"));
+        properties.setNewsProfile(profiles);
         context = new GenericApplicationContext();
-        context.registerBean("newsProductionPipeline", IProductionPipeline.class,
+        context.registerBean("newsExplainerPipeline", IProductionPipeline.class,
             () -> run -> null);
         context.refresh();
     }
@@ -62,10 +66,10 @@ class ProductionCapabilityTest {
     }
 
     @Test
-    @DisplayName("缺渲染器入口或新闻模板目录时报具体原因，而不是运行期才炸")
-    void newsReportsMissingRendererAndTemplate() {
+    @DisplayName("缺渲染器入口或 Profile 共用资产时报具体原因")
+    void newsReportsMissingRendererAndProfiles() {
         properties.setHyperframes(null);
-        properties.setNewsTemplate(tempDir.resolve("absent-template"));
+        properties.setNewsProfile(tempDir.resolve("absent-profiles"));
 
         ProductionCapabilitiesVo.Capability news =
             new ProductionCapabilityService(context, properties).getCapabilities().news();
@@ -73,7 +77,7 @@ class ProductionCapabilityTest {
         assertFalse(news.configured());
         assertFalse(news.available());
         assertTrue(news.reasons().contains("tool_missing:hyperframes"), news.reasons().toString());
-        assertTrue(news.reasons().contains("template_missing"), news.reasons().toString());
+        assertTrue(news.reasons().contains("profile_assets_missing"), news.reasons().toString());
     }
 
     @Test

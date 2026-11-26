@@ -112,7 +112,7 @@ final class QualityReportContract {
      * <p>降级只影响这一条：其余条目照常保留。整份报告因为一条定位符写错就作废，
      * 等于让格式错误吞掉全部信息。
      */
-    private static ObjectNode normalizeCriterion(ObjectNode item, QualityCriteria.Context ctx) {
+    static ObjectNode normalizeCriterion(ObjectNode item, QualityCriteria.Context ctx) {
         rejectUnknownFields(item, Set.of("id", "verdict", "class", "confidence", "machineVerifiable",
             "severity", "repairable", "evidence", "reason"));
         String id = item.path("id").asString("");

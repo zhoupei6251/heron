@@ -1,18 +1,32 @@
 package org.dromara.heron.service.impl;
 
+import com.sun.net.httpserver.HttpServer;
 import org.dromara.heron.domain.vo.ProductionRunVo;
+import org.dromara.system.api.ConfigService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.mock.env.MockEnvironment;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.net.InetSocketAddress;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 
 /** L3 审稿全流程：机器判客观、模型判主观、模型不可用时客观部分照常落库。 */
 @DisplayName("L3 审稿：报告产出")
@@ -111,6 +125,62 @@ class QualityReviewerTest {
         assertEquals(10, report.path("criteria").size());
         assertEquals(7, report.path("summary").path("objectiveVerified").asInt());
         assertEquals(2, report.path("summary").path("subjectiveVerified").asInt());
+    }
+
+    @Test
+    void visualModelReceivesActualSheetAndItsAdviceReachesTheExistingReport(@TempDir Path work) throws Exception {
+        Path contact = work.resolve("contact.png");
+        assertTrue(ImageIO.write(new BufferedImage(3, 2, BufferedImage.TYPE_INT_RGB), "png", contact.toFile()));
+        var response = JSON.readTree(MODEL_REPLY).deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) response).set("visualCraft", JSON.readTree("""
+            {"verdict":"needs_review","findings":[{"tile":2,"issue":"单位挤进字幕","fix":"把单位移到主数字旁"}]}
+            """));
+        byte[] reply = JSON.writeValueAsBytes(Map.of("choices", List.of(Map.of("message", Map.of("content", response.toString())))));
+        AtomicReference<JsonNode> request = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/chat/completions", exchange -> {
+            try (exchange) {
+                request.set(JSON.readTree(exchange.getRequestBody()));
+                exchange.sendResponseHeaders(200, reply.length);
+                exchange.getResponseBody().write(reply);
+            }
+        });
+        server.start();
+        try {
+            var environment = new MockEnvironment()
+                .withProperty("heron.model.base-url", "http://127.0.0.1:" + server.getAddress().getPort())
+                .withProperty("heron.model.name", "text-test")
+                .withProperty("heron.model.quality-vision-name", "vision-test")
+                .withProperty("heron.model.api-key", "test-key");
+            var usage = mock(ProductionUsageService.class);
+            var reviewer = new QualityReviewer(new OpenAiModelClient(mock(ConfigService.class), environment, usage));
+            JsonNode report = JSON.readTree(reviewer.review(run(), ctx(), contact, 6, "data-board"));
+            assertEquals("vision-test", request.get().path("model").asString());
+            var content = request.get().path("messages").path(1).path("content");
+            assertTrue(content.path(0).path("text").asString().contains("facts.last.value = 120.0"));
+            assertTrue(content.path(1).path("image_url").path("url").asString().startsWith("data:image/png;base64,iVBOR"));
+            assertEquals(6, report.path("screenshot").path("frames").asInt());
+            assertTrue(report.path("screenshot").path("reason").asString().contains("联络表第 2 格：单位挤进字幕"));
+            assertEquals(10, report.path("criteria").size());
+            verify(usage).start(eq(run()), eq("quality-review"), anyString(), eq("127.0.0.1"), eq("vision-test"));
+
+            environment.setProperty("heron.model.quality-vision-name", "");
+            JsonNode textOnly = JSON.readTree(reviewer.review(run(), ctx(), contact, 6, "data-board"));
+            assertTrue(request.get().path("messages").path(1).path("content").isString());
+            assertEquals(0, textOnly.path("screenshot").path("frames").asInt());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void outOfRangeGridReferenceCannotBecomeVisualAdvice() {
+        assertNull(QualityReviewer.visualFeedback(JSON.readTree("""
+            {"verdict":"needs_review","findings":[{"tile":7,"issue":"单位不可读","fix":"放大单位"}]}
+            """), 6));
+        assertNull(QualityReviewer.visualFeedback(JSON.readTree("""
+            {"verdict":"pass","findings":[]}
+            """), 6));
     }
 
     @Test

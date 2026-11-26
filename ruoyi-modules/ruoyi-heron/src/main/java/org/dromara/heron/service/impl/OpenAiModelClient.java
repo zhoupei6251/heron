@@ -15,6 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -42,8 +43,22 @@ public class OpenAiModelClient {
     }
 
     public String chat(ProductionRunVo run, String stage, String systemPrompt, String userPrompt) {
+        return request(run, stage, modelName(), systemPrompt, userPrompt);
+    }
+
+    String visionReviewModel() {
+        return setting("heron.model.quality-vision-name");
+    }
+
+    String chatWithContactSheet(ProductionRunVo run, String stage, String visualModel,
+                                String systemPrompt, String userPrompt, byte[] png) {
+        return request(run, stage, visualModel, systemPrompt, List.of(
+            Map.of("type", "text", "text", userPrompt),
+            Map.of("type", "image_url", "image_url", Map.of("url", "data:image/png;base64," + Base64.getEncoder().encodeToString(png)))));
+    }
+
+    private String request(ProductionRunVo run, String stage, String model, String systemPrompt, Object userContent) {
         String baseUrl = setting("heron.model.base-url");
-        String model = setting("heron.model.name");
         String apiKey = setting("heron.model.api-key");
         if (baseUrl == null || model == null || apiKey == null) {
             throw new HeronBusinessException(503, "model_not_configured", "模型配置不完整");
@@ -51,7 +66,7 @@ public class OpenAiModelClient {
         String callId = IdUtil.getSnowflakeNextIdStr();
         usage.start(run, stage, callId, host(baseUrl), model);
         long began = System.nanoTime();
-        String payload = payload(model, systemPrompt, userPrompt);
+        String payload = payload(model, systemPrompt, userContent);
         HttpRequest request = HttpRequest.newBuilder(URI.create(trimSlash(baseUrl) + "/chat/completions"))
             .timeout(TIMEOUT)
             .header("Content-Type", "application/json")
@@ -133,12 +148,12 @@ public class OpenAiModelClient {
         }
     }
 
-    private static String payload(String model, String systemPrompt, String userPrompt) {
+    private static String payload(String model, String systemPrompt, Object userContent) {
         return JSON.writeValueAsString(Map.of(
             "model", model,
             "messages", List.of(
                 Map.of("role", "system", "content", systemPrompt),
-                Map.of("role", "user", "content", userPrompt))));
+                Map.of("role", "user", "content", userContent))));
     }
 
     /** 部署侧要记录"这条结果由哪个模型档位产出"，只给逻辑名，不外泄密钥。 */

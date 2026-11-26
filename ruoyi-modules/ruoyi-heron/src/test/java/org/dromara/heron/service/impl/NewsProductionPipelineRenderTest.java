@@ -94,7 +94,7 @@ class NewsProductionPipelineRenderTest {
 
         ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_explainer, 10L, 5L, 1,
             UUID.randomUUID().toString(), lockedAssets(template));
-        ProductionResultVo result = pipeline.execute(run);
+        ProductionResultVo result = pipeline.newsExplainer().execute(run);
 
         JsonNode content = JSON.readTree(result.resultJson());
         assertEquals(content.path("script").toString(), JSON.readTree(SCRIPT).toString(), "入库稿件必须等于写稿结果");
@@ -229,7 +229,7 @@ class NewsProductionPipelineRenderTest {
 
             ProductionRunVo run = new ProductionRunVo(7002L, ProductionBizType.news_explainer, 10L, 5L, 1,
                 UUID.randomUUID().toString(), lockedAssets(template));
-            result = pipeline.execute(run);
+            result = pipeline.newsExplainer().execute(run);
             assertEquals("scene1.png", JSON.readTree(result.resultJson()).path("mediaSelections")
                 .get(0).path("imageValue").asString());
         } finally {
@@ -287,7 +287,7 @@ class NewsProductionPipelineRenderTest {
         assets.put("voiceVersion", "1");
         assets.put("assetManifestSha256", DigestUtil.sha256Hex(
             template.resolve("assets-manifest.json").toFile()));
-        return JSON.writeValueAsString(Map.of("assets", assets));
+        return JSON.writeValueAsString(Map.of("kind", "article", "assets", assets));
     }
 
     private static NewsScriptAuthor fixedAuthor(String script) {

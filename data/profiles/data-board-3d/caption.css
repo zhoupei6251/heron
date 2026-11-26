@@ -1,0 +1,12 @@
+.heron-caption-band {
+  position: absolute;
+  left: var(--pad-frame, 84px);
+  right: var(--pad-frame, 84px);
+  top: 1280px;
+  bottom: 260px;
+  font-family: var(--font-body, "Noto Sans SC", sans-serif);
+  font-size: var(--fs-body, 38px);
+  color: var(--fg, #f3f0e8);
+  text-align: center;
+  line-height: 1.38;
+}

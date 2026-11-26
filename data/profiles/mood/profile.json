@@ -1,4 +1,14 @@
 {
   "profileId": "mood",
-  "canvas": { "width": 1080, "height": 1920 }
+  "version": 1,
+  "bizLine": "mood_story",
+  "visualMode": "2d",
+  "themeTone": "dark",
+  "canvas": { "width": 1080, "height": 1920 },
+  "fonts": ["Noto Sans SC"],
+  "accentDefault": "#c9a4f0",
+  "motionDiscipline": { "maxStillSec": 4.0, "endStableFrames": 30, "maxFlashPerShot": 0 },
+  "caption": "caption.css",
+  "skeletonRules": "skeleton-rules.json",
+  "creativeVoice": "电影情绪短片风：低信息密度 + 大留白 + 渐变色彩叙事 + 慢镜 + 淡出切换；禁止信息图表，只允许诗意文字与剪影视觉"
 }

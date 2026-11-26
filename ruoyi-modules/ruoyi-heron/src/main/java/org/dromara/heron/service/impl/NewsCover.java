@@ -30,18 +30,23 @@ final class NewsCover {
 
     static Result create(ProductionProcessService processes, ProductionRunVo run, Path work, Path finalFile,
                          int width, int height, NewsNarrationTiming.Span first) {
+        return create(processes, run, work, finalFile, width, height, first, work);
+    }
+
+    static Result create(ProductionProcessService processes, ProductionRunVo run, Path work, Path finalFile,
+                         int width, int height, NewsNarrationTiming.Span first, Path outputDirectory) {
         int[] size = sizeOf(width, height);
         List<Long> times = candidateTimes(first);
         List<Candidate> candidates = new ArrayList<>();
         for (int index = 0; index < times.size(); index++) {
-            Path frame = work.resolve("cover-candidate-" + (index + 1) + ".png");
+            Path frame = outputDirectory.resolve("cover-candidate-" + (index + 1) + ".png");
             extract(processes, run, work, finalFile, frame, times.get(index), "scale=360:-2");
             candidates.add(new Candidate(times.get(index), frame));
         }
         int selected = select(candidates);
         long atMs = candidates.get(selected).atMs();
-        Path cover = work.resolve("cover.png");
-        Path thumb = work.resolve("cover-thumb.png");
+        Path cover = outputDirectory.resolve("cover.png");
+        Path thumb = outputDirectory.resolve("cover-thumb.png");
         extract(processes, run, work, finalFile, cover, atMs, null);
         int side = Math.min(size[0], size[1]);
         String crop = "crop=" + side + ":" + side + ":(iw-" + side + ")/2:(ih-" + side + ")/2,scale="
@@ -151,7 +156,7 @@ final class NewsCover {
         if (filter != null) {
             args.addAll(List.of("-vf", filter));
         }
-        args.addAll(List.of("-frames:v", "1", output.getFileName().toString()));
+        args.addAll(List.of("-frames:v", "1", work.relativize(output).toString().replace('\\', '/')));
         ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg", args, work, TIMEOUT));
         if (result.exitCode() != 0 || !Files.isRegularFile(output)) {
             throw new HeronBusinessException(503, "news_cover_failed", "封面抽帧或裁切失败");

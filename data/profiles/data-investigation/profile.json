@@ -1,4 +1,14 @@
 {
   "profileId": "data-investigation",
-  "canvas": { "width": 1080, "height": 1920 }
+  "version": 1,
+  "bizLine": "trend_insight",
+  "visualMode": "2d",
+  "themeTone": "dark",
+  "canvas": { "width": 1080, "height": 1920 },
+  "fonts": ["Noto Sans SC"],
+  "accentDefault": "#d9a05b",
+  "motionDiscipline": { "maxStillSec": 3.0, "endStableFrames": 30, "maxFlashPerShot": 1 },
+  "caption": "caption.css",
+  "skeletonRules": "skeleton-rules.json",
+  "creativeVoice": "暗调调查纪录片风：暖纸白文字 + 琥珀证据高亮 + 缓慢推镜与虚线焦点环"
 }

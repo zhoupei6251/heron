@@ -126,9 +126,9 @@ class KnowledgeRealChainTest {
         tools.jackson.databind.node.ArrayNode ids = selection.putArray("sourceEvidenceIds");
         ENTRIES.forEach(ids::add);
 
-        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_explainer, 10L, 5L, 1,
+        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.knowledge_explainer, 10L, 5L, 1,
             UUID.randomUUID().toString(), JSON.writeValueAsString(input));
-        ProductionResultVo result = pipeline.execute(run);
+        ProductionResultVo result = pipeline.knowledgeExplainer().execute(run);
 
         JsonNode content = JSON.readTree(result.resultJson());
         assertTrue(content.path("durationMs").asLong() >= 30_000, "时长不足");

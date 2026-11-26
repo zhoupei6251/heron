@@ -177,7 +177,15 @@ public class NewsModelScriptAuthor implements NewsScriptAuthor {
      * 模板不支持的类型写了也过不了渲染闸，与其让模型猜，不如在写稿前就把范围收窄。
      */
     SceneCapability sceneCapability(JsonNode input) {
-        String templateKey = input.path("assets").path("templateKey").asString("");
+        JsonNode assets = input.path("assets");
+        if (assets.has("profileId")) {
+            return new SceneCapability("""
+                开场首句让观众在三秒内知道具体在看什么、为什么值得继续看；用正文有证据的数字、冲突或反常识结果，避免虚假悬念。
+                每段给 scene_type、beat、on_screen_text。首段为 HOOK，末段为 CONCLUSION/INSIGHT/REVEAL；不要连续重复构图。
+                上屏文字不超过 18 字、不复制 lead/body。素材入画必须是有依据的实际图片，不能编造来源。
+                """, true);
+        }
+        String templateKey = assets.path("templateKey").asString("");
         Path root = properties.getNewsTemplate();
         if (templateKey.isBlank() || root == null) {
             return new SceneCapability("", false);

@@ -60,7 +60,7 @@ victools 5.0.0:   tools.jackson.databind.node.ObjectNode        generateSchema(T
 
 - agentscope-core 2.0.4 依赖 `com.fasterxml.jackson.core:jackson-databind`
 - spring-ai-model 2.0.2 有 **33 处**类引用指向 victools，且是 Jackson 3 版本
-- **agentscope 2.1.0-BETA1 仍然依赖 `com.fasterxml.jackson.core:jackson-databind`**（已查该版本 pom）
+- **agentscope 2.1.0-SNAPSHOT 仍然依赖 `com.fasterxml.jackson.core:jackson-databind`**（已查该版本 pom）
 
 所以这个冲突不是「升级一下就好」，方向相反：谁赢另一个就死。
 

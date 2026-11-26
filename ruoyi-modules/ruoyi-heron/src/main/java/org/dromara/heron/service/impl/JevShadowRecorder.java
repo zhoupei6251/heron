@@ -38,7 +38,7 @@ import java.util.concurrent.ScheduledExecutorService;
 @Service
 public class JevShadowRecorder {
 
-    /** 与总编辑的选线闭集一致：外部判断只能在这五个里选，不做开卷。 */
+    /** 调用时只提供该批候选可用的线，另保留不发布。 */
     private static final Map<String, Object> LINES = Map.of(
         EditorialDecisionService.NO_PUBLISH, "今天不发",
         EditorialDecisionService.DATA_BOARD, "数据看板：讲发生了什么",
@@ -80,7 +80,11 @@ public class JevShadowRecorder {
         String localLine = decision.publish()
             ? decision.selectedLine()
             : EditorialDecisionService.NO_PUBLISH;
-        executor.submit(() -> run(client, pools, localLine));
+        try {
+            executor.submit(() -> run(client, pools, localLine));
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            log.warn("JEV 影子评估未入队：{}", e.getClass().getSimpleName());
+        }
     }
 
     private void run(JevClient client, Pools pools, String localLine) {
@@ -88,21 +92,28 @@ public class JevShadowRecorder {
         row.setPoolId(pools.poolId());
         row.setPoolHash(pools.poolHash());
         row.setLocalLine(localLine);
-        if (!withinBudget()) {
-            row.setStatus(HeronJevShadow.STATUS_UNDETERMINED);
-            row.setErrorCode("daily_budget");
-            save(row);
-            return;
-        }
         long start = System.nanoTime();
         try {
-            SystemOneResult result = client.systemOneBlocking(request(pools));
-            ChoiceAnswer answer = (ChoiceAnswer) result.answers().get(ANSWER_KEY);
-            row.setModel(result.model());
-            row.setJevLine(answer.choice());
-            row.setJevConfidence(answer.confidence());
-            row.setAgree(Objects.equals(answer.choice(), localLine));
-            row.setStatus(HeronJevShadow.STATUS_OK);
+            Map<String, Object> choices = choices(pools);
+            if (choices.size() == 1) {
+                row.setStatus(HeronJevShadow.STATUS_UNDETERMINED);
+                row.setErrorCode("no_admissible_comparison");
+            } else if (!withinBudget()) {
+                row.setStatus(HeronJevShadow.STATUS_UNDETERMINED);
+                row.setErrorCode("daily_budget");
+            } else {
+                SystemOneResult result = client.systemOneBlocking(request(pools, choices));
+                row.setModel(result.model());
+                if (result.answers().get(ANSWER_KEY) instanceof ChoiceAnswer answer && choices.containsKey(answer.choice())) {
+                    row.setJevLine(answer.choice());
+                    row.setJevConfidence(answer.confidence());
+                    row.setAgree(Objects.equals(answer.choice(), localLine));
+                    row.setStatus(HeronJevShadow.STATUS_OK);
+                } else {
+                    row.setStatus(HeronJevShadow.STATUS_UNDETERMINED);
+                    row.setErrorCode("inadmissible_answer");
+                }
+            }
         } catch (RuntimeException e) {
             // 超时、非法响应、鉴权失败都走这里：记未定，不当作同意
             row.setStatus(HeronJevShadow.STATUS_UNDETERMINED);
@@ -114,10 +125,26 @@ public class JevShadowRecorder {
         save(row);
     }
 
-    private static SystemOneRequest request(Pools pools) {
+    private static Map<String, Object> choices(Pools pools) {
+        Map<String, Object> choices = new java.util.LinkedHashMap<>();
+        choices.put(EditorialDecisionService.NO_PUBLISH, LINES.get(EditorialDecisionService.NO_PUBLISH));
+        boolean hasData = !pools.datasets().isEmpty() || !pools.opportunities().isEmpty();
+        if (hasData) {
+            choices.put(EditorialDecisionService.DATA_BOARD, LINES.get(EditorialDecisionService.DATA_BOARD));
+            choices.put(EditorialDecisionService.TREND_INSIGHT, LINES.get(EditorialDecisionService.TREND_INSIGHT));
+        }
+        if (!pools.articles().isEmpty()) {
+            choices.put(EditorialDecisionService.NEWS_EXPLAINER, LINES.get(EditorialDecisionService.NEWS_EXPLAINER));
+        } else if (!hasData && !pools.knowledge().isEmpty()) {
+            choices.put(EditorialDecisionService.KNOWLEDGE_EXPLAINER, LINES.get(EditorialDecisionService.KNOWLEDGE_EXPLAINER));
+        }
+        return choices;
+    }
+
+    private static SystemOneRequest request(Pools pools, Map<String, Object> choices) {
         return SystemOneRequest.builder()
             .state(EditorialDecisionService.prompt(pools))
-            .question(ANSWER_KEY, new ChoiceQuestion("今天这批素材该走哪条线？不做也是一种选择。", LINES))
+            .question(ANSWER_KEY, new ChoiceQuestion("今天这批素材该走哪条线？不做也是一种选择。", choices))
             .build();
     }
 

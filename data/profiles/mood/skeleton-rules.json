@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "skeleton-rules/1",
+  "canvas": { "width": 1080, "height": 1920 },
+  "safePaddingPx": 120,
+  "subtitleBandY": { "minY": 1200, "maxY": 1620 },
+  "bottomBarReserveY": 1620,
+  "aigcBadge": { "required": true, "corner": "top-right", "minFontPx": 20 },
+  "minReadableFontPx": { "headline": 48, "body": 30, "label": 22 },
+  "keepsMovingRequired": false,
+  "forbidHardcodedHex": true,
+  "forbidExternalUrls": true,
+  "maxConsecutiveSameComposition": 2,
+  "motionNotes": "情绪线允许慢镜静止（≤ 4s），禁止闪烁（maxFlashPerShot=0），切换必须用淡出"
+}

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "hyperframes-registry/1",
+  "description": "已随仓库收录的上游参考实现。file 相对此索引；用于借鉴，不代表已接入生产渲染。",
+  "components": [
+    {
+      "id": "headline-slam",
+      "category": "text_entrance",
+      "file": "../reference-cards/hyperframes-registry/components/headline-slam.html",
+      "desc": "新闻开场的重读字入场；同一片只将最重要的揭示做重。",
+      "profiles": ["sprint", "article", "data-board"]
+    },
+    {
+      "id": "count-up",
+      "category": "data_animation",
+      "file": "../reference-cards/hyperframes-registry/components/count-up.html",
+      "desc": "数值揭示；终值必须来自冻结数据，不能把动画中间值当成事实。",
+      "profiles": ["data-board", "data-investigation"]
+    },
+    {
+      "id": "mk-line-graph",
+      "category": "data_animation",
+      "file": "../reference-cards/hyperframes-registry/blocks/mk-line-graph.html",
+      "desc": "折线描绘；比例、日期与单位须使用同一个冻结指标。",
+      "profiles": ["data-board", "data-investigation"]
+    },
+    {
+      "id": "bar-chart-race",
+      "category": "data_animation",
+      "file": "../reference-cards/hyperframes-registry/blocks/bar-chart-race.html",
+      "desc": "排行随时间变化；单期快照不可渲染成历史竞速。",
+      "profiles": ["data-board"]
+    },
+    {
+      "id": "comparison-split",
+      "category": "layout_composition",
+      "file": "../reference-cards/hyperframes-registry/components/comparison-split.html",
+      "desc": "分屏比较两个同口径对象，突出证据而非重复字幕。",
+      "profiles": ["data-investigation", "knowledge"]
+    },
+    {
+      "id": "news-ticker",
+      "category": "layout_composition",
+      "file": "../reference-cards/hyperframes-registry/blocks/news-ticker.html",
+      "desc": "新闻信息条；只承载一次辅助信息，不进入字幕安全带。",
+      "profiles": ["sprint", "article"]
+    },
+    {
+      "id": "svg-stroke-trace",
+      "category": "layout_composition",
+      "file": "../reference-cards/hyperframes-registry/components/svg-stroke-trace.html",
+      "desc": "按解释顺序描线；只画知识包支持的关系。",
+      "profiles": ["knowledge"]
+    }
+  ]
+}

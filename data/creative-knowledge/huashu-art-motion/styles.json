@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "huashu-art-motion/1",
+  "description": "画数动态视觉语法参考——57 风格卡 + 9 大动画语法蒸馏，供 ShotDirectorAgent 参考",
+  "motionGrammars": [
+    {
+      "id": "mg-01-enter-stagger",
+      "label": "错位入场",
+      "desc": "多元素依次延迟入场（stagger 0.06-0.12s），层次感强，适合列表/排行/步骤",
+      "gsap": "gsap.from(els, { opacity:0, y:30, stagger:0.08, duration:0.5, ease:'power3.out' })"
+    },
+    {
+      "id": "mg-02-morph-number",
+      "label": "数字形变",
+      "desc": "数字从旧值 scale+opacity 变出新值，配合 counter 组件强化关键数据揭示",
+      "gsap": "gsap.fromTo(el, {scale:1.3,opacity:0},{scale:1,opacity:1,duration:0.4,ease:'back.out(1.4)'})"
+    },
+    {
+      "id": "mg-03-line-draw",
+      "label": "线条描绘",
+      "desc": "SVG path/line stroke-dashoffset 从总长度归零，模拟手绘，1-2s linear",
+      "css": "animation: draw-line 1.2s linear forwards; @keyframes draw-line { to { stroke-dashoffset: 0; } }"
+    },
+    {
+      "id": "mg-04-spotlight",
+      "label": "聚光高亮",
+      "desc": "其余元素 opacity 降至 0.2，目标元素 scale 1.0→1.05 + accent glow 加强，duration 0.4s",
+      "gsap": "gsap.to(others,{opacity:0.2,duration:0.3}); gsap.to(target,{scale:1.05,duration:0.3})"
+    },
+    {
+      "id": "mg-05-reveal-mask",
+      "label": "遮罩揭示",
+      "desc": "clip-path 从一侧展开（inset(0 100% 0 0) → inset(0 0 0 0)），0.5s power2.inOut，适合图片与大图",
+      "css": "animation: reveal-mask 0.5s power2.inOut forwards; @keyframes reveal-mask { to { clip-path: inset(0 0 0 0); } }"
+    },
+    {
+      "id": "mg-06-data-pulse",
+      "label": "数据脉冲",
+      "desc": "数据点/极值 scale 1→1.15→1 + ring expand opacity 1→0，重复 2 次，吸引视线",
+      "gsap": "gsap.to(el,{scale:1.15,repeat:1,yoyo:true,duration:0.3,ease:'sine.inOut'})"
+    },
+    {
+      "id": "mg-07-timeline-tick",
+      "label": "时间轴打点",
+      "desc": "时间线从左延伸，到达节点时停顿 0.3s + dot scale 弹出，适合历史时间轴叙事",
+      "gsap": "gsap.to(line,{width:'100%',duration:2,ease:'none',onUpdate:checkTicks})"
+    },
+    {
+      "id": "mg-08-evidence-pin",
+      "label": "证据钉出",
+      "desc": "档案卡从画面外 rotate ±5deg + translateY 滑入，钉在板上，stagger 0.3s",
+      "gsap": "gsap.from(cards,{y:-60,rotation:-4,opacity:0,stagger:0.3,duration:0.5,ease:'back.out(1.2)'})"
+    },
+    {
+      "id": "mg-09-color-flow",
+      "label": "色彩流转",
+      "desc": "背景 gradient hue 缓慢旋转或从一色到另一色，duration 3-8s，适合情绪线段落切换",
+      "gsap": "gsap.to(el,{background:'linear-gradient(135deg,#c9a4f0,#80c4c0)',duration:3,ease:'sine.inOut'})"
+    }
+  ],
+  "aestheticRules": [
+    { "id": "R1", "rule": "手机小窗字高 ≥ 32px（1080 画布上 ≥ 32px 实测），否则无法在缩略图中辨认" },
+    { "id": "R2", "rule": "禁止匀速动画（linear ease）用于主视觉入场，必须使用 power2/power3/back ease 给力感" },
+    { "id": "R3", "rule": "主体聚焦：每帧有且只有一个视觉主角，其余元素为支撑角色，对比度差 ≥ 30%" },
+    { "id": "R4", "rule": "数据与旁白必须一致：画面数字必须与 dataset.json 实际值精确匹配，不得创造" },
+    { "id": "Q1", "rule": "禁止连续 2 个以上镜头使用相同构图（居中大字 + 卡片），强制视觉多样性" },
+    { "id": "Q2", "rule": "每个镜头必须有运动：static 图片必须加 Ken Burns，纯文字必须有入场动效" },
+    { "id": "Q3", "rule": "色彩遵循 Profile tokens，禁止硬编码 hex 颜色，使用 CSS 变量" },
+    { "id": "Q4", "rule": "音画同步：关键数字/图表变化必须与 AudioTiming wordAnchor 偏移量精确对齐（偏差 ≤ 100ms）" },
+    { "id": "Q5", "rule": "信息密度阶梯：每镜只传递 1 个核心信息点，复杂拆分为多镜" }
+  ]
+}

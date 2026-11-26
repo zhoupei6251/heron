@@ -1,8 +1,10 @@
 package org.dromara.heron.config;
 
 import org.dromara.common.core.factory.YmlPropertySourceFactory;
+import org.dromara.heron.agentscope.DirectorRepairAgent;
 import org.dromara.heron.service.IProductionExecutionService;
 import org.dromara.heron.service.IMediaAssetService;
+import org.dromara.heron.service.IProductionPipeline;
 import org.dromara.heron.service.NewsScriptAuthor;
 import org.dromara.heron.service.impl.DatasetFetchService;
 import org.dromara.heron.service.impl.DatasetRouter;
@@ -56,9 +58,9 @@ public class HeronProductionConfiguration {
         return new ProductionArtifactCleanupRunner(artifacts, scheduler);
     }
 
-    @Bean("newsProductionPipeline")
+    @Bean
     @ConditionalOnProperty(prefix = "heron.news", name = "pipeline-enabled", havingValue = "true")
-    public NewsProductionPipeline newsProductionPipeline(@Qualifier("newsModelScriptAuthor") NewsScriptAuthor author,
+    public NewsProductionPipeline videoDelivery(@Qualifier("newsModelScriptAuthor") NewsScriptAuthor author,
                                                          KnowledgeScriptAuthor knowledgeAuthor,
                                                          ProductionProcessService processes,
                                                          ProductionArtifactService artifacts,
@@ -72,10 +74,35 @@ public class HeronProductionConfiguration {
                                                          NewsSourceFetcher newsSourceFetcher,
                                                          FrozenContextService frozenContexts,
                                                          IMediaAssetService mediaAssets,
-                                                         HeronNewsProperties newsProperties) {
+                                                         HeronNewsProperties newsProperties,
+                                                         DirectorRepairAgent repairAgent) {
         return new NewsProductionPipeline(author, knowledgeAuthor, processes, artifacts, properties,
             execution::beginStage, datasetRouter, datasetFetch, datasetAuthor, reviewer, qualityReviewer,
-            newsSourceFetcher, frozenContexts, mediaAssets, newsProperties);
+            newsSourceFetcher, frozenContexts, mediaAssets, newsProperties, repairAgent);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "heron.news", name = "pipeline-enabled", havingValue = "true")
+    public IProductionPipeline newsExplainerPipeline(NewsProductionPipeline delivery) {
+        return delivery.newsExplainer();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "heron.news", name = "pipeline-enabled", havingValue = "true")
+    public IProductionPipeline dataBoardPipeline(NewsProductionPipeline delivery) {
+        return delivery.dataBoard();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "heron.news", name = "pipeline-enabled", havingValue = "true")
+    public IProductionPipeline trendInsightPipeline(NewsProductionPipeline delivery) {
+        return delivery.trendInsight();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "heron.news", name = "pipeline-enabled", havingValue = "true")
+    public IProductionPipeline knowledgeExplainerPipeline(NewsProductionPipeline delivery) {
+        return delivery.knowledgeExplainer();
     }
 
     @Bean

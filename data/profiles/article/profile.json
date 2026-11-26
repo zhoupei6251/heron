@@ -1,4 +1,14 @@
 {
   "profileId": "article",
-  "canvas": { "width": 1080, "height": 1920 }
+  "version": 1,
+  "bizLine": "news_explainer",
+  "visualMode": "2d",
+  "themeTone": "dark",
+  "canvas": { "width": 1080, "height": 1920 },
+  "fonts": ["Noto Sans SC"],
+  "accentDefault": "#6fbccc",
+  "motionDiscipline": { "maxStillSec": 3.0, "endStableFrames": 30, "maxFlashPerShot": 1 },
+  "caption": "caption.css",
+  "skeletonRules": "skeleton-rules.json",
+  "creativeVoice": "高节奏新闻杂志风：强排版对比 + 干脆切换 + 信息条与实拍/图素混剪"
 }

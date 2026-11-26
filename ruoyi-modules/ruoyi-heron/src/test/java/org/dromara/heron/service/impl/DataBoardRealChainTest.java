@@ -164,9 +164,9 @@ class DataBoardRealChainTest {
         input.put("kind", "data_board");
         input.put("title", "中美科技巨头市值排位生变");
         input.put("draft", "英伟达市值重回高位，中美科技公司市值排位出现变化。");
-        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.news_explainer, 10L, 5L, 1,
+        ProductionRunVo run = new ProductionRunVo(7001L, ProductionBizType.data_board, 10L, 5L, 1,
             UUID.randomUUID().toString(), JSON.writeValueAsString(input));
-        ProductionResultVo result = pipeline.execute(run);
+        ProductionResultVo result = pipeline.dataBoard().execute(run);
 
         JsonNode content = JSON.readTree(result.resultJson());
         Path preview = repository.resolve("data").resolve("it-render").resolve("data-board-real.mp4");

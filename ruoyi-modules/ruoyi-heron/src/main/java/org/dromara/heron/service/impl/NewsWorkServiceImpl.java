@@ -273,20 +273,9 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         work.setRevision(1L);
         work.setNextVersion(1);
         work.setAutoPublish(auto ? "0" : "1");
-        Map<String, Object> locked = domain.lockedAssetsIfConfigured();
-        // 总编辑定的风格优先：给了死风格就不再看配置里的默认风格
-        String pinned = forcedTemplate != null && !forcedTemplate.isBlank()
-            ? forcedTemplate : news.getAutoTemplate();
-        // 导演架构 S1b：模板选择器已退役，认领只锁定风格 id（EditorialSelection.LineStyle 词汇）。
-        String picked;
-        if (auto && pinned != null && !pinned.isBlank()) {
-            picked = pinned;
-        } else {
-            // 人工认领固定走解说线的 article 风格；数据线由线内编辑显式给出。
-            picked = EditorialSelection.LineStyle.EXPLAINER;
-        }
-        work.setTemplateKey(picked != null ? picked : (String) locked.getOrDefault("templateKey", "default"));
-        work.setVoiceKey((String) locked.getOrDefault("voiceKey", "default"));
+        work.setTemplateKey(auto && forcedTemplate != null && !forcedTemplate.isBlank()
+            ? forcedTemplate : EditorialSelection.LineStyle.EXPLAINER);
+        work.setVoiceKey(ProfileRegistry.DEFAULT_VOICE);
         work.setCreateBy(actor);
         work.setUpdateBy(actor);
         work.setCreateTime(now());
@@ -711,6 +700,14 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         }
     }
 
+    static void checkVisualPass(String qualityReport) {
+        if (qualityReport == null || qualityReport.isBlank()) return;
+        JsonNode report = JSON.readTree(qualityReport);
+        if (report.path("screenshot").has("verdict") && !DirectorVisualRework.accepted(report)) {
+            throw new HeronBusinessException(409, "visual_review_required", "成片视觉审稿未通过，保留待人工确认");
+        }
+    }
+
     record PreparedPublish(NewsVideoVersionVo reviewed, PublishRequest request, Long attemptId) { }
 
     private NewsVideoVersionVo confirmAs(long workId, long versionId, NewsReviewBo bo, long actor, boolean system) {
@@ -740,6 +737,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
         if (system) {
             HeronVideoVersion version = lockVersionAny(workId, versionId);
             requireEditorialPass(version);
+            checkVisualPass(version.getQualityReport());
             List<ProductionArtifactVo> files = readyFiles(version);
             bo = new NewsReviewBo("approved", byKind(files, "contact_sheet").sha256(), byKind(files, "mp4").sha256(), null);
         }

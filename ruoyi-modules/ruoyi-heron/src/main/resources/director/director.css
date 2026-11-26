@@ -1,0 +1,48 @@
+@font-face { font-family: "Noto Sans SC"; src: url("fonts/NotoSansSC-Regular.otf") format("opentype"); font-display: block; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; }
+#root { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: "Noto Sans SC", sans-serif; }
+.shot { position: absolute; inset: 0; isolation: isolate; overflow: hidden; background: var(--bg); }
+.field { position: absolute; inset: -5%; pointer-events: none; background: radial-gradient(ellipse at 82% 35%, var(--glow-color), transparent 56%); }
+.chapter { position: absolute; right: var(--pad-frame); bottom: 290px; font-size: 360px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; color: var(--rule-faint); pointer-events: none; }
+.stage { position: absolute; inset: 180px var(--pad-frame) calc(100% - var(--subtitle-top) + 72px); display: flex; flex-direction: column; gap: 34px; }
+.index-line { display: flex; justify-content: space-between; gap: 30px; padding-bottom: 23px; border-bottom: 3px solid var(--rule-strong); color: var(--muted-2); font-weight: 700; font-size: 29px; letter-spacing: .11em; font-variant-numeric: tabular-nums; }
+.headline { margin: 0; font-size: var(--fs-title); line-height: 1.18; font-weight: 900; letter-spacing: -.034em; overflow-wrap: anywhere; }
+.headline.long { font-size: var(--fs-title-sm); }
+.deck { margin: 0; max-width: 90%; overflow-wrap: anywhere; color: var(--body); font-size: var(--fs-body); line-height: 1.42; }
+.rule { width: 148px; height: 8px; flex: none; background: var(--accent); transform-origin: left center; }
+.hook .headline, .close .headline { margin-top: 146px; }
+.statement .headline { margin-top: 70px; max-width: 88%; }
+.detail .headline { margin-top: 186px; margin-left: auto; max-width: 90%; text-align: right; }
+.detail .rule { align-self: flex-end; transform-origin: right center; }
+.close .rule { width: 340px; }
+.image-slot { margin: 0; width: 100%; height: 480px; flex-shrink: 1; min-height: 220px; overflow: hidden; background: var(--panel); }
+.photo { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hook:has(.photo) .headline { margin-top: 20px; }
+.chart .headline { font-size: var(--fs-title-sm); }
+.chart-body { display: grid; grid-template-rows: 68px minmax(0, 1fr); gap: 22px; width: 100%; height: 500px; min-height: 260px; margin: 0; }
+.chart-body svg { width: 100%; height: 100%; overflow: hidden; }
+.chart-body svg text { fill: var(--fg); font-family: "Noto Sans SC", sans-serif; font-size: 28px; font-weight: 600; }
+.chart-label { color: var(--fg); font-size: 31px; font-weight: 700; line-height: 1.3; overflow: hidden; }
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+.chart-grid { stroke: var(--rule-strong); stroke-width: 2; }
+.chart-point, .chart-bar { fill: var(--accent); }
+.chart-bar { shape-rendering: geometricPrecision; }
+#root:is(.data-board, .data-board-3d) .field { background: radial-gradient(ellipse at 72% 32%, var(--glow-color), transparent 54%), repeating-linear-gradient(90deg, var(--rule-faint) 0 1px, transparent 1px 96px); }
+#root.data-investigation .stage { border-left: 3px solid var(--rule-strong); padding-left: 28px; }
+#root.data-investigation .field { background: radial-gradient(ellipse at 72% 38%, var(--glow-color), transparent 55%), repeating-linear-gradient(0deg, transparent 0 160px, var(--rule-faint) 160px 162px); }
+#root.knowledge .field { background: repeating-linear-gradient(0deg, transparent 0 62px, var(--rule-faint) 62px 64px); opacity: .38; }
+#root.knowledge .headline { font-family: "Noto Sans SC", sans-serif; font-weight: 700; }
+#root.knowledge .detail .headline { text-align: left; margin-left: 90px; }
+#root.sprint .index-line { border-bottom-width: 7px; }
+#root.sprint .rule { height: 17px; width: 260px; }
+#aigc-badge { position: absolute; top: 64px; right: var(--pad-frame); z-index: 4; border: 2px solid var(--rule-strong); padding: 9px 16px; color: var(--fg); background: var(--bg); font-size: 27px; line-height: 1.2; }
+.rework-readability .index-line, .rework-readability .deck, .rework-readability .chart-label { color: var(--fg); }
+.rework-readability .deck, .rework-readability .chart-label { font-size: 42px; }
+.rework-readability .chart-body svg text { font-size: 34px; }
+#root .rework-hierarchy .field { opacity: .25; }
+.rework-hierarchy .chapter { opacity: 0; }
+.rework-hierarchy .rule { height: 4px; }
+.rework-spacing .stage { gap: 20px; }
+.rework-spacing .headline { margin-top: 24px; line-height: 1.15; }
+.rework-spacing .deck { max-width: 100%; }

@@ -2,12 +2,14 @@ package org.dromara.heron.service.impl;
 
 import cn.hutool.crypto.digest.DigestUtil;
 import cn.hutool.core.util.EscapeUtil;
+import org.dromara.heron.agentscope.DirectorRepairAgent;
 import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.EditorialSelection;
 import org.dromara.heron.domain.EditorialStory;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.MediaAssetLicensePolicy;
+import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.bo.MediaAssetSelectionBo;
 import org.dromara.heron.domain.bo.ProductionProcessBo;
 import org.dromara.heron.domain.vo.MediaAssetGateVo;
@@ -61,7 +63,7 @@ import java.util.stream.Stream;
  * 任何一步失败即抛出，不给半份结果入库的路径；字幕只到 cue 级，因为 edge-tts 的 CLI 给不出词级。
  */
 @lombok.extern.slf4j.Slf4j
-public class NewsProductionPipeline implements IProductionPipeline {
+public class NewsProductionPipeline {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(30);
@@ -92,8 +94,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private static final Pattern STAMP = Pattern.compile(
         "(\\d+):(\\d+):(\\d+)[.,](\\d+) --> (\\d+):(\\d+):(\\d+)[.,](\\d+)");
 
-    private final NewsScriptAuthor author;
-    private final KnowledgeScriptAuthor knowledgeAuthor;
+    private final VideoLanePipelines lanes;
     private final ProductionProcessService processes;
     private final ProductionArtifactService artifacts;
     private final HeronProductionProperties properties;
@@ -104,6 +105,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private final DatasetScriptAuthor datasetAuthor;
     private final EditorialReviewer reviewer;
     private final QualityReviewer qualityReviewer;
+    private final DirectorRepairAgent repairAgent;
     private final NewsSourceFetcher fetcher;
     private final FrozenContextService contexts;
     private final IMediaAssetService mediaAssets;
@@ -140,8 +142,20 @@ public class NewsProductionPipeline implements IProductionPipeline {
                                   EditorialReviewer reviewer, QualityReviewer qualityReviewer,
                                   NewsSourceFetcher fetcher, FrozenContextService contexts,
                                   IMediaAssetService mediaAssets, HeronNewsProperties newsProperties) {
-        this.author = author;
-        this.knowledgeAuthor = knowledgeAuthor;
+        this(author, knowledgeAuthor, processes, artifacts, properties, stages, router, datasets, datasetAuthor,
+            reviewer, qualityReviewer, fetcher, contexts, mediaAssets, newsProperties, null);
+    }
+
+    public NewsProductionPipeline(NewsScriptAuthor author, KnowledgeScriptAuthor knowledgeAuthor,
+                                  ProductionProcessService processes,
+                                  ProductionArtifactService artifacts, HeronProductionProperties properties,
+                                  ProductionStageReporter stages, DatasetRouter router,
+                                  DatasetFetchService datasets, DatasetScriptAuthor datasetAuthor,
+                                  EditorialReviewer reviewer, QualityReviewer qualityReviewer,
+                                  NewsSourceFetcher fetcher, FrozenContextService contexts,
+                                  IMediaAssetService mediaAssets, HeronNewsProperties newsProperties,
+                                  DirectorRepairAgent repairAgent) {
+        this.lanes = new VideoLanePipelines(this, author, knowledgeAuthor, datasetAuthor, properties);
         this.processes = processes;
         this.artifacts = artifacts;
         this.properties = properties;
@@ -152,6 +166,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
         this.datasetAuthor = datasetAuthor;
         this.reviewer = reviewer;
         this.qualityReviewer = qualityReviewer;
+        this.repairAgent = repairAgent;
         this.fetcher = fetcher;
         this.contexts = contexts;
         this.mediaAssets = mediaAssets;
@@ -168,96 +183,84 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return JSON.readTree(run.inputJson());
     }
 
-    @Override
-    public ProductionResultVo execute(ProductionRunVo run) {
+    public IProductionPipeline newsExplainer() {
+        return lanes::newsExplainer;
+    }
+
+    public IProductionPipeline dataBoard() {
+        return lanes::dataBoard;
+    }
+
+    public IProductionPipeline trendInsight() {
+        return lanes::trendInsight;
+    }
+
+    public IProductionPipeline knowledgeExplainer() {
+        return lanes::knowledgeExplainer;
+    }
+
+    record LaneInput(JsonNode snapshot, ProfileRegistry.Profile profile, List<Gate> gates) { }
+
+    record DataInput(DatasetFetchService.Result fetched, JsonNode dataset, boolean digest, EditorialStory story) { }
+
+    LaneInput begin(ProductionRunVo run, ProductionBizType expected) {
         JsonNode input = frozenInput(run);
-        List<Gate> gates = new ArrayList<>();
-        // 阶段回报只给操作员看进度；租约已易主时返回 false，交给 runner 收尾，这里不因此失败。
-        boolean dataBoard = "data_board".equals(input.path("kind").asString(""));
-        boolean trend = "trend".equals(input.path("kind").asString(""));
-        // 知识解释线的正文来自知识包，不抓新闻正文，也不受「文章路径开关」约束
-        boolean knowledge = "knowledge_explainer".equals(input.path("kind").asString(""));
-        // 趋势线也走数据源取数，所以和看板线一起算「数据线」
-        boolean datasetLine = dataBoard || trend;
-        // 策划结论随冻结输入一起落盘；写稿、审稿、生产期复核读的都是这一份。
-        EditorialStory story = storyOf(input);
-        if (!datasetLine && !knowledge && !properties.isArticleEnabled()) {
-            throw new HeronBusinessException(409, "article_disabled", "文章新闻路径已下线，只生产数据看板与趋势洞察");
+        if (run.bizType() != expected || !expected.kind().equals(input.path("kind").asString(""))) {
+            throw new HeronBusinessException(409, "news_line_conflict", "执行器与冻结产线不一致：" + expected);
+        }
+        JsonNode locked = input.path("assets");
+        ProfileRegistry.Profile profile = locked.has("profileId")
+            ? new ProfileRegistry(properties).load(expected, locked.path("profileId").asString(""), locked.path("voiceKey").asString(""))
+            : null;
+        if (profile != null && (!profile.fingerprint().equals(locked.path("profileSha256").asString(""))
+            || profile.version() != locked.path("profileVersion").asInt(0))) {
+            throw new HeronBusinessException(409, "news_assets_drifted", "冻结的视觉 Profile 已变化：" + profile.id());
         }
         stages.beginStage(run, "script", 5);
-        DatasetFetchService.Result fetched = null;
-        JsonNode dataset = null;
-        // 趋势稿的方向来自机器判定，判定必须在写稿之前算出来，写完再补就改不动旁白了
-        JsonNode trendDoc = null;
-        KnowledgePack knowledgePack = null;
-        String scriptJson;
-        String hookType = null;
-        ReviewOutcome review;
-        if (datasetLine) {
-            DatasetRouter.Route route = frozenRoute(run, input);
-            // 取数口径随冻结输入走：选题当时用多少点，这里就用多少点。
-            // 过去固定取 30 点，与选题分析的窗口必然不同，两边归约出的 sha 也永远比不了。
-            DatasetWindowContract.Window window = DatasetWindowContract.windowOf(input);
-            List<String> incomplete = DatasetWindowContract.windowViolations(window);
-            if (!incomplete.isEmpty()) {
-                throw new HeronBusinessException(409, "dataset_window_mismatch",
-                    "冻结的取数口径不完整，不去取数：" + String.join("；", incomplete));
-            }
-            fetched = datasets.fetch(run, route.sourceKey(), DatasetWindowContract.pointsOf(input));
-            dataset = JSON.readTree(fetched.json());
-            gates.add(dataGate(dataset, window));
-            gates.add(datasetEvidenceGate(dataset));
-            // 策划结论要在写稿之前先跟生产快照对一次：引用还在、方向没翻、覆盖没塌、极值没失效。
-            // 对不上就是策划与数据脱节，退回换选题，别把片子写出来再审。
-            if (story != null) {
-                gates.add(storyGate(story, dataset));
-            }
-            if (trend) {
-                // 单次运行只冻结一个源，跨源印证这里拿不到，trend/1 会自己记 single_source
-                trendDoc = TrendAnalysis.analyze(dataset);
-            }
-            DatasetScriptAuthor.Result draft = trend
-                ? datasetAuthor.authorTrend(run, fetched.json(), JSON.writeValueAsString(trendDoc), route.digest())
-                : datasetAuthor.author(run, fetched.json(), route.digest(), story);
-            scriptJson = draft.script();
-            hookType = draft.hookType();
-            review = reviewScript(run, scriptJson, dataset.path("facts").toString(), fetched, hookType, trendDoc,
-                story, author, "editorial-review");
-        } else if (knowledge) {
-            scriptJson = knowledgeAuthor.author(run);
-            knowledgePack = knowledgePack(input);
-            List<KnowledgePack.Entry> selected = knowledgePack.require(selecteds(input));
-            // 知识线的审稿依据是选定的几条建议：它是事实清单，不是外网证据片段，
-            // 所以走 facts 审稿而不是 evidence 审稿；自动发布因此不要求 coreFacts。
-            review = reviewScript(run, scriptJson, knowledgePack.evidenceJson(selected), null, null, null,
-                null, knowledgeAuthor, "knowledge-review");
-        } else {
-            // 正文由作者从冻结层取：首次抓取并落库，重试读同一份，写稿阶段不再二次出网
-            scriptJson = author.author(run);
-            // 解说线此前完全没有审稿，自动确认会把没审过的片子直接发出去
-            review = reviewScript(run, scriptJson, evidenceQuotes(input), null, null, null,
-                null, author, "evidence-review");
-        }
-        scriptJson = review.script;
-        hookType = review.hookType;
-        JsonNode script = JSON.readTree(scriptJson);
-        gates.add(contractGate(script, dataset, datasetLine));
-        if (trend) {
-            gates.add(trendGate(trendDoc, script, dataset));
-        }
-        if (!datasetLine) {
-            gates.add(evidenceGate(script));
-        }
-        // 引用闸只对知识线开：它要读知识包，别的线没有 entryId 可核
-        String citations = null;
-        if (knowledge) {
-            citations = knowledgePack.citationsJson(sceneRefs(script));
-            gates.add(citationGate(script, citations, knowledgePack, properties.getKnowledgeVerbatimMaxChars()));
-        }
+        return new LaneInput(input, profile, new ArrayList<>());
+    }
 
+    DataInput fetchData(ProductionRunVo run, LaneInput input) {
+        var snapshot = input.snapshot();
+        DatasetRouter.Route route = frozenRoute(run, snapshot);
+        DatasetWindowContract.Window window = DatasetWindowContract.windowOf(snapshot);
+        List<String> incomplete = DatasetWindowContract.windowViolations(window);
+        if (!incomplete.isEmpty()) {
+            throw new HeronBusinessException(409, "dataset_window_mismatch",
+                "冻结的取数口径不完整，不去取数：" + String.join("；", incomplete));
+        }
+        var fetched = datasets.fetch(run, route.sourceKey(), DatasetWindowContract.pointsOf(snapshot));
+        JsonNode dataset = JSON.readTree(fetched.json());
+        input.gates().add(dataGate(dataset, window));
+        input.gates().add(datasetEvidenceGate(dataset));
+        EditorialStory story = storyOf(snapshot);
+        if (story != null) {
+            input.gates().add(storyGate(story, dataset));
+        }
+        return new DataInput(fetched, dataset, route.digest(), story);
+    }
+
+    static JsonNode validateDraft(LaneInput lane, ReviewOutcome review, DataInput evidence) {
+        JsonNode script = JSON.readTree(review.script);
+        lane.gates().add(contractGate(script, evidence == null ? null : evidence.dataset(), evidence != null));
+        if (evidence == null) {
+            lane.gates().add(evidenceGate(script));
+        }
+        return script;
+    }
+
+    ProductionResultVo deliver(ProductionRunVo run, LaneInput lane, ReviewOutcome review, JsonNode script,
+                               DataInput evidence, JsonNode trendDoc, String citations) {
+        JsonNode input = lane.snapshot();
+        JsonNode locked = input.path("assets");
+        var profile = lane.profile();
+        var gates = lane.gates();
+        JsonNode dataset = evidence == null ? null : evidence.dataset();
+        var fetched = evidence == null ? null : evidence.fetched();
+        boolean datasetLine = evidence != null;
         Path work = artifacts.prepareWorkDirectory(run);
-        Path templateDir = templateDir(input.path("assets").path("templateKey").asString(""));
-        Path composition = copyTemplate(work, templateDir);
+        Path templateDir = profile == null ? templateDir(locked.path("templateKey").asString("")) : null;
+        Path composition = profile == null ? copyTemplate(work, templateDir) : DirectorPipeline.prepare(work, profile);
         // 占位稿入库供 data 闸复核；TTS 与模板用解析后的可读文本。
         JsonNode renderScript = datasetLine ? DatasetPlaceholders.resolve(script, dataset, trendDoc) : script;
         // 解说线的图片场景由 V5 selector 选定许可素材，下载到工作目录后交给模板。
@@ -265,15 +268,19 @@ public class NewsProductionPipeline implements IProductionPipeline {
         Map<String, String> images = datasetLine ? Map.of()
             : materializeImages(composition, renderScript, input, mediaSelections);
         gates.addAll(mediaSelections.stream().map(NewsProductionPipeline::mediaAssetGate).toList());
-        // 只给模板自己声明过的变量：--strict-variables 会把「多给的变量」判成未声明并直接中止渲染
-        java.util.Set<String> declared = declaredVariables(templateDir);
-        String variables = datasetLine
-            ? dataTemplateVariables(script, dataset, trendDoc, declared)
-            : templateVariables(renderScript, images, declared);
-        write(work.resolve(VARS_FILE), variables);
-        gates.add(assetsGate(composition, input.path("assets"), templateDir));
-        gates.add(sceneTypeGate(script, templateDir));
-        write(composition.resolve("index.html"), bindVariablesString(read(composition.resolve("index.html")), variables));
+        if (profile == null) {
+            Set<String> declared = declaredVariables(templateDir);
+            String variables = datasetLine
+                ? dataTemplateVariables(script, dataset, trendDoc, declared)
+                : templateVariables(renderScript, images, declared);
+            write(work.resolve(VARS_FILE), variables);
+            gates.add(assetsGate(composition, locked, templateDir));
+            gates.add(sceneTypeGate(script, templateDir));
+            write(composition.resolve("index.html"), bindVariablesString(read(composition.resolve("index.html")), variables));
+        } else {
+            gates.add(new Gate("assets", "assets#profileSha256", "Profile 与共用渲染资产均与冻结摘要一致",
+                Map.of("profileVersion", profile.version(), "profileMatched", true)));
+        }
 
         Path voice = composition.resolve(VOICE_FILE);
         stages.beginStage(run, "voice", 25);
@@ -286,19 +293,26 @@ public class NewsProductionPipeline implements IProductionPipeline {
             Math.round(audioSeconds * 1000));
         gates.add(subtitleGate(composition.resolve(SUBTITLES_FILE), audioSeconds, timeline));
         SubtitleBurn.Prepared burnedSubtitles = newsProperties.getSubtitles().isBurn()
-            ? SubtitleBurn.prepare(work, profileDir(input), vtt) : null;
+            ? SubtitleBurn.prepare(work, profile == null ? profileDir(input) : composition, vtt) : null;
 
         stages.beginStage(run, "render", 45);
         JsonNode subtitleNodes = JSON.readTree(subtitles);
         SoundCueMixer.Result sound = renderSoundCues(run, work, timeline, subtitleNodes, renderScript);
         gates.addAll(sound.checks().stream().map(NewsProductionPipeline::soundCueGate).toList());
-        timeComposition(composition, timeline, audioSeconds);
-        JsonNode check = checkComposition(run, work);
+        List<DirectorPipeline.Shot> shots = profile == null ? List.of()
+            : DirectorPipeline.storyboard(renderScript, dataset, images, timeline, profile);
+        List<DirectorVisualRework.Sample> samples = shots.isEmpty() ? List.of() : DirectorVisualRework.samples(shots, SHEET_TILES);
+        if (profile == null) {
+            timeComposition(composition, timeline, audioSeconds);
+        } else {
+            DirectorPipeline.compose(composition, profile, renderScript, dataset, shots);
+        }
+        JsonNode check = checkComposition(run, work, COMPOSITION_DIR);
         long renderStartedAt = System.nanoTime();
-        render(run, work);
+        render(run, work, profile == null, COMPOSITION_DIR, RAW_FILE);
         long renderMs = (System.nanoTime() - renderStartedAt) / 1_000_000L;
         gates.add(renderGate(work.resolve(RAW_FILE), renderMs, audioSeconds));
-        int[] canvas = templateSize(templateDir);
+        int[] canvas = profile == null ? templateSize(templateDir) : new int[]{profile.width(), profile.height()};
         gates.add(decodeGate(decode(run, work.resolve(RAW_FILE)), audioSeconds, canvas[0], canvas[1]));
 
         stages.beginStage(run, "finalize", 85);
@@ -310,7 +324,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
             gates.add(SubtitleBurn.verify(processes, run, work, RAW_FILE, FINAL_FILE, burnedSubtitles));
         }
         gates.add(aigcMetadataGate(run, finalFile));
-        Path sheet = contactSheet(run, work, finalFile);
+        Path sheet = contactSheet(run, work, finalFile, work.resolve(SHEET_FILE), samples);
         gates.add(visualGate(check, sheet));
         gates.add(videoSignalGate(run, work, finalFile));
         NewsCover.Result cover = newsProperties.getCover().isEnabled()
@@ -322,6 +336,66 @@ public class NewsProductionPipeline implements IProductionPipeline {
         gates.sort((left, right) -> left.gate().compareTo(right.gate()));
 
         String checks = gateJson(gates);
+        String qualityReport = qualityReport(run, script, dataset, checks, subtitles, sheet, profile);
+        ObjectNode visualRework = null;
+        if (profile != null && qualityReport != null) {
+            ObjectNode originalReport = (ObjectNode) JSON.readTree(qualityReport);
+            JsonNode before = originalReport.path("screenshot");
+            if ("needs_review".equals(before.path("verdict").asString(""))) {
+                visualRework = JSON.createObjectNode();
+                visualRework.set("before", before.deepCopy());
+                var candidates = DirectorVisualRework.candidates(originalReport, samples);
+                if (candidates.isEmpty()) {
+                    visualRework.put("status", "manual_only");
+                } else {
+                    var patch = candidates.getFirst();
+                    visualRework.put("planner", "rules");
+                    try {
+                        if (candidates.size() > 1 && repairAgent != null && repairAgent.enabled()) {
+                            var choice = repairAgent.choose(run, JSON.writeValueAsString(candidates), candidates.size());
+                            if (Thread.currentThread().isInterrupted()) {
+                                throw new HeronBusinessException(409, "visual_rework_interrupted", "视觉返工已中断");
+                            }
+                            if (choice.isPresent()) patch = candidates.get(choice.getAsInt());
+                            visualRework.put("planner", choice.isPresent() ? "agentscope" : "rules_after_agent_failed");
+                        }
+                        visualRework.set("patch", JSON.valueToTree(patch));
+                        var repair = renderRepair(run, work, profile, composition, script, renderScript, dataset, shots,
+                            samples, patch, finalFile, burnedSubtitles, audioSeconds, subtitles, gates, timeline.getFirst());
+                        visualRework.set("after", repair.report().path("screenshot"));
+                        if (DirectorVisualRework.accepted(repair.report())) {
+                            visualRework.put("status", "accepted");
+                            finalFile = repair.finalFile();
+                            sheet = repair.sheet();
+                            composition = repair.composition();
+                            checks = repair.checks();
+                            cover = repair.cover();
+                            qualityReport = withRepairNote(repair.report(), "已自动返工并复检通过：" + patch.shotId() + "。 ");
+                        } else {
+                            visualRework.put("status", "reverted");
+                            visualRework.put("reason", "vision_not_passed");
+                            qualityReport = withRepairNote(originalReport, "返工未通过视觉复审，保留原片。 ");
+                        }
+                    } catch (IOException | RuntimeException e) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            throw new HeronBusinessException(409, "visual_rework_interrupted", "视觉返工已中断", e);
+                        }
+                        visualRework.put("status", "reverted");
+                        visualRework.put("reason", e instanceof HeronBusinessException business ? business.getCode() : "visual_rework_failed");
+                        qualityReport = withRepairNote(originalReport, "返工未通过技术检查，保留原片。 ");
+                        log.warn("视觉返工回退：versionId={} shot={} reason={}", run.versionId(), patch.shotId(),
+                            visualRework.path("reason").asString());
+                    }
+                }
+            }
+        }
+        String manifest = assetManifest(composition, locked, mediaSelections, null);
+        if (!samples.isEmpty()) {
+            ObjectNode directorManifest = (ObjectNode) JSON.readTree(manifest);
+            directorManifest.set("contactSheetSamples", JSON.valueToTree(samples));
+            if (visualRework != null) directorManifest.set("visualRework", visualRework);
+            manifest = directorManifest.toString();
+        }
         List<ProductionArtifactVo> files = new ArrayList<>(List.of(
             artifacts.finalizeFile(run, "mp4", finalFile, "video/mp4"),
             artifacts.finalizeFile(run, "contact_sheet", sheet, "image/png"),
@@ -330,7 +404,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
             artifacts.finalizeFile(run, "subtitles", write(work.resolve("subtitles.json"), subtitles), "application/json"),
             artifacts.finalizeFile(run, "checks", write(work.resolve("checks.json"), checks), "application/json"),
             artifacts.finalizeFile(run, "asset_manifest",
-                write(work.resolve("asset-manifest.json"), assetManifest(composition, input.path("assets"), mediaSelections, null)),
+                write(work.resolve("asset-manifest.json"), manifest),
                 "application/json")));
         if (cover != null) {
             ProductionArtifactVo coverArtifact = artifacts.finalizeFile(run, "cover", cover.cover(), "image/png");
@@ -344,7 +418,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
             files.add(artifacts.finalizeFile(run, "trend",
                 write(work.resolve("trend.json"), JSON.writeValueAsString(trendDoc)), "application/json"));
         }
-        if (knowledge) {
+        if (citations != null) {
             files.add(artifacts.finalizeFile(run, "citations", write(work.resolve("citations.json"), citations),
                 "application/json"));
         }
@@ -374,12 +448,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
         }
         result.put("durationMs", (long) Math.round(audioSeconds * 1000));
         result.put("checks", JSON.readTree(checks));
-        // 质量报告与内容属性都是「有就更好」：审稿失败不阻塞出片，属性取不到就不写。
-        String qualityReport = qualityReport(run, script, dataset, checks, subtitles);
         if (qualityReport != null) {
             result.put("qualityReport", JSON.readTree(qualityReport));
         }
-        String contentProfile = ContentProfileWriter.writeJson(hookType, script);
+        String contentProfile = ContentProfileWriter.writeJson(review.hookType, script);
         if (contentProfile != null) {
             result.put("contentProfile", JSON.readTree(contentProfile));
         }
@@ -387,18 +459,84 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
 
-    /**
-     * 成片级质量审稿（L3）。
-     *
-     * <p>L3 不是闸：它失败时这条片子照常完成、照常可发布。审不出来就不写报告，
-     * 比写一份半成品更诚实。
-     */
+    private record ReworkedVideo(Path finalFile, Path sheet, Path composition, String checks, JsonNode report,
+                                 NewsCover.Result cover) { }
+
+    private ReworkedVideo renderRepair(ProductionRunVo run, Path work, ProfileRegistry.Profile profile,
+                                       Path originalComposition, JsonNode script, JsonNode renderScript, JsonNode dataset,
+                                       List<DirectorPipeline.Shot> shots, List<DirectorVisualRework.Sample> samples,
+                                       DirectorVisualRework.Patch patch, Path originalFinal, SubtitleBurn.Prepared burn,
+                                       double audioSeconds, String subtitles, List<Gate> originalGates,
+                                       NewsNarrationTiming.Span first) throws IOException {
+        Path attempt = Files.createDirectory(work.resolve("visual-rework"));
+        Path composition = DirectorPipeline.prepare(attempt, profile);
+        Files.copy(originalComposition.resolve(VOICE_FILE), composition.resolve(VOICE_FILE));
+        Files.copy(originalComposition.resolve(SUBTITLES_FILE), composition.resolve(SUBTITLES_FILE));
+        if (burn != null) Files.copy(burn.file(), composition.resolve(burn.file().getFileName()));
+        for (String image : shots.stream().map(DirectorPipeline.Shot::image).filter(name -> !name.isBlank()).distinct().toList()) {
+            Files.copy(originalComposition.resolve(image), composition.resolve(image));
+        }
+        DirectorPipeline.compose(composition, profile, renderScript, dataset, shots, patch);
+        String component = relative(work, composition);
+        JsonNode check = checkComposition(run, work, component);
+        Path raw = attempt.resolve(RAW_FILE);
+        long began = System.nanoTime();
+        render(run, work, false, component, relative(work, raw));
+        long renderMs = (System.nanoTime() - began) / 1_000_000;
+        Path finalFile = attempt.resolve(FINAL_FILE);
+        List<Gate> checked = new ArrayList<>(originalGates.stream().filter(gate -> !Set.of("render", "decode", "subtitles_burn",
+            "aigc_metadata", "visual", "video_signal", "cover", "aigc_visible").contains(gate.gate())).toList());
+        checked.add(renderGate(raw, renderMs, audioSeconds));
+        checked.add(decodeGate(decode(run, raw), audioSeconds, profile.width(), profile.height()));
+        remuxRepair(run, work, raw, originalFinal, finalFile, burn);
+        decodeGate(decode(run, finalFile), audioSeconds, profile.width(), profile.height());
+        if (burn != null) {
+            checked.add(SubtitleBurn.verify(processes, run, work, relative(work, raw), relative(work, finalFile), burn));
+        }
+        checked.add(aigcMetadataGate(run, finalFile));
+        Path sheet = contactSheet(run, work, finalFile, attempt.resolve(SHEET_FILE), samples);
+        checked.add(visualGate(check, sheet));
+        checked.add(videoSignalGate(run, work, finalFile));
+        checked.add(aigcVisibleGate(check, composition));
+        NewsCover.Result cover = newsProperties.getCover().isEnabled()
+            ? NewsCover.create(processes, run, work, finalFile, profile.width(), profile.height(), first, attempt) : null;
+        if (cover != null) checked.add(cover.gate());
+        checked.sort(java.util.Comparator.comparing(Gate::gate));
+        String checks = gateJson(checked);
+        String report = qualityReport(run, script, dataset, checks, subtitles, sheet, profile);
+        return new ReworkedVideo(finalFile, sheet, composition, checks, report == null ? JsonNodeFactory.instance.objectNode()
+            : JSON.readTree(report), cover);
+    }
+
+    private void remuxRepair(ProductionRunVo run, Path work, Path raw, Path original, Path target, SubtitleBurn.Prepared burn) {
+        List<String> args = new ArrayList<>(List.of("-y", "-loglevel", "error", "-i", relative(work, raw), "-i",
+            relative(work, original), "-map", "0:v:0", "-map", "1:a:0", "-c:a", "copy"));
+        if (burn == null) {
+            args.addAll(List.of("-c:v", "copy"));
+        } else {
+            args.addAll(List.of("-vf", SubtitleBurn.videoFilter(burn), "-c:v", "libx264", "-preset", "medium", "-crf", "16",
+                "-pix_fmt", "yuv420p"));
+        }
+        args.addAll(List.of("-movflags", "+use_metadata_tags", "-metadata", AIGC_TAG + "=" + AIGC_STATEMENT, relative(work, target)));
+        var result = processes.run(run, new ProductionProcessBo("ffmpeg", args, work, PACKAGE_TIMEOUT));
+        if (result.exitCode() != 0 || size(target) <= 0) {
+            throw new HeronBusinessException(503, "visual_rework_mux_failed", "返工画面与原音轨无法合成");
+        }
+    }
+
+    private static String withRepairNote(JsonNode report, String note) {
+        ObjectNode screenshot = (ObjectNode) report.path("screenshot");
+        screenshot.put("reason", note + screenshot.path("reason").asString(""));
+        return report.toString();
+    }
+
+    /** 审稿不阻断草稿交付；已启用视觉审稿时，未通过的版本不走自动确认。 */
     private String qualityReport(ProductionRunVo run, JsonNode script, JsonNode dataset, String checks,
-                                 String subtitles) {
+                                 String subtitles, Path sheet, ProfileRegistry.Profile profile) {
         try {
             QualityCriteria.Context ctx = new QualityCriteria.Context(run.versionId(), "final", script, dataset,
                 JSON.readTree(checks), subtitles == null ? null : JSON.readTree(subtitles), focusMap(script, dataset));
-            return qualityReviewer.review(run, ctx);
+            return qualityReviewer.review(run, ctx, sheet, SHEET_TILES, profile == null ? "legacy" : profile.id());
         } catch (RuntimeException e) {
             log.warn("质量审稿未完成，成片照常交付（versionId={}）：{}", run.versionId(), e.getMessage());
             return null;
@@ -511,7 +649,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
      */
     private Gate videoSignalGate(ProductionRunVo run, Path work, Path finalFile) {
         double seconds = probeDuration(run, finalFile);
-        VideoSignalCheck.Result signal = VideoSignalCheck.run(processes, run, work, FINAL_FILE, seconds);
+        VideoSignalCheck.Result signal = VideoSignalCheck.run(processes, run, work, relative(work, finalFile), seconds);
         Map<String, Object> measured = new TreeMap<>();
         measured.put("blackSpans", signal.black().size());
         measured.put("longestBlackSeconds", round2(signal.longestBlack()));
@@ -575,7 +713,7 @@ public class NewsProductionPipeline implements IProductionPipeline {
      * 趋势闸：判定契约、方向词、推测词、证据锚点、占位符可解析全过。
      * 机器判定是唯一对外结论，旁白违背它就退稿；模型异议只进质量报告的推测区，不上画面。
      */
-    private static Gate trendGate(JsonNode trend, JsonNode script, JsonNode dataset) {
+    static Gate trendGate(JsonNode trend, JsonNode script, JsonNode dataset) {
         if (trend == null || !trend.isObject()) {
             throw new HeronBusinessException(409, "trend_contract_missing", "趋势线缺少 trend/1 判定，不能出片");
         }
@@ -664,14 +802,14 @@ public class NewsProductionPipeline implements IProductionPipeline {
      * 一次定向修复 + 复审。返回的 record 是最终结论，调用方必须落盘：
      * 自动发布只认这条记录，所以写最终 verdict，不是第一次 FAIL。
      */
-    private final class ReviewOutcome {
+    static final class ReviewOutcome {
         String script;
         String record;
         /** 最终稿选中标题的钩子类型；审稿修复换题后必须跟着换，不能沿用旧值。 */
         String hookType;
     }
 
-    private ReviewOutcome reviewScript(ProductionRunVo run, String scriptJson, String basisJson,
+    ReviewOutcome reviewScript(ProductionRunVo run, String scriptJson, String basisJson,
                                        DatasetFetchService.Result datasetFetched,
                                        String hookType, JsonNode trend, EditorialStory story,
                                        NewsScriptAuthor repairer,
@@ -739,7 +877,8 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     /** 解说线审稿依据：只给抓到的证据片段与出处，不给模型自述。 */
-    private static String evidenceQuotes(JsonNode input) {        ArrayNode quotes = JsonNodeFactory.instance.arrayNode();
+    static String evidenceQuotes(JsonNode input) {
+        ArrayNode quotes = JsonNodeFactory.instance.arrayNode();
         for (JsonNode item : input.path("evidence").path("items")) {
             ObjectNode quote = quotes.addObject();
             quote.put("title", item.path("title").asString(""));
@@ -808,13 +947,13 @@ public class NewsProductionPipeline implements IProductionPipeline {
     }
 
     /** 知识包按 sourceKey 从 data/knowledge 读取；selection.dataSourceKey 在知识线里存的是它。 */
-    private KnowledgePack knowledgePack(JsonNode input) {
+    KnowledgePack knowledgePack(JsonNode input) {
         return KnowledgePack.load(properties.knowledgeDir(),
             input.path("selection").path("dataSourceKey").asString(""));
     }
 
     /** 选题时定下的 entryId 列表；写稿只能引用这几条。 */
-    private static List<String> selecteds(JsonNode input) {
+    static List<String> selecteds(JsonNode input) {
         List<String> ids = new ArrayList<>();
         for (JsonNode id : input.path("selection").path("sourceEvidenceIds")) {
             ids.add(id.asString(""));
@@ -1044,8 +1183,9 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return new Gate("decode", locator + ":streams", "容器、尺寸、流数与时长实测通过", measured);
     }
 
-    private JsonNode decode(ProductionRunVo run, Path raw) {
-        return decodeFile(run, work(run), RAW_FILE);
+    private JsonNode decode(ProductionRunVo run, Path file) {
+        Path work = work(run);
+        return decodeFile(run, work, relative(work, file));
     }
 
     private JsonNode decodeFile(ProductionRunVo run, Path work, String relativeFile) {
@@ -1057,10 +1197,10 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return JSON.readTree(result.stdout().substring(result.stdout().indexOf('{')));
     }
     private Gate aigcMetadataGate(ProductionRunVo run, Path finalFile) {
-        // 只看 ffmpeg 退出码不够：mp4 不带 use_metadata_tags 时元数据会被静默丢弃，必须读回比对文本。
+        Path work = work(run);
         ProductionProcessVo probe = processes.run(run, new ProductionProcessBo("ffprobe",
             List.of("-v", "error", "-show_entries", "format_tags=" + AIGC_TAG, "-of", "default=nw=1:nk=1",
-                FINAL_FILE), work(run), PROBE_TIMEOUT));
+                relative(work, finalFile)), work, PROBE_TIMEOUT));
         if (probe.exitCode() != 0 || !AIGC_STATEMENT.equals(probe.stdout().trim())) {
             throw new HeronBusinessException(409, "news_aigc_metadata_missing", "成片缺少 AIGC 元数据声明，拒绝进入发布");
         }
@@ -1207,9 +1347,9 @@ public class NewsProductionPipeline implements IProductionPipeline {
         }
     }
 
-    private JsonNode checkComposition(ProductionRunVo run, Path work) {
+    private JsonNode checkComposition(ProductionRunVo run, Path work, String composition) {
         ProductionProcessVo result = processes.run(run, new ProductionProcessBo("node",
-            List.of(cliEntry(), "check", COMPOSITION_DIR, "--json"), work, CHECK_TIMEOUT));
+            List.of(cliEntry(), "check", composition, "--json"), work, CHECK_TIMEOUT));
         if (result.exitCode() != 0) {
             throw new HeronBusinessException(409, "news_check_failed",
                 "版式闸失败：" + safeHead(result.stdout() + " " + result.stderr()));
@@ -1217,12 +1357,14 @@ public class NewsProductionPipeline implements IProductionPipeline {
         return JSON.readTree(result.stdout().substring(result.stdout().indexOf('{')));
     }
 
-    private void render(ProductionRunVo run, Path work) {
-        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("node",
-            List.of(cliEntry(), "render", COMPOSITION_DIR, "--variables-file", VARS_FILE, "--strict-variables",
-                "--quality", "looks", "--workers", "1", "--no-best-effort", "--quiet", "--output", RAW_FILE),
-            work, RENDER_TIMEOUT));
-        if (result.exitCode() != 0 || size(work.resolve(RAW_FILE)) <= 0) {
+    private void render(ProductionRunVo run, Path work, boolean legacy, String composition, String output) {
+        List<String> command = new ArrayList<>(List.of(cliEntry(), "render", composition));
+        if (legacy) {
+            command.addAll(List.of("--variables-file", VARS_FILE, "--strict-variables"));
+        }
+        command.addAll(List.of("--fps", "30", "--quality", "looks", "--workers", "1", "--no-best-effort", "--quiet", "--output", output));
+        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("node", command, work, RENDER_TIMEOUT));
+        if (result.exitCode() != 0 || size(work.resolve(output)) <= 0) {
             throw new HeronBusinessException(503, "news_render_failed",
                 "渲染失败：" + safeTail(result.stdout()) + safeTail(result.stderr()));
         }
@@ -1488,15 +1630,23 @@ public class NewsProductionPipeline implements IProductionPipeline {
             run.inputJson());
     }
 
-    private Path contactSheet(ProductionRunVo run, Path work, Path finalFile) {
-        int step = Math.max(1, (int) Math.floor(probeDuration(run, finalFile) / SHEET_TILES));
+    private Path contactSheet(ProductionRunVo run, Path work, Path finalFile, Path sheet,
+                              List<DirectorVisualRework.Sample> samples) {
+        String frames = samples.isEmpty()
+            ? "fps=1/" + Math.max(1, (int) Math.floor(probeDuration(run, finalFile) / SHEET_TILES))
+            : "select=" + samples.stream().map(sample -> "eq(n\\," + sample.frame() + ")")
+                .collect(java.util.stream.Collectors.joining("+"));
         ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg",
-            List.of("-y", "-loglevel", "error", "-i", FINAL_FILE, "-vf",
-                "fps=1/" + step + ",scale=360:-2,tile=3x2", "-frames:v", "1", SHEET_FILE), work, PACKAGE_TIMEOUT));
-        if (result.exitCode() != 0 || size(work.resolve(SHEET_FILE)) <= 0) {
+            List.of("-y", "-loglevel", "error", "-i", relative(work, finalFile), "-vf",
+                frames + ",scale=360:-2,tile=3x2", "-frames:v", "1", relative(work, sheet)), work, PACKAGE_TIMEOUT));
+        if (result.exitCode() != 0 || size(sheet) <= 0) {
             throw new HeronBusinessException(503, "news_contact_sheet_failed", "联络表生成失败");
         }
-        return work.resolve(SHEET_FILE);
+        return sheet;
+    }
+
+    private static String relative(Path work, Path path) {
+        return work.relativize(path).toString().replace('\\', '/');
     }
 
     private double probeDuration(ProductionRunVo run, Path file) {
@@ -2059,7 +2209,11 @@ public class NewsProductionPipeline implements IProductionPipeline {
     private static String assetManifest(Path composition, JsonNode locked, List<MediaAssetSelectionVo> selections,
                                         JsonNode inherited) {
         Map<String, Object> manifest = new TreeMap<>();
-        manifest.put("locked", JSON.readTree(JSON.writeValueAsString(locked)));
+        manifest.put("locked", locked);
+        Path storyboard = composition.resolve("storyboard.json");
+        if (locked.has("profileId")) {
+            manifest.put("director", JSON.readTree(read(storyboard)));
+        }
         Map<String, Map<String, Object>> files = new TreeMap<>();
         for (Map<String, Object> file : fileHashes(composition)) {
             files.put((String) file.get("path"), file);

@@ -53,7 +53,7 @@ Heron 还包含一层辅助能力：
 | 运行时 | JDK 21、Spring Boot 4.1.2、Jetty |
 | 数据访问 | MyBatis-Plus 3.5.18、MySQL 8.x、Flyway |
 | 认证与缓存 | Sa-Token 1.46.0、Redis、Redisson 4.8.0 |
-| 研究与模型 | AgentScope 2.1.0-BETA1、OpenAI 兼容协议 |
+| 研究与模型 | AgentScope 2.1.0-SNAPSHOT、OpenAI 兼容协议 |
 | 新闻渲染 | Node.js 22+、HyperFrames、FFmpeg / FFprobe |
 | 文件存储 | 本地产物盘或 S3 兼容 OSS，复用基座 `sys_oss_config` |
 

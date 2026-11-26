@@ -1,7 +1,7 @@
 # JEV 接入（装配层）设计
 
 日期：2026-11-23。上游结论：`docs/reports/heron-jev-architecture-review.md`（P0 = 0，分阶段接入）、
-`docs/reports/heron-jev-2.1.0-beta1-capability-check.md`（构件能力面核实）。
+`docs/reports/heron-jev-2.1.0-SNAPSHOT-capability-check.md`（构件能力面核实）。
 
 ## 决定
 
@@ -22,7 +22,7 @@ Command Code 的 Jev 是 SystemOne 协议兼容实现，可以直接接进官方
 | 模型 | `typesafe/jev` |
 | 定价 | 输入 $0.04/M tokens，输出不计费；上下文 32K |
 
-三条兼容性是对 2.1.0-BETA1 构件字节码核实的，不是照文档假设：
+三条兼容性是对 2.1.0-SNAPSHOT 构件字节码核实的，不是照文档假设：
 
 1. `JevClient` 发的头就是 `Authorization: Bearer <apiKey>`，与 Command Code 要求一致。
 2. URL 拼接规则：baseUrl 以 `/v1/systemone` 结尾直接用；以 `/v1` 结尾补 `/systemone`；否则补

@@ -32,7 +32,7 @@ public class TrendLearningAgent {
 
     private static final String PROMPT = "/prompt/trend-learn/technique-card.md";
     private static final Set<String> REQUIRED_TOOLS = Set.of(
-        "read_breakdown", "list_templates", "read_template", "view_frame");
+        "read_breakdown", "list_profiles", "read_profile", "view_frame");
 
     private final ObjectProvider<ResearchAgentFactory> factories;
     private final HeronAgentToolCallMapper toolCalls;

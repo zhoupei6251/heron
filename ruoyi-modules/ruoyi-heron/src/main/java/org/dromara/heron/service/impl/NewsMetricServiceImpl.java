@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /** 发布表现：只做记录与读取，不做推算；没有数据时如实返回空表。 */
@@ -180,20 +181,10 @@ public class NewsMetricServiceImpl implements INewsMetricService {
             row.sourceKind(),
             row.candidateId(),
             signalType(snapshot),
-            styleKey(text(snapshot, "selection", "templateId")),
+            Objects.toString(text(snapshot, "assets", "profileId"), text(snapshot, "selection", "templateId")),
             text(snapshot, "assets", "voiceKey"),
             text(profile, "hookType"),
             text(profile, "opening", "shape"));
-    }
-
-    /**
-     * 视觉风格键（导演架构 S0b）。
-     *
-     * <p>选模板废除后，selection.templateId 过渡为风格 id（article/data-board/...），
-     * 它本身就是风格键，直接返回；读不到就归「未记录」，不猜。
-     */
-    private String styleKey(String templateId) {
-        return templateId == null || templateId.isBlank() ? null : templateId;
     }
 
     /**

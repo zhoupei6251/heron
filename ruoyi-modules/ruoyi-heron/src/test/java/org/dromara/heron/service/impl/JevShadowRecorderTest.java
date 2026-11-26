@@ -110,6 +110,15 @@ class JevShadowRecorderTest {
         verify(client, never()).systemOneBlocking(any());
     }
 
+    @Test
+    void inadmissibleLineIsNotRecordedAsAValidJudgment() {
+        JevClient client = mock(JevClient.class);
+        when(client.systemOneBlocking(any())).thenReturn(new SystemOneResult("test-jev",
+            Map.of("line", new ChoiceAnswer("KNOWLEDGE_EXPLAINER", Map.of("KNOWLEDGE_EXPLAINER", 1.0), 1.0)), null));
+        recorder(clients(client), new MockEnvironment()).record(pools(), decision("DATA_BOARD"));
+        assertThat(captured().getStatus()).isEqualTo(HeronJevShadow.STATUS_UNDETERMINED);
+    }
+
     /** 同步执行器：把异步改成当场跑，测试才不用等线程。 */
     @SuppressWarnings("unchecked")
     private JevShadowRecorder recorder(ObjectProvider<JevClient> clients, MockEnvironment environment) {
@@ -137,7 +146,8 @@ class JevShadowRecorderTest {
 
     private static EditorialDecisionService.Pools pools() {
         return new EditorialDecisionService.Pools("pool-1", "0".repeat(64),
-            List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+            List.of(), List.of(), List.of(new EditorialDecisionService.DatasetRef("test", "测试数据源")),
+            List.of(), List.of(), List.of(), List.of());
     }
 
     private static EditorialDecisionService.Decision decision(String line) {

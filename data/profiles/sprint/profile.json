@@ -1,4 +1,14 @@
 {
   "profileId": "sprint",
-  "canvas": { "width": 1080, "height": 1920 }
+  "version": 1,
+  "bizLine": "news_explainer",
+  "visualMode": "2d",
+  "themeTone": "dark",
+  "canvas": { "width": 1080, "height": 1920 },
+  "fonts": ["Noto Sans SC"],
+  "accentDefault": "#ff4c3b",
+  "motionDiscipline": { "maxStillSec": 2.5, "endStableFrames": 30, "maxFlashPerShot": 1 },
+  "caption": "caption.css",
+  "skeletonRules": "skeleton-rules.json",
+  "creativeVoice": "高能量资讯杂志风：强对比大字体开场 + 信息条快切 + 朱红警示色 + 节奏感 B-roll 混剪；禁止平铺直叙，每镜必须有动能"
 }

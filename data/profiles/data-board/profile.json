@@ -1,4 +1,14 @@
 {
   "profileId": "data-board",
-  "canvas": { "width": 1080, "height": 1920 }
+  "version": 1,
+  "bizLine": "data_board",
+  "visualMode": "2d",
+  "themeTone": "dark",
+  "canvas": { "width": 1080, "height": 1920 },
+  "fonts": ["Noto Sans SC"],
+  "accentDefault": "#18b7c9",
+  "motionDiscipline": { "maxStillSec": 3.0, "endStableFrames": 30, "maxFlashPerShot": 1 },
+  "caption": "caption.css",
+  "skeletonRules": "skeleton-rules.json",
+  "creativeVoice": "深海岩板底 + 高对比等宽数字主角 + 网格与微光环境层，适合数据看板解读与财经趋势对比"
 }

@@ -5,8 +5,7 @@ import java.util.List;
 /**
  * 固定生产业务类型，不接受任意业务标识。
  *
- * <p>视频四线共用同一条新闻流水线，靠冻结快照里的 {@code kind} 决定产物清单与闸门；
- * 枚举这一层只回答「这条任务属于哪条业务线」，用来分工 lane 容量锁、worker 轮询位与权限。
+ * <p>每条产线有独立执行入口；冻结快照里的 {@code kind} 仍决定产物清单与闸门。
  */
 public enum ProductionBizType {
     /** 文稿解说线：{@code kind=article}。 */
@@ -59,7 +58,13 @@ public enum ProductionBizType {
 
     /** 流水线 bean 名；还没接流水线的线返回 null，worker 见到 null 就不轮询。 */
     public String pipelineBean() {
-        return this == music_video ? null : "newsProductionPipeline";
+        return switch (this) {
+            case news_explainer -> "newsExplainerPipeline";
+            case data_board -> "dataBoardPipeline";
+            case trend_insight -> "trendInsightPipeline";
+            case knowledge_explainer -> "knowledgeExplainerPipeline";
+            case music_video -> null;
+        };
     }
 
     /** 业务域 bean 名；没有实现就返回 null，提交时按「能力缺失」拒绝。 */

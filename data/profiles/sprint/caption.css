@@ -1,0 +1,14 @@
+/* sprint 字幕风格契约（V1 供 SubtitleBurn ASS 映射与安全带参考） */
+.heron-caption-band {
+  position: absolute;
+  left: var(--pad-frame, 84px);
+  right: var(--pad-frame, 84px);
+  top: 1280px;
+  bottom: 240px;
+  font-family: var(--font-body, "Noto Sans SC", sans-serif);
+  font-size: var(--fs-body, 40px);
+  font-weight: 700;
+  color: var(--fg, #f5f5f5);
+  text-align: center;
+  line-height: 1.32;
+}

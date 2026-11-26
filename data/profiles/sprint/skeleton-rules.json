@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "skeleton-rules/1",
+  "canvas": { "width": 1080, "height": 1920 },
+  "safePaddingPx": 84,
+  "subtitleBandY": { "minY": 1280, "maxY": 1660 },
+  "bottomBarReserveY": 1660,
+  "aigcBadge": { "required": true, "corner": "top-right", "minFontPx": 20 },
+  "minReadableFontPx": { "headline": 60, "body": 34, "label": 24 },
+  "keepsMovingRequired": true,
+  "forbidHardcodedHex": true,
+  "forbidExternalUrls": true,
+  "maxConsecutiveSameComposition": 1,
+  "motionNotes": "每镜动效时长 ≤ 0.5s 完成入场；禁止超过 2.5s 的静止画面"
+}

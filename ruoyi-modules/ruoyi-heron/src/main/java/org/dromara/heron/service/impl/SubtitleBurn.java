@@ -126,7 +126,7 @@ final class SubtitleBurn {
             measured.put("changedPixels", diff.inside());
             measured.put("outsideBandChangedPixels", diff.outside());
             measured.put("durationDeltaMs", durationDeltaMs);
-            return new NewsProductionPipeline.Gate("subtitles_burn", "subs.vtt#" + finalFile,
+            return new NewsProductionPipeline.Gate("subtitles_burn", "subs.vtt#" + Path.of(finalFile).getFileName(),
                 "ASS 已烧入画面，字幕安全带存在像素且时长偏差不超过二十毫秒", measured);
         } catch (IOException e) {
             throw new HeronBusinessException(409, "news_subtitles_burn_failed", "字幕烧录抽帧不可读", e);

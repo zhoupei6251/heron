@@ -14,10 +14,10 @@ class TrendLearningAgentTest {
 
     @Test
     void requiresAllEvidenceToolsToHaveSucceeded() {
-        Set<String> complete = Set.of("read_breakdown", "list_templates", "read_template", "view_frame");
+        Set<String> complete = Set.of("read_breakdown", "list_profiles", "read_profile", "view_frame");
         assertDoesNotThrow(() -> TrendLearningAgent.requireEvidence(complete));
         assertThrows(HeronBusinessException.class, () -> TrendLearningAgent.requireEvidence(
-            Set.of("read_breakdown", "list_templates", "read_template")));
+            Set.of("read_breakdown", "list_profiles", "read_profile")));
     }
 
     @Test
