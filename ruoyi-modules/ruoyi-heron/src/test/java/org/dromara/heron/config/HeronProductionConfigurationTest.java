@@ -29,7 +29,7 @@ class HeronProductionConfigurationTest {
 
         NewsProductionPipeline pipeline = new HeronProductionConfiguration().videoDelivery(
             null, null, null, null, new HeronProductionProperties(), mock(IProductionExecutionService.class),
-            null, null, null, null, null, null, null, null, newsProperties, null, null);
+            null, null, null, null, null, null, null, null, newsProperties, null, null, null);
 
         Field field = NewsProductionPipeline.class.getDeclaredField("newsProperties");
         field.setAccessible(true);
@@ -41,7 +41,7 @@ class HeronProductionConfigurationTest {
         var config = new HeronProductionConfiguration();
         var delivery = config.videoDelivery(null, null, null, null, new HeronProductionProperties(),
             mock(IProductionExecutionService.class), null, null, null, null, null, null,
-            mock(FrozenContextService.class), null, new HeronNewsProperties(), null, null);
+            mock(FrozenContextService.class), null, new HeronNewsProperties(), null, null, null);
         Map<String, IProductionPipeline> entries = Map.of(
             "newsExplainerPipeline", config.newsExplainerPipeline(delivery),
             "dataBoardPipeline", config.dataBoardPipeline(delivery),

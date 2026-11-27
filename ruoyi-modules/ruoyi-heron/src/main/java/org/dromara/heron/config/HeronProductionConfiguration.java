@@ -77,10 +77,11 @@ public class HeronProductionConfiguration {
                                                          IMediaAssetService mediaAssets,
                                                          HeronNewsProperties newsProperties,
                                                          DirectorRepairAgent repairAgent,
-                                                         ShotDirectorAgent shotDirector) {
+                                                         ShotDirectorAgent shotDirector,
+                                                         org.dromara.heron.service.impl.TreatmentDirector treatmentDirector) {
         return new NewsProductionPipeline(author, knowledgeAuthor, processes, artifacts, properties,
             execution::beginStage, datasetRouter, datasetFetch, datasetAuthor, reviewer, qualityReviewer,
-            newsSourceFetcher, frozenContexts, mediaAssets, newsProperties, repairAgent, shotDirector);
+            newsSourceFetcher, frozenContexts, mediaAssets, newsProperties, repairAgent, shotDirector, treatmentDirector);
     }
 
     @Bean

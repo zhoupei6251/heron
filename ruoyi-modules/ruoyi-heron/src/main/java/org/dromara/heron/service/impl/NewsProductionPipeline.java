@@ -110,6 +110,7 @@ public class NewsProductionPipeline {
     private final QualityReviewer qualityReviewer;
     private final DirectorRepairAgent repairAgent;
     private final ShotDirectorAgent shotDirector;
+    private final TreatmentDirector treatmentDirector;
     private final NewsSourceFetcher fetcher;
     private final FrozenContextService contexts;
     private final IMediaAssetService mediaAssets;
@@ -147,7 +148,7 @@ public class NewsProductionPipeline {
                                   NewsSourceFetcher fetcher, FrozenContextService contexts,
                                   IMediaAssetService mediaAssets, HeronNewsProperties newsProperties) {
         this(author, knowledgeAuthor, processes, artifacts, properties, stages, router, datasets, datasetAuthor,
-            reviewer, qualityReviewer, fetcher, contexts, mediaAssets, newsProperties, null, null);
+            reviewer, qualityReviewer, fetcher, contexts, mediaAssets, newsProperties, null, null, null);
     }
 
     public NewsProductionPipeline(NewsScriptAuthor author, KnowledgeScriptAuthor knowledgeAuthor,
@@ -158,7 +159,8 @@ public class NewsProductionPipeline {
                                   EditorialReviewer reviewer, QualityReviewer qualityReviewer,
                                   NewsSourceFetcher fetcher, FrozenContextService contexts,
                                   IMediaAssetService mediaAssets, HeronNewsProperties newsProperties,
-                                  DirectorRepairAgent repairAgent, ShotDirectorAgent shotDirector) {
+                                  DirectorRepairAgent repairAgent, ShotDirectorAgent shotDirector,
+                                  TreatmentDirector treatmentDirector) {
         this.lanes = new VideoLanePipelines(this, author, knowledgeAuthor, datasetAuthor, properties);
         this.processes = processes;
         this.artifacts = artifacts;
@@ -172,6 +174,7 @@ public class NewsProductionPipeline {
         this.qualityReviewer = qualityReviewer;
         this.repairAgent = repairAgent;
         this.shotDirector = shotDirector;
+        this.treatmentDirector = treatmentDirector;
         this.fetcher = fetcher;
         this.contexts = contexts;
         this.mediaAssets = mediaAssets;
@@ -304,8 +307,24 @@ public class NewsProductionPipeline {
         JsonNode subtitleNodes = JSON.readTree(subtitles);
         SoundCueMixer.Result sound = renderSoundCues(run, work, timeline, subtitleNodes, renderScript);
         gates.addAll(sound.checks().stream().map(NewsProductionPipeline::soundCueGate).toList());
+        // 整片创意规划：模型先想清楚观点/体验弧/视觉母题再定镜头，失败回退确定性规则
+        TreatmentDirector.Treatment treatment = null;
+        if (profile != null && treatmentDirector.enabled()) {
+            try {
+                treatment = treatmentDirector.plan(JSON.writeValueAsString(renderScript),
+                    dataset == null ? null : JSON.writeValueAsString(dataset), profile,
+                    ProductionBizType.fromKind(input.path("kind").asString("")),
+                    input.path("editorial").path("storyAngle").asString(""));
+                write(composition.resolve("treatment.json"), JSON.writeValueAsString(Map.of(
+                    "narrative", JSON.readTree(treatment.narrative()),
+                    "visual", JSON.readTree(treatment.visual()),
+                    "shots", treatment.shots())));
+            } catch (RuntimeException e) {
+                log.warn("整片创意规划未完成，回退确定性分镜（versionId={}）：{}", run.versionId(), e.toString());
+            }
+        }
         List<DirectorPipeline.Shot> shots = profile == null ? List.of()
-            : DirectorPipeline.storyboard(renderScript, dataset, images, timeline, profile);
+            : DirectorPipeline.storyboard(renderScript, dataset, images, timeline, profile, treatment);
         List<DirectorVisualRework.Sample> samples = shots.isEmpty() ? List.of() : DirectorVisualRework.samples(shots, SHEET_TILES);
         if (profile == null) {
             timeComposition(composition, timeline, audioSeconds);

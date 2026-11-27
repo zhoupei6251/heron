@@ -47,6 +47,19 @@ final class DirectorPipeline {
 
     static List<Shot> storyboard(JsonNode script, JsonNode dataset, Map<String, String> images,
                                  List<NewsNarrationTiming.Span> timeline, ProfileRegistry.Profile profile) {
+        return storyboard(script, dataset, images, timeline, profile, null);
+    }
+
+    /**
+     * Treatment 驱动版分镜：导演规划的镜头类型、画面目的与技法直接落进 Shot。
+     *
+     * <p>Treatment 为 null 时回退确定性规则——规划是自由度不是可用性依赖。
+     * 旁白窗仍来自实测字幕（导演的 narrationText 只决定镜头意图怎么写进任务卡），
+     * 镜头数与实测窗对齐：Treatment 镜头数必须等于 timeline 段数，否则视同规划失败。
+     */
+    static List<Shot> storyboard(JsonNode script, JsonNode dataset, Map<String, String> images,
+                                 List<NewsNarrationTiming.Span> timeline, ProfileRegistry.Profile profile,
+                                 TreatmentDirector.Treatment treatment) {
         JsonNode scenes = script.path("scenes");
         if (timeline.size() != scenes.size() + 1 || timeline.getFirst().startMs() != 0
             || ("3d".equals(profile.mode()) && (dataset == null || !"geo".equals(dataset.path("shape").asText())))) {
@@ -55,6 +68,11 @@ final class DirectorPipeline {
         List<Shot> shots = new ArrayList<>();
         long cursor = 0;
         boolean chartShown = false;
+        boolean planned = treatment != null;
+        if (planned && treatment.shots().size() != timeline.size()) {
+            throw new HeronBusinessException(409, "news_director_storyboard",
+                "导演规划镜头数 " + treatment.shots().size() + " 与实测旁白段数 " + timeline.size() + " 不一致");
+        }
         for (int i = 0; i < timeline.size(); i++) {
             var span = timeline.get(i);
             if (span.startMs() != cursor || span.endMs() <= cursor) {
@@ -67,19 +85,6 @@ final class DirectorPipeline {
             if (!image.isEmpty() && !image.matches("scene[0-9]+\\.(png|jpg|jpeg|webp|gif)")) {
                 throw new HeronBusinessException(409, "news_director_assets", "非法镜头素材位置：" + span.id());
             }
-            String treatment;
-            if (end) {
-                treatment = "close";
-            } else if (i == 0 && (dataset == null || scenes.size() > 1)) {
-                treatment = "hook";
-            } else if (!image.isEmpty()) {
-                treatment = "image";
-            } else if (dataset != null && !chartShown) {
-                treatment = "chart";
-                chartShown = true;
-            } else {
-                treatment = i % 2 == 0 ? "statement" : "detail";
-            }
             String lead = scene.path("on_screen_text").asString("");
             if (lead.isBlank()) {
                 lead = scene.path("lead").asString("");
@@ -87,9 +92,38 @@ final class DirectorPipeline {
             if (end || lead.isBlank()) {
                 lead = script.path("title").asString("");
             }
-            shots.add(new Shot(span.id(), treatment, lead, image, span.startMs(), span.endMs(), span.cueInterpolated()));
+            String shotTreatment;
+            String shotIntent;
+            if (planned) {
+                var plannedShot = treatment.shots().get(i);
+                shotTreatment = String.valueOf(plannedShot.get("treatment"));
+                shotIntent = plannedShot.get("storyPurpose") + " — " + plannedShot.get("visualIntent");
+            } else {
+                shotTreatment = fallbackTreatment(end, image, dataset, i, chartShown);
+                if ("chart".equals(shotTreatment)) {
+                    chartShown = true;
+                }
+                shotIntent = lead;
+            }
+            shots.add(new Shot(span.id(), shotTreatment, shotIntent, image, span.startMs(), span.endMs(),
+                span.cueInterpolated()));
         }
         return List.copyOf(shots);
+    }
+
+    /** 确定性回退的镜头类型判定：Treatment 缺席时沿用原固定规则。 */
+    private static String fallbackTreatment(boolean end, String image, JsonNode dataset, int index,
+                                             boolean chartShown) {
+        if (end || index == 0) {
+            return end ? "close" : "hook";
+        }
+        if (!image.isEmpty()) {
+            return "image";
+        }
+        if (dataset != null && !chartShown) {
+            return "chart";
+        }
+        return index % 2 == 0 ? "statement" : "detail";
     }
 
     static void compose(Path composition, ProfileRegistry.Profile profile, JsonNode script, JsonNode dataset,
