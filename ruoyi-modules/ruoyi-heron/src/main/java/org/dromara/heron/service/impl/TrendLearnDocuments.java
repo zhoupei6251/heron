@@ -129,24 +129,9 @@ public class TrendLearnDocuments {
         } catch (IOException e) {
             throw new HeronBusinessException(503, "trend_learn_summary_dir_failed", "学习汇总目录无法创建", e);
         }
-        List<Map<String, Object>> cards = new ArrayList<>();
-        try (Stream<Path> files = Files.list(day)) {
-            for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".md"))
-                .filter(path -> !"techniques.md".equals(path.getFileName().toString()))
-                .sorted(Comparator.comparing(path -> path.getFileName().toString())).toList()) {
-                try {
-                    Map<String, Object> card = JSON.readValue(frontMatter(Files.readString(file,
-                        java.nio.charset.StandardCharsets.UTF_8)), Map.class);
-                    if (learnedAwemeIds.contains(text(card.get("awemeId")))) {
-                        cards.add(card);
-                    }
-                } catch (RuntimeException | IOException e) {
-                    log.warn("技法卡汇总跳过损坏文件 {}: {}", file, e.getMessage());
-                }
-            }
-        } catch (IOException e) {
-            throw new HeronBusinessException(503, "trend_learn_summary_read_failed", "学习汇总目录无法读取", e);
-        }
+        List<Map<String, Object>> cards = summaryCards(date).entrySet().stream()
+            .filter(entry -> learnedAwemeIds.contains(entry.getKey()))
+            .map(Map.Entry::getValue).collect(Collectors.toList());
         StringBuilder text = new StringBuilder("# 爆款技法横向汇总 · " + date + "\n\n");
         text.append("成功学习 ").append(cards.size()).append(" 条。\n\n");
         if (cards.isEmpty()) {
@@ -198,6 +183,36 @@ public class TrendLearnDocuments {
         } catch (IOException e) {
             throw new HeronBusinessException(503, "trend_learn_summary_write_failed", "学习横向汇总写入失败", e);
         }
+    }
+
+    /**
+     * 当日全部技法卡的 frontmatter（awemeId → meta）。
+     * 损坏文件跳过不阻断——汇总与蒸馏都要这个容错：一张坏卡不该挡住整批结论。
+     */
+    public Map<String, Map<String, Object>> summaryCards(LocalDate date) {
+        Path day = directory(date);
+        Map<String, Map<String, Object>> cards = new LinkedHashMap<>();
+        if (!Files.isDirectory(day)) {
+            return cards;
+        }
+        try (Stream<Path> files = Files.list(day)) {
+            for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".md"))
+                .filter(path -> !"techniques.md".equals(path.getFileName().toString()))
+                .sorted(Comparator.comparing(path -> path.getFileName().toString())).toList()) {
+                try {
+                    Map<String, Object> card = JSON.readValue(frontMatter(Files.readString(file,
+                        java.nio.charset.StandardCharsets.UTF_8)), Map.class);
+                    if (text(card.get("awemeId")) != null) {
+                        cards.put(text(card.get("awemeId")), card);
+                    }
+                } catch (RuntimeException | IOException e) {
+                    log.warn("技法卡汇总跳过损坏文件 {}: {}", file, e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            throw new HeronBusinessException(503, "trend_learn_summary_read_failed", "学习汇总目录无法读取", e);
+        }
+        return cards;
     }
 
     private static Set<String> commonValues(List<Map<String, Object>> cards, String field) {

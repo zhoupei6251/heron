@@ -522,6 +522,7 @@ public class NewsProductionPipeline {
                 String goal = "镜头 " + shot.id() + "：画面目的「" + shot.title() + "」，时长 "
                     + String.format(Locale.ROOT, "%.2f", (shot.endMs() - shot.startMs()) / 1000.0) + " 秒。"
                     + (shot.image().isEmpty() ? "" : "可用配图 " + shot.image() + "（相对路径引用）。")
+                    + storyTemplateGoal(treatment)
                     + vibeGoal(treatment, beats, shot);
                 shotDirector.direct(run, tools, goal, shotDir.resolve(shot.id() + ".html"), shotBudget);
             } catch (IOException | RuntimeException e) {
@@ -567,6 +568,22 @@ public class NewsProductionPipeline {
             }
         }
         return extra.toString();
+    }
+
+    /** 叙事母版的镜头任务卡增补：整片选了结构，每个镜头要知道自己在结构里的位置。 */
+    private static String storyTemplateGoal(TreatmentDirector.Treatment treatment) {
+        if (treatment == null) {
+            return "";
+        }
+        return switch (treatment.storyTemplate()) {
+            case "riddle" -> "；整片是猜谜片结构：先呈现现象让观众猜，画面埋线索但不提前揭底。";
+            case "dilemma" -> "；整片是两难片结构：把选择的两面都摆出来，画面给对比不替观众站队。";
+            case "pain_point" -> "；整片是痛点原理片结构：先让观众认出熟悉的困境，再揭示背后的机制。";
+            case "single_thread" -> "；整片是一条主线片结构：一个主体贯穿到底，镜头间是它的变化不是换话题。";
+            case "quest" -> "；整片是闯关片结构：镜头像关卡，一镜解决一个层次，难度或信息量递进。";
+            case "montage" -> "；整片是六面轮转片结构：同一主题换角度切片，镜头间是并列不是递进。";
+            default -> "";
+        };
     }
 
     private record ReworkedVideo(Path finalFile, Path sheet, Path composition, String checks, JsonNode report,

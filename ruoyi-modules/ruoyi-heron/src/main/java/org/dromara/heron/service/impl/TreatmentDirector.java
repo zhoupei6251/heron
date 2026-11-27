@@ -35,6 +35,12 @@ public class TreatmentDirector {
     private static final List<String> TREATMENTS = List.of(
         "hook", "chart", "image", "statement", "detail", "reveal", "contrast", "close");
     private static final List<String> SYNC_MODES = List.of("line", "beat", "none");
+    /**
+     * 叙事母版：这条片按什么结构讲（vibe-knowledge 六母版思想的 Heron 词汇）。
+     * 可选不强制——数据线的既有规划不选也合法；选了就要真的按那个结构安排体验弧。
+     */
+    private static final List<String> STORY_TEMPLATES = List.of(
+        "riddle", "dilemma", "pain_point", "single_thread", "quest", "montage");
 
     private final OpenAiModelClient model;
 
@@ -44,6 +50,15 @@ public class TreatmentDirector {
 
     /** 一次规划的全部产物：narrative / visual / storyboard 逐段落盘 data/render/&lt;jobId&gt;/。 */
     public record Treatment(String narrative, String visual, List<Map<String, Object>> shots) {
+
+        /** 叙事母版（可空）：这条片按什么结构讲，镜头任务卡按母版措辞创作指令。 */
+        public String storyTemplate() {
+            try {
+                return VISUAL_JSON.readTree(this.narrative).path("storyTemplate").asString("");
+            } catch (RuntimeException e) {
+                return "";
+            }
+        }
 
         public boolean vibe() {
             return flag("vibe");
@@ -92,7 +107,7 @@ public class TreatmentDirector {
 
             你是整片导演。先想清楚这条片子要让观众经历什么，再决定镜头。三个产物：
 
-            narrative：核心观点（一句）、观众体验弧（从开场到结尾观众经历什么，≤120字）、钩子设计（前 3 秒如何让人停留）。
+            narrative：核心观点（一句）、观众体验弧（从开场到结尾观众经历什么，≤120字）、钩子设计（前 3 秒如何让人停留）、storyTemplate（可选叙事母版，只能从 riddle猜谜/dilemma两难/pain_point痛点/single_thread主线/quest闯关/montage六面轮转 里选；内容天然是哪种结构就选哪种，硬套不如不选）。
             visual：视觉世界（一个贯穿全片的视觉母题，≤60字）、镜头语言要点（≤3条）、运动纪律（≤80字）、vibe（可选，true 时按 Vibe 知识视频创作：视觉隐喻优先、设计观众参与瞬间、母题贯穿全片并在结尾变化含义）、noNarration（可选，true 时无旁白模式：字幕承担全部叙事，音乐节拍驱动画面切换）。
             shots：镜头清单，3-8 个。每个镜头：
             - shotId：s1、s2…
@@ -103,7 +118,7 @@ public class TreatmentDirector {
             - techniques：≤3 个技法词，从 count-up/split-reveal/stroke-trace/fade-up/slam/line-grow/bar-race/split-screen/ken-burns/timeline-flow 里选
             - syncMode：line/beat/none；Vibe 模式且 BGM 有节拍时优先 beat
 
-            只输出一个 JSON 对象：{"narrative":{"thesis":"","arc":"","hook":""},"visual":{"motif":"","lensNotes":[],"motionDiscipline":"","vibe":false,"noNarration":false},"shots":[…]}
+            只输出一个 JSON 对象：{"narrative":{"thesis":"","arc":"","hook":"","storyTemplate":""},"visual":{"motif":"","lensNotes":[],"motionDiscipline":"","vibe":false,"noNarration":false},"shots":[…]}
             """);
         return text.toString();
     }
@@ -133,6 +148,11 @@ public class TreatmentDirector {
         requireText(narrative.path("thesis"), "核心观点", 60);
         requireText(narrative.path("arc"), "体验弧", 160);
         requireText(narrative.path("hook"), "钩子设计", 100);
+        // 母版可选：不选合法（数据线旧规划不受影响），选了必须是闭集词汇
+        String storyTemplate = narrative.path("storyTemplate").asString("");
+        if (!storyTemplate.isEmpty() && !STORY_TEMPLATES.contains(storyTemplate)) {
+            throw invalid("叙事母版不在词汇闭集：" + storyTemplate);
+        }
         requireText(visual.path("motif"), "视觉母题", 80);
         if (!visual.path("lensNotes").isArray() || visual.path("lensNotes").size() > 3) {
             throw invalid("镜头语言要点缺失或超过 3 条");
