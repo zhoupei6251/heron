@@ -1,6 +1,6 @@
 package org.dromara.heron.service;
 
-import org.dromara.heron.agentscope.ResearchGrade;
+import org.dromara.heron.agentscope.research.ResearchGrade;
 
 import java.math.BigDecimal;
 import java.util.function.BooleanSupplier;

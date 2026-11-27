@@ -10,7 +10,7 @@ import org.dromara.heron.service.impl.shared.media.ReferenceVideoDownloader;
 import org.dromara.heron.service.impl.shared.research.TrendLearnDocuments;
 import org.dromara.heron.service.impl.shared.research.TrendLearnService;
 import org.dromara.heron.service.impl.shared.research.TrendLearnStorage;
-import org.dromara.heron.service.impl.shared.research.TrendLearningAgent;
+import org.dromara.heron.agentscope.agent.TrendLearningAgent;
 import org.dromara.heron.service.impl.shared.research.TrendVideoDecomposer;
 import org.dromara.heron.service.impl.shared.support.OpenAiModelClient;
 import org.junit.jupiter.api.BeforeEach;

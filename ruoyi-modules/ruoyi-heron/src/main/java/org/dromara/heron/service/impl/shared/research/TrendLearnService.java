@@ -2,7 +2,7 @@ package org.dromara.heron.service.impl.shared.research;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.dromara.heron.service.impl.shared.research.TrendLearningAgent;
+import org.dromara.heron.agentscope.agent.TrendLearningAgent;
 import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.HeronTrendVideo;

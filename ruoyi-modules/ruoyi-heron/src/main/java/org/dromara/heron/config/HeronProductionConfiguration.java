@@ -1,28 +1,28 @@
 package org.dromara.heron.config;
 
 import org.dromara.common.core.factory.YmlPropertySourceFactory;
-import org.dromara.heron.agentscope.DirectorRepairAgent;
-import org.dromara.heron.agentscope.ShotDirectorAgent;
+import org.dromara.heron.agentscope.agent.DirectorRepairAgent;
+import org.dromara.heron.agentscope.agent.ShotDirectorAgent;
 import org.dromara.heron.service.IProductionExecutionService;
 import org.dromara.heron.service.IMediaAssetService;
 import org.dromara.heron.service.IProductionPipeline;
 import org.dromara.heron.service.NewsScriptAuthor;
-import org.dromara.heron.service.impl.DatasetFetchService;
-import org.dromara.heron.service.impl.DatasetRouter;
-import org.dromara.heron.service.impl.DatasetScriptAuthor;
-import org.dromara.heron.service.impl.KnowledgeScriptAuthor;
-import org.dromara.heron.service.impl.ModelPriceConfig;
-import org.dromara.heron.service.impl.NewsSourceFetcher;
-import org.dromara.heron.service.impl.EditorialReviewer;
-import org.dromara.heron.service.impl.FrozenContextService;
-import org.dromara.heron.service.impl.NewsProductionPipeline;
-import org.dromara.heron.service.impl.ProductionArtifactCleanupRunner;
-import org.dromara.heron.service.impl.ProductionArtifactService;
-import org.dromara.heron.service.impl.ProductionProcessService;
-import org.dromara.heron.service.impl.ProductionRecoveryService;
-import org.dromara.heron.service.impl.ProductionRunner;
-import org.dromara.heron.service.impl.ProductionUsageService;
-import org.dromara.heron.service.impl.QualityReviewer;
+import org.dromara.heron.service.impl.lane.databoard.DatasetFetchService;
+import org.dromara.heron.service.impl.lane.databoard.DatasetRouter;
+import org.dromara.heron.service.impl.lane.databoard.DatasetScriptAuthor;
+import org.dromara.heron.service.impl.lane.knowledge.KnowledgeScriptAuthor;
+import org.dromara.heron.service.impl.shared.support.ModelPriceConfig;
+import org.dromara.heron.service.impl.shared.research.NewsSourceFetcher;
+import org.dromara.heron.service.impl.shared.research.EditorialReviewer;
+import org.dromara.heron.service.impl.shared.production.FrozenContextService;
+import org.dromara.heron.service.impl.shared.production.NewsProductionPipeline;
+import org.dromara.heron.service.impl.shared.production.ProductionArtifactCleanupRunner;
+import org.dromara.heron.service.impl.shared.production.ProductionArtifactService;
+import org.dromara.heron.service.impl.shared.production.ProductionProcessService;
+import org.dromara.heron.service.impl.shared.production.ProductionRecoveryService;
+import org.dromara.heron.service.impl.shared.production.ProductionRunner;
+import org.dromara.heron.service.impl.shared.production.ProductionUsageService;
+import org.dromara.heron.service.impl.shared.quality.QualityReviewer;
 import org.dromara.system.api.ConfigService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -78,8 +78,8 @@ public class HeronProductionConfiguration {
                                                          HeronNewsProperties newsProperties,
                                                          DirectorRepairAgent repairAgent,
                                                          ShotDirectorAgent shotDirector,
-                                                         org.dromara.heron.service.impl.TreatmentDirector treatmentDirector,
-                                                         org.dromara.heron.service.impl.BeatAnalysis beatAnalysis) {
+                                                         org.dromara.heron.service.impl.shared.production.TreatmentDirector treatmentDirector,
+                                                         org.dromara.heron.service.impl.shared.production.BeatAnalysis beatAnalysis) {
         return new NewsProductionPipeline(author, knowledgeAuthor, processes, artifacts, properties,
             execution::beginStage, datasetRouter, datasetFetch, datasetAuthor, reviewer, qualityReviewer,
             newsSourceFetcher, frozenContexts, mediaAssets, newsProperties, repairAgent, shotDirector, treatmentDirector,

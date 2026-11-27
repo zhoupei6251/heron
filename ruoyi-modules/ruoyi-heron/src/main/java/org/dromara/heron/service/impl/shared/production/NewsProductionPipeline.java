@@ -2,9 +2,9 @@ package org.dromara.heron.service.impl.shared.production;
 
 import cn.hutool.crypto.digest.DigestUtil;
 import cn.hutool.core.util.EscapeUtil;
-import org.dromara.heron.agentscope.DirectorRepairAgent;
-import org.dromara.heron.agentscope.ShotDirectorAgent;
-import org.dromara.heron.agentscope.ShotRenderTools;
+import org.dromara.heron.agentscope.agent.DirectorRepairAgent;
+import org.dromara.heron.agentscope.agent.ShotDirectorAgent;
+import org.dromara.heron.agentscope.toolkit.ShotRenderTools;
 import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.EditorialSelection;
@@ -577,7 +577,7 @@ public class NewsProductionPipeline {
             Path shotDir = composition.resolve("shots");
             try {
                 Files.createDirectories(shotDir);
-                var shotBudget = new org.dromara.heron.agentscope.ResearchBudget(6, 40_000,
+                var shotBudget = new org.dromara.heron.agentscope.research.ResearchBudget(6, 40_000,
                     Duration.ofSeconds(60), java.time.Clock.systemDefaultZone(), null);
                 var tools = new ShotRenderTools(shotDir, dataset, Map.of(
                     "profileId", profile.id(), "canvas", profile.width() + "x" + profile.height(),
@@ -665,7 +665,7 @@ public class NewsProductionPipeline {
             write(shotDir.resolve(shot.id() + ".rework.json"), JSON.writeValueAsString(Map.of("notes", findings)));
             log.info("镜头 {} 视觉返工：{} 条问题，同镜 Agent 重写", shot.id(), findings.size());
             // 同镜 Agent 修自己的 HTML：预算再加一轮
-            var reworkBudget = new org.dromara.heron.agentscope.ResearchBudget(6, 40_000,
+            var reworkBudget = new org.dromara.heron.agentscope.research.ResearchBudget(6, 40_000,
                 Duration.ofSeconds(60), java.time.Clock.systemDefaultZone(), null);
             shotDirector.direct(run, tools, goal + "；这是返工轮：先 read_rework_notes，按报告逐条修画面。",
                 shotHtml, reworkBudget);

@@ -1,6 +1,6 @@
 package org.dromara.heron.service.impl.shared.research;
 
-import org.dromara.heron.agentscope.ResearchGrade;
+import org.dromara.heron.agentscope.research.ResearchGrade;
 
 import java.time.Duration;
 import java.time.LocalDateTime;

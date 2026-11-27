@@ -110,3 +110,4 @@ org.dromara.heron.config/
 | 日期 | 动作 | 提交 |
 | --- | --- | --- |
 | 2026-11-27 | 设计确认，等待执行指令 | — |
+| 2026-11-27 | config → research → toolkit → agent 四包迁移完成；`mvn -pl ruoyi-modules/ruoyi-heron -q test-compile` 通过 | 待确认提交 |

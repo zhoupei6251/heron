@@ -2,7 +2,7 @@ package org.dromara.heron.service.impl;
 
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.TrendTechniqueCard;
-import org.dromara.heron.service.impl.shared.research.TrendLearningAgent;
+import org.dromara.heron.agentscope.agent.TrendLearningAgent;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

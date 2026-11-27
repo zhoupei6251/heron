@@ -11,7 +11,7 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
 import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.heron.domain.HeronBusinessException;
-import org.dromara.heron.agentscope.ResearchGrade;
+import org.dromara.heron.agentscope.research.ResearchGrade;
 import org.dromara.heron.domain.HeronContentDecision;
 import org.dromara.heron.domain.HeronDataOpportunity;
 import org.dromara.heron.domain.HeronResearchTask;
