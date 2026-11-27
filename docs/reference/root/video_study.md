@@ -5,16 +5,21 @@
 
 ## 一、视频生成全链路（同类产品，看整体架构）
 
-| 仓库                                                                       | 语言 | star | 是什么 | 可借鉴 |
-|----------------------------------------------------------------------------| --- | --- | --- | --- |
-| [MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo)        | Python | 145k | 主题/关键词一键生成高清短视频，AI 工作流 | 最完整的"选题→文案→配音→素材→合成"流水线拆解，闸门与降级怎么摆 |
-| [hyperframes](https://github.com/heygen-com/hyperframes)                   | TypeScript | 90k | HeyGen 出品，HTML 写、渲染 MP4，开源 AI 视频编辑器 | **本仓库已在用**（`HERON_HYPERFRAMES` + hyperframes skill），重点读渲染管线与 composition 组织 |
-| [OpenMontage](https://github.com/OpenMontageInc/OpenMontage)               | Python | 83k | 12 条生产管线、100+ 工具、700+ agent skill 的 agentic 视频制作系统 | 多管线如何共用一套工具层；skill/知识文件怎么切分 |
-| [Toonflow-app](https://github.com/HBAI-Ltd/Toonflow-app)                   | TypeScript | 23k | 短剧/漫剧制作：剧本、分镜、角色场景资产、图生视频，无限画布 | 剧本→分镜→素材的资产模型；画布式编排 |
-| [claude-real-video](https://github.com/HUANGCHIHHUNGLeo/claude-real-video) | Python | 2.3k | 把视频变成"LLM 能看的东西"：场景感知去重抽帧 + 字幕转写 | 抽帧与去重策略，量大时怎么控 token |
-| https://github.com/hypit-ai/hypit                                          |
-| https://opentrend.org/zh/project/autoclip                                  |
-| https://github.com/XiaoYouChR/Ghost-Downloader-3                           |
+| 仓库                                                                              | 语言 | star | 是什么 | 可借鉴 |
+|-----------------------------------------------------------------------------------| --- | --- | --- | --- |
+| [MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo)               | Python | 145k | 主题/关键词一键生成高清短视频，AI 工作流 | 最完整的"选题→文案→配音→素材→合成"流水线拆解，闸门与降级怎么摆 |
+| [hyperframes](https://github.com/heygen-com/hyperframes)                          | TypeScript | 90k | HeyGen 出品，HTML 写、渲染 MP4，开源 AI 视频编辑器 | **本仓库已在用**（`HERON_HYPERFRAMES` + hyperframes skill），重点读渲染管线与 composition 组织 |
+| [OpenMontage](https://github.com/OpenMontageInc/OpenMontage)                      | Python | 83k | 12 条生产管线、100+ 工具、700+ agent skill 的 agentic 视频制作系统 | 多管线如何共用一套工具层；skill/知识文件怎么切分 |
+| [Toonflow-app](https://github.com/HBAI-Ltd/Toonflow-app)                          | TypeScript | 23k | 短剧/漫剧制作：剧本、分镜、角色场景资产、图生视频，无限画布 | 剧本→分镜→素材的资产模型；画布式编排 |
+| [claude-real-video](https://github.com/HUANGCHIHHUNGLeo/claude-real-video)        | Python | 2.3k | 把视频变成"LLM 能看的东西"：场景感知去重抽帧 + 字幕转写 | 抽帧与去重策略，量大时怎么控 token |
+| https://github.com/hypit-ai/hypit                                                 |
+| https://opentrend.org/zh/project/autoclip                                         |
+| https://github.com/XiaoYouChR/Ghost-Downloader-3                                  |
+| https://github.com/Azure12355/weilanx-claude-videos?utm_source=chatgpt.com        |
+| https://github.com/sirioberati/YouTube-AI-Motion-Graphics?utm_source=chatgpt.com  |
+| https://github.com/Anil-matcha/vox-ai-motion-graphics-generator?utm_source=chatgpt.com  |
+| https://github.com/andyhuo520/vibe-knowledge  |
+| https://github.com/xiazhuo123456789/vibe-knowledge-video?utm_source=chatgpt.com  |
 
 ## 二、分镜、镜头与逆向拆解
 
