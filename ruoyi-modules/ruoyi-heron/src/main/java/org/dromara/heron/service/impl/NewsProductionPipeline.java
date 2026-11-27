@@ -518,7 +518,7 @@ public class NewsProductionPipeline {
                     "profileId", profile.id(), "canvas", profile.width() + "x" + profile.height(),
                     "mode", profile.mode(), "line", profile.line()),
                     read(composition.resolve("tokens.css")), DirectorPipeline.shotBrief(script, shot), shot.id(),
-                    shotBudget);
+                    shotBudget, creativeKnowledgeRoot());
                 String goal = "镜头 " + shot.id() + "：画面目的「" + shot.title() + "」，时长 "
                     + String.format(Locale.ROOT, "%.2f", (shot.endMs() - shot.startMs()) / 1000.0) + " 秒。"
                     + (shot.image().isEmpty() ? "" : "可用配图 " + shot.image() + "（相对路径引用）。")
@@ -2241,6 +2241,12 @@ public class NewsProductionPipeline {
             throw new HeronBusinessException(503, "news_profile_missing", "找不到 Profile 目录：" + styleKey);
         }
         return dir;
+    }
+
+    /** 弹药库根目录：镜头配方/风格配方/官方组件的参照资产，与 Profile 根平级（data/creative-knowledge）。目录缺失时返回 null，镜头 Agent 照常创作。 */
+    private Path creativeKnowledgeRoot() {
+        Path root = properties.getNewsProfile();
+        return root == null ? null : root.toAbsolutePath().normalize().resolveSibling("creative-knowledge");
     }
 
     /** 冻结快照 kind → 编辑线（BgmCatalog 按线过滤用），与 NewsProductionDomain.kindOfLine 同一口径。 */

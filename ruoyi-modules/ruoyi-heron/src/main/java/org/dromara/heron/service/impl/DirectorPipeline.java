@@ -22,7 +22,7 @@ final class DirectorPipeline {
     private static final String ID = "heron-film";
 
     record Shot(String id, String treatment, String title, String image, long startMs, long endMs,
-                boolean interpolated) { }
+                boolean interpolated, List<String> techniques) { }
 
     private DirectorPipeline() { }
 
@@ -94,10 +94,13 @@ final class DirectorPipeline {
             }
             String shotTreatment;
             String shotIntent;
+            List<String> shotTechniques;
             if (planned) {
                 var plannedShot = treatment.shots().get(i);
                 shotTreatment = String.valueOf(plannedShot.get("treatment"));
                 shotIntent = plannedShot.get("storyPurpose") + " — " + plannedShot.get("visualIntent");
+                shotTechniques = plannedShot.get("techniques") instanceof List<?> list
+                    ? list.stream().map(String::valueOf).toList() : List.of();
                 if (treatment.vibe()) {
                     shotIntent += "；Vibe 模式：视觉隐喻优先、母题贯穿、设计观众参与瞬间";
                 }
@@ -107,9 +110,10 @@ final class DirectorPipeline {
                     chartShown = true;
                 }
                 shotIntent = lead;
+                shotTechniques = List.of();
             }
             shots.add(new Shot(span.id(), shotTreatment, shotIntent, image, span.startMs(), span.endMs(),
-                span.cueInterpolated()));
+                span.cueInterpolated(), shotTechniques));
         }
         return List.copyOf(shots);
     }
@@ -140,8 +144,14 @@ final class DirectorPipeline {
         JsonNode scene = index < scenes.size() ? scenes.get(index) : null;
         String narration = scene == null ? script.path("closing").asString("") :
             scene.path("lead").asString("") + "。" + scene.path("body").asString("");
-        return "画面目的：" + shot.title() + "；镜头类型：" + shot.treatment()
+        String brief = "画面目的：" + shot.title() + "；镜头类型：" + shot.treatment()
             + "；旁白：" + narration + "；上屏主文案不超过 18 字，从旁白里提炼，不要照抄。";
+        if (!shot.techniques().isEmpty()) {
+            // 整片导演定的技法词汇：镜头导演据此到弹药库挑同类参考卡，不是照抄关键词当动画名
+            brief += "；规划技法：" + String.join("、", shot.techniques())
+                + "（按技法去弹药库选参考卡，把旁白内容演出来，不是给文案配图）。";
+        }
+        return brief;
     }
 
     static void compose(Path composition, ProfileRegistry.Profile profile, JsonNode script, JsonNode dataset,
