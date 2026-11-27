@@ -94,11 +94,21 @@ final class DirectorPipeline {
 
     static void compose(Path composition, ProfileRegistry.Profile profile, JsonNode script, JsonNode dataset,
                         List<Shot> shots) {
-        compose(composition, profile, script, dataset, shots, null);
+        compose(composition, profile, script, dataset, shots, null, false);
+    }
+
+    static String shotBrief(JsonNode script, Shot shot) {
+        JsonNode scenes = script.path("scenes");
+        int index = shot.id().startsWith("scene-") ? Integer.parseInt(shot.id().substring(6)) - 1 : scenes.size();
+        JsonNode scene = index < scenes.size() ? scenes.get(index) : null;
+        String narration = scene == null ? script.path("closing").asString("") :
+            scene.path("lead").asString("") + "。" + scene.path("body").asString("");
+        return "画面目的：" + shot.title() + "；镜头类型：" + shot.treatment()
+            + "；旁白：" + narration + "；上屏主文案不超过 18 字，从旁白里提炼，不要照抄。";
     }
 
     static void compose(Path composition, ProfileRegistry.Profile profile, JsonNode script, JsonNode dataset,
-                        List<Shot> shots, DirectorVisualRework.Patch patch) {
+                        List<Shot> shots, DirectorVisualRework.Patch patch, boolean agentShots) {
         double seconds = shots.getLast().endMs() / 1000.0;
         String source = script.path("source_name").asString("");
         String label = switch (profile.line()) {
@@ -113,6 +123,13 @@ final class DirectorPipeline {
             Shot shot = shots.get(i);
             String treatment = patch != null && patch.shotId().equals(shot.id())
                 ? shot.treatment() + " rework-" + patch.action().name() : shot.treatment();
+            if (agentShots && Files.isRegularFile(composition.resolve("shots").resolve(shot.id() + ".html"))) {
+                content.append("<iframe class=\"clip shot agent-shot\" src=\"shots/").append(shot.id())
+                    .append(".html\" data-start=\"").append(sec(shot.startMs()))
+                    .append("\" data-duration=\"").append(sec(shot.endMs() - shot.startMs()))
+                    .append("\" data-track-index=\"1\"></iframe>\n");
+                continue;
+            }
             content.append("""
                 <section id="%s" class="clip shot %s" data-start="%s" data-duration="%s" data-track-index="1">
                   <div class="field" aria-hidden="true" data-layout-ignore></div>

@@ -3,6 +3,8 @@ package org.dromara.heron.service.impl;
 import cn.hutool.crypto.digest.DigestUtil;
 import cn.hutool.core.util.EscapeUtil;
 import org.dromara.heron.agentscope.DirectorRepairAgent;
+import org.dromara.heron.agentscope.ShotDirectorAgent;
+import org.dromara.heron.agentscope.ShotRenderTools;
 import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.EditorialSelection;
@@ -50,6 +52,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.time.Clock;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -106,6 +109,7 @@ public class NewsProductionPipeline {
     private final EditorialReviewer reviewer;
     private final QualityReviewer qualityReviewer;
     private final DirectorRepairAgent repairAgent;
+    private final ShotDirectorAgent shotDirector;
     private final NewsSourceFetcher fetcher;
     private final FrozenContextService contexts;
     private final IMediaAssetService mediaAssets;
@@ -143,7 +147,7 @@ public class NewsProductionPipeline {
                                   NewsSourceFetcher fetcher, FrozenContextService contexts,
                                   IMediaAssetService mediaAssets, HeronNewsProperties newsProperties) {
         this(author, knowledgeAuthor, processes, artifacts, properties, stages, router, datasets, datasetAuthor,
-            reviewer, qualityReviewer, fetcher, contexts, mediaAssets, newsProperties, null);
+            reviewer, qualityReviewer, fetcher, contexts, mediaAssets, newsProperties, null, null);
     }
 
     public NewsProductionPipeline(NewsScriptAuthor author, KnowledgeScriptAuthor knowledgeAuthor,
@@ -154,7 +158,7 @@ public class NewsProductionPipeline {
                                   EditorialReviewer reviewer, QualityReviewer qualityReviewer,
                                   NewsSourceFetcher fetcher, FrozenContextService contexts,
                                   IMediaAssetService mediaAssets, HeronNewsProperties newsProperties,
-                                  DirectorRepairAgent repairAgent) {
+                                  DirectorRepairAgent repairAgent, ShotDirectorAgent shotDirector) {
         this.lanes = new VideoLanePipelines(this, author, knowledgeAuthor, datasetAuthor, properties);
         this.processes = processes;
         this.artifacts = artifacts;
@@ -167,6 +171,7 @@ public class NewsProductionPipeline {
         this.reviewer = reviewer;
         this.qualityReviewer = qualityReviewer;
         this.repairAgent = repairAgent;
+        this.shotDirector = shotDirector;
         this.fetcher = fetcher;
         this.contexts = contexts;
         this.mediaAssets = mediaAssets;
@@ -306,6 +311,9 @@ public class NewsProductionPipeline {
             timeComposition(composition, timeline, audioSeconds);
         } else {
             DirectorPipeline.compose(composition, profile, renderScript, dataset, shots);
+            if (shotDirector.enabled()) {
+                composeAgentShots(run, composition, profile, renderScript, dataset, shots);
+            }
         }
         JsonNode check = checkComposition(run, work, COMPOSITION_DIR);
         long renderStartedAt = System.nanoTime();
@@ -459,6 +467,49 @@ public class NewsProductionPipeline {
     }
 
 
+    /**
+     * Agent 镜头创作：每镜一个受控会话，产出独立 HTML 后嵌入主时间轴。
+     *
+     * <p>Agent 画面只替换通过静态检查的镜头，检查失败或 Agent 不可用时保留确定性画面——
+     * Agent 是创作自由度，不是可用性依赖。检查整体失败时全部回退，不在半新半旧的时间轴上渲染。
+     */
+    void composeAgentShots(ProductionRunVo run, Path composition, ProfileRegistry.Profile profile,
+                           JsonNode script, JsonNode dataset, List<DirectorPipeline.Shot> shots) {
+        for (DirectorPipeline.Shot shot : shots) {
+            Path shotDir = composition.resolve("shots");
+            try {
+                Files.createDirectories(shotDir);
+                var tools = new ShotRenderTools(shotDir, dataset, Map.of(
+                    "profileId", profile.id(), "canvas", profile.width() + "x" + profile.height(),
+                    "mode", profile.mode(), "line", profile.line()),
+                    read(composition.resolve("tokens.css")), DirectorPipeline.shotBrief(script, shot), shot.id(),
+                    new org.dromara.heron.agentscope.ResearchBudget(6, 40_000, Duration.ofSeconds(60),
+                        java.time.Clock.systemDefaultZone(), null));
+                String goal = "镜头 " + shot.id() + "：画面目的「" + shot.title() + "」，时长 "
+                    + String.format(Locale.ROOT, "%.2f", (shot.endMs() - shot.startMs()) / 1000.0) + " 秒。"
+                    + (shot.image().isEmpty() ? "" : "可用配图 " + shot.image() + "（相对路径引用）。");
+                shotDirector.direct(run, tools, goal, shotDir.resolve(shot.id() + ".html"));
+            } catch (IOException | RuntimeException e) {
+                log.warn("镜头 {} 的 Agent 创作未完成，保留确定性画面: {}", shot.id(), e.toString());
+            }
+        }
+        int written = (int) shots.stream().filter(shot -> Files
+            .isRegularFile(composition.resolve("shots").resolve(shot.id() + ".html"))).count();
+        try {
+            DirectorPipeline.compose(composition, profile, script, dataset, shots, null, written > 0);
+            JsonNode check = checkComposition(run, composition.getParent(), "composition");
+            if (check.path("ok").asBoolean(false)) {
+                log.info("Agent 创作镜头 {}/{} 通过静态检查", written, shots.size());
+            } else {
+                DirectorPipeline.compose(composition, profile, script, dataset, shots);
+                log.info("Agent 画面检查未过，回退确定性画面");
+            }
+        } catch (RuntimeException e) {
+            DirectorPipeline.compose(composition, profile, script, dataset, shots);
+            log.warn("Agent 画面静态检查失败，回退确定性画面: {}", e.toString());
+        }
+    }
+
     private record ReworkedVideo(Path finalFile, Path sheet, Path composition, String checks, JsonNode report,
                                  NewsCover.Result cover) { }
 
@@ -476,7 +527,7 @@ public class NewsProductionPipeline {
         for (String image : shots.stream().map(DirectorPipeline.Shot::image).filter(name -> !name.isBlank()).distinct().toList()) {
             Files.copy(originalComposition.resolve(image), composition.resolve(image));
         }
-        DirectorPipeline.compose(composition, profile, renderScript, dataset, shots, patch);
+        DirectorPipeline.compose(composition, profile, renderScript, dataset, shots, patch, false);
         String component = relative(work, composition);
         JsonNode check = checkComposition(run, work, component);
         Path raw = attempt.resolve(RAW_FILE);

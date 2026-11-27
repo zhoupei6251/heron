@@ -91,7 +91,7 @@ class DirectorPipelineTest {
         var patch = DirectorVisualRework.candidates(review, samples).getFirst();
         assertEquals("scene-2", patch.shotId());
         assertEquals(1, DirectorVisualRework.candidates(review, samples).size());
-        DirectorPipeline.compose(composition, profile, script, dataset, shots, patch);
+        DirectorPipeline.compose(composition, profile, script, dataset, shots, patch, false);
         String corrected = Files.readString(composition.resolve("index.html"));
         assertEquals(html, corrected.replace("clip shot chart rework-readability", "clip shot chart"));
 

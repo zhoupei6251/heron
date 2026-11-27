@@ -2,6 +2,7 @@ package org.dromara.heron.config;
 
 import org.dromara.common.core.factory.YmlPropertySourceFactory;
 import org.dromara.heron.agentscope.DirectorRepairAgent;
+import org.dromara.heron.agentscope.ShotDirectorAgent;
 import org.dromara.heron.service.IProductionExecutionService;
 import org.dromara.heron.service.IMediaAssetService;
 import org.dromara.heron.service.IProductionPipeline;
@@ -75,10 +76,11 @@ public class HeronProductionConfiguration {
                                                          FrozenContextService frozenContexts,
                                                          IMediaAssetService mediaAssets,
                                                          HeronNewsProperties newsProperties,
-                                                         DirectorRepairAgent repairAgent) {
+                                                         DirectorRepairAgent repairAgent,
+                                                         ShotDirectorAgent shotDirector) {
         return new NewsProductionPipeline(author, knowledgeAuthor, processes, artifacts, properties,
             execution::beginStage, datasetRouter, datasetFetch, datasetAuthor, reviewer, qualityReviewer,
-            newsSourceFetcher, frozenContexts, mediaAssets, newsProperties, repairAgent);
+            newsSourceFetcher, frozenContexts, mediaAssets, newsProperties, repairAgent, shotDirector);
     }
 
     @Bean
