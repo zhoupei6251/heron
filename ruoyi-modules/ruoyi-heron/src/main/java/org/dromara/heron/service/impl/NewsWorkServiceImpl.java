@@ -702,9 +702,16 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     }
 
     static void checkVisualPass(String qualityReport) {
-        // fail-closed：有质量报告却没有视觉结论，说明视觉审稿没跑成——不能当默认通过。
-        if (qualityReport == null || qualityReport.isBlank()) return;
-        JsonNode report = JSON.readTree(qualityReport);
+        // fail-closed：没有质量报告也是没审过——无人值守自动发布不能拿「审稿没跑成」当默认通过。
+        if (qualityReport == null || qualityReport.isBlank()) {
+            throw new HeronBusinessException(409, "visual_review_missing", "该版本没有质量报告，不能入发布库存");
+        }
+        JsonNode report;
+        try {
+            report = JSON.readTree(qualityReport);
+        } catch (RuntimeException e) {
+            throw new HeronBusinessException(409, "visual_review_invalid", "质量报告无法解析，不能入发布库存");
+        }
         if (!report.path("screenshot").has("verdict")) {
             throw new HeronBusinessException(409, "visual_review_missing", "视觉审稿未给出结论，不能自动发布");
         }

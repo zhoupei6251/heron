@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 发布总编辑：批量评估待评库存条目。
@@ -33,6 +34,10 @@ public class PublishCuratorService {
     private static final String SYSTEM = "/prompt/publish-curator/curator.md";
     private static final List<String> ACTIONS = List.of("keep", "hold", "reject");
     private static final int MAX_BATCH = 12;
+    /** 评分维度闭集与分值上限：总和恰好 100。模型只能在这个集合里打分，多一个少一个都作废。 */
+    private static final Map<String, Integer> DIMENSIONS = Map.of(
+        "开场吸引力", 20, "受众价值", 20, "新颖性", 15, "叙事节奏", 15,
+        "视听质量", 15, "时效性", 10, "产线适配", 5);
 
     private final OpenAiModelClient model;
     private final PublishInventoryService inventory;
@@ -74,9 +79,22 @@ public class PublishCuratorService {
                 log.warn("库存 {} 缺评分明细，留待评估", row.getId());
                 return;
             }
+            // 逐项校验：维度必须是闭集成员且不重复，分值不超该维上限——只卡总分会被多编一维凑分绕过
             int total = 0;
-            for (JsonNode item : breakdown) {
-                total += item.path("score").asInt(0);
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (java.util.Map.Entry<String, JsonNode> entry : breakdown.properties()) {
+                String dimension = entry.getKey();
+                Integer cap = DIMENSIONS.get(dimension);
+                int score = entry.getValue().path("score").asInt(-1);
+                if (cap == null || !seen.add(dimension) || score < 0 || score > cap) {
+                    log.warn("库存 {} 的评分维度非法或越界：{}={}，留待评估", row.getId(), dimension, score);
+                    return;
+                }
+                total += score;
+            }
+            if (seen.size() != DIMENSIONS.size()) {
+                log.warn("库存 {} 评分缺维度（{} / {}），留待评估", row.getId(), seen.size(), DIMENSIONS.size());
+                return;
             }
             if (total > 100 || total < 0) {
                 log.warn("库存 {} 评分总和 {} 越界，留待评估", row.getId(), total);

@@ -51,14 +51,15 @@ public class PublishInventorySync {
         }
     }
 
-    /** 发布尝试结果未知：本条标 UNKNOWN，等待人工核对后由 onPublished 或 onWithdrawn 收尾。 */
+    /** 发布尝试结果未知：本条标 UNKNOWN（覆盖 RESERVED 与 PUBLISHING——发布中抛异常时已是 PUBLISHING），等待人工核对后由 onPublished 或 onWithdrawn 收尾。 */
     public void onUnknown(long versionId) {
         try {
             inventoryMapper.lambda()
                 .set(HeronPublishInventory::getPublishStatus, HeronPublishInventory.PUBLISH_UNKNOWN)
                 .set(HeronPublishInventory::getUpdateTime, LocalDateTime.now())
                 .eq(HeronPublishInventory::getVersionId, versionId)
-                .eq(HeronPublishInventory::getPublishStatus, HeronPublishInventory.PUBLISH_RESERVED)
+                .in(HeronPublishInventory::getPublishStatus,
+                    HeronPublishInventory.PUBLISH_RESERVED, HeronPublishInventory.PUBLISH_PUBLISHING)
                 .update();
         } catch (RuntimeException e) {
             log.warn("库存未知状态同步失败 versionId={}：{}", versionId, e.toString());

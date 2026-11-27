@@ -52,6 +52,32 @@ public class QualityReviewer {
         return review(run, ctx, null, 0, "");
     }
 
+    /**
+     * 单镜帧视觉审稿：镜头渲染反馈闭环用，评一帧画面的构图、可读性与母题一致性。
+     * 视觉模型未配置时返回 null（返工是质量增益不是可用性依赖）。
+     */
+    public String reviewShotFrame(ProductionRunVo run, String shotId, String shotPurpose, String visualWorld,
+                                  Path frame) {
+        String visionModel = model.visionReviewModel();
+        if (visionModel == null || frame == null || !Files.isRegularFile(frame)) {
+            return null;
+        }
+        try {
+            byte[] png = Files.readAllBytes(frame);
+            if (png.length == 0 || png.length > 6 * 1024 * 1024) {
+                return null;
+            }
+            String prompt = "评估这一个镜头（" + shotId + "，画面目的：" + shotPurpose + "）的中间帧画面质量。"
+                + (visualWorld == null || visualWorld.isBlank() ? "" : visualWorld)
+                + " 只输出一个 JSON 对象：{\"verdict\":\"pass\"或\"needs_review\",\"findings\":[{\"issue\":\"具体问题\",\"fix\":\"怎么修\"}]}"
+                + "（findings 最多 3 条，每条 ≤60 字；pass 时 findings 为空数组）。";
+            return model.chatWithContactSheet(run, "shot-visual-rework", visionModel,
+                "你是单镜画面审稿员。只看构图、可读性与母题一致性；文字内容是否准确不在你的职责内。", prompt, png);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
     String review(ProductionRunVo run, QualityCriteria.Context ctx, Path sheet, int tiles, String profileId) {
         List<QualityCriteria.Criterion> machine = QualityCriteria.judge(ctx);
         String visionModel = sheet == null ? null : model.visionReviewModel();

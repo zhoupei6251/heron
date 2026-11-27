@@ -31,6 +31,9 @@ public class HeronNewsProperties {
     /** Spring cron 列表：每条触发一次「最多产出一条」，条数即每天产出上限。 */
     private List<String> autoSlots = new ArrayList<>();
 
+    /** 发布时段 cron 列表：每条触发一次「库存择优发布一条」，条数即每日发布上限——有积压时不会连发。 */
+    private List<String> publishSlots = new ArrayList<>();
+
     /** 自动槽位固定使用的模板；为空才交给模板选择器。配置了但模板不存在时自动产出直接失败。 */
     private String autoTemplate;
 

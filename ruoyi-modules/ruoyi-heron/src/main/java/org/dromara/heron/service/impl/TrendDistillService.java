@@ -108,12 +108,29 @@ public class TrendDistillService {
                 JSON.writerWithDefaultPrettyPrinter().writeValueAsString(plan.path("profileJson")), StandardCharsets.UTF_8);
             Files.writeString(draft.resolve("skeleton-rules.json"),
                 JSON.writerWithDefaultPrettyPrinter().writeValueAsString(plan.path("skeletonRules")), StandardCharsets.UTF_8);
+            Files.writeString(draft.resolve("sample.html"), sampleHtml(plan, styleId), StandardCharsets.UTF_8);
             Files.writeString(draft.resolve("DISTILL.md"), distillNote(plan, cards), StandardCharsets.UTF_8);
             log.info("风格蒸馏候选已写入 {}（{} 张技法卡）", draft, cards);
             return new Draft(draft, styleId, cards);
         } catch (IOException e) {
             throw new HeronBusinessException(503, "trend_distill_write_failed", "候选 Profile 无法写入", e);
         }
+    }
+
+    /** 样片 composition：用蒸馏令牌渲一帧可读的验证画面（标题 + 结论大字 + 母题位）。 */
+    private static String sampleHtml(JsonNode plan, String styleId) {
+        String note = plan.path("distillNote").asString("蒸馏验证样片");
+        return """
+            <!doctype html>
+            <html lang="zh-CN"><head><meta charset="utf-8"><title>%s</title>
+            <link rel="stylesheet" href="tokens.css"></head>
+            <body><div data-composition-id="sample" data-width="1080" data-height="1920" data-duration="2.0"
+              style="background:var(--bg);color:var(--fg);font-family:var(--font-body);padding:var(--pad-frame)">
+              <h1 style="font-size:var(--fs-title);margin:480px 0 40px">%s</h1>
+              <p style="font-size:var(--fs-body);max-width:80%%">%s</p>
+              <div style="margin-top:120px;font-size:var(--fs-label);color:var(--fg)">蒸馏样片 · 待人工过审</div>
+            </div></body></html>
+            """.formatted(styleId, styleId, note);
     }
 
     /** 过审须知与蒸馏依据：审核者看这一个文件就能决定改名入库还是丢弃。 */
@@ -125,7 +142,8 @@ public class TrendDistillService {
         return "---\n" + JSON.writeValueAsString(head) + "\n---\n\n"
             + "# 蒸馏候选\n\n"
             + "- 状态：**未过审**。本目录不进生产线（load 拒绝未登记目录）。\n"
-            + "- 过审步骤：人工检查三个文件 → 目录改名去掉 `-draft` → 在 `ProfileRegistry.select` 登记线内映射 → 提交。\n"
+            + "- 过审步骤：人工检查三个文件与样片 `sample.png` → 目录改名去掉 `-draft` → 在 `ProfileRegistry.select` 登记线内映射 → 提交。\n"
+            + "- 样片：`sample.png`（如已生成）是用这套令牌渲的单镜验证画面，看风格是否真的成立。\n"
             + "- 蒸馏依据：`" + cards + "` 张当日技法卡，结论见 frontmatter。\n";
     }
 }

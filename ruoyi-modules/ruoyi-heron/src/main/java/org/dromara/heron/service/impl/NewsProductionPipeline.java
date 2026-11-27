@@ -292,24 +292,7 @@ public class NewsProductionPipeline {
                 Map.of("profileVersion", profile.version(), "profileMatched", true)));
         }
 
-        Path voice = composition.resolve(VOICE_FILE);
-        stages.beginStage(run, "voice", 25);
-        speak(run, work, renderScript, input.path("assets").path("voiceKey").asString(""));
-        double audioSeconds = probeDuration(run, voice);
-        gates.add(voiceGate(voice, audioSeconds));
-        String vtt = read(composition.resolve(SUBTITLES_FILE));
-        String subtitles = subtitleJson(vtt);
-        List<NewsNarrationTiming.Span> timeline = NewsNarrationTiming.align(renderScript, JSON.readTree(subtitles),
-            Math.round(audioSeconds * 1000));
-        gates.add(subtitleGate(composition.resolve(SUBTITLES_FILE), audioSeconds, timeline));
-        SubtitleBurn.Prepared burnedSubtitles = newsProperties.getSubtitles().isBurn()
-            ? SubtitleBurn.prepare(work, profile == null ? profileDir(input) : composition, vtt) : null;
-
-        stages.beginStage(run, "render", 45);
-        JsonNode subtitleNodes = JSON.readTree(subtitles);
-        SoundCueMixer.Result sound = renderSoundCues(run, work, timeline, subtitleNodes, renderScript);
-        gates.addAll(sound.checks().stream().map(NewsProductionPipeline::soundCueGate).toList());
-        // 整片创意规划：模型先想清楚观点/体验弧/视觉母题再定镜头，失败回退确定性规则
+        // 整片创意规划提前到 voice 之前：noNarration 决定要不要 TTS，不能先合成再决定不用。
         TreatmentDirector.Treatment treatment = null;
         if (profile != null && treatmentDirector.enabled()) {
             try {
@@ -325,19 +308,70 @@ public class NewsProductionPipeline {
                 log.warn("整片创意规划未完成，回退确定性分镜（versionId={}）：{}", run.versionId(), e.toString());
             }
         }
+        boolean noNarration = treatment != null && treatment.noNarration();
+
+        Path voice = composition.resolve(VOICE_FILE);
+        double audioSeconds;
+        String vtt;
+        List<NewsNarrationTiming.Span> timeline;
+        if (noNarration) {
+            // 无旁白模式：跳过 TTS，时间轴按脚本声明时长估算，字幕从脚本场景文本生成
+            stages.beginStage(run, "voice", 25);
+            audioSeconds = estimateScriptSeconds(renderScript);
+            vtt = scriptToVtt(renderScript, audioSeconds);
+            write(composition.resolve(SUBTITLES_FILE), vtt);
+            // 空音轨：混音时 BGM 是唯一音源，不需要旁白文件
+            writeSilentAudio(run, work, voice, audioSeconds);
+            timeline = NewsNarrationTiming.align(renderScript, JSON.readTree(subtitleJson(vtt)),
+                Math.round(audioSeconds * 1000));
+            log.info("无旁白模式：跳过 TTS，时间轴按脚本估算 {}s（versionId={}）", audioSeconds, run.versionId());
+        } else {
+            stages.beginStage(run, "voice", 25);
+            speak(run, work, renderScript, input.path("assets").path("voiceKey").asString(""));
+            audioSeconds = probeDuration(run, voice);
+            gates.add(voiceGate(voice, audioSeconds));
+            vtt = read(composition.resolve(SUBTITLES_FILE));
+            timeline = NewsNarrationTiming.align(renderScript, JSON.readTree(subtitleJson(vtt)),
+                Math.round(audioSeconds * 1000));
+            gates.add(subtitleGate(composition.resolve(SUBTITLES_FILE), audioSeconds, timeline));
+        }
+        String subtitles = subtitleJson(vtt);
+        SubtitleBurn.Prepared burnedSubtitles = newsProperties.getSubtitles().isBurn()
+            ? SubtitleBurn.prepare(work, profile == null ? profileDir(input) : composition, vtt) : null;
+
+        stages.beginStage(run, "render", 45);
+        JsonNode subtitleNodes = JSON.readTree(subtitles);
+        SoundCueMixer.Result sound = renderSoundCues(run, work, timeline, subtitleNodes, renderScript);
+        gates.addAll(sound.checks().stream().map(NewsProductionPipeline::soundCueGate).toList());
+        // BGM 在节拍分析之前选定：节拍要踩的是正式配乐，不是音效床（sfx-bed 是事件音不是音乐）。
+        // 选中的 BGM 同时喂给节拍分析与后续混音，保证「分析的就是最终混进去的那首」。
+        BgmCatalog.Pick bgmPick = pickBgm(renderScript, input, run);
         // Vibe 节拍分析：BGM 有清晰节拍时给镜头任务卡带 beatTimes，视觉冲击落节拍
         BeatAnalysis.Beats beats = null;
-        if (treatment != null && treatment.vibe() && sound.bed() != null) {
+        if (treatment != null && treatment.vibe() && bgmPick.file() != null) {
             try {
-                beats = beatAnalysis.analyze(run, work, sound.bed());
+                beats = beatAnalysis.analyze(run, work, bgmPick.file());
                 write(composition.resolve("beats.json"), JSON.writeValueAsString(beats));
                 log.info("节拍分析 tempo={}s 共 {} 拍（versionId={}）", beats.tempo(), beats.times().size(), run.versionId());
             } catch (RuntimeException e) {
                 log.warn("节拍分析未完成，镜头不带节拍同步（versionId={}）：{}", run.versionId(), e.toString());
             }
         }
-        List<DirectorPipeline.Shot> shots = profile == null ? List.of()
-            : DirectorPipeline.storyboard(renderScript, dataset, images, timeline, profile, treatment);
+        // 镜头数错配不能整片失败：Treatment 与实测旁白段数对不上时降级确定性分镜，
+        // 规划是自由度不是可用性依赖（错配只说明这一版规划不可用，不说明这条片子不可交付）
+        List<DirectorPipeline.Shot> shots = List.of();
+        if (profile != null) {
+            try {
+                shots = DirectorPipeline.storyboard(renderScript, dataset, images, timeline, profile, treatment);
+            } catch (HeronBusinessException e) {
+                if (treatment == null || !"news_director_storyboard".equals(e.getCode())) {
+                    throw e;
+                }
+                log.warn("导演规划与实测旁白段数不匹配，回退确定性分镜（versionId={}）：{}", run.versionId(), e.getMessage());
+                treatment = null;
+                shots = DirectorPipeline.storyboard(renderScript, dataset, images, timeline, profile, null);
+            }
+        }
         List<DirectorVisualRework.Sample> samples = shots.isEmpty() ? List.of() : DirectorVisualRework.samples(shots, SHEET_TILES);
         if (profile == null) {
             timeComposition(composition, timeline, audioSeconds);
@@ -357,7 +391,7 @@ public class NewsProductionPipeline {
 
         stages.beginStage(run, "finalize", 85);
         AudioMix audio = mixAndTag(run, work, timeline.get(timeline.size() - 1), sound.bed(), renderScript,
-            input, burnedSubtitles);
+            input, burnedSubtitles, bgmPick);
         gates.add(audio.gate());
         Path finalFile = audio.finalFile();
         if (burnedSubtitles != null) {
@@ -519,12 +553,11 @@ public class NewsProductionPipeline {
                     "mode", profile.mode(), "line", profile.line()),
                     read(composition.resolve("tokens.css")), DirectorPipeline.shotBrief(script, shot), shot.id(),
                     shotBudget, creativeKnowledgeRoot());
-                String goal = "镜头 " + shot.id() + "：画面目的「" + shot.title() + "」，时长 "
-                    + String.format(Locale.ROOT, "%.2f", (shot.endMs() - shot.startMs()) / 1000.0) + " 秒。"
-                    + (shot.image().isEmpty() ? "" : "可用配图 " + shot.image() + "（相对路径引用）。")
-                    + storyTemplateGoal(treatment)
-                    + vibeGoal(treatment, beats, shot);
+                String goal = shotGoal(shot, script, treatment, beats);
                 shotDirector.direct(run, tools, goal, shotDir.resolve(shot.id() + ".html"), shotBudget);
+                // 单镜渲染反馈闭环：Agent 写完就渲这一个镜头、抽帧给视觉审稿，
+                // 有问题把返工笔记写进 rework.json，同一个 Agent 读笔记修自己的 HTML（最多一轮）
+                reworkShotOnce(run, composition, shotDir, shot, tools, goal, treatment);
             } catch (IOException | RuntimeException e) {
                 log.warn("镜头 {} 的 Agent 创作未完成，保留确定性画面: {}", shot.id(), e.toString());
             }
@@ -543,6 +576,88 @@ public class NewsProductionPipeline {
         } catch (RuntimeException e) {
             DirectorPipeline.compose(composition, profile, script, dataset, shots);
             log.warn("Agent 画面静态检查失败，回退确定性画面: {}", e.toString());
+        }
+    }
+
+    /** 镜头任务卡：单镜信息 + 整片视觉世界 + 叙事母版 + Vibe 增补的完整拼装。 */
+    private static String shotGoal(DirectorPipeline.Shot shot, JsonNode script,
+                                   TreatmentDirector.Treatment treatment, BeatAnalysis.Beats beats) {
+        return "镜头 " + shot.id() + "：画面目的「" + shot.title() + "」，时长 "
+            + String.format(Locale.ROOT, "%.2f", (shot.endMs() - shot.startMs()) / 1000.0) + " 秒。"
+            + (shot.image().isEmpty() ? "" : "可用配图 " + shot.image() + "（相对路径引用）。")
+            + visualWorldGoal(treatment)
+            + storyTemplateGoal(treatment)
+            + vibeGoal(treatment, beats, shot);
+    }
+
+    /**
+     * 单镜渲染反馈返工：渲一个镜头（用整片同款 HyperFrames 渲染器，只渲 shots/&lt;id&gt;.html），
+     * 抽中间帧交视觉审稿；verdict=needs_review 时把 findings 写成 rework.json，
+     * 同镜 Agent 在下一轮 read_rework_notes 里读到并修——只返工一轮，不无限循环。
+     * 视觉审稿不可用或渲染失败时静默跳过（返工是质量增益不是可用性依赖）。
+     */
+    private void reworkShotOnce(ProductionRunVo run, Path composition, Path shotDir, DirectorPipeline.Shot shot,
+                                ShotRenderTools tools, String goal, TreatmentDirector.Treatment treatment) {
+        Path shotHtml = shotDir.resolve(shot.id() + ".html");
+        Path shotClip = shotDir.resolve(shot.id() + ".rework.mp4");
+        try {
+            double duration = (shot.endMs() - shot.startMs()) / 1000.0;
+            ProductionProcessVo renderResult = processes.run(run, new ProductionProcessBo("node",
+                List.of(cliEntry(), "render", "composition/shots/" + shot.id() + ".html",
+                    "--fps", "30", "--quality", "looks", "--workers", "1", "--no-best-effort", "--quiet",
+                    "--output", "composition/shots/" + shot.id() + ".rework.mp4"),
+                work(run), RENDER_TIMEOUT));
+            if (renderResult.exitCode() != 0 || !Files.isRegularFile(shotClip)) {
+                log.debug("镜头 {} 单镜渲染失败，跳过视觉返工", shot.id());
+                return;
+            }
+            // 抽中间一帧作为这一镜的联络帧
+            Path frame = shotDir.resolve(shot.id() + ".rework.png");
+            ProductionProcessVo extract = processes.run(run, new ProductionProcessBo("ffmpeg",
+                List.of("-y", "-loglevel", "error", "-ss", String.format(Locale.ROOT, "%.2f", duration / 2),
+                    "-i", relative(work(run), shotClip), "-frames:v", "1", relative(work(run), frame)),
+                work(run), PACKAGE_TIMEOUT));
+            if (extract.exitCode() != 0 || !Files.isRegularFile(frame)) {
+                return;
+            }
+            // 视觉审稿只评这一帧：构图、可读性、母题一致性
+            String review = qualityReviewer.reviewShotFrame(run, shot.id(), shot.title(),
+                visualWorldGoal(treatment), frame);
+            if (review == null || !review.contains("needs_review")) {
+                return;
+            }
+            // 写返工笔记：同镜 Agent 下一轮 read_rework_notes 读到
+            List<String> findings = parseShotFindings(review);
+            if (findings.isEmpty()) {
+                return;
+            }
+            write(shotDir.resolve(shot.id() + ".rework.json"), JSON.writeValueAsString(Map.of("notes", findings)));
+            log.info("镜头 {} 视觉返工：{} 条问题，同镜 Agent 重写", shot.id(), findings.size());
+            // 同镜 Agent 修自己的 HTML：预算再加一轮
+            var reworkBudget = new org.dromara.heron.agentscope.ResearchBudget(6, 40_000,
+                Duration.ofSeconds(60), java.time.Clock.systemDefaultZone(), null);
+            shotDirector.direct(run, tools, goal + "；这是返工轮：先 read_rework_notes，按报告逐条修画面。",
+                shotHtml, reworkBudget);
+        } catch (RuntimeException e) {
+            log.debug("镜头 {} 视觉返工未完成，保留首轮画面: {}", shot.id(), e.toString());
+        }
+    }
+
+    /** 从审稿回复里提取返工笔记；解析不出结构化 findings 就当没问题。 */
+    private static List<String> parseShotFindings(String review) {
+        try {
+            JsonNode node = JSON.readTree(ModelJson.unwrap(review));
+            List<String> notes = new ArrayList<>();
+            for (JsonNode finding : node.path("findings")) {
+                String issue = finding.path("issue").asString("");
+                String fix = finding.path("fix").asString("");
+                if (!issue.isBlank()) {
+                    notes.add(issue + (fix.isBlank() ? "" : "；建议：" + fix));
+                }
+            }
+            return notes;
+        } catch (RuntimeException e) {
+            return List.of();
         }
     }
 
@@ -566,6 +681,39 @@ public class NewsProductionPipeline {
                 extra.append("节拍时刻（秒，相对镜头起点）：").append(String.join("、", local))
                     .append("；关键视觉冲击落在节拍上。");
             }
+        }
+        return extra.toString();
+    }
+
+    /**
+     * 整片视觉世界的镜头任务卡增补：母题、镜头语言要点、运动纪律必须传到每个镜头，
+     * 否则各镜都不错但拼起来像几部不同的作品——这是整片统一性的关键约束。
+     */
+    private static String visualWorldGoal(TreatmentDirector.Treatment treatment) {
+        if (treatment == null) {
+            return "";
+        }
+        StringBuilder extra = new StringBuilder();
+        try {
+            JsonNode visual = JSON.readTree(treatment.visual());
+            String motif = visual.path("motif").asString("");
+            if (!motif.isBlank()) {
+                extra.append("；整片视觉母题：").append(motif).append("——本镜头必须延续这个母题。");
+            }
+            JsonNode lensNotes = visual.path("lensNotes");
+            if (lensNotes.isArray() && !lensNotes.isEmpty()) {
+                List<String> notes = new ArrayList<>();
+                for (JsonNode note : lensNotes) {
+                    notes.add(note.asString(""));
+                }
+                extra.append("；整片镜头语言：").append(String.join("；", notes)).append("。");
+            }
+            String motion = visual.path("motionDiscipline").asString("");
+            if (!motion.isBlank()) {
+                extra.append("；运动纪律：").append(motion);
+            }
+        } catch (RuntimeException e) {
+            // visual 段解析失败即不带母题约束——Treatment 校验已保证格式，这里只是防御
         }
         return extra.toString();
     }
@@ -1548,11 +1696,11 @@ public class NewsProductionPipeline {
      * 配乐导致超标则去掉配乐重混——音乐是加分项，不该为它卡住一条片子。
      */
     private AudioMix mixAndTag(ProductionRunVo run, Path work, NewsNarrationTiming.Span closing, Path sfxBed,
-                               JsonNode script, JsonNode input, SubtitleBurn.Prepared subtitles) {
+                               JsonNode script, JsonNode input, SubtitleBurn.Prepared subtitles,
+                               BgmCatalog.Pick pick) {
         // 测旁白：量的是渲染后成片里的那条音轨，不是工作目录里的配音文件
         AudioLoudness.Measurement voice = AudioLoudness.measureFile(processes, run, work, RAW_FILE);
         double voiceGain = AudioLoudness.voiceGain(voice);
-        BgmCatalog.Pick pick = pickBgm(script, input, run);
         Path bgm = pick.file();
         String envelope = bgmEnvelope(closing);
         AudioLoudness.Measurement bgmMeasured = null;
@@ -2500,6 +2648,72 @@ public class NewsProductionPipeline {
             return Files.readString(file, StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    /** 无旁白模式：时长按脚本各段 duration_s 之和加结尾估算，缺字段时按字数兜底（中文约 4 字/秒）。 */
+    static double estimateScriptSeconds(JsonNode script) {
+        double total = 0;
+        for (JsonNode scene : script.path("scenes")) {
+            double declared = scene.path("duration_s").asDouble(0);
+            if (declared > 0) {
+                total += declared;
+            } else {
+                total += sceneText(scene).length() / 4.0;
+            }
+        }
+        String closing = script.path("closing").asString("");
+        total += closing.isEmpty() ? 0 : Math.max(closing.length() / 4.0, 3);
+        return Math.max(total, 30);
+    }
+
+    /** 无旁白模式：字幕不来自 TTS，直接用脚本段落文本生成与 TTS 同格式的 VTT。 */
+    static String scriptToVtt(JsonNode script, double totalSeconds) {
+        List<double[]> windows = new ArrayList<>();
+        double declared = 0;
+        for (JsonNode scene : script.path("scenes")) {
+            double duration = scene.path("duration_s").asDouble(0);
+            declared += duration > 0 ? duration : sceneText(scene).length() / 4.0;
+        }
+        String closing = script.path("closing").asString("");
+        declared += closing.isEmpty() ? 0 : Math.max(closing.length() / 4.0, 3);
+        double scale = declared > 0 ? totalSeconds / declared : 1;
+        StringBuilder vtt = new StringBuilder("WEBVTT\n");
+        double cursor = 0;
+        int index = 1;
+        for (JsonNode scene : script.path("scenes")) {
+            double duration = scene.path("duration_s").asDouble(0);
+            if (duration <= 0) {
+                duration = sceneText(scene).length() / 4.0;
+            }
+            duration *= scale;
+            vtt.append('\n').append(index++).append('\n')
+                .append(vttTime(cursor)).append(" --> ").append(vttTime(cursor + duration * 0.9)).append('\n')
+                .append(sceneText(scene).isBlank() ? script.path("title").asString("") : sceneText(scene)).append('\n');
+            cursor += duration;
+        }
+        if (!closing.isBlank()) {
+            vtt.append('\n').append(index).append('\n')
+                .append(vttTime(cursor)).append(" --> ").append(vttTime(totalSeconds)).append('\n')
+                .append(closing).append('\n');
+        }
+        return vtt.toString();
+    }
+
+    private static String vttTime(double seconds) {
+        long total = Math.round(seconds * 1000);
+        return String.format(Locale.ROOT, "%02d:%02d:%02d.%03d",
+            total / 3_600_000, total / 60_000 % 60, total / 1000 % 60, total % 1000);
+    }
+
+    /** 无旁白模式：静音音轨占位（render 需要 narration.mp3 存在），混音时 BGM 是唯一音源。 */
+    private void writeSilentAudio(ProductionRunVo run, Path work, Path voice, double seconds) {
+        ProductionProcessVo result = processes.run(run, new ProductionProcessBo("ffmpeg",
+            List.of("-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                "anullsrc=r=48000:cl=mono:d=" + String.format(Locale.ROOT, "%.3f", seconds),
+                "-c:a", "libmp3lame", "-q:a", "9", relative(work, voice)), work, PACKAGE_TIMEOUT));
+        if (result.exitCode() != 0 || size(voice) <= 0) {
+            throw new HeronBusinessException(503, "news_voice_failed", "无旁白模式的静音音轨生成失败");
         }
     }
 

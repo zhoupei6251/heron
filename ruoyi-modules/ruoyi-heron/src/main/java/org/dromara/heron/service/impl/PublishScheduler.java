@@ -8,6 +8,8 @@ import org.dromara.heron.domain.vo.PublishReservationVo;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import org.dromara.common.satoken.utils.LoginHelper;
+
 /**
  * 发布调度器：从合格库存里择优一条，原子预占后走既有发布链。
  *
@@ -40,21 +42,35 @@ public class PublishScheduler {
             log.info("库存无达标条目，本时段空出");
             return;
         }
-        publishReserved(top);
+        publishReserved(top, null);
     }
 
-    /** 人工立即发布：已预占条目直接进发布链（自动/人工共用同一条）。 */
+    /** 人工立即发布：已预占条目直接进发布链（自动/人工共用同一条）。发布记录用真实点击者的身份，不是系统账号。 */
     public PublishReservationVo publishFromInventory(long inventoryId) {
         HeronPublishInventory reserved = inventory.reserve(inventoryId, 0);
-        publishReserved(reserved);
+        Long actor = currentActor();
+        publishReserved(reserved, actor);
         return new PublishReservationVo(reserved.getId(), reserved.getWorkId(), reserved.getVersionId(),
             reserved.getBizLine());
     }
 
-    private void publishReserved(HeronPublishInventory reserved) {
+    /** 人工入口有会话就用登录用户；后台定时线程没有会话时走系统账号。 */
+    private static Long currentActor() {
+        Long userId = null;
+        try {
+            userId = LoginHelper.getUserId();
+        } catch (RuntimeException e) {
+            // 无会话上下文（定时线程）：用配置的系统账号
+        }
+        return userId == null ? null : userId;
+    }
+
+    private void publishReserved(HeronPublishInventory reserved, Long actor) {
         inventory.markPublishing(reserved.getId());
         try {
-            newsWork.confirmForAuto(reserved.getWorkId(), reserved.getVersionId(), news.getAutoActorId());
+            // 人工入口带真实操作者；自动调度无会话，走系统账号
+            newsWork.confirmForAuto(reserved.getWorkId(), reserved.getVersionId(),
+                actor != null ? actor : news.getAutoActorId());
             log.info("发布调度器发布 workId={} versionId={} score={}",
                 reserved.getWorkId(), reserved.getVersionId(), reserved.getPriorityScore());
         } catch (RuntimeException e) {
