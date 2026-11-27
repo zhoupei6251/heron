@@ -111,6 +111,7 @@ public class NewsProductionPipeline {
     private final DirectorRepairAgent repairAgent;
     private final ShotDirectorAgent shotDirector;
     private final TreatmentDirector treatmentDirector;
+    private final BeatAnalysis beatAnalysis;
     private final NewsSourceFetcher fetcher;
     private final FrozenContextService contexts;
     private final IMediaAssetService mediaAssets;
@@ -148,7 +149,7 @@ public class NewsProductionPipeline {
                                   NewsSourceFetcher fetcher, FrozenContextService contexts,
                                   IMediaAssetService mediaAssets, HeronNewsProperties newsProperties) {
         this(author, knowledgeAuthor, processes, artifacts, properties, stages, router, datasets, datasetAuthor,
-            reviewer, qualityReviewer, fetcher, contexts, mediaAssets, newsProperties, null, null, null);
+            reviewer, qualityReviewer, fetcher, contexts, mediaAssets, newsProperties, null, null, null, null);
     }
 
     public NewsProductionPipeline(NewsScriptAuthor author, KnowledgeScriptAuthor knowledgeAuthor,
@@ -160,7 +161,7 @@ public class NewsProductionPipeline {
                                   NewsSourceFetcher fetcher, FrozenContextService contexts,
                                   IMediaAssetService mediaAssets, HeronNewsProperties newsProperties,
                                   DirectorRepairAgent repairAgent, ShotDirectorAgent shotDirector,
-                                  TreatmentDirector treatmentDirector) {
+                                  TreatmentDirector treatmentDirector, BeatAnalysis beatAnalysis) {
         this.lanes = new VideoLanePipelines(this, author, knowledgeAuthor, datasetAuthor, properties);
         this.processes = processes;
         this.artifacts = artifacts;
@@ -175,6 +176,7 @@ public class NewsProductionPipeline {
         this.repairAgent = repairAgent;
         this.shotDirector = shotDirector;
         this.treatmentDirector = treatmentDirector;
+        this.beatAnalysis = beatAnalysis;
         this.fetcher = fetcher;
         this.contexts = contexts;
         this.mediaAssets = mediaAssets;
@@ -323,6 +325,17 @@ public class NewsProductionPipeline {
                 log.warn("整片创意规划未完成，回退确定性分镜（versionId={}）：{}", run.versionId(), e.toString());
             }
         }
+        // Vibe 节拍分析：BGM 有清晰节拍时给镜头任务卡带 beatTimes，视觉冲击落节拍
+        BeatAnalysis.Beats beats = null;
+        if (treatment != null && treatment.vibe() && sound.bed() != null) {
+            try {
+                beats = beatAnalysis.analyze(run, work, sound.bed());
+                write(composition.resolve("beats.json"), JSON.writeValueAsString(beats));
+                log.info("节拍分析 tempo={}s 共 {} 拍（versionId={}）", beats.tempo(), beats.times().size(), run.versionId());
+            } catch (RuntimeException e) {
+                log.warn("节拍分析未完成，镜头不带节拍同步（versionId={}）：{}", run.versionId(), e.toString());
+            }
+        }
         List<DirectorPipeline.Shot> shots = profile == null ? List.of()
             : DirectorPipeline.storyboard(renderScript, dataset, images, timeline, profile, treatment);
         List<DirectorVisualRework.Sample> samples = shots.isEmpty() ? List.of() : DirectorVisualRework.samples(shots, SHEET_TILES);
@@ -331,7 +344,7 @@ public class NewsProductionPipeline {
         } else {
             DirectorPipeline.compose(composition, profile, renderScript, dataset, shots);
             if (shotDirector.enabled()) {
-                composeAgentShots(run, composition, profile, renderScript, dataset, shots);
+                composeAgentShots(run, composition, profile, renderScript, dataset, shots, treatment, beats);
             }
         }
         JsonNode check = checkComposition(run, work, COMPOSITION_DIR);
@@ -493,7 +506,8 @@ public class NewsProductionPipeline {
      * Agent 是创作自由度，不是可用性依赖。检查整体失败时全部回退，不在半新半旧的时间轴上渲染。
      */
     void composeAgentShots(ProductionRunVo run, Path composition, ProfileRegistry.Profile profile,
-                           JsonNode script, JsonNode dataset, List<DirectorPipeline.Shot> shots) {
+                           JsonNode script, JsonNode dataset, List<DirectorPipeline.Shot> shots,
+                           TreatmentDirector.Treatment treatment, BeatAnalysis.Beats beats) {
         for (DirectorPipeline.Shot shot : shots) {
             Path shotDir = composition.resolve("shots");
             try {
@@ -507,7 +521,8 @@ public class NewsProductionPipeline {
                     shotBudget);
                 String goal = "镜头 " + shot.id() + "：画面目的「" + shot.title() + "」，时长 "
                     + String.format(Locale.ROOT, "%.2f", (shot.endMs() - shot.startMs()) / 1000.0) + " 秒。"
-                    + (shot.image().isEmpty() ? "" : "可用配图 " + shot.image() + "（相对路径引用）。");
+                    + (shot.image().isEmpty() ? "" : "可用配图 " + shot.image() + "（相对路径引用）。")
+                    + vibeGoal(treatment, beats, shot);
                 shotDirector.direct(run, tools, goal, shotDir.resolve(shot.id() + ".html"), shotBudget);
             } catch (IOException | RuntimeException e) {
                 log.warn("镜头 {} 的 Agent 创作未完成，保留确定性画面: {}", shot.id(), e.toString());
@@ -528,6 +543,30 @@ public class NewsProductionPipeline {
             DirectorPipeline.compose(composition, profile, script, dataset, shots);
             log.warn("Agent 画面静态检查失败，回退确定性画面: {}", e.toString());
         }
+    }
+
+    /** Vibe 模式的镜头任务卡增补：无旁白/节拍标记交给镜头导演。 */
+    private static String vibeGoal(TreatmentDirector.Treatment treatment, BeatAnalysis.Beats beats,
+                                   DirectorPipeline.Shot shot) {
+        if (treatment == null || !treatment.vibe()) {
+            return "";
+        }
+        StringBuilder extra = new StringBuilder("；Vibe 模式开启。");
+        if (treatment.noNarration()) {
+            extra.append("无旁白模式：字幕承担叙事，关键结论大字呈现并停留 ≥1 秒。");
+        }
+        if (beats != null && !beats.times().isEmpty()) {
+            // 只给本镜头时间窗内的节拍（相对镜头起点）
+            List<String> local = beats.times().stream()
+                .filter(t -> t >= shot.startMs() / 1000.0 && t < shot.endMs() / 1000.0)
+                .map(t -> String.format(Locale.ROOT, "%.2f", t - shot.startMs() / 1000.0))
+                .toList();
+            if (!local.isEmpty()) {
+                extra.append("节拍时刻（秒，相对镜头起点）：").append(String.join("、", local))
+                    .append("；关键视觉冲击落在节拍上。");
+            }
+        }
+        return extra.toString();
     }
 
     private record ReworkedVideo(Path finalFile, Path sheet, Path composition, String checks, JsonNode report,

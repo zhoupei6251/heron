@@ -28,6 +28,7 @@ import java.util.Map;
 public class TreatmentDirector {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper VISUAL_JSON = JsonMapper.builder().build();
     private static final int MAX_SHOTS = 8;
     private static final int MIN_SHOTS = 3;
     private static final int MAX_TEXT = 80;
@@ -42,7 +43,25 @@ public class TreatmentDirector {
     }
 
     /** 一次规划的全部产物：narrative / visual / storyboard 逐段落盘 data/render/&lt;jobId&gt;/。 */
-    public record Treatment(String narrative, String visual, List<Map<String, Object>> shots) { }
+    public record Treatment(String narrative, String visual, List<Map<String, Object>> shots) {
+
+        public boolean vibe() {
+            return flag("vibe");
+        }
+
+        public boolean noNarration() {
+            return flag("noNarration");
+        }
+
+        private boolean flag(String key) {
+            try {
+                JsonNode visual = VISUAL_JSON.readTree(this.visual);
+                return visual.path(key).asBoolean(false);
+            } catch (RuntimeException e) {
+                return false;
+            }
+        }
+    }
 
     /**
      * 整片三段一次调用产出：故事观点、视觉世界、逐镜设计。
@@ -74,17 +93,17 @@ public class TreatmentDirector {
             你是整片导演。先想清楚这条片子要让观众经历什么，再决定镜头。三个产物：
 
             narrative：核心观点（一句）、观众体验弧（从开场到结尾观众经历什么，≤120字）、钩子设计（前 3 秒如何让人停留）。
-            visual：视觉世界（一个贯穿全片的视觉母题，≤60字）、镜头语言要点（≤3条）、运动纪律（≤80字）。
+            visual：视觉世界（一个贯穿全片的视觉母题，≤60字）、镜头语言要点（≤3条）、运动纪律（≤80字）、vibe（可选，true 时按 Vibe 知识视频创作：视觉隐喻优先、设计观众参与瞬间、母题贯穿全片并在结尾变化含义）、noNarration（可选，true 时无旁白模式：字幕承担全部叙事，音乐节拍驱动画面切换）。
             shots：镜头清单，3-8 个。每个镜头：
             - shotId：s1、s2…
             - storyPurpose：这个镜头在体验弧里干什么的（≤40字）
             - visualIntent：画面具体长什么样、主体是什么（≤80字）
-            - treatment：只能从 hook/chart/image/statement/detail/reveal/contrast/close 里选
-            - narrationText：该镜旁白（从脚本改写分镜，合计必须覆盖脚本全部内容，不增删事实）
+            - treatment：只能从 hook/chart/image/statement/detail/reveal/contrast/close 里选；Vibe 模式优先 reveal/contrast/hook
+            - narrationText：该镜旁白（从脚本改写分镜，合计必须覆盖脚本全部内容，不增删事实）；noNarration 模式下写画面字幕文案（完整成句，观众要能读）
             - techniques：≤3 个技法词，从 count-up/split-reveal/stroke-trace/fade-up/slam/line-grow/bar-race/split-screen/ken-burns/timeline-flow 里选
-            - syncMode：line/beat/none
+            - syncMode：line/beat/none；Vibe 模式且 BGM 有节拍时优先 beat
 
-            只输出一个 JSON 对象：{"narrative":{"thesis":"","arc":"","hook":""},"visual":{"motif":"","lensNotes":[],"motionDiscipline":""},"shots":[…]}
+            只输出一个 JSON 对象：{"narrative":{"thesis":"","arc":"","hook":""},"visual":{"motif":"","lensNotes":[],"motionDiscipline":"","vibe":false,"noNarration":false},"shots":[…]}
             """);
         return text.toString();
     }

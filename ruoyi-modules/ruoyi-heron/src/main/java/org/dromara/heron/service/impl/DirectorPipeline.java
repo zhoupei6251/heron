@@ -98,6 +98,9 @@ final class DirectorPipeline {
                 var plannedShot = treatment.shots().get(i);
                 shotTreatment = String.valueOf(plannedShot.get("treatment"));
                 shotIntent = plannedShot.get("storyPurpose") + " — " + plannedShot.get("visualIntent");
+                if (treatment.vibe()) {
+                    shotIntent += "；Vibe 模式：视觉隐喻优先、母题贯穿、设计观众参与瞬间";
+                }
             } else {
                 shotTreatment = fallbackTreatment(end, image, dataset, i, chartShown);
                 if ("chart".equals(shotTreatment)) {
