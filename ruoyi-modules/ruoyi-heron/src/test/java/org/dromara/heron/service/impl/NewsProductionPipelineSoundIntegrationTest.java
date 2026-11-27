@@ -60,7 +60,7 @@ class NewsProductionPipelineSoundIntegrationTest {
             assertTrue(check.path("measured").path("skipped").asBoolean());
             assertFalse(check.path("measured").path("rendered").asBoolean());
         }
-        NewsProductionDomain domain = new NewsProductionDomain(null, null, null, null, null, null, null,
+        NewsProductionDomain domain = new NewsProductionDomain(null, null, null, null, null, null, null, null,
             properties, null);
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> domain.validateChecks(checks, Set.of("sfx")));
     }

@@ -46,7 +46,7 @@ class MediaAssetSelectionServiceTest {
         when(assets.selectById(7L)).thenReturn(eligibleAsset());
         MediaAssetSelectionVo selected = service.selectForScene(request().assetId(7L).build());
         MediaAssetSelectionVo fallback = service.selectForScene(request().sceneType("chart").build());
-        NewsProductionDomain domain = new NewsProductionDomain(null, null, null, null, null, null, null,
+        NewsProductionDomain domain = new NewsProductionDomain(null, null, null, null, null, null, null, null,
             new HeronProductionProperties(), null);
 
         domain.validateChecks(JsonUtils.toJsonString(List.of(selected.getGate())), Set.of("assets"));
@@ -77,7 +77,7 @@ class MediaAssetSelectionServiceTest {
         when(assets.findForScene(any())).thenReturn(null);
 
         MediaAssetSelectionVo result = service.selectForScene(request().sceneId(sceneId).build());
-        NewsProductionDomain domain = new NewsProductionDomain(null, null, null, null, null, null, null,
+        NewsProductionDomain domain = new NewsProductionDomain(null, null, null, null, null, null, null, null,
             new HeronProductionProperties(), null);
 
         assertEquals(256, result.getGate().getInputLocator().length());

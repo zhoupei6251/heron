@@ -45,7 +45,8 @@ public class ShotDirectorAgent {
         return models.getIfUnique() != null;
     }
 
-    public boolean direct(ProductionRunVo run, ShotRenderTools tools, String goal, Path shotHtml) {
+    public boolean direct(ProductionRunVo run, ShotRenderTools tools, String goal, Path shotHtml,
+                          org.dromara.heron.agentscope.ResearchBudget budget) {
         Model model = models.getIfUnique();
         if (model == null) {
             return false;
@@ -75,6 +76,9 @@ public class ShotDirectorAgent {
                         if (measured != null) {
                             input.addAndGet(measured.getInputTokens());
                             output.addAndGet(measured.getOutputTokens());
+                            if (budget != null) {
+                                budget.addUsage(measured.getInputTokens(), measured.getOutputTokens());
+                            }
                         }
                     }
                     return Mono.just(event);

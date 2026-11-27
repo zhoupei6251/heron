@@ -55,6 +55,7 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
     private final HeronNewsWorkMapper workMapper;
     private final HeronVideoVersionMapper versionMapper;
     private final HeronDatasetUsageMapper datasetUsageMapper;
+    private final PublishInventoryService inventory;
     private final ProductionCapabilityService capabilities;
     private final ProductionArtifactService artifacts;
     private final HeronProductionProperties properties;
@@ -359,6 +360,9 @@ public class NewsProductionDomain implements IProductionDomain, IProductionObjec
         if (dataBoardLine) {
             recordDatasetUsage(task, content.path("dataset"));
         }
+        HeronNewsWork admitted = workMapper.selectById(task.getBizId());
+        inventory.admit(version, task.getBizId(), admitted == null ? null : admitted.getCandidateId(),
+            ProductionBizType.valueOf(task.getBizType()), editorialReview, qualityReport);
     }
 
     /** 完成才记账：失败或重跑不占用 7 天去重窗口。 */

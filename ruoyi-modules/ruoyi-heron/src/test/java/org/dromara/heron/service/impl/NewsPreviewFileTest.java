@@ -21,7 +21,7 @@ class NewsPreviewFileTest {
         var artifacts = mock(ProductionArtifactService.class);
         var properties = new HeronProductionProperties();
         properties.setDataRoot(root);
-        var domain = new NewsProductionDomain(null, null, null, null, null, null, artifacts, properties, null);
+        var domain = new NewsProductionDomain(null, null, null, null, null, null, null, artifacts, properties, null);
         var version = new HeronVideoVersion();
         version.setWorkId(1L);
         version.setVersionNo(2);

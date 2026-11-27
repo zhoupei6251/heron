@@ -479,16 +479,17 @@ public class NewsProductionPipeline {
             Path shotDir = composition.resolve("shots");
             try {
                 Files.createDirectories(shotDir);
+                var shotBudget = new org.dromara.heron.agentscope.ResearchBudget(6, 40_000,
+                    Duration.ofSeconds(60), java.time.Clock.systemDefaultZone(), null);
                 var tools = new ShotRenderTools(shotDir, dataset, Map.of(
                     "profileId", profile.id(), "canvas", profile.width() + "x" + profile.height(),
                     "mode", profile.mode(), "line", profile.line()),
                     read(composition.resolve("tokens.css")), DirectorPipeline.shotBrief(script, shot), shot.id(),
-                    new org.dromara.heron.agentscope.ResearchBudget(6, 40_000, Duration.ofSeconds(60),
-                        java.time.Clock.systemDefaultZone(), null));
+                    shotBudget);
                 String goal = "镜头 " + shot.id() + "：画面目的「" + shot.title() + "」，时长 "
                     + String.format(Locale.ROOT, "%.2f", (shot.endMs() - shot.startMs()) / 1000.0) + " 秒。"
                     + (shot.image().isEmpty() ? "" : "可用配图 " + shot.image() + "（相对路径引用）。");
-                shotDirector.direct(run, tools, goal, shotDir.resolve(shot.id() + ".html"));
+                shotDirector.direct(run, tools, goal, shotDir.resolve(shot.id() + ".html"), shotBudget);
             } catch (IOException | RuntimeException e) {
                 log.warn("镜头 {} 的 Agent 创作未完成，保留确定性画面: {}", shot.id(), e.toString());
             }

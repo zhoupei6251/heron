@@ -49,7 +49,7 @@ class NewsTrendDomainTest {
 
     /** 领域校验这几条路径不碰持久层，所以依赖一律给 null。 */
     private static NewsProductionDomain domain() {
-        return new NewsProductionDomain(null, null, null, null, null, null, null,
+        return new NewsProductionDomain(null, null, null, null, null, null, null, null,
             new HeronProductionProperties(), null);
     }
 

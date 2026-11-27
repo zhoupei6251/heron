@@ -26,7 +26,7 @@ public class ShotRenderTools {
     private static final int MAX_TEXT_CHARS = 40_000;
     private static final int MAX_HTML_CHARS = 60_000;
     private static final Pattern BANNED = Pattern.compile(
-        "(?i)(fetch\\(|XMLHttpRequest|import\\s|require\\(|<script\\s+src|data-composition-src|document\\.write)");
+        "(?i)(fetch\\(|XMLHttpRequest|import\\s|require\\(|data-composition-src|document\\.write)");
 
     private final Path shotDir;
     private final JsonNode dataset;
@@ -67,14 +67,15 @@ public class ShotRenderTools {
         return JSON.writeValueAsString(dataset);
     }
 
-    @Tool(name = "write_shot_html", description = "写入当前镜头的 HTML 代码（head+body 全量，自包含；引用 tokens.css 与 vendor/gsap.min.js 用相对路径）")
+    @Tool(name = "write_shot_html", description = "写入当前镜头的 HTML 代码（完整文档；只允许引用本地 tokens.css 与 vendor/gsap.min.js）")
     public Map<String, Object> writeShotHtml(
         @ToolParam(name = "html", description = "完整 HTML 文档；所有数字必须来自 read_dataset", required = true) String html) {
         acquire();
         if (html == null || html.length() < 200 || html.length() > MAX_HTML_CHARS
-            || !html.contains("data-composition-id") || BANNED.matcher(html).find()) {
+            || !html.contains("data-composition-id") || BANNED.matcher(html).find()
+            || !html.contains("vendor/gsap.min.js") || !html.contains("tokens.css")) {
             throw new HeronBusinessException(400, "shot_html_invalid",
-                "HTML 缺少 data-composition-id、长度越界或含被禁语法（网络/外部脚本/子组合）");
+                "HTML 缺少 data-composition-id 或本地 tokens.css/gsap 引用、长度越界或含被禁语法（网络/子组合）");
         }
         try {
             Path file = shotDir.resolve(shotId + ".html");
