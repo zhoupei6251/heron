@@ -10,6 +10,7 @@ import org.dromara.heron.domain.vo.ResearchTaskVo;
 import org.dromara.heron.mapper.HeronResearchTaskMapper;
 import org.dromara.heron.service.IResearchAgent;
 import org.dromara.heron.service.IResearchTaskService;
+import org.dromara.heron.service.impl.shared.research.ResearchTaskServiceImpl;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

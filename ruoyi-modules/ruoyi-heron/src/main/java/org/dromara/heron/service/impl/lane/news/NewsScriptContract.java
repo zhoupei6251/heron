@@ -1,0 +1,271 @@
+package org.dromara.heron.service.impl.lane.news;
+
+import org.dromara.heron.service.impl.shared.quality.QualityCriteria;
+import tools.jackson.databind.JsonNode;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * 稿件 JSON 契约闸：只判形状、必填、时长合计与「标题与屏句重复」。
+ * 版式相关交给 hyperframes check，事实真伪不在这里判——三道自动闸判的都是形状。
+ *
+ * <p>两个版本并存：
+ * <ul>
+ *   <li>v1：段落只有 lead / body / duration_s，纯文字。</li>
+ *   <li>v2：段落额外可带 scene_type / beat / on_screen_text 与 visual（画面资产），
+ *       用于分镜、图片、图表等非文字场景。</li>
+ * </ul>
+ * 判定按段落逐个进行：没有 scene_type 的段落按 v1 校验，有的按 v2 校验。
+ * 这样旧稿继续合法，新稿可以在同一份脚本里混用——升级契约不会让历史作品无法重渲。
+ */
+public final class NewsScriptContract {
+
+    private static final Set<String> FIELDS = Set.of("source_url", "fetched_at", "body_sha256", "title", "scenes",
+        "closing", "source_name", "schema_version");
+    /** v1 段落字段。 */
+    private static final Set<String> SCENE_FIELDS_V1 = Set.of("lead", "body", "duration_s");
+    /** 纯文字段也允许带场景标识。 */
+    private static final Set<String> SCENE_ID_EXTRA = Set.of("scene_id");
+    /** 知识解释线：每段挂本轮引用的 entryId 列表；其他线不写，写了也不参与判定。 */
+    private static final Set<String> SCENE_CITATION = Set.of("entry_ids");
+    /** v2 在 v1 之上增加的字段；scene_type 是启用 v2 校验的开关。 */
+    private static final Set<String> SCENE_V2_EXTRA = Set.of("scene_type", "beat", "on_screen_text", "visual", "scene_id");
+    private static final Set<String> VISUAL_FIELDS = Set.of("layout", "motion", "assets", "mediaAssetId",
+        "media_asset_id", "asset_id", "orientation", "keywords");
+    private static final Set<String> ASSET_FIELDS = Set.of("asset_id", "media_asset_id", "role", "source_url");
+    /** 场景标识：给人工改稿和版本比对一个稳定锚点，不能由数组下标临时推。 */
+    private static final java.util.regex.Pattern SCENE_ID = java.util.regex.Pattern.compile("scene_[0-9]{3}");
+    /**
+     * 允许出现在稿件里的场景类型，即渲染端真正实现了的全集。
+     * timeline / list / qa 曾列在这里，但没有任何模板实现过它们；quote / rank 的唯一实现
+     * （news-quote / news-rank 版式）已随重复模板清理一并删除。列着只会让模型写出来渲染不了的画面。
+     * 具体一份稿子能用哪些，另由模板 template.json 的 supportedSceneTypes 收窄。
+     */
+    private static final Set<String> SCENE_TYPES = Set.of("headline", "text", "image", "chart", "compare", "number");
+    private static final int TITLE_CODE_POINTS = 15;
+    private static final int MIN_SCENES = 3;
+    private static final int MAX_SCENES = 6;
+    private static final int MIN_TOTAL_SECONDS = 30;
+    private static final int MAX_TOTAL_SECONDS = 75;
+    /**
+     * 单段时长上限。数字与 {@link QualityCriteria#LONG_SCENE_MS} 同源，不在契约里另起一个数：
+     * 同一段超过 12 秒，写稿阶段就该退，而不是渲染完再判节奏。
+     */
+    private static final double MAX_SCENE_SECONDS = QualityCriteria.LONG_SCENE_MS / 1000.0;
+
+    private NewsScriptContract() { }
+
+    /** 返回全部违例条目，调用方据此退回写稿；本类不改稿也不重试。 */
+    public static List<String> violations(JsonNode script) {
+        List<String> items = new ArrayList<>();
+        if (script == null || !script.isObject()) {
+            return List.of("稿件不是 JSON 对象");
+        }
+        for (String field : List.of("source_url", "fetched_at", "body_sha256", "title", "scenes", "closing",
+            "source_name")) {
+            if (!script.has(field)) items.add("缺字段 " + field);
+        }
+        for (String field : script.propertyNames()) {
+            if (!FIELDS.contains(field)) items.add("未知字段 " + field);
+        }
+        text(items, script, "title", TITLE_CODE_POINTS);
+        text(items, script, "closing", 200);
+        text(items, script, "source_name", 80);
+        if (script.has("body_sha256") && !script.path("body_sha256").asString().matches("[0-9a-f]{64}")) {
+            items.add("body_sha256 不是完整 SHA-256");
+        }
+        if (script.has("source_url") && !script.path("source_url").asString().matches("https?://[^\\s]{1,2048}")) {
+            items.add("source_url 不是 http(s) 链接");
+        }
+        String declared = script.path("schema_version").asString("");
+        if (!declared.isBlank() && !"1".equals(declared) && !"2".equals(declared)) {
+            items.add("schema_version 只支持 1 或 2，收到 " + declared);
+        }
+        scenes(items, script);
+        return List.copyOf(items);
+    }
+
+    private static void scenes(List<String> items, JsonNode script) {
+        JsonNode scenes = script.path("scenes");
+        if (scenes.isMissingNode() || !scenes.isArray()) {
+            if (script.has("scenes")) items.add("scenes 不是数组");
+            return;
+        }
+        if (scenes.size() < MIN_SCENES || scenes.size() > MAX_SCENES) {
+            items.add("段落数 " + scenes.size() + " 不在 " + MIN_SCENES + "–" + MAX_SCENES);
+        }
+        String title = script.path("title").asString("");
+        double total = 0;
+        java.util.Map<String, Integer> seenIds = new java.util.HashMap<>();
+        for (int index = 0; index < scenes.size(); index++) {
+            JsonNode scene = scenes.get(index);
+            if (!scene.isObject()) {
+                items.add("第 " + (index + 1) + " 段不是对象");
+                continue;
+            }
+            boolean v2 = scene.has("scene_type");
+            // scene_id 与画面无关，纯文字段也可以有：它是人工改稿定位一屏的锚点
+            Set<String> allowed = v2
+                ? union(union(SCENE_FIELDS_V1, SCENE_V2_EXTRA), SCENE_CITATION)
+                : union(union(SCENE_FIELDS_V1, SCENE_ID_EXTRA), SCENE_CITATION);
+            for (String field : scene.propertyNames()) {
+                if (!allowed.contains(field)) items.add("第 " + (index + 1) + " 段有未知字段 " + field);
+            }
+            text(items, scene, "lead", 20);
+            text(items, scene, "body", 70);
+            JsonNode duration = scene.path("duration_s");
+            if (!duration.isNumber() || duration.asDouble() <= 0) items.add("第 " + (index + 1) + " 段缺少正数 duration_s");
+            else {
+                total += duration.asDouble();
+                // 3 段 75 秒里可以藏一段 60 秒：总量合格、每段也「正数」，但观众半分钟等不到下一屏。
+                // 上界放在写稿闸而不是渲染后：那时钱已经花在配图和配音上。
+                if (duration.asDouble() > MAX_SCENE_SECONDS) {
+                    items.add("第 " + (index + 1) + " 段时长 " + trim(duration.asDouble()) + " 秒，超过单段上限 "
+                        + trim(MAX_SCENE_SECONDS) + " 秒");
+                }
+            }
+            if (!title.isBlank() && (title.equals(scene.path("lead").asString("")) || title.equals(scene.path("body").asString("")))) {
+                items.add("第 " + (index + 1) + " 段与标题重复");
+            }
+            if (v2) visual(items, index, scene);
+            if (scene.has("scene_id")) sceneId(items, index, scene, seenIds);
+            if (scene.has("entry_ids")) entryIds(items, index, scene);
+        }
+        if (total > 0 && (total < MIN_TOTAL_SECONDS || total > MAX_TOTAL_SECONDS)) {
+            items.add("总时长 " + (int) total + " 秒不在 " + MIN_TOTAL_SECONDS + "–" + MAX_TOTAL_SECONDS + " 秒");
+        }
+    }
+
+    /**
+     * 场景标识可省略——早期 v2 稿没有这个字段，强行必填会让历史作品无法重渲。
+     * 一旦出现就必须是 scene_001 形态且在整篇里唯一，否则人工改稿与版本对比会指错屏。
+     */
+    private static void sceneId(List<String> items, int index, JsonNode scene,
+                                java.util.Map<String, Integer> seenIds) {
+        int number = index + 1;
+        String id = scene.path("scene_id").asString("");
+        if (!SCENE_ID.matcher(id).matches()) {
+            items.add("第 " + number + " 段 scene_id 不是 scene_001 形态：" + id);
+            return;
+        }
+        Integer first = seenIds.putIfAbsent(id, number);
+        if (first != null) {
+            items.add("第 " + number + " 段 scene_id 与第 " + first + " 段重复：" + id);
+        }
+    }
+
+    /**
+     * 引用列表只校验形状：1–5 个「章节-条号」形态的稳定 ID。
+     * 这些 ID 存不存在、集合与引用清单是否一致，是 citation 闸的事——那需要知识包才能判。
+     */
+    private static void entryIds(List<String> items, int index, JsonNode scene) {
+        JsonNode ids = scene.path("entry_ids");
+        if (!ids.isArray() || ids.isEmpty() || ids.size() > 5) {
+            items.add("第 " + (index + 1) + " 段 entry_ids 必须是 1–5 个条目的数组");
+            return;
+        }
+        for (JsonNode id : ids) {
+            if (!id.isString() || !id.asString("").matches("[0-9]{2}-[0-9]{2}")) {
+                items.add("第 " + (index + 1) + " 段 entry_ids 不是「章节-条号」形态：" + id);
+            }
+        }
+    }
+
+    /** v2 段落：场景类型必须已知，visual 可选但一旦出现就要形状正确。 */
+    private static void visual(List<String> items, int index, JsonNode scene) {
+        int number = index + 1;
+        String type = scene.path("scene_type").asString("");
+        if (type.isBlank()) {
+            items.add("第 " + number + " 段 scene_type 为空");
+        } else if (!SCENE_TYPES.contains(type)) {
+            items.add("第 " + number + " 段 scene_type 未知：" + type);
+        }
+        JsonNode visual = scene.path("visual");
+        if (visual.isMissingNode()) {
+            // 文字类场景可以不带 visual；非文字场景必须带，否则模板没有可填的东西
+            if ("image".equals(type) || "chart".equals(type)) {
+                items.add("第 " + number + " 段是 " + type + " 场景，必须给 visual");
+            }
+            return;
+        }
+        if (!visual.isObject()) {
+            items.add("第 " + number + " 段 visual 不是对象");
+            return;
+        }
+        for (String field : visual.propertyNames()) {
+            if (!VISUAL_FIELDS.contains(field)) items.add("第 " + number + " 段 visual 有未知字段 " + field);
+        }
+        for (String field : List.of("mediaAssetId", "media_asset_id", "asset_id")) {
+            if (visual.has(field) && !visual.path(field).asString("").matches("[1-9][0-9]{0,18}")) {
+                items.add("第 " + number + " 段 visual." + field + " 必须是正整数素材 ID");
+            }
+        }
+        if (visual.has("orientation") && !Set.of("PORTRAIT", "LANDSCAPE", "SQUARE")
+            .contains(visual.path("orientation").asString(""))) {
+            items.add("第 " + number + " 段 visual.orientation 非法");
+        }
+        JsonNode keywords = visual.path("keywords");
+        if (!keywords.isMissingNode() && (!keywords.isArray() || keywords.size() > 20
+            || java.util.stream.StreamSupport.stream(keywords.spliterator(), false)
+                .anyMatch(item -> !item.isString()))) {
+            items.add("第 " + number + " 段 visual.keywords 必须是不超过 20 个字符串的数组");
+        }
+        JsonNode assets = visual.path("assets");
+        if (assets.isMissingNode()) {
+            if (("image".equals(type) || "chart".equals(type))
+                && !visual.has("mediaAssetId") && !visual.has("media_asset_id") && !visual.has("asset_id")) {
+                items.add("第 " + number + " 段的 " + type + " 场景缺少 assets 或素材库 ID");
+            }
+            return;
+        }
+        if (!assets.isArray()) {
+            items.add("第 " + number + " 段 visual.assets 不是数组");
+            return;
+        }
+        if (("image".equals(type)) && assets.isEmpty()) {
+            items.add("第 " + number + " 段是 image 场景但 assets 为空");
+        }
+        for (int i = 0; i < assets.size(); i++) {
+            JsonNode asset = assets.get(i);
+            if (!asset.isObject()) {
+                items.add("第 " + number + " 段第 " + (i + 1) + " 个资产不是对象");
+                continue;
+            }
+            for (String field : asset.propertyNames()) {
+                if (!ASSET_FIELDS.contains(field)) items.add("第 " + number + " 段资产有未知字段 " + field);
+            }
+            String id = asset.path("asset_id").asString(asset.path("media_asset_id").asString(""));
+            if (id.isBlank()) items.add("第 " + number + " 段第 " + (i + 1) + " 个资产缺 asset_id");
+            String mediaId = asset.path("media_asset_id").asString("");
+            if (!mediaId.isBlank() && !mediaId.matches("[1-9][0-9]{0,18}")) {
+                items.add("第 " + number + " 段第 " + (i + 1) + " 个资产 media_asset_id 非法");
+            }
+            // 模型不能直接指定文件路径：只认资产 ID，由 Asset Resolver 换成实际文件
+            if (!asset.path("source_url").asString("").isBlank()
+                && !asset.path("source_url").asString("").matches("https?://[^\\s]{1,2048}")) {
+                items.add("第 " + number + " 段资产 source_url 不是 http(s) 链接");
+            }
+        }
+    }
+
+    private static Set<String> union(Set<String> base, Set<String> extra) {
+        Set<String> merged = new java.util.HashSet<>(base);
+        merged.addAll(extra);
+        return merged;
+    }
+
+    private static void text(List<String> items, JsonNode node, String field, int maxCodePoints) {
+        if (!node.has(field)) return;
+        String value = node.path(field).asString("");
+        int length = value.codePointCount(0, value.length());
+        if (value.isBlank()) items.add(field + " 为空");
+        else if (length > maxCodePoints) items.add(field + " " + length + " 字，超过上限 " + maxCodePoints + " 字");
+    }
+
+    /** 秒数展示：整数不带小数点，退回原因要能直接读。 */
+    private static String trim(double seconds) {
+        return seconds == Math.rint(seconds) ? String.valueOf((long) seconds) : String.valueOf(seconds);
+    }
+}

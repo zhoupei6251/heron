@@ -1,5 +1,6 @@
 package org.dromara.heron.service.impl;
 
+import org.dromara.heron.service.impl.shared.quality.VideoSignalCheck;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

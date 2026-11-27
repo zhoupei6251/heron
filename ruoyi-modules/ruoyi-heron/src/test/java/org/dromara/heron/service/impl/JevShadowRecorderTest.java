@@ -5,6 +5,8 @@ import io.agentscope.extensions.judge.jev.JevClient;
 import io.agentscope.extensions.judge.jev.SystemOneResult;
 import org.dromara.heron.domain.HeronJevShadow;
 import org.dromara.heron.mapper.HeronJevShadowMapper;
+import org.dromara.heron.service.impl.shared.research.EditorialDecisionService;
+import org.dromara.heron.service.impl.shared.research.JevShadowRecorder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

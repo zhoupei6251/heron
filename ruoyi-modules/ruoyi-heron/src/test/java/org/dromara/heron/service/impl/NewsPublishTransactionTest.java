@@ -7,6 +7,9 @@ import org.dromara.heron.domain.PublishRequest;
 import org.dromara.heron.domain.bo.NewsReviewBo;
 import org.dromara.heron.domain.vo.NewsVideoVersionVo;
 import org.dromara.heron.service.IPublishAdapter;
+import org.dromara.heron.service.impl.shared.production.NewsWorkServiceImpl;
+import org.dromara.heron.service.impl.shared.publish.NewsPublishAttempts;
+import org.dromara.heron.service.impl.shared.support.HeronAccessService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.transaction.TransactionDefinition;
@@ -60,13 +63,13 @@ class NewsPublishTransactionTest {
             var clocks = new StaticListableBeanFactory(Map.of("clock", clock)).getBeanProvider(Clock.class);
             service = new NewsWorkServiceImpl(null, null, null, null, null, access, null, null, null, null,
                 tx, clocks, adapter, new HeronNewsProperties(), attempts, null, null) {
-                @Override PreparedPublish prepareConfirm(long work, long version, NewsReviewBo review, long actor, boolean system) {
+                @Override public PreparedPublish prepareConfirm(long work, long version, NewsReviewBo review, long actor, boolean system) {
                     assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
                     PublishRequest request = replay ? null : new PublishRequest(8, version, "标题", "a".repeat(64),
                         LocalDateTime.now(clock), Path.of("fixture.mp4"));
                     return new PreparedPublish(view, request, 9L);
                 }
-                @Override NewsVideoVersionVo finishConfirm(long work, long version, long attemptId,
+                @Override public NewsVideoVersionVo finishConfirm(long work, long version, long attemptId,
                                                             PublishReceipt receipt, long actor, boolean system) {
                     assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
                     if (failReceipt) throw new IllegalStateException("receipt write failed");

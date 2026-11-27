@@ -11,6 +11,7 @@ import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.vo.ProductionArtifactVo;
 import org.dromara.heron.domain.vo.ProductionRunVo;
+import org.dromara.heron.service.impl.shared.production.ProductionArtifactService;
 import org.dromara.system.api.OssService;
 import org.dromara.system.api.domain.OssDTO;
 import org.junit.jupiter.api.AfterEach;

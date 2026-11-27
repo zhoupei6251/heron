@@ -8,6 +8,7 @@ import org.dromara.heron.domain.HeronProductionTask;
 import org.dromara.heron.domain.HeronVideoVersion;
 import org.dromara.heron.domain.ProductionBizType;
 import org.dromara.heron.domain.vo.ProductionArtifactVo;
+import org.dromara.heron.service.impl.shared.production.NewsProductionDomain;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

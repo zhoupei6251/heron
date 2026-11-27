@@ -1,5 +1,6 @@
 package org.dromara.heron.service.impl;
 
+import org.dromara.heron.service.impl.lane.news.NewsScriptContract;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;

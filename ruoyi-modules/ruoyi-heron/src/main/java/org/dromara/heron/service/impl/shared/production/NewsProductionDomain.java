@@ -1,0 +1,836 @@
+package org.dromara.heron.service.impl.shared.production;
+
+import cn.hutool.core.util.IdUtil;
+import cn.hutool.crypto.digest.DigestUtil;
+import lombok.RequiredArgsConstructor;
+import org.dromara.common.json.utils.JsonUtils;
+import org.dromara.heron.config.HeronProductionProperties;
+import org.dromara.heron.domain.*;
+import org.dromara.heron.domain.bo.ProductionSubmitBo;
+import org.dromara.heron.domain.vo.*;
+import org.dromara.heron.mapper.*;
+import org.dromara.heron.service.IProductionDomain;
+import org.dromara.heron.service.IProductionObjectScope;
+import org.dromara.heron.service.impl.lane.databoard.DatasetScriptContract;
+import org.dromara.heron.service.impl.lane.news.NewsScriptContract;
+import org.dromara.heron.service.impl.shared.publish.PublishInventoryService;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Stream;
+
+/** 新闻固定业务接缝。只依赖持久层、文件校验和能力，不反向注入生产提交服务。 */
+@Service("newsProductionDomain")
+@RequiredArgsConstructor
+public class NewsProductionDomain implements IProductionDomain, IProductionObjectScope {
+    private static final Set<String> KINDS = Set.of("mp4", "contact_sheet", "script", "subtitles", "checks", "asset_manifest");
+    private static final Set<String> GATES = Set.of("schema", "evidence", "audio", "audio_mix", "subtitles", "render",
+        "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
+    private static final Set<String> DATA_KINDS = Set.of("mp4", "contact_sheet", "script", "subtitles", "checks",
+        "asset_manifest", "dataset");
+    private static final Set<String> DATA_GATES = Set.of("schema", "evidence", "data", "audio", "audio_mix", "subtitles",
+        "render", "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
+    /** 有策划结论时多一道故事闸：策划依据要在生产快照上复核一遍，才算数。 */
+    private static final Set<String> STORY_GATES = Set.of("schema", "evidence", "data", "story", "audio", "audio_mix",
+        "subtitles", "render", "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
+    /** 趋势线多一份 trend.json 产物与一道趋势判定闸；其余与数据看板线一致。 */
+    private static final Set<String> TREND_KINDS = Set.of("mp4", "contact_sheet", "script", "subtitles", "checks",
+        "asset_manifest", "dataset", "trend");
+    private static final Set<String> TREND_GATES = Set.of("schema", "evidence", "data", "trend", "audio", "audio_mix",
+        "subtitles", "render", "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
+    /** 知识解释线多一份 citations.json 产物与一道引用闸；不取数，故没有 data 闸。 */
+    private static final Set<String> KNOWLEDGE_KINDS = Set.of("mp4", "contact_sheet", "script", "subtitles", "checks",
+        "asset_manifest", "citations");
+    private static final Set<String> KNOWLEDGE_GATES = Set.of("schema", "evidence", "citation", "audio", "audio_mix",
+        "subtitles", "render", "decode", "visual", "aigc_metadata", "aigc_visible", "assets");
+    private final HeronNewsCandidateMapper candidateMapper;
+    private final FrozenContextService contexts;
+    private final HeronNewsWorkMapper workMapper;
+    private final HeronVideoVersionMapper versionMapper;
+    private final HeronDatasetUsageMapper datasetUsageMapper;
+    private final PublishInventoryService inventory;
+    private final ProductionCapabilityService capabilities;
+    private final ProductionArtifactService artifacts;
+    private final HeronProductionProperties properties;
+    private final ObjectProvider<Clock> clocks;
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockObject(long bizId) {
+        HeronNewsWork reference = workMapper.selectById(bizId);
+        if (reference == null || candidateMapper.lockById(reference.getCandidateId()) == null
+            || workMapper.lockById(bizId) == null) throw new HeronAccessException();
+    }
+
+    @Override
+    public long ownerOf(long bizId) {
+        HeronNewsWork work = workMapper.selectById(bizId);
+        if (work == null) throw new HeronAccessException();
+        return work.getOwnerId();
+    }
+
+    /**
+     * 这条视频属于哪条子线：数据看板线、趋势线、知识解释线，还是文稿解说线。
+     *
+     * <p>由线内编辑的选择直接给出，不由模板名前缀反推——反推等于让命名决定业务。
+     * 表现归因也按这一层分桶，所以取值和写入放在一处，免得两处各写一份判定。
+     */
+    public static String kindOf(EditorialSelection selection) {
+        if (selection == null) {
+            return "article";
+        }
+        if (selection.trendInsight()) {
+            return "trend";
+        }
+        if (selection.knowledgeExplainer()) {
+            return "knowledge_explainer";
+        }
+        return selection.dataBoard() ? "data_board" : "article";
+    }
+
+    /**
+     * 人工编辑路径只有节点没有对象：线名在节点里，照同样的口径推生产线。
+     *
+     * <p>推不出来就按解说线走：解说线是唯一不依赖数据源的线，猜错也比按数据线取空数据强。
+     */
+    public static String kindOfLine(Map<String, Object> node) {
+        Object line = node == null ? null : node.get("line");
+        String value = line == null ? "" : String.valueOf(line);
+        if (EditorialSelection.TREND_INSIGHT.equals(value)) {
+            return "trend";
+        }
+        if (EditorialSelection.KNOWLEDGE_EXPLAINER.equals(value)) {
+            return "knowledge_explainer";
+        }
+        return EditorialSelection.DATA_BOARD.equals(value) ? "data_board" : "article";
+    }
+
+    /** 总编辑判断：线、意图、理由，以及提示词版本，便于回溯「当时为什么这么选」。 */
+    public static Map<String, Object> editorialNode(HeronNewsWork work, ProductionSubmitBo command) {
+        Map<String, Object> editorial = new LinkedHashMap<>();
+        editorial.put("runKey", work.getCreateTime() == null ? null : work.getCreateTime().toString());
+        editorial.put("line", command.selection().line());
+        editorial.put("editorialIntent", command.editorial().editorialIntent());
+        editorial.put("reason", command.editorial().reason());
+        editorial.put("storyAngle", command.selection().storyAngle());
+        editorial.put("promptVersion", "daily-editor-v1");
+        // 选题当时的判断：机会的头线与信号。写稿必须接住它们——
+        // 不带进来，机会就只是「今天挑了它」，片子还是一条与选题无关的通用稿。
+        EditorialSelection.Opportunity opportunity = command.selection().opportunity();
+        if (opportunity != null) {
+            if (opportunity.headline() != null && !opportunity.headline().isBlank()) {
+                editorial.put("opportunityHeadline", opportunity.headline());
+            }
+            Map<String, Object> signals = parseSignals(opportunity.signals());
+            if (!signals.isEmpty()) {
+                editorial.put("opportunitySignals", signals);
+            }
+        }
+        return editorial;
+    }
+
+    /** 机会的信号 JSON：解析不了就不写，不让一段坏 JSON 进冻结输入。 */
+    private static Map<String, Object> parseSignals(String signals) {
+        if (signals == null || signals.isBlank()) {
+            return Map.of();
+        }
+        try {
+            Map<String, Object> parsed = JsonUtils.parseObject(signals, Map.class);
+            return parsed == null ? Map.of() : parsed;
+        } catch (RuntimeException e) {
+            return Map.of();
+        }
+    }
+
+    /** 线内编辑结果：具体选了哪条候选、哪个数据集、哪套模板、引用了哪些证据。 */
+    public static Map<String, Object> selectionNode(EditorialSelection selection) {
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("candidateId", selection.candidateId());
+        node.put("dataSourceKey", selection.dataSourceKey());
+        node.put("digest", selection.digest());
+        node.put("templateId", selection.templateId());
+        node.put("storyAngle", selection.storyAngle());
+        node.put("sourceEvidenceIds", selection.sourceEvidenceIds());
+        // 只有从数据机会来的片子才带这一项：留空就不写，解说线的冻结快照与改动前逐字节一致
+        if (selection.opportunityId() != null) {
+            node.put("opportunityId", selection.opportunityId());
+        }
+        // 取数口径随冻结输入落盘：生产必须按同一条口径取数，两边归约出的 sha 才有的比。
+        Map<String, Object> window = datasetWindowNode(selection);
+        if (window != null) {
+            node.put("datasetWindow", window);
+        }
+        // 策划结论随冻结输入落盘：写稿与审稿读同一份，「策划说什么」和「片子讲什么」才对得上。
+        // 没有故事的老快照不写这一节点，生产照旧。
+        if (selection.story() != null) {
+            node.put("story", selection.story().toMap());
+        }
+        return node;
+    }
+
+    /**
+     * 机会当时的取数口径：源、点数、形态、节奏、指标，以及选题那次的快照哈希。
+     *
+     * <p>没有机会就没有口径：老快照与非机会驱动的速览走兼容分支，不写这一节点。
+     */
+    private static Map<String, Object> datasetWindowNode(EditorialSelection selection) {
+        EditorialSelection.Opportunity opportunity = selection.opportunity();
+        if (opportunity == null) {
+            return null;
+        }
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("sourceKey", opportunity.sourceKey());
+        node.put("points", opportunity.windowPoints());
+        node.put("shape", opportunity.shape());
+        node.put("cadence", opportunity.cadence());
+        node.put("metricKey", opportunity.metricKey());
+        if (opportunity.expectedDataSha256() != null && !opportunity.expectedDataSha256().isBlank()) {
+            node.put("expectedDataSha256", opportunity.expectedDataSha256());
+        }
+        return node;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public ProductionReservationVo reserve(ProductionSubmitBo command, long actorId, long taskId) {
+        HeronNewsWork work = workMapper.selectById(command.bizId());
+        if (work == null) throw new HeronAccessException();
+        HeronNewsCandidate candidate = candidateMapper.selectById(work.getCandidateId());
+        if (command.bizType() == ProductionBizType.music_video || candidate == null) throw new HeronAccessException();
+        if (!Objects.equals(work.getRevision(), command.expectedRevision())) throw conflict("revision_conflict", "草稿版本已变化");
+        if (work.getActiveTaskId() != null || candidate.getActiveTaskId() != null) throw conflict("inflight", "该候选已有在途任务");
+        if (candidate.getPublishedAt() != null) throw conflict("published", "该候选已实际发布，不可重复生产");
+        if (!capabilities.capability(command.bizType()).available()) {
+            throw new HeronBusinessException(503, "news_capability_unavailable", "执行能力未就绪：" + command.bizType());
+        }
+        if (work.getNextVersion() == Integer.MAX_VALUE) throw conflict("version_limit", "版本序号已达上限");
+        long versionId = IdUtil.getSnowflakeNextId();
+        Map<String, Object> snapshot = new TreeMap<>();
+        snapshot.put("schemaVersion", FrozenContext.SCHEMA);
+        snapshot.put("workId", work.getId());
+        snapshot.put("candidateId", candidate.getId());
+        snapshot.put("versionNo", work.getNextVersion());
+        snapshot.put("revision", work.getRevision());
+        snapshot.put("title", work.getTitle());
+        snapshot.put("draft", work.getDraft().replace("\r\n", "\n").replace('\r', '\n'));
+        snapshot.put("evidence", JsonUtils.parseObject(candidate.getEvidence(), Object.class));
+        // 生产线由线内编辑显式给定，不再从模板名前缀反推：
+        // 反推等于让命名决定业务，改模板名就会改出片逻辑。
+        EditorialSelection selection = command.selection();
+        EditorialOverride override = command.override();
+        // 没有 selection 也没有 override 的手工重出：线由提交方给，kind 跟着线走。
+        String kind = override != null ? kindOfLine(override.selectionNode())
+            : selection != null ? kindOf(selection) : command.bizType().kind();
+        // 有选择时复核一遍：不一致会让 lane 容量统计与产物闸门对不上。
+        if (ProductionBizType.fromKind(kind) != command.bizType()) {
+            throw conflict("news_line_conflict", "业务线与冻结输入不一致：" + command.bizType());
+        }
+        snapshot.put("kind", kind);
+        String preferred = selection != null ? selection.templateId()
+            : override != null ? Objects.toString(override.selectionNode().get("templateId"), null) : work.getTemplateKey();
+        String profileId = ProfileRegistry.select(command.bizType(), preferred);
+        snapshot.put("assets", new ProfileRegistry(properties).load(command.bizType(), profileId,
+            ProfileRegistry.voice(work.getVoiceKey())).lock());
+        if (override != null) {
+            // 人工编辑策划结论：沿用上一版冻结的节点，只换 story 一个键。
+            // 逐字沿用是有意的——重建节点要还原取数口径，还原错一个字段就是按另一条口径取数。
+            snapshot.put("editorial", override.editorialNode());
+            snapshot.put("selection", override.selectionNode());
+        } else if (command.editorial() != null && selection != null) {
+            snapshot.put("editorial", editorialNode(work, command));
+            snapshot.put("selection", selectionNode(selection));
+        }
+        // 冻结：内容与 hash 先落独立上下文行，版本与任务再引用同一份字节。
+        // 三个地方（context / version / task）字节相同，谁被改都能立刻发现。
+        String input = JsonUtils.toJsonString(FrozenContext.canonical(snapshot));
+        boundedJson(input);
+        contexts.freeze(work.getId(), versionId, taskId, work.getNextVersion(), actorId, input);
+        HeronVideoVersion version = new HeronVideoVersion();
+        version.setId(versionId);
+        version.setWorkId(work.getId());
+        version.setOwnerId(work.getOwnerId());
+        version.setVersionNo(work.getNextVersion());
+        version.setTaskId(taskId);
+        version.setInputSnapshot(input);
+        version.setReviewStatus("pending");
+        version.setCreateBy(actorId);
+        version.setUpdateBy(actorId);
+        version.setCreateTime(now());
+        version.setUpdateTime(now());
+        if (versionMapper.insert(version) != 1) throw conflict("reserve_failed", "版本预留失败");
+        int changed = workMapper.lambda().set(HeronNewsWork::getNextVersion, work.getNextVersion() + 1)
+            .set(HeronNewsWork::getActiveTaskId, taskId).set(HeronNewsWork::getUpdateBy, actorId)
+            .set(HeronNewsWork::getUpdateTime, now()).eq(HeronNewsWork::getId, work.getId())
+            .eq(HeronNewsWork::getRevision, command.expectedRevision()).isNull(HeronNewsWork::getActiveTaskId).updateCount();
+        int claimed = candidateMapper.lambda().set(HeronNewsCandidate::getActiveTaskId, taskId)
+            .set(HeronNewsCandidate::getUpdateBy, actorId).set(HeronNewsCandidate::getUpdateTime, now())
+            .eq(HeronNewsCandidate::getId, candidate.getId()).isNull(HeronNewsCandidate::getActiveTaskId)
+            .isNull(HeronNewsCandidate::getPublishedAt).updateCount();
+        if (changed != 1 || claimed != 1) throw conflict("reserve_conflict", "候选或草稿状态已变化");
+        return new ProductionReservationVo(versionId, work.getOwnerId(), input);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void complete(HeronProductionTask task, ProductionResultVo result) {
+        HeronVideoVersion version = versionMapper.lockById(task.getVersionId());
+        requireTask(version, task);
+        if (!"running".equals(task.getStatus()) || !JsonUtils.getJsonMapper().readTree(version.getInputSnapshot())
+            .equals(JsonUtils.getJsonMapper().readTree(task.getInputSnapshot()))) throw conflict("completion_conflict", "任务状态或冻结输入不匹配");
+        HeronNewsWork work = workMapper.selectById(task.getBizId());
+        HeronNewsCandidate candidate = candidateMapper.selectById(work.getCandidateId());
+        if (!Objects.equals(work.getActiveTaskId(), task.getId())
+            || !Objects.equals(candidate.getActiveTaskId(), task.getId()) || candidate.getPublishedAt() != null
+            || version.getArtifactManifest() != null || version.getCleanupStartedAt() != null) {
+            throw conflict("completion_conflict", "该版本已完成或不属于当前任务");
+        }
+        if (result == null) throw conflict("manifest_invalid", "生成结果缺失");
+        boundedJson(result.resultJson());
+        JsonNode content = JsonUtils.getJsonMapper().readTree(result.resultJson());
+        if (!content.isObject() || !content.path("script").isObject() || !content.path("durationMs").isIntegralNumber()
+            || content.path("durationMs").asLong() <= 0) throw conflict("result_invalid", "脚本或实测时长缺失");
+        boolean trend = trend(version);
+        boolean dataBoard = dataBoard(version);
+        boolean dataBoardLine = dataBoard || trend;
+        if (dataBoardLine && !content.path("dataset").isObject()) {
+            throw conflict("result_invalid", trend ? "趋势线缺少快照" : "数据看板缺少快照");
+        }
+        List<String> violations = dataBoardLine
+            ? DatasetScriptContract.violations(content.path("script"), content.path("dataset"))
+            : NewsScriptContract.violations(content.path("script"));
+        if (!violations.isEmpty()) throw conflict("script_contract", "稿件退回写稿：" + String.join("；", violations));
+        String checks = JsonUtils.toJsonString(content.path("checks"));
+        validateChecks(checks, requiredGates(version));
+        // 审稿记录必须随结果一起落库；缺失即视为没审过，自动发布会被门禁挡住
+        JsonNode reviewRecord = content.path("editorialReview");
+        if (!reviewRecord.isObject()) throw conflict("result_invalid", "缺少 AI 审稿记录");
+        String editorialReview = JsonUtils.toJsonString(reviewRecord);
+        // 质量报告与内容属性是辅助层：缺失只说明没做过，不阻塞版本完成，更不参与发布门禁。
+        JsonNode qualityRecord = content.path("qualityReport");
+        String qualityReport = qualityRecord.isObject() ? JsonUtils.toJsonString(qualityRecord) : null;
+        if (qualityReport != null) boundedJson(qualityReport);
+        JsonNode profileRecord = content.path("contentProfile");
+        String contentProfile = profileRecord.isObject() ? JsonUtils.toJsonString(profileRecord) : null;
+        if (contentProfile != null) boundedJson(contentProfile);
+        validateManifest(version, task, result.artifacts(), true);
+        ProductionArtifactVo cover = result.artifacts().stream().filter(file -> "cover".equals(file.kind()))
+            .findFirst().orElse(null);
+        String coverUrl = content.path("coverUrl").asString(null);
+        if ((cover == null) != (coverUrl == null)
+            || (cover != null && !NewsProductionPipeline.coverUrl(task.getBizId(), task.getVersionId(), cover.artifactId())
+                .equals(coverUrl))) {
+            throw conflict("cover_invalid", "封面地址必须指向本版本清单里的原比例封面");
+        }
+        boolean coverGate = false;
+        boolean burnGate = false;
+        for (JsonNode check : content.path("checks")) {
+            coverGate |= "cover".equals(check.path("gate").asString(""));
+            burnGate |= "subtitles_burn".equals(check.path("gate").asString(""));
+        }
+        if ((cover != null && !coverGate) || (content.path("subtitlesBurned").asBoolean(false) && !burnGate)) {
+            throw conflict("checks_incomplete", "封面或字幕烧录已启用但缺少对应交付闸");
+        }
+        String manifest = JsonUtils.toJsonString(result.artifacts());
+        boundedJson(manifest);
+        verifyReports(result.artifacts(), JsonUtils.toJsonString(content.path("script")), checks);
+        int changed = versionMapper.lambda().set(HeronVideoVersion::getScript, JsonUtils.toJsonString(content.path("script")))
+            .set(HeronVideoVersion::getArtifactManifest, manifest)
+            .set(coverUrl != null, HeronVideoVersion::getCoverUrl, coverUrl).set(HeronVideoVersion::getChecks, checks)
+            .set(HeronVideoVersion::getEditorialReview, editorialReview)
+            .set(HeronVideoVersion::getDurationMs, content.path("durationMs").asLong())
+            .set(qualityReport != null, HeronVideoVersion::getQualityReport, qualityReport)
+            .set(contentProfile != null, HeronVideoVersion::getContentProfile, contentProfile)
+            .set(HeronVideoVersion::getUpdateBy, task.getActorId()).set(HeronVideoVersion::getUpdateTime, now())
+            .eq(HeronVideoVersion::getId, version.getId()).eq(HeronVideoVersion::getTaskId, task.getId())
+            .isNull(HeronVideoVersion::getArtifactManifest).isNull(HeronVideoVersion::getScript)
+            .isNull(HeronVideoVersion::getChecks).isNull(HeronVideoVersion::getCleanupStartedAt).updateCount();
+        if (changed != 1) throw conflict("completion_conflict", "版本结果只能写入一次");
+        if (workMapper.lambda().set(HeronNewsWork::getCurrentVersionId, version.getId())
+            .set(HeronNewsWork::getUpdateBy, task.getActorId()).set(HeronNewsWork::getUpdateTime, now())
+            .eq(HeronNewsWork::getId, task.getBizId()).eq(HeronNewsWork::getActiveTaskId, task.getId()).updateCount() != 1) {
+            throw conflict("completion_conflict", "作品在途指针已变化");
+        }
+        if (dataBoardLine) {
+            recordDatasetUsage(task, content.path("dataset"));
+        }
+        HeronNewsWork admitted = workMapper.selectById(task.getBizId());
+        inventory.admit(version, task.getBizId(), admitted == null ? null : admitted.getCandidateId(),
+            ProductionBizType.valueOf(task.getBizType()), editorialReview, qualityReport);
+    }
+
+    /** 完成才记账：失败或重跑不占用 7 天去重窗口。 */
+    private void recordDatasetUsage(HeronProductionTask task, JsonNode dataset) {
+        HeronDatasetUsage usage = new HeronDatasetUsage();
+        usage.setId(IdUtil.getSnowflakeNextId());
+        usage.setSourceKey(dataset.path("source_key").asString(""));
+        usage.setEntity(entityOf(dataset));
+        usage.setMetric(dataset.path("metric").path("key").asString(""));
+        usage.setVersionId(task.getVersionId());
+        usage.setUsedAt(now());
+        usage.setCreateBy(task.getActorId());
+        usage.setUpdateBy(task.getActorId());
+        usage.setCreateTime(now());
+        usage.setUpdateTime(now());
+        if (datasetUsageMapper.insert(usage) != 1) {
+            throw conflict("usage_record_failed", "数据看板使用账本写入失败");
+        }
+    }
+
+    /** 当前按 source_key 去重，entity 先落指标；等单源多实体上线再收紧到 entity。 */
+    static String entityOf(JsonNode dataset) {
+        String metric = dataset.path("metric").path("key").asString("");
+        return metric.isBlank() ? dataset.path("source_key").asString("") : metric;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void release(HeronProductionTask task) {
+        HeronNewsWork work = workMapper.selectById(task.getBizId());
+        if (work == null) throw new HeronAccessException();
+        candidateMapper.lambda().set(HeronNewsCandidate::getActiveTaskId, null)
+            .set(HeronNewsCandidate::getUpdateBy, task.getActorId()).set(HeronNewsCandidate::getUpdateTime, now())
+            .eq(HeronNewsCandidate::getId, work.getCandidateId()).eq(HeronNewsCandidate::getActiveTaskId, task.getId()).update();
+        workMapper.lambda().set(HeronNewsWork::getActiveTaskId, null)
+            .set(HeronNewsWork::getUpdateBy, task.getActorId()).set(HeronNewsWork::getUpdateTime, now())
+            .eq(HeronNewsWork::getId, task.getBizId()).eq(HeronNewsWork::getActiveTaskId, task.getId()).update();
+    }
+
+    /** 版本冻结输入里的 kind 决定产物清单、闸清单与脚本契约；不读实时配置，重放口径一致。 */
+    public boolean dataBoard(HeronVideoVersion version) {
+        return dataBoard(JsonUtils.getJsonMapper().readTree(version.getInputSnapshot()));
+    }
+
+    /** 趋势洞察线：和数据看板共用取数，但多一道趋势判定闸与一份 trend.json 产物。 */
+    public boolean trend(HeronVideoVersion version) {
+        return trend(JsonUtils.getJsonMapper().readTree(version.getInputSnapshot()));
+    }
+
+    /** 知识解释线：素材来自固定版本的知识包，产物多一份 citations.json、闸多一道引用校验。 */
+    public boolean knowledgeExplainer(HeronVideoVersion version) {
+        return knowledgeExplainer(JsonUtils.getJsonMapper().readTree(version.getInputSnapshot()));
+    }
+
+    /** 某版本必须全部通过且必须出现的闸口清单：文章、数据看板、趋势、知识四套口径。 */
+    public Set<String> requiredGates(HeronVideoVersion version) {
+        if (trend(version)) {
+            return TREND_GATES;
+        }
+        if (knowledgeExplainer(version)) {
+            return KNOWLEDGE_GATES;
+        }
+        if (!dataBoard(version)) {
+            return GATES;
+        }
+        // 故事闸只在有策划结论时要求：没有故事的老快照重跑不能因为少一道闸就失败。
+        return story(version) ? STORY_GATES : DATA_GATES;
+    }
+
+    /** 冻结输入里有没有策划结论。 */
+    private static boolean story(JsonNode input) {
+        JsonNode node = input.path("selection").path("story");
+        return node.isObject() && !node.isEmpty();
+    }
+
+    /** 某版本有没有策划结论。 */
+    private boolean story(HeronVideoVersion version) {
+        return story(JsonUtils.getJsonMapper().readTree(version.getInputSnapshot()));
+    }
+
+    private static boolean dataBoard(JsonNode input) {
+        return "data_board".equals(input.path("kind").asString(""));
+    }
+
+    private static boolean trend(JsonNode input) {
+        return "trend".equals(input.path("kind").asString(""));
+    }
+
+    private static boolean knowledgeExplainer(JsonNode input) {
+        return "knowledge_explainer".equals(input.path("kind").asString(""));
+    }
+
+    /** 查询、审核、下载均核对版本与任务的不可变归属。 */
+    public void requireTask(HeronVideoVersion version, HeronProductionTask task) {
+        if (version == null || task == null || ProductionBizType.music_video.name().equals(task.getBizType())
+            || !Objects.equals(version.getTaskId(), task.getId()) || !Objects.equals(version.getId(), task.getVersionId())
+            || !Objects.equals(version.getWorkId(), task.getBizId()) || !Objects.equals(version.getOwnerId(), task.getOwnerId())) {
+            throw new HeronAccessException();
+        }
+    }
+
+    /** 只接受完整、同版本同尝试的清单；过期查询可只校验描述而不读取文件。 */
+    public void validateManifest(HeronVideoVersion version, HeronProductionTask task, List<ProductionArtifactVo> files, boolean verifyFiles) {
+        requireTask(version, task);
+        boolean dataBoard = dataBoard(version);
+        boolean trend = trend(version);
+        boolean knowledge = knowledgeExplainer(version);
+        Set<String> expected = trend ? TREND_KINDS : knowledge ? KNOWLEDGE_KINDS : dataBoard ? DATA_KINDS : KINDS;
+        boolean hasCover = files != null && files.stream().anyMatch(file -> file != null && "cover".equals(file.kind()));
+        boolean hasCoverThumb = files != null && files.stream().anyMatch(file -> file != null && "cover_thumb".equals(file.kind()));
+        if (files == null || (files.size() != expected.size() && files.size() != expected.size() + 2)
+            || hasCover != hasCoverThumb) {
+            throw conflict("manifest_invalid", trend ? "必须具备全部八类产物（含 dataset 与 trend），封面只能成对增加"
+                : knowledge ? "必须具备全部七类产物（含 citations），封面只能成对增加"
+                : dataBoard ? "必须具备全部七类产物（含 dataset），封面只能成对增加"
+                : "必须具备全部六类产物，封面只能成对增加两张");
+        }
+        Set<String> allowed = new HashSet<>(expected);
+        allowed.addAll(Set.of("cover", "cover_thumb"));
+        Set<String> kinds = new HashSet<>();
+        Set<String> ids = new HashSet<>();
+        String prefix = "videos/" + version.getWorkId() + "/v" + version.getId() + "/a" + task.getAttemptNo() + "-" + task.getRunToken() + "/";
+        for (ProductionArtifactVo file : files) {
+            if (file == null || !allowed.contains(file.kind()) || !kinds.add(file.kind()) || file.artifactId() == null
+                || !file.artifactId().matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}") || !ids.add(file.artifactId())
+                || file.sha256() == null || !file.sha256().matches("[0-9a-f]{64}") || file.bytes() <= 0
+                || file.bytes() > properties.getNewsMaxBytes()) throw conflict("manifest_invalid", "产物描述不完整或重复");
+            boolean captionJson = "subtitles".equals(file.kind()) && "application/json".equals(file.mediaType());
+            String extension = switch (file.kind()) { case "mp4" -> "mp4"; case "contact_sheet", "cover", "cover_thumb" -> "png"; case "subtitles" -> captionJson ? "json" : "srt"; default -> "json"; };
+            String mediaType = switch (file.kind()) { case "mp4" -> "video/mp4"; case "contact_sheet", "cover", "cover_thumb" -> "image/png"; case "subtitles" -> captionJson ? "application/json" : "application/x-subrip"; default -> "application/json"; };
+            if (!Objects.equals(file.storageKey(), prefix + file.artifactId() + "." + extension)
+                || !Objects.equals(file.mediaType(), mediaType)) throw conflict("artifact_association", "产物不属于本版本或媒体类型错误");
+            if (verifyFiles) {
+                safePath(file);
+                artifacts.verify(file);
+            }
+        }
+        if (!kinds.containsAll(expected)) {
+            throw conflict("manifest_invalid", "基础产物缺失，封面不能顶替成片、联络表、脚本、字幕、检查或资产清单");
+        }
+    }
+
+    /** DB 审片内容与已校验报告文件必须一致，不能对另一个脚本/闸报告作决议。 */
+    public void verifyReports(List<ProductionArtifactVo> files, String script, String checks) {
+        for (String kind : List.of("script", "checks")) {
+            ProductionArtifactVo file = files.stream().filter(a -> kind.equals(a.kind())).findFirst().orElseThrow();
+            if (file.bytes() > 256 * 1024) throw conflict("report_oversized", "脚本或检查报告超过上限");
+            safePath(file);
+            // 字节来源交给产物服务：对象存储模式下本地定稿文件已上传即删。
+            try (var input = artifacts.openVerified(file)) {
+                byte[] bytes = input.readNBytes(256 * 1024 + 1);
+                if (bytes.length != file.bytes() || !DigestUtil.sha256Hex(bytes).equals(file.sha256())
+                    || !JsonUtils.getJsonMapper().readTree(bytes).equals(JsonUtils.getJsonMapper().readTree("script".equals(kind) ? script : checks))) {
+                    throw conflict("report_mismatch", "脚本或检查文件与版本报告不一致");
+                }
+            } catch (IOException | tools.jackson.core.JacksonException e) {
+                throw conflict("report_unreadable", "脚本或检查报告不可读");
+            }
+        }
+    }
+
+    /** 闸口必须全部存在且通过；检查明细只接受安全定位符和数值测量。 */
+    public void validateChecks(String checks, boolean dataBoard) {
+        validateChecks(checks, dataBoard ? DATA_GATES : GATES);
+    }
+
+    /** 按版本自己的产线取闸集：趋势线有 trend 闸，文章线没有 data 闸。 */
+    public void validateChecks(String checks, HeronVideoVersion version) {
+        validateChecks(checks, requiredGates(version));
+    }
+
+    /**
+     * 校验完整闸报告：必需闸必须全部出现且通过，明细字段与实测值只接受安全形状。
+     *
+     * <p>sfx 的显式 SKIP 是唯一放行的未通过项，必须带状态、错误码与 skipped/missingAsset 指标，
+     * 且不能声称 rendered；实测值只允许 number/boolean，assetId 只允许十进制字符串。
+     *
+     * @param checks        闸报告 JSON 数组
+     * @param requiredGates 本产线要求的闸名集合
+     * @throws HeronBusinessException 409 {@code news_checks_invalid}/{@code news_gate_failed}/{@code news_checks_incomplete}
+     */
+    public void validateChecks(String checks, Set<String> requiredGates) {
+        boundedJson(checks);
+        JsonNode list = JsonUtils.getJsonMapper().readTree(checks);
+        if (!list.isArray() || list.isEmpty() || list.size() > 200) throw conflict("checks_invalid", "完整检查报告缺失");
+        Set<String> seen = new HashSet<>();
+        for (JsonNode check : list) {
+            String gate = check.path("gate").asText();
+            boolean handledSfxSkip = "sfx".equals(gate) && "SKIP".equals(check.path("status").asText())
+                && check.path("passed").asBoolean(false) && check.path("code").asText().matches("[A-Z][A-Z0-9_]{0,63}")
+                && check.path("measured").path("skipped").asBoolean(false)
+                && !check.path("measured").path("rendered").asBoolean(true)
+                && check.path("measured").path("missingAsset").asBoolean(false);
+            Set<String> allowedFields = new HashSet<>(Set.of("gate", "inputLocator", "passed", "reason", "measured"));
+            if ("sfx".equals(gate) && "SKIP".equals(check.path("status").asText())) {
+                allowedFields.addAll(Set.of("status", "code"));
+            }
+            if (!check.isObject() || !allowedFields.containsAll(JsonUtils.parseMap(JsonUtils.toJsonString(check)).keySet())
+                || !gate.matches("[a-z][a-z0-9_]{0,63}") || !check.path("passed").isBoolean()
+                || !(check.path("passed").asBoolean(false) || handledSfxSkip)
+                || !check.path("inputLocator").asText().matches("[a-zA-Z0-9_.:#\\[\\]-]{1,256}")
+                || check.path("reason").getNodeType() != tools.jackson.databind.node.JsonNodeType.STRING || check.path("reason").asText().length() > 2000
+                || check.path("reason").asText().contains("/") || check.path("reason").asText().contains("\\")
+                || !check.path("measured").isObject()) throw conflict("gate_failed", "检查闸缺失、失败或报告不安全");
+            for (String key : JsonUtils.parseMap(JsonUtils.toJsonString(check.path("measured"))).keySet()) {
+                if (!key.matches("[a-zA-Z][a-zA-Z0-9_]{0,63}")) throw conflict("checks_invalid", "实测指标名称不合法");
+            }
+            for (var entry : check.path("measured").properties()) {
+                JsonNode value = entry.getValue();
+                boolean stringAssetId = "assetId".equals(entry.getKey()) && value.isString()
+                    && value.asString("").matches("[1-9][0-9]{0,18}");
+                if (!value.isNumber() && !value.isBoolean() && !stringAssetId) {
+                    throw conflict("checks_invalid", "实测值必须是数值或布尔值，assetId 必须是十进制字符串");
+                }
+            }
+            seen.add(gate);
+        }
+        if (!seen.containsAll(requiredGates)) {
+            throw conflict("checks_incomplete", "结构、依据、数据、音轨、字幕、渲染、解码、视觉、AIGC或许可闸缺失");
+        }
+    }
+
+    /** 新闻文件使用固定服务端布局，逐层拒绝符号链接；复用底座哈希校验。 */
+    public Path safePath(ProductionArtifactVo file) {
+        String key = file.storageKey();
+        if (key == null || !key.matches("videos/[0-9]+/v[0-9]+/a[1-9][0-9]*-[0-9a-f-]{36}/[0-9a-f-]{36}\\.(mp4|png|json|srt)")) {
+            throw conflict("file_path_invalid", "产物位置不合法");
+        }
+        Path root = properties.getDataRoot().toAbsolutePath().normalize();
+        Path path = root.resolve(key).normalize();
+        if (!path.startsWith(root)) throw conflict("file_path_invalid", "产物位置不合法");
+        Path current = path.getRoot();
+        for (Path part : path) {
+            current = current.resolve(part);
+            if (Files.isSymbolicLink(current)) throw conflict("file_symlink", "产物不允许符号链接");
+        }
+        try {
+            if (Files.exists(path, LinkOption.NOFOLLOW_LINKS) && !path.toRealPath().startsWith(root.toRealPath())) {
+                throw conflict("file_path_invalid", "产物位置不合法");
+            }
+        } catch (IOException e) { throw conflict("file_unreadable", "产物不可读"); }
+        return path;
+    }
+
+    /** 在版本锁内校验并打开：这里只钉死新闻产物的键形状，字节来源交给产物服务（本地盘或对象存储）。 */
+    public NewsFileVo openFile(HeronVideoVersion version, ProductionArtifactVo file) {
+        safePath(file);
+        String name = "news-" + version.getWorkId() + "-v" + version.getVersionNo()
+            + requirePreviewKind(file.kind());
+        return new NewsFileVo(name, file.mediaType(), file.bytes(), file.sha256(), artifacts.openVerified(file));
+    }
+
+    /** 预览只开放画面与实际字幕；内部脚本、检查和快照不扩大读取范围。 */
+    public static String requirePreviewKind(String kind) {
+        return switch (Objects.toString(kind, "")) {
+            case "mp4" -> ".mp4";
+            case "contact_sheet" -> "-contact.png";
+            case "cover" -> "-cover.png";
+            case "cover_thumb" -> "-cover-thumb.png";
+            case "subtitles" -> "-subtitles.json";
+            default -> throw new HeronAccessException();
+        };
+    }
+
+    /** 任一人工保留标记或失败证据都阻止新闻保留期清理。 */
+    public boolean hasKeep(HeronProductionTask task, List<ProductionArtifactVo> files) {
+        for (ProductionArtifactVo file : files) {
+            Path path = safePath(file).getParent();
+            while (path != null) {
+                if (Files.exists(path.resolve(".keep"), LinkOption.NOFOLLOW_LINKS)) return true;
+                path = path.getParent();
+            }
+        }
+        Path work = properties.getDataRoot().toAbsolutePath().normalize().resolve("work");
+        // 尝试目录按 biz_type 名分道；任务属于哪条线就查哪条线的目录。
+        Path taskRoot = work.resolve(task.getBizType()).resolve(Long.toString(task.getId()));
+        if (!Files.exists(taskRoot, LinkOption.NOFOLLOW_LINKS)) return false;
+        for (Path parent = taskRoot; parent != null && parent.startsWith(work); parent = parent.getParent()) {
+            if (Files.isSymbolicLink(parent) || Files.exists(parent.resolve(".keep"), LinkOption.NOFOLLOW_LINKS)) return true;
+        }
+        try (var paths = Files.walk(taskRoot, 3)) {
+            return paths.anyMatch(path -> Files.isSymbolicLink(path) || ".keep".equals(path.getFileName().toString()));
+        } catch (IOException e) { throw conflict("keep_unreadable", "无法确认人工保留标记"); }
+    }
+
+    /** 模板自带资产锁：谁改模板谁用 script/tools/template-lock.mjs 重新生成 LOCK.json，不改部署配置。 */
+    public Map<String, Object> lockedAssets(String templateKey) {
+        Path lock = lockFile(templateKey);
+        if (lock == null || !Files.isRegularFile(lock)) {
+            // 目录整个不在说明这套模板已被删除：跑 template-lock 也救不回来，该做的是重选版式
+            String message = lock != null && Files.isDirectory(lock.getParent())
+                ? "模板 " + templateKey + " 缺少 LOCK.json，请运行 script/tools/template-lock.mjs 生成"
+                : "模板 " + templateKey + " 不存在，该作品需要重新选版式";
+            throw new HeronBusinessException(503, "news_assets_unconfigured", message);
+        }
+        Map<String, Object> asset = new TreeMap<>();
+        try {
+            JsonNode node = JsonUtils.getJsonMapper().readTree(Files.readString(lock, StandardCharsets.UTF_8));
+            for (String key : List.of("templateKey", "templateVersion", "fontSha256", "voiceKey", "voiceVersion", "assetManifestSha256")) {
+                String value = node.path(key).asText();
+                if (!value.matches(key.endsWith("Sha256") ? "[0-9a-f]{64}" : "[a-zA-Z0-9_.-]{1,80}")) throw new IllegalArgumentException();
+                asset.put(key, value);
+            }
+        } catch (IOException | RuntimeException e) {
+            throw new HeronBusinessException(503, "news_assets_invalid", "LOCK.json 不完整或无法读取");
+        }
+        if (!templateKey.equals(asset.get("templateKey"))) {
+            throw new HeronBusinessException(503, "news_assets_invalid", "LOCK.json 的 templateKey 与目录名不一致");
+        }
+        return asset;
+    }
+
+    /** 认领用：还没有可用模板时返回空表，让作品先落默认值；真正的拒绝留在生成闸。 */
+    public Map<String, Object> lockedAssetsIfConfigured() {
+        List<String> keys = availableTemplates();
+        return keys.isEmpty() ? Map.of() : lockedAssets(keys.get(0));
+    }
+
+    /** 可用模板：根目录下带 LOCK.json 的子目录，按名字排序，保证默认选择稳定。 */
+    public List<String> availableTemplates() {
+        Path root = properties.getNewsTemplate();
+        if (root == null || !Files.isDirectory(root)) {
+            return List.of();
+        }
+        try (Stream<Path> dirs = Files.list(root)) {
+            return dirs.filter(Files::isDirectory)
+                .filter(dir -> Files.isRegularFile(dir.resolve("LOCK.json")))
+                .filter(dir -> properties.isArticleEnabled()
+                    || dir.getFileName().toString().startsWith("news-data-")
+                    || dir.getFileName().toString().startsWith("knowledge-"))
+                .map(dir -> dir.getFileName().toString())
+                .sorted()
+                .toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * 模板元信息：名字、说明与能力声明都写在模板自己的 template.json 里。
+     * 线上限与场景类型是线内编辑选模板的依据——按名字前缀猜「这条线能用哪套」不算选择。
+     */
+    public record TemplateInfo(String key, String name, String description,
+                               List<String> supportedLines, List<String> supportedSceneTypes,
+                               String aspectRatio, Integer minDuration, Integer maxDuration,
+                               TemplateStyle style, VisualMode visualMode) {
+
+        /** 只关心名字与描述的调用方（运行回放、提示词摘要）用这个。 */
+        public TemplateInfo(String key, String name, String description) {
+            this(key, name, description, List.of(), List.of(), null, null, null, null, VisualMode.TWO_D);
+        }
+
+        /** 没声明视觉模式的模板都是 2D：3D 必须是显式声明，不能靠缺省猜出来。 */
+        public TemplateInfo(String key, String name, String description,
+                            List<String> supportedLines, List<String> supportedSceneTypes,
+                            String aspectRatio, Integer minDuration, Integer maxDuration,
+                            TemplateStyle style) {
+            this(key, name, description, supportedLines, supportedSceneTypes,
+                aspectRatio, minDuration, maxDuration, style, VisualMode.TWO_D);
+        }
+
+        /** 老模板没写 supportedLines 时按命名前缀推：news-data-* 是看板线，其余是解说线。 */
+        public boolean supports(String line) {
+            if (supportedLines == null || supportedLines.isEmpty()) {
+                boolean dataBoard = key.startsWith("news-data-");
+                return dataBoard == EditorialSelection.DATA_BOARD.equals(line);
+            }
+            return supportedLines.contains(line);
+        }
+    }
+
+    /**
+     * 风格：一套画面语法的身份。
+     *
+     * <p>叙事类型登记在风格上，不登记在模板上——一套画面语法能承载多种叙事，模板只是它的实现。
+     * 叙事类型是选风格的硬依据：先有故事（知道这条片子讲什么），才知道该用哪套画面。
+     */
+    public record TemplateStyle(String key, String name, String label, String role,
+                                List<String> narratives,
+                                String bg, String fg, String accent) { }
+
+    /**
+     * 列出当前可用模板并读取各自 template.json 的元信息，供线内编辑选版式。
+     *
+     * <p>元信息读取失败只退回模板标识与空能力，不阻断选择；真正的拒绝留在生成闸。
+     */
+    public List<TemplateInfo> templateCatalog() {
+        Path root = properties.getNewsTemplate();
+        return availableTemplates().stream().map(key -> {
+            String name = key;
+            String description = "";
+            List<String> lines = List.of();
+            List<String> sceneTypes = List.of();
+            String aspectRatio = null;
+            Integer minDuration = null;
+            Integer maxDuration = null;
+            TemplateStyle style = null;
+            VisualMode visualMode = VisualMode.TWO_D;
+            if (root != null) {
+                Path meta = root.toAbsolutePath().normalize().resolve(key).resolve("template.json");
+                if (Files.isRegularFile(meta)) {
+                    try {
+                        JsonNode node = JsonUtils.getJsonMapper().readTree(Files.readString(meta, StandardCharsets.UTF_8));
+                        name = node.path("name").asString(key);
+                        description = node.path("description").asString("");
+                        lines = strings(node.path("supportedLines"));
+                        sceneTypes = strings(node.path("supportedSceneTypes"));
+                        aspectRatio = node.path("aspectRatio").asString("");
+                        visualMode = VisualMode.ofKey(node.path("visualMode").asString(""));
+                        JsonNode duration = node.path("recommendedDuration");
+                        if (duration.isObject()) {
+                            minDuration = duration.path("min").isInt() ? duration.path("min").asInt() : null;
+                            maxDuration = duration.path("max").isInt() ? duration.path("max").asInt() : null;
+                        }
+                        JsonNode styleNode = node.path("style");
+                        if (styleNode.isObject()) {
+                            style = new TemplateStyle(
+                                styleNode.path("key").asString(""),
+                                styleNode.path("name").asString(""),
+                                styleNode.path("label").asString(""),
+                                styleNode.path("role").asString(""),
+                                strings(styleNode.path("narratives")),
+                                styleNode.path("bg").asString(""),
+                                styleNode.path("fg").asString(""),
+                                styleNode.path("accent").asString(""));
+                        }
+                    } catch (IOException | RuntimeException e) {
+                        // 元信息只是选择用的辅助信息，读坏了退回模板标识与空能力；模板本身仍由 LOCK.json 与闸判定
+                    }
+                }
+            }
+            return new TemplateInfo(key, name, description, lines, sceneTypes,
+                aspectRatio == null || aspectRatio.isBlank() ? null : aspectRatio, minDuration, maxDuration,
+                style, visualMode);
+        }).toList();
+    }
+
+    private static List<String> strings(JsonNode node) {
+        if (!node.isArray()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        node.forEach(item -> {
+            String text = item.asString("");
+            if (!text.isBlank()) {
+                values.add(text);
+            }
+        });
+        return List.copyOf(values);
+    }
+
+    private Path lockFile(String templateKey) {
+        Path root = properties.getNewsTemplate();
+        if (root == null || templateKey == null || !templateKey.matches("[a-zA-Z0-9_-]{1,80}")) {
+            return null;
+        }
+        return root.toAbsolutePath().normalize().resolve(templateKey).resolve("LOCK.json");
+    }
+
+    private void boundedJson(String json) {
+        if (json == null || json.getBytes(StandardCharsets.UTF_8).length > 256 * 1024 || !JsonUtils.isJson(json)) {
+            throw conflict("json_invalid", "业务 JSON 缺失、非法或超过 256KiB");
+        }
+    }
+
+    private LocalDateTime now() { return LocalDateTime.now(clocks.getIfAvailable(Clock::systemUTC)); }
+    private HeronBusinessException conflict(String code, String message) { return new HeronBusinessException(409, "news_" + code, message); }
+}

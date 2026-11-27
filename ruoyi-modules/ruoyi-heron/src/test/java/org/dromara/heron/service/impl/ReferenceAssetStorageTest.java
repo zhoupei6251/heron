@@ -6,6 +6,8 @@ import org.dromara.common.oss.model.Options;
 import org.dromara.common.oss.model.PutObjectResult;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.HeronReferenceAsset;
+import org.dromara.heron.service.impl.shared.media.ReferenceAssetStorage;
+import org.dromara.heron.service.impl.shared.media.ReferenceVideoDownloader;
 import org.dromara.system.api.OssService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

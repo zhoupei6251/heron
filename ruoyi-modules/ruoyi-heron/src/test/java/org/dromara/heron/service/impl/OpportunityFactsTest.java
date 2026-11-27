@@ -3,6 +3,7 @@ package org.dromara.heron.service.impl;
 import org.dromara.heron.agentscope.ResearchGrade;
 import org.dromara.heron.domain.HeronDataOpportunity;
 import org.dromara.heron.domain.HeronNewsCandidate;
+import org.dromara.heron.service.impl.shared.research.OpportunityFacts;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

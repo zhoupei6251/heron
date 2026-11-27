@@ -3,6 +3,7 @@ package org.dromara.heron.service.impl;
 import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.domain.HeronTrendHotword;
 import org.dromara.heron.domain.HeronTrendVideo;
+import org.dromara.heron.service.impl.shared.research.TrendCollectService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

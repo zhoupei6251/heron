@@ -10,6 +10,8 @@ import org.dromara.heron.domain.MediaAsset;
 import org.dromara.heron.domain.bo.MediaAssetBo;
 import org.dromara.heron.domain.vo.MediaAssetVo;
 import org.dromara.heron.mapper.MediaAssetMapper;
+import org.dromara.heron.service.impl.shared.media.MediaAssetServiceImpl;
+import org.dromara.heron.service.impl.shared.media.MediaAssetStorage;
 import org.dromara.heron.support.MediaAssetTestSupport;
 import org.dromara.system.api.OssService;
 import org.junit.jupiter.api.BeforeAll;

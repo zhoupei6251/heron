@@ -1,5 +1,6 @@
 package org.dromara.heron.service.impl;
 
+import org.dromara.heron.service.impl.shared.media.BgmCatalog;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

@@ -2,6 +2,8 @@ package org.dromara.heron.service.impl;
 
 import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.domain.HeronBusinessException;
+import org.dromara.heron.service.impl.shared.research.TrendLearnStorage;
+import org.dromara.heron.service.impl.shared.research.TrendVideoDecomposer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -77,7 +79,7 @@ class TrendVideoDecomposerTest {
         }
 
         @Override
-        Process start(List<String> argv, Path workDir) {
+        protected Process start(List<String> argv, Path workDir) {
             return new FakeProcess(argv, workDir, exit, timeout, stderr);
         }
     }

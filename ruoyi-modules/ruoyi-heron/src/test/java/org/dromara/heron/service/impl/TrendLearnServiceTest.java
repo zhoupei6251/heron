@@ -2,6 +2,7 @@ package org.dromara.heron.service.impl;
 
 import org.dromara.heron.domain.HeronTrendVideo;
 import org.dromara.heron.domain.TrendLearnState;
+import org.dromara.heron.service.impl.shared.research.TrendLearnService;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

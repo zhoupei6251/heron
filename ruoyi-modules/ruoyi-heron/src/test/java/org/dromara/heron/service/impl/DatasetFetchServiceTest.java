@@ -3,6 +3,9 @@ package org.dromara.heron.service.impl;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.HeronDataSource;
 import org.dromara.heron.mapper.HeronDataSourceMapper;
+import org.dromara.heron.service.impl.lane.databoard.DatasetAdapter;
+import org.dromara.heron.service.impl.lane.databoard.DatasetFetchService;
+import org.dromara.heron.service.impl.shared.source.SinaFuturesDatasetAdapter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -71,7 +74,7 @@ class DatasetFetchServiceTest {
         DatasetAdapter adapter = mock(DatasetAdapter.class);
         DatasetFetchService service = new DatasetFetchService(mapper, null) {
             @Override
-            DatasetAdapter adapterFor(String sourceKey) {
+            public DatasetAdapter adapterFor(String sourceKey) {
                 return adapter;
             }
         };
@@ -96,7 +99,7 @@ class DatasetFetchServiceTest {
                 + "{\"date\":\"2026-11-10\",\"close\":\"4113.34\"}]);", Instant.now(), 30));
         DatasetFetchService service = new DatasetFetchService(mapper, null) {
             @Override
-            DatasetAdapter adapterFor(String sourceKey) {
+            public DatasetAdapter adapterFor(String sourceKey) {
                 return adapter;
             }
         };

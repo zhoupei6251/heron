@@ -1,5 +1,6 @@
 package org.dromara.heron.service.impl;
 
+import org.dromara.heron.service.impl.shared.research.NewsCandidateScreener;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

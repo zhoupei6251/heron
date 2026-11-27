@@ -4,6 +4,7 @@ import org.dromara.heron.domain.HeronResearchTask;
 import org.dromara.heron.mapper.HeronDataOpportunityMapper;
 import org.dromara.heron.mapper.HeronResearchTaskMapper;
 import org.dromara.heron.service.IResearchAgent;
+import org.dromara.heron.service.impl.shared.research.ResearchTaskServiceImpl;
 import org.dromara.heron.support.HeronMysqlTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

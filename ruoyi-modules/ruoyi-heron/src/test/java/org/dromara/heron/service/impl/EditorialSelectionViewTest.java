@@ -1,6 +1,7 @@
 package org.dromara.heron.service.impl;
 
 import org.dromara.heron.domain.HeronVideoVersion;
+import org.dromara.heron.service.impl.shared.research.EditorialRunService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

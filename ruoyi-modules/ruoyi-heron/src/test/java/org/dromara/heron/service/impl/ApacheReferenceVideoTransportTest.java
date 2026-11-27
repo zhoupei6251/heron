@@ -2,6 +2,8 @@ package org.dromara.heron.service.impl;
 
 import com.sun.net.httpserver.HttpServer;
 import org.dromara.heron.config.HeronNewsProperties;
+import org.dromara.heron.service.impl.shared.media.ApacheReferenceVideoTransport;
+import org.dromara.heron.service.impl.shared.media.ReferenceVideoTransport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

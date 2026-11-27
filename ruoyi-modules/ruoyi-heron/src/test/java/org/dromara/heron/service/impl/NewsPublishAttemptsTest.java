@@ -3,6 +3,7 @@ package org.dromara.heron.service.impl;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.HeronNewsPublishAttempt;
 import org.dromara.heron.mapper.HeronNewsPublishAttemptMapper;
+import org.dromara.heron.service.impl.shared.publish.NewsPublishAttempts;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;

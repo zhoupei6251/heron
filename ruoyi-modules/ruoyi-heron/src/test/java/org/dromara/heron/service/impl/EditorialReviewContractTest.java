@@ -2,6 +2,7 @@ package org.dromara.heron.service.impl;
 
 import org.dromara.heron.domain.EditorialSelection;
 import org.dromara.heron.domain.HeronBusinessException;
+import org.dromara.heron.service.impl.shared.research.EditorialReviewer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

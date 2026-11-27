@@ -4,6 +4,8 @@ import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.HeronAccessException;
 import org.dromara.heron.domain.HeronVideoVersion;
 import org.dromara.heron.domain.vo.ProductionArtifactVo;
+import org.dromara.heron.service.impl.shared.production.NewsProductionDomain;
+import org.dromara.heron.service.impl.shared.production.ProductionArtifactService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

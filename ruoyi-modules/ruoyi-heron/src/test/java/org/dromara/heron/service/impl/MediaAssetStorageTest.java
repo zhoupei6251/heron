@@ -7,6 +7,7 @@ import org.dromara.common.oss.model.PutObjectResult;
 import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.MediaAsset;
+import org.dromara.heron.service.impl.shared.media.MediaAssetStorage;
 import org.dromara.heron.support.MediaAssetTestSupport;
 import org.dromara.system.api.OssService;
 import org.dromara.system.api.domain.OssDTO;

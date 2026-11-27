@@ -7,6 +7,7 @@ import org.dromara.heron.domain.HeronNewsCandidate;
 import org.dromara.heron.domain.HeronProductionLane;
 import org.dromara.heron.mapper.HeronNewsCandidateMapper;
 import org.dromara.heron.mapper.HeronProductionLaneMapper;
+import org.dromara.heron.service.impl.shared.production.NewsWorkServiceImpl;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

@@ -1,7 +1,10 @@
 package org.dromara.heron.service.impl;
 
 import org.dromara.heron.domain.HeronNewsCandidate;
-import org.dromara.heron.service.impl.OpportunityScorer.OpportunityScoringConfig;
+import org.dromara.heron.service.impl.shared.research.OpportunityFacts;
+import org.dromara.heron.service.impl.shared.research.OpportunityScore;
+import org.dromara.heron.service.impl.shared.research.OpportunityScorer.OpportunityScoringConfig;
+import org.dromara.heron.service.impl.shared.research.OpportunityScorer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

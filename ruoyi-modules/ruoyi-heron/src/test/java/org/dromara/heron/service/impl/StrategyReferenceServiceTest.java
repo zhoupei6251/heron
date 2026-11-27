@@ -6,6 +6,7 @@ import org.dromara.heron.domain.vo.NewsPerformanceInsightVo;
 import org.dromara.heron.domain.vo.StrategyReferenceVo;
 import org.dromara.heron.mapper.HeronAutoSlotMapper;
 import org.dromara.heron.service.INewsMetricService;
+import org.dromara.heron.service.impl.shared.research.StrategyReferenceService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

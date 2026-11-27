@@ -1,6 +1,8 @@
 package org.dromara.heron.service.impl;
 
 import org.dromara.heron.domain.HeronBusinessException;
+import org.dromara.heron.service.impl.shared.research.NewsSourceFetcher;
+import org.dromara.heron.service.impl.shared.source.NewsFeedItem;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

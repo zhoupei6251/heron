@@ -14,6 +14,7 @@ import org.dromara.heron.mapper.HeronContentDecisionMapper;
 import org.dromara.heron.mapper.HeronDataOpportunityMapper;
 import org.dromara.heron.mapper.HeronNewsCandidateMapper;
 import org.dromara.heron.mapper.HeronResearchTaskMapper;
+import org.dromara.heron.service.impl.shared.research.ResearchPromotionServiceImpl;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

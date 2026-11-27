@@ -8,6 +8,8 @@ import org.dromara.heron.config.HeronProductionProperties;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.HeronTrendVideo;
 import org.dromara.heron.mapper.TrendLearnOssMapper;
+import org.dromara.heron.service.impl.shared.media.ReferenceVideoDownloader;
+import org.dromara.heron.service.impl.shared.research.TrendLearnStorage;
 import org.dromara.system.api.OssService;
 import org.dromara.system.api.domain.OssDTO;
 import org.junit.jupiter.api.AfterEach;

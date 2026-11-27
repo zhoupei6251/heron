@@ -1,6 +1,7 @@
 package org.dromara.heron.service.impl;
 
 import org.dromara.heron.service.IResearchTaskService;
+import org.dromara.heron.service.impl.shared.research.ResearchScheduler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;

@@ -1,5 +1,7 @@
 package org.dromara.heron.service.impl;
 
+import org.dromara.heron.service.impl.shared.production.NewsNarrationTiming;
+import org.dromara.heron.service.impl.shared.production.NewsProductionPipeline;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
