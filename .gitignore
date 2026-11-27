@@ -55,7 +55,6 @@ logs-dev.*
 
 .env
 redis-local.conf
-application-local.yml
 application-ga.yml
 
 ######################################################################
