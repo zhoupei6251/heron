@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.HeronPublishInventory;
+import org.dromara.heron.domain.HeronVideoVersion;
+import org.dromara.heron.mapper.HeronVideoVersionMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
@@ -34,6 +36,7 @@ public class PublishCuratorService {
 
     private final OpenAiModelClient model;
     private final PublishInventoryService inventory;
+    private final HeronVideoVersionMapper versions;
     @Value("${heron.publish.auto-score-threshold:70}")
     private int autoScoreThreshold;
 
@@ -96,17 +99,49 @@ public class PublishCuratorService {
         }
     }
 
-    private static String prompt(List<HeronPublishInventory> rows) {
+    private String prompt(List<HeronPublishInventory> rows) {
         StringBuilder text = new StringBuilder("待评库存条目：\n");
         for (HeronPublishInventory row : rows) {
             text.append("- id=").append(row.getId()).append(" 产线=").append(row.getBizLine())
-                .append(" 时长=").append(Math.round(row.getDurationMs() / 1000.0)).append("秒");
-            if (row.getCandidateId() != null) {
-                text.append(" 选题=").append(row.getCandidateId());
-            }
-            text.append('\n');
+                .append(" 时长=").append(Math.round(row.getDurationMs() / 1000.0)).append("秒\n");
+            // 没有实际内容就只凭时长产线打分——评分必须基于作品本身
+            appendContent(text, row);
         }
         return text.append("\n按系统提示逐条输出评估数组。").toString();
+    }
+
+    private void appendContent(StringBuilder text, HeronPublishInventory row) {
+        HeronVideoVersion version = versions.selectById(row.getVersionId());
+        if (version == null) {
+            log.warn("库存 {} 的版本不可读，评分基于产线与时长", row.getId());
+            return;
+        }
+        try {
+            JsonNode script = JSON.readTree(version.getScript());
+            text.append("  标题：").append(script.path("title").asString("")).append('\n');
+            for (JsonNode scene : script.path("scenes")) {
+                text.append("  段落：").append(scene.path("lead").asString("")).append("。")
+                    .append(scene.path("body").asString("")).append('\n');
+            }
+            text.append("  结尾：").append(script.path("closing").asString("")).append('\n');
+        } catch (RuntimeException e) {
+            log.warn("库存 {} 的脚本不可读：{}", row.getId(), e.toString());
+        }
+        if (version.getQualityReport() != null) {
+            try {
+                JsonNode report = JSON.readTree(version.getQualityReport());
+                JsonNode screenshot = report.path("screenshot");
+                if (screenshot.has("verdict")) {
+                    text.append("  视觉审稿：").append(screenshot.path("verdict").asString(""));
+                    if (screenshot.has("reason")) {
+                        text.append("（").append(screenshot.path("reason").asString(""), 0, 120).append("）");
+                    }
+                    text.append('\n');
+                }
+            } catch (RuntimeException ignored) {
+                // 质量报告读不出就当没有
+            }
+        }
     }
 
     private static String resource() throws IOException {

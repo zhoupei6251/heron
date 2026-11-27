@@ -38,12 +38,13 @@ public class HeronNewsConfiguration {
         return new NewsSourceRunner(sources, scheduler);
     }
 
-    /** 自动产出只在部署显式打开时装配；关闭时既没有槽位也没有自动确认扫描。 */
+    /** 自动产出只在部署显式打开时装配；自动发布走库存择优，不再旁路直发。 */
     @Bean
     @ConditionalOnProperty(prefix = "heron.news", name = "auto-enabled", havingValue = "true")
     public NewsAutoRunner newsAutoRunner(NewsAutoService auto, HeronNewsProperties news,
+                                         org.dromara.heron.service.impl.PublishScheduler publisher,
                                          @Qualifier("scheduledExecutorService") ScheduledExecutorService scheduler) {
-        return new NewsAutoRunner(auto, news, scheduler);
+        return new NewsAutoRunner(auto, news, publisher, scheduler);
     }
 
     /** 数据机会分析同样只在显式打开时装配：第一步不接入生产，默认不跑。 */

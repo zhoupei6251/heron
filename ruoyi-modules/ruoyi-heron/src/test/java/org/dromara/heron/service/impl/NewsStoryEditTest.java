@@ -143,7 +143,7 @@ class NewsStoryEditTest {
             var clock = Clock.fixed(Instant.parse("2026-11-24T08:10:00Z"), ZoneOffset.UTC);
             var clocks = new StaticListableBeanFactory(Map.of("clock", clock)).getBeanProvider(Clock.class);
             service = new NewsWorkServiceImpl(null, works, versions, null, null, access, production, null, null,
-                null, clocks, null, new HeronNewsProperties(), null, null, datasets);
+                null, null, clocks, null, new HeronNewsProperties(), null, null, datasets);
         }
     }
 

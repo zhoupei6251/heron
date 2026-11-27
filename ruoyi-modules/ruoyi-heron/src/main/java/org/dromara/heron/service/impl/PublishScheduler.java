@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dromara.heron.config.HeronNewsProperties;
 import org.dromara.heron.domain.HeronPublishInventory;
+import org.dromara.heron.domain.vo.PublishReservationVo;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +23,7 @@ public class PublishScheduler {
     private final PublishInventoryService inventory;
     private final PublishCuratorService curator;
     private final NewsWorkServiceImpl newsWork;
+    private final PublishInventorySync inventorySync;
     private final HeronNewsProperties news;
 
     @Value("${heron.publish.auto-score-threshold:70}")
@@ -38,13 +40,28 @@ public class PublishScheduler {
             log.info("库存无达标条目，本时段空出");
             return;
         }
+        publishReserved(top);
+    }
+
+    /** 人工立即发布：已预占条目直接进发布链（自动/人工共用同一条）。 */
+    public PublishReservationVo publishFromInventory(long inventoryId) {
+        HeronPublishInventory reserved = inventory.reserve(inventoryId, 0);
+        publishReserved(reserved);
+        return new PublishReservationVo(reserved.getId(), reserved.getWorkId(), reserved.getVersionId(),
+            reserved.getBizLine());
+    }
+
+    private void publishReserved(HeronPublishInventory reserved) {
+        inventory.markPublishing(reserved.getId());
         try {
-            HeronPublishInventory reserved = inventory.reserve(top.getId(), scoreThreshold);
             newsWork.confirmForAuto(reserved.getWorkId(), reserved.getVersionId(), news.getAutoActorId());
-            log.info("发布调度器择优发布 workId={} versionId={} score={}",
+            log.info("发布调度器发布 workId={} versionId={} score={}",
                 reserved.getWorkId(), reserved.getVersionId(), reserved.getPriorityScore());
         } catch (RuntimeException e) {
-            log.warn("择优发布失败，条目留在库存: {}", e.getMessage());
+            // 发布尝试结果未知时已由账本接管；库存标 UNKNOWN 等人工核对
+            inventorySync.onUnknown(reserved.getVersionId());
+            log.warn("发布失败，库存条目标 UNKNOWN 待核对: {}", e.getMessage());
+            throw e;
         }
     }
 }

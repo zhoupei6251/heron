@@ -48,9 +48,12 @@ public class PublishInventoryService {
             .set(HeronPublishInventory::getPublishStatus, HeronPublishInventory.PUBLISH_SUPERSEDED)
             .set(HeronPublishInventory::getUpdateTime, LocalDateTime.now())
             .eq(HeronPublishInventory::getWorkId, workId)
+            .ne(HeronPublishInventory::getVersionId, version.getId())
             .in(HeronPublishInventory::getPublishStatus,
                 HeronPublishInventory.PUBLISH_WAITING, HeronPublishInventory.PUBLISH_RESERVED)
-            .eq(HeronPublishInventory::getCurationStatus, HeronPublishInventory.CURATION_ELIGIBLE)
+            .in(HeronPublishInventory::getCurationStatus,
+                HeronPublishInventory.CURATION_PENDING, HeronPublishInventory.CURATION_ELIGIBLE,
+                HeronPublishInventory.CURATION_HOLD)
             .update();
         HeronPublishInventory row = new HeronPublishInventory();
         row.setId(IdUtil.getSnowflakeNextId());
@@ -172,5 +175,15 @@ public class PublishInventoryService {
         HeronPublishInventory reserved = reserve(inventoryId, 0);
         return new PublishReservationVo(reserved.getId(), reserved.getWorkId(), reserved.getVersionId(),
             reserved.getBizLine());
+    }
+
+    /** 预占成 PUBLISHING：发布执行前调用，防止复核窗口内再次被预占。 */
+    public void markPublishing(long inventoryId) {
+        inventoryMapper.lambda()
+            .set(HeronPublishInventory::getPublishStatus, HeronPublishInventory.PUBLISH_PUBLISHING)
+            .set(HeronPublishInventory::getUpdateTime, LocalDateTime.now())
+            .eq(HeronPublishInventory::getId, inventoryId)
+            .eq(HeronPublishInventory::getPublishStatus, HeronPublishInventory.PUBLISH_RESERVED)
+            .update();
     }
 }

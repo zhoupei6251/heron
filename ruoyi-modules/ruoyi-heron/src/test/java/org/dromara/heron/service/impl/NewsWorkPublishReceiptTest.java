@@ -330,7 +330,7 @@ class NewsWorkPublishReceiptTest {
                     return 1;
                 });
             service = new NewsWorkServiceImpl(candidates, works, versions, lanes, tasks, access, null, domain,
-                artifacts, null, clocks, adapter, new HeronNewsProperties(),
+                null, artifacts, null, clocks, adapter, new HeronNewsProperties(),
                 new NewsPublishAttempts(attemptMapper), null, null);
         }
 

@@ -13,6 +13,7 @@ import org.dromara.heron.domain.bo.PublishInventoryQuery;
 import org.dromara.heron.domain.vo.PublishInventoryVo;
 import org.dromara.heron.domain.vo.PublishReservationVo;
 import org.dromara.heron.service.impl.PublishInventoryService;
+import org.dromara.heron.service.impl.PublishScheduler;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PublishInventoryController extends BaseController {
 
     private final PublishInventoryService inventory;
+    private final PublishScheduler scheduler;
 
     /** 待发布池：按评估状态/发布状态/产线过滤，默认视图是合格待发布。 */
     @SaCheckPermission("heron:publish:list")
@@ -41,12 +43,12 @@ public class PublishInventoryController extends BaseController {
         return R.ok(inventory.pageList(query));
     }
 
-    /** 人工立即发布：原子预占后走与自动调度相同的发布链；预占失败说明已被抢先。 */
+    /** 人工立即发布：原子预占后直接走与自动调度相同的发布链；预占失败说明已被抢先。 */
     @SaCheckPermission("heron:publish:publish")
     @RepeatSubmit
     @Log(title = "库存立即发布", businessType = BusinessType.UPDATE, isSaveRequestData = false, isSaveResponseData = false)
     @PostMapping("/{id}/reserve")
     public R<PublishReservationVo> reserve(@PathVariable long id) {
-        return R.ok(inventory.reserveForManual(id));
+        return R.ok(scheduler.publishFromInventory(id));
     }
 }

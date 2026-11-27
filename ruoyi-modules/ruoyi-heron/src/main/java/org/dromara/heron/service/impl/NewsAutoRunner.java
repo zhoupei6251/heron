@@ -22,13 +22,16 @@ public class NewsAutoRunner {
 
     private final NewsAutoService auto;
     private final HeronNewsProperties news;
+    private final PublishScheduler publisher;
     private final ScheduledExecutorService scheduler;
     private final Map<String, CronExpression> crons = new LinkedHashMap<>();
     private final Map<String, LocalDateTime> next = new LinkedHashMap<>();
 
-    public NewsAutoRunner(NewsAutoService auto, HeronNewsProperties news, ScheduledExecutorService scheduler) {
+    public NewsAutoRunner(NewsAutoService auto, HeronNewsProperties news, PublishScheduler publisher,
+                         ScheduledExecutorService scheduler) {
         this.auto = auto;
         this.news = news;
+        this.publisher = publisher;
         this.scheduler = scheduler;
     }
 
@@ -77,10 +80,12 @@ public class NewsAutoRunner {
     }
 
     private void sweep() {
+        // 自动发布只走库存择优：旧 confirmPending 旁路已停，
+        // 没过 Curator 评分的成片不再被「生产完即发布」。
         try {
-            auto.confirmPending();
+            publisher.publishBest();
         } catch (RuntimeException e) {
-            log.warn("自动确认扫描异常", e);
+            log.warn("库存择优发布异常", e);
         }
         try {
             auto.retryFailedSlots();

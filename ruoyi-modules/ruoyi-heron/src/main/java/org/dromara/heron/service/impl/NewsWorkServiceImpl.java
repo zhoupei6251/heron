@@ -61,6 +61,7 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     private final HeronAccessService access;
     private final IProductionService production;
     private final NewsProductionDomain domain;
+    private final PublishInventorySync inventorySync;
     private final ProductionArtifactService artifacts;
     private final PlatformTransactionManager transactionManager;
     private final ObjectProvider<Clock> clocks;
@@ -701,9 +702,13 @@ public class NewsWorkServiceImpl implements INewsWorkService {
     }
 
     static void checkVisualPass(String qualityReport) {
+        // fail-closed：有质量报告却没有视觉结论，说明视觉审稿没跑成——不能当默认通过。
         if (qualityReport == null || qualityReport.isBlank()) return;
         JsonNode report = JSON.readTree(qualityReport);
-        if (report.path("screenshot").has("verdict") && !DirectorVisualRework.accepted(report)) {
+        if (!report.path("screenshot").has("verdict")) {
+            throw new HeronBusinessException(409, "visual_review_missing", "视觉审稿未给出结论，不能自动发布");
+        }
+        if (!DirectorVisualRework.accepted(report)) {
             throw new HeronBusinessException(409, "visual_review_required", "成片视觉审稿未通过，保留待人工确认");
         }
     }
@@ -941,6 +946,10 @@ public class NewsWorkServiceImpl implements INewsWorkService {
             .set(HeronNewsCandidate::getUpdateBy, actor).set(HeronNewsCandidate::getUpdateTime, now())
             .eq(HeronNewsCandidate::getId, work.getCandidateId()).isNull(HeronNewsCandidate::getPublishedAt).updateCount() != 1) {
             throw conflict("publish_conflict", "候选发布状态已变化");
+        }
+        // 发布事实落库即同步库存：这一版从 RESERVED 翻 PUBLISHED，同作品其余可发布条目让位
+        if (inventorySync != null) {
+            inventorySync.onPublished(versionId);
         }
         return versionView(versionMapper.selectById(versionId));
     }

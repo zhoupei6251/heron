@@ -40,7 +40,9 @@ class DirectorPipelineTest {
         assertThrows(HeronBusinessException.class,
             () -> NewsWorkServiceImpl.checkVisualPass("{\"screenshot\":{\"verdict\":\"pass\"}}"));
         NewsWorkServiceImpl.checkVisualPass("{\"screenshot\":{\"verdict\":\"pass\",\"frames\":6,\"findings\":[]}}");
-        NewsWorkServiceImpl.checkVisualPass("{\"screenshot\":{\"frames\":0}}");
+        assertThrows(HeronBusinessException.class,
+            () -> NewsWorkServiceImpl.checkVisualPass("{\"screenshot\":{\"frames\":0}}"),
+            "fail-closed：没有视觉结论的报告不能当默认通过");
     }
 
     @Test

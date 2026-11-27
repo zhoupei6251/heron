@@ -57,7 +57,7 @@ class NewsPlaceholderSourceKindTest {
         // 占位落库后让认领在锁候选处停下：本用例只关心插入了什么，不走完整认领。
         when(candidates.lockById(any(Long.class))).thenReturn(null);
         NewsWorkServiceImpl service = new NewsWorkServiceImpl(candidates, null, null, lanes,
-            null, null, null, null, null, null, clocks, null, null, null, null, null);
+            null, null, null, null, null, null, null, clocks, null, null, null, null, null);
 
         EditorialSelection selection = new EditorialSelection(EditorialSelection.DATA_BOARD, null,
             "econ_gdp", false, "news-data-chart-dark", "rank_competition", List.of());

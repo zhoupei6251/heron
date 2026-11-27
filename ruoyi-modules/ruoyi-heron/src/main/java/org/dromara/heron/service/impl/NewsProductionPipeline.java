@@ -528,7 +528,12 @@ public class NewsProductionPipeline {
         for (String image : shots.stream().map(DirectorPipeline.Shot::image).filter(name -> !name.isBlank()).distinct().toList()) {
             Files.copy(originalComposition.resolve(image), composition.resolve(image));
         }
-        DirectorPipeline.compose(composition, profile, renderScript, dataset, shots, patch, false);
+        // 返工沿用 Agent 创作的镜头 HTML：只重排问题镜头的版式，其余镜头保持 Agent 原作
+        boolean agentShots = Files.isDirectory(originalComposition.resolve("shots"));
+        if (agentShots) {
+            copyDirectory(originalComposition.resolve("shots"), composition.resolve("shots"));
+        }
+        DirectorPipeline.compose(composition, profile, renderScript, dataset, shots, patch, agentShots);
         String component = relative(work, composition);
         JsonNode check = checkComposition(run, work, component);
         Path raw = attempt.resolve(RAW_FILE);
@@ -1699,6 +1704,14 @@ public class NewsProductionPipeline {
 
     private static String relative(Path work, Path path) {
         return work.relativize(path).toString().replace('\\', '/');
+    }
+
+    private static void copyDirectory(Path source, Path target) throws IOException {
+        try (Stream<Path> paths = Files.walk(source)) {
+            for (Path file : paths.toList()) {
+                Files.copy(file, target.resolve(source.relativize(file).toString()), StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
     }
 
     private double probeDuration(ProductionRunVo run, Path file) {
