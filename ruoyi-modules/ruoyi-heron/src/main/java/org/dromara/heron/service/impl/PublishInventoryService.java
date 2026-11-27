@@ -1,11 +1,17 @@
 package org.dromara.heron.service.impl;
 
 import cn.hutool.core.util.IdUtil;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import org.dromara.common.core.domain.PageResult;
+import org.dromara.common.mybatis.core.query.QueryBuilder;
 import org.dromara.heron.domain.HeronBusinessException;
 import org.dromara.heron.domain.HeronPublishInventory;
 import org.dromara.heron.domain.HeronVideoVersion;
 import org.dromara.heron.domain.ProductionBizType;
+import org.dromara.heron.domain.bo.PublishInventoryQuery;
+import org.dromara.heron.domain.vo.PublishInventoryVo;
+import org.dromara.heron.domain.vo.PublishReservationVo;
 import org.dromara.heron.mapper.HeronPublishInventoryMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -145,5 +151,26 @@ public class PublishInventoryService {
             total += item.path("score").asInt(0);
         }
         return total;
+    }
+
+    /** 待发布池分页视图；默认只看合格待发布。 */
+    public PageResult<PublishInventoryVo> pageList(PublishInventoryQuery query) {
+        String curation = query.getCurationStatus() == null || query.getCurationStatus().isBlank()
+            ? HeronPublishInventory.CURATION_ELIGIBLE : query.getCurationStatus();
+        var wrapper = QueryBuilder.lambda(HeronPublishInventory.class)
+            .eq(HeronPublishInventory::getCurationStatus, curation)
+            .eqIfText(HeronPublishInventory::getPublishStatus, query.getPublishStatus())
+            .eqIfText(HeronPublishInventory::getBizLine, query.getBizLine())
+            .eqIfPresent(HeronPublishInventory::getWorkId, query.getWorkId())
+            .orderByDesc(HeronPublishInventory::getPriorityScore, HeronPublishInventory::getId).build();
+        Page<PublishInventoryVo> page = inventoryMapper.selectVoPage(query.build(), wrapper);
+        return PageResult.build(page.getRecords(), page.getTotal());
+    }
+
+    /** 人工立即发布：预占后交既有发布链；评分线放宽到 0——人工可越过排序，不能越过硬闸（入池已过）。 */
+    public PublishReservationVo reserveForManual(long inventoryId) {
+        HeronPublishInventory reserved = reserve(inventoryId, 0);
+        return new PublishReservationVo(reserved.getId(), reserved.getWorkId(), reserved.getVersionId(),
+            reserved.getBizLine());
     }
 }
