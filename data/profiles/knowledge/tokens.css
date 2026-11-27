@@ -1,0 +1,65 @@
+/* 风格 K · Editorial Atlas 知识解释：暖纸浅底、粗线条结构框、朱红强调与钴蓝辅色。
+   与深色数据/资讯线完全拉开视觉识别度；浅底靠 2-4px 实线结构框、纸纹与强字重建立高级感。
+   注意：--accent 不在这里定义，由 HyperFrames 从 composition 的 color 变量注入。 */
+:root {
+  --bg: #f6f1e7;
+  --fg: #181a1f;
+  --muted: #666b73;
+  --muted-2: #4a4f57;
+  --body: #2c313a;
+  --legend: #181a1f;
+  --down: #b83b28;
+  --secondary: #2a6f97;
+
+  --rule-faint: rgba(24, 26, 31, 0.12);
+  --rule-soft: rgba(24, 26, 31, 0.22);
+  --rule-strong: rgba(24, 26, 31, 0.78);
+  --panel: rgba(24, 26, 31, 0.045);
+  --glow-color: rgba(217, 78, 40, 0.14);
+  --accent-glow: rgba(217, 78, 40, 0.24);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 88px;
+  --fs-title-lg: 74px;
+  --fs-title-sm: 64px;
+  --fs-data: 68px;
+  --fs-data-sm: 34px;
+  --fs-lead: 52px;
+  --fs-body: 38px;
+  --fs-label: 28px;
+  --fs-note: 26px;
+
+  --pad-frame: 84px;
+  --rule-width: 3px;
+  --radius: 10px;
+  --track-kicker: 0.18em;
+
+  --grid-size: 80px;
+  --grid-opacity: 0.32;
+  --glow-x: 82%;
+  --glow-y: 16%;
+  --glow-spread: 54%;
+  --glow-opacity: 0.45;
+  --grain-opacity: 0.22;
+
+  --dur-entrance: 0.62s;
+  --dur-swap: 0.34s;
+  --dur-ambient: 8s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+
+  --cam-push: 1.04;
+  --cam-origin: 50% 48%;
+  --slide-shift: 120px;
+
+  --chart-line-width: 5px;
+  --chart-area-alpha: 0.14;
+  --chart-max-annot: #d94e28;
+  --chart-min-annot: #2a6f97;
+  --chart-min-size: 24px;
+  --focus-dim: 0.45;
+  --focus-ring-width: 5px;
+  --focus-ring-dash: none;
+}

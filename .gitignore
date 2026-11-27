@@ -82,6 +82,9 @@ application-ga.yml
 !/data/profiles/data-investigation/
 !/data/profiles/mood/
 !/data/profiles/sprint/
+!/data/profiles/knowledge/
+# 画幅可选：每条内容线可以配横屏变体（<id>-landscape），默认竖屏
+!/data/profiles/*-landscape/
 # 弹药库与知识底座：_gen/behaviors 已过闸动效手法 + reference-cards（Apache-2.0 / MIT，见其 ATTRIBUTION.md）
 # + styles.json 的叙事词汇与风格归属并入。参考配方库是建工母本，必须可重放
 !/data/creative-knowledge/

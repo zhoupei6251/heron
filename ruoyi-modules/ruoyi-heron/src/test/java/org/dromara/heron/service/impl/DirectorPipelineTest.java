@@ -46,6 +46,29 @@ class DirectorPipelineTest {
     }
 
     @Test
+    void landscapeVariantSelectsItsOwnProfileAndKeepsCanvasVocabularyClosed() {
+        Path root = Path.of("../..").toAbsolutePath().normalize();
+        var properties = new HeronProductionProperties();
+        properties.setNewsProfile(root.resolve("data/profiles"));
+        var registry = new ProfileRegistry(properties);
+        // 命名即画幅：后缀进 select 封闭词汇，未知基础风格回落线内默认再重组
+        assertEquals("data-board-landscape", ProfileRegistry.select(ProductionBizType.data_board, "data-board-landscape"));
+        assertEquals("data-board-landscape", ProfileRegistry.select(ProductionBizType.data_board, "sprint-landscape"));
+        assertEquals("sprint-landscape", ProfileRegistry.select(ProductionBizType.news_explainer, "sprint-landscape"));
+        assertEquals("article-landscape", ProfileRegistry.select(ProductionBizType.news_explainer, "article-landscape"));
+        assertEquals("data-board", ProfileRegistry.select(ProductionBizType.data_board, null));
+        var profile = registry.load(ProductionBizType.data_board, "data-board-landscape",
+            ProfileRegistry.DEFAULT_VOICE);
+        assertEquals(1920, profile.width());
+        assertEquals(1080, profile.height());
+        assertEquals(720, profile.subtitleTop());
+        assertTrue(profile.landscape());
+        // 不存在的横屏目录（命名画幅绑定正确但资产缺失）必须拒绝而不是静默回退竖屏
+        assertThrows(HeronBusinessException.class,
+            () -> registry.load(ProductionBizType.data_board, "sprint-landscape", ProfileRegistry.DEFAULT_VOICE));
+    }
+
+    @Test
     void compilesSourceBoundScenesWithoutLoadingOldTemplates() throws Exception {
         Path root = Path.of("../..").toAbsolutePath().normalize();
         var properties = new HeronProductionProperties();

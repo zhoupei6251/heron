@@ -9,10 +9,10 @@
 ## 画面硬规则
 
 - 单文档自包含：`<link rel="stylesheet" href="tokens.css">` 和 `<script src="vendor/gsap.min.js">` 用相对路径；不引外部资源、不写网络请求、不用子组合。
-- 根元素：`<div data-composition-id="shot" data-width="1080" data-height="1920" data-duration="…">`，duration 用任务卡给的实测秒数，不能自定。
+- 根元素：`<div data-composition-id="shot" data-width="…" data-height="…" data-duration="…">`，宽高与 duration 都用任务卡 profile 里的画布值与实测秒数，不能自定。
 - 颜色、字号、间距一律用 tokens.css 的 CSS 变量（`var(--fg)`、`var(--accent)`、`var(--fs-title)` 等），禁止硬编码 hex 与 px 猜值。
-- 手机竖屏可读：正文 ≥ 32px、标签 ≥ 24px；观众第一眼能认出唯一主体。
-- 字幕安全带：画面下三分之一（Y ≥ 1280px 区域）不放关键信息，字幕会烧在那里。
+- 画面可读：正文 ≥ 32px、标签 ≥ 24px；观众第一眼能认出唯一主体。
+- 字幕安全带：画面下三分之一（竖屏 Y ≥ 1280px、横屏 Y ≥ 720px 区域）不放关键信息，字幕会烧在那里。
 - 用 GSAP 建一条 `paused: true` 时间线注册到 `window.__timelines["shot"]`；入场 0.3–0.6s、非线性缓动、有环境层微动；不写 `repeat: -1`、不写墙钟、不用 `Math.random`。
 - 右上角固定：`<div id="aigc-badge">内容由 AI 生成</div>`。
 - ADR 三律（docs/reference/video-craft/data-motion.md）：不饼图、不多轴图、不六宫格；数字要有视觉重量（比例条、环、色块），不孤零零漂在空白里；一个镜头只讲一件事。

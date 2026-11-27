@@ -1243,14 +1243,6 @@ public class NewsProductionPipeline {
         return new Gate("render", RAW_FILE, "hyperframes render 退出 0 且产物非空", measured);
     }
 
-    private static Gate decodeGate(JsonNode probe, double audioSeconds) {
-        return decodeGate(probe, audioSeconds, RAW_FILE);
-    }
-
-    private static Gate decodeGate(JsonNode probe, double audioSeconds, String locator) {
-        return decodeGate(probe, audioSeconds, locator, 1080, 1920);
-    }
-
     private static Gate decodeGate(JsonNode probe, double audioSeconds, int expectedWidth, int expectedHeight) {
         return decodeGate(probe, audioSeconds, RAW_FILE, expectedWidth, expectedHeight);
     }

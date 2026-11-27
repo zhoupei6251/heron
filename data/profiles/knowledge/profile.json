@@ -1,0 +1,14 @@
+{
+  "profileId": "knowledge",
+  "version": 1,
+  "bizLine": "knowledge_explainer",
+  "visualMode": "2d",
+  "themeTone": "light",
+  "canvas": { "width": 1080, "height": 1920 },
+  "fonts": ["Noto Sans SC"],
+  "accentDefault": "#d94e28",
+  "motionDiscipline": { "maxStillSec": 3.0, "endStableFrames": 30, "maxFlashPerShot": 1 },
+  "caption": "caption.css",
+  "skeletonRules": "skeleton-rules.json",
+  "creativeVoice": "暖纸杂志科普图解风（Vox/Kurzgesagt 语法）：米白纸质感 + 粗结构分割线 + 朱红/钴蓝双色信息图解，拒绝黑底 AI 霓虹"
+}

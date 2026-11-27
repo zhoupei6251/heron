@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "skeleton-rules/1",
+  "canvas": { "width": 1920, "height": 1080 },
+  "safePaddingPx": 64,
+  "subtitleBandY": { "minY": 720, "maxY": 940 },
+  "bottomBarReserveY": 940,
+  "aigcBadge": { "required": true, "corner": "top-right", "minFontPx": 20 },
+  "minReadableFontPx": { "headline": 40, "body": 30, "label": 22 },
+  "keepsMovingRequired": true,
+  "forbidHardcodedHex": true,
+  "forbidExternalUrls": true,
+  "maxConsecutiveSameComposition": 1
+}

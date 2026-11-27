@@ -18,6 +18,8 @@ final class ProfileRegistry {
     static final String DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural";
     static final String FONT = "fonts/NotoSansSC-Regular.otf";
     static final String GSAP = "vendor/gsap.min.js";
+    /** 横屏变体目录后缀：命名即画幅——同一风格的横屏资产放在 &lt;id&gt;-landscape/，画幅词汇封闭为竖 1080×1920 / 横 1920×1080。 */
+    static final String LANDSCAPE = "-landscape";
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final Path root;
@@ -27,13 +29,16 @@ final class ProfileRegistry {
     }
 
     static String select(ProductionBizType line, String preferred) {
-        return switch (line) {
-            case news_explainer -> "article".equals(preferred) ? "article" : "sprint";
-            case data_board -> "data-board-3d".equals(preferred) ? preferred : "data-board";
+        boolean landscape = preferred != null && preferred.endsWith(LANDSCAPE);
+        String base = landscape ? preferred.substring(0, preferred.length() - LANDSCAPE.length()) : preferred;
+        String style = switch (line) {
+            case news_explainer -> "article".equals(base) ? "article" : "sprint";
+            case data_board -> "data-board-3d".equals(base) ? base : "data-board";
             case trend_insight -> "data-investigation";
             case knowledge_explainer -> "knowledge";
             case music_video -> throw invalid("音乐视频尚无生产执行器");
         };
+        return landscape ? style + LANDSCAPE : style;
     }
 
     static String voice(String value) {
@@ -45,6 +50,11 @@ final class ProfileRegistry {
         Map<String, Object> lock() {
             return Map.of("profileId", id, "styleKey", id, "profileVersion", version,
                 "profileSha256", fingerprint, "voiceKey", voice);
+        }
+
+        /** 命名即画幅：目录带 -landscape 后缀必须横屏 1920×1080，否则竖屏 1080×1920。 */
+        boolean landscape() {
+            return width > height;
         }
     }
 
@@ -78,10 +88,16 @@ final class ProfileRegistry {
             int subtitleTop = rules.path("subtitleBandY").path("minY").asInt(0);
             String mode = profile.path("visualMode").asText("");
             String accent = profile.path("accentDefault").asText("");
+            // 画幅词汇封闭：目录名带 -landscape 后缀必须横屏，其余竖屏。命名与画幅强绑定，防止横竖错配的资产混进来。
+            boolean landscape = id.endsWith(LANDSCAPE);
+            String base = landscape ? id.substring(0, id.length() - LANDSCAPE.length()) : id;
+            int expectWidth = landscape ? 1920 : 1080;
+            int expectHeight = landscape ? 1080 : 1920;
+            int bandMin = landscape ? 620 : 1100;
             if (!id.equals(profile.path("profileId").asText()) || !line.name().equals(profile.path("bizLine").asText())
-                || version < 1 || width != 1080 || height != 1920 || !canvas.equals(rules.path("canvas"))
-                || subtitleTop < 1100 || subtitleTop > height - 240 || !"skeleton-rules/1".equals(rules.path("schemaVersion").asText())
-                || !mode.equals("data-board-3d".equals(id) ? "3d" : "2d") || !accent.matches("#[0-9a-fA-F]{6}")) {
+                || version < 1 || width != expectWidth || height != expectHeight || !canvas.equals(rules.path("canvas"))
+                || subtitleTop < bandMin || subtitleTop > height - 240 || !"skeleton-rules/1".equals(rules.path("schemaVersion").asText())
+                || !mode.equals("data-board-3d".equals(base) ? "3d" : "2d") || !accent.matches("#[0-9a-fA-F]{6}")) {
                 throw invalid("Profile 元数据、画幅或字幕安全带不合法：" + id);
             }
             return new Profile(id, version, line.name(), mode, voice, accent, width, height, subtitleTop,

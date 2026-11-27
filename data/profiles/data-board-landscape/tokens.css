@@ -1,0 +1,66 @@
+/* data-board-landscape：data-board 的横屏画幅变体（命名即画幅）。
+   同一风格语言的 16:9 版：底色、语义色、环境层与动效纪律与竖版同源，
+   差异只在排版度量——字号约降至竖版的 2/3（1080 高度上保持可读），
+   边距收紧，网格随之缩放。画布 1920×1080，字幕安全带 Y ≥ 720px。 */
+:root {
+  --bg: #0c1417;
+  --fg: #f3f0e8;
+  --muted: #7f949b;
+  --muted-2: #9fb0b6;
+  --body: #b7c4c9;
+  --legend: #dde6e8;
+  --down: #e06c5a;
+
+  --rule-faint: rgba(243, 240, 232, 0.12);
+  --rule-soft: rgba(243, 240, 232, 0.14);
+  --rule-strong: rgba(243, 240, 232, 0.28);
+  --panel: rgba(243, 240, 232, 0.06);
+  --glow-color: rgba(24, 183, 201, 0.20);
+  --accent-glow: rgba(24, 183, 201, 0.35);
+
+  --font-body: "Noto Sans SC", sans-serif;
+  --font-num: "Noto Sans SC", sans-serif;
+
+  --fs-title: 64px;
+  --fs-title-lg: 56px;
+  --fs-title-sm: 50px;
+  --fs-data: 46px;
+  --fs-data-sm: 26px;
+  --fs-lead: 38px;
+  --fs-body: 30px;
+  --fs-label: 22px;
+  --fs-note: 22px;
+
+  --pad-frame: 64px;
+  --rule-width: 3px;
+  --radius: 8px;
+  --track-kicker: 0.16em;
+
+  /* 环境层：网格给结构感，光晕给焦点，颗粒给质感。透明度不得低于 0.1，否则等于没有。 */
+  --grid-size: 56px;
+  --grid-opacity: 0.55;
+  --glow-x: 78%;
+  --glow-y: 22%;
+  --glow-spread: 62%;
+  --glow-opacity: 0.9;
+  --grain-opacity: 0.16;
+
+  --dur-entrance: 0.55s;
+  --dur-swap: 0.32s;
+  --dur-ambient: 7s;
+  --ease-out: power3.out;
+  --ease-in: power2.in;
+
+  --cam-push: 1.05;
+  --cam-origin: 50% 50%;
+  --slide-shift: 96px;
+
+  --chart-line-width: 5px;
+  --chart-area-alpha: 0.16;
+  --chart-max-annot: #18b7c9;
+  --chart-min-annot: #e06c5a;
+  --chart-min-size: 20px;
+  --focus-dim: 0.62;
+  --focus-ring-width: 5px;
+  --focus-ring-dash: none;
+}

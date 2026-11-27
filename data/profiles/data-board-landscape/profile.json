@@ -1,0 +1,14 @@
+{
+  "profileId": "data-board-landscape",
+  "version": 1,
+  "bizLine": "data_board",
+  "visualMode": "2d",
+  "themeTone": "dark",
+  "canvas": { "width": 1920, "height": 1080 },
+  "fonts": ["Noto Sans SC"],
+  "accentDefault": "#18b7c9",
+  "motionDiscipline": { "maxStillSec": 3.0, "endStableFrames": 30, "maxFlashPerShot": 1 },
+  "caption": "caption.css",
+  "skeletonRules": "skeleton-rules.json",
+  "creativeVoice": "data-board 的 16:9 横屏变体：同一深海岩板风格语言，桌面/电视观看距离的字号与边距，适合网页嵌入与大屏投放"
+}

@@ -1,0 +1,14 @@
+/* data-board-landscape 字幕风格契约（V1 供 SubtitleBurn ASS 映射与安全带参考）。
+   横屏安全带：字幕烧在 Y ≥ 720px 的下三分之一。 */
+.heron-caption-band {
+  position: absolute;
+  left: var(--pad-frame, 64px);
+  right: var(--pad-frame, 64px);
+  top: 720px;
+  bottom: 150px;
+  font-family: var(--font-body, "Noto Sans SC", sans-serif);
+  font-size: var(--fs-body, 30px);
+  color: var(--fg, #f3f0e8);
+  text-align: center;
+  line-height: 1.38;
+}
